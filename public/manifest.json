@@ -1,0 +1,27 @@
+{
+    "name": "Dashradar.app",
+    "id": "dashradar.app",
+    "categories": ["cars", "navigation", "utilities"],
+    "icons": [
+        {
+            "src": "/icons/icon-16x16.png",
+            "sizes": "16x16",
+            "type": "image/png"
+        },
+        {
+            "src": "/icons/icon-32x32.png",
+            "sizes": "32x32",
+            "type": "image/png"
+        },
+        {
+            "src": "/icons/icon-48x48.png",
+            "sizes": "48x48",
+            "type": "image/png"
+        }
+    ],
+    "theme_color": "#000000",
+    "background_color": "#000000",
+    "start_url": "/",
+    "display": "fullscreen",
+    "orientation": "landscape"
+}
