@@ -1,3 +1,6 @@
+🚧 WIP https://git.fedi.ai/derek/dashradar-app/issues
+
+
 # dashradar.app early prototype
 
 messy proof of concept code needs to be cleaned up 🧹
