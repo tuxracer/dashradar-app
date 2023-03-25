@@ -9,15 +9,6 @@ export const UNKNOWN_THRESHOLD = 0.7;
 export const OVERLAP_THRESHOLD_ID = 0.6;
 export const OVERLAP_THRESHOLD_BBOX = 0.9;
 
-export const MODEL_URLS: string[] = [
-    "/models/base_v1/model.json",
-    "/models/base_v1/group1-shard1of5",
-    "/models/base_v1/group1-shard2of5",
-    "/models/base_v1/group1-shard3of5",
-    "/models/base_v1/group1-shard4of5",
-    "/models/base_v1/group1-shard5of5",
-];
-
 // import { v4 as uuidv4 } from "uuid";
 
 const allowList = [
@@ -76,15 +67,11 @@ export const setTensorflowBackend = memoizee(
 );
 
 export const getTensorflowModel = memoizee(
-    async (options: DetectedObjectOptions) => {
-        const {
-            tensorFlowBackend = DEFAULT_TENSORFLOW_BACKEND,
-            tensorFlowBase: base = DEFAULT_TENSORFLOW_BASE,
-        } = options;
+    async ({
+        tensorFlowBackend = DEFAULT_TENSORFLOW_BACKEND,
+        tensorFlowBase: base = DEFAULT_TENSORFLOW_BASE,
+    }: DetectedObjectOptions) => {
         await setTensorflowBackend(tensorFlowBackend);
-        if (base === "lite_mobilenet_v2") {
-            return cocoSsd.load({ modelUrl: "/models/base_v1/model.json" });
-        }
         return cocoSsd.load({ base });
     },
     { primitive: true, promise: true }
@@ -137,30 +124,6 @@ const getOverlapPercentage = (
 
     return overlapPercentage;
 };
-
-export const prefetchModelData = memoizee(
-    (progressCb?: (progress: number) => void) => {
-        if (typeof window === "undefined") return Promise.resolve();
-        const totalCount = MODEL_URLS.length;
-        const loaded: string[] = [];
-
-        return Promise.all(
-            MODEL_URLS.map((url) =>
-                fetch(url, { cache: "force-cache" }).then(() => {
-                    loaded.push(url);
-
-                    const loadedCount = loaded.length;
-                    const pendingCount = totalCount - loadedCount;
-                    const progress =
-                        Math.floor(100 - (pendingCount / totalCount) * 100) /
-                        100;
-                    progressCb?.(progress);
-                })
-            )
-        );
-    },
-    { promise: true }
-);
 
 export const getDetectedObjects$ = memoizee(
     (

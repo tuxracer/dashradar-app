@@ -4,7 +4,6 @@ import type { AppProps } from "next/app";
 import { useRouter } from "next/router";
 import * as Fathom from "fathom-client";
 import Head from "next/head";
-import { MODEL_URLS } from "../lib/tf";
 
 function MyApp({ Component, pageProps }: AppProps) {
     const router = useRouter();
@@ -69,10 +68,6 @@ function MyApp({ Component, pageProps }: AppProps) {
                     name="viewport"
                     content="minimum-scale=1, initial-scale=1, width=device-width, shrink-to-fit=no, viewport-fit=cover"
                 />
-
-                {MODEL_URLS.map((url) => (
-                    <link rel="prefetch" href={url} key={url} />
-                ))}
             </Head>
             <Component {...pageProps} />
         </>
