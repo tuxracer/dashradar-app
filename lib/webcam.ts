@@ -61,19 +61,66 @@ export const addMediaStreamToVideoEl = async (
     });
 };
 
+export interface WebcamError {
+    type: 'permission_denied' | 'not_found' | 'not_readable' | 'overconstrained' | 'unknown';
+    message: string;
+    originalError: any;
+}
+
+const getWebcamError = (err: any): WebcamError => {
+    const errorName = err?.name || '';
+
+    if (errorName === 'NotAllowedError' || errorName === 'PermissionDeniedError') {
+        return {
+            type: 'permission_denied',
+            message: 'Camera permission denied. Please allow camera access and try again.',
+            originalError: err,
+        };
+    }
+
+    if (errorName === 'NotFoundError' || errorName === 'DevicesNotFoundError') {
+        return {
+            type: 'not_found',
+            message: 'No camera found. Please connect a camera and try again.',
+            originalError: err,
+        };
+    }
+
+    if (errorName === 'NotReadableError' || errorName === 'TrackStartError') {
+        return {
+            type: 'not_readable',
+            message: 'Camera is already in use by another application. Please close other apps and try again.',
+            originalError: err,
+        };
+    }
+
+    if (errorName === 'OverconstrainedError' || errorName === 'ConstraintNotSatisfiedError') {
+        return {
+            type: 'overconstrained',
+            message: 'Camera does not support the required settings. Trying with basic settings...',
+            originalError: err,
+        };
+    }
+
+    return {
+        type: 'unknown',
+        message: 'Unable to access camera. Please check your camera and try again.',
+        originalError: err,
+    };
+};
+
 export const addWebcamStreamToVideoEl = async (videoEl: HTMLVideoElement) => {
     try {
         const stream = await getMediaStream();
         const track = await applyConstraintsToStream(stream);
         track.onended = () => {
-            console.error("Media track error", track);
-            reloadWindowDelayed();
+            console.error("Media track ended", track);
         };
         await addMediaStreamToVideoEl(videoEl, stream);
-        return track;
+        return { track, error: null };
     } catch (err) {
         console.warn("Unable to add webcam stream to video element", err);
-        reloadWindowDelayed();
-        return null;
+        const webcamError = getWebcamError(err);
+        return { track: null, error: webcamError };
     }
 };
