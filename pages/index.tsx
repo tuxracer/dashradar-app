@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { addWebcamStreamToVideoEl } from "../lib/webcam";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { addWebcamStreamToVideoEl, WebcamError } from "../lib/webcam";
 import {
     DetectedObject,
     getDetectedObjects$,
@@ -10,7 +10,6 @@ import {
     hexToRGB,
     reloadWindow,
     getIsDarkMode,
-    reloadWindowDelayed,
 } from "../lib/utils";
 import Head from "next/head";
 import { speak, speakItem } from "../lib/speak";
@@ -18,8 +17,6 @@ import { debounce, throttle } from "lodash";
 import { Loading } from "../components/Loading";
 
 const CANVAS_TEXT_COLOR = getIsDarkMode() ? "#ffffff" : "#000000";
-
-let canvasContext: CanvasRenderingContext2D | null = null;
 
 const emojiMap: Record<string, string> = {
     "": "",
@@ -42,10 +39,7 @@ const getEmoji = (word: string = "") => {
 };
 
 if (typeof window !== "undefined") {
-    // @ts-ignore
-    window.getEmoji = getEmoji;
-    // @ts-ignore
-    // window.emojiFromWord = emojiFromWord;
+    (window as any).getEmoji = getEmoji;
 }
 
 const speakThrottled = throttle((text: string) => {
@@ -59,26 +53,25 @@ speakThrottled("Loading please wait...");
 export const Home = () => {
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const canvasContextRef = useRef<CanvasRenderingContext2D | null>(null);
+
     const [loadingStatus, setLoadingStatus] = useState<string | null>(
         "Loading..."
     );
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
+    const [webcamError, setWebcamError] = useState<WebcamError | null>(null);
 
     const isLoading = loadingStatus !== null && errorStatus === null;
-    const isError = errorStatus !== null;
+    const isError = errorStatus !== null || webcamError !== null;
 
     const [isVideoVisible, setIsVideoVisible] = useState(true);
 
-    const getFontColor = useCallback(() => {
-        return isVideoVisible ? CANVAS_TEXT_COLOR : CANVAS_TEXT_COLOR;
-    }, [isVideoVisible]);
-
-    const getCanvasContext = () => {
-        if (!canvasContext && canvasRef.current) {
-            canvasContext = canvasRef.current.getContext("2d");
+    const getCanvasContext = useCallback(() => {
+        if (!canvasContextRef.current && canvasRef.current) {
+            canvasContextRef.current = canvasRef.current.getContext("2d");
         }
-        return canvasContext;
-    };
+        return canvasContextRef.current;
+    }, []);
 
     const clearCanvas = useCallback(() => {
         const canvas = canvasRef.current;
@@ -88,7 +81,7 @@ export const Home = () => {
 
         if (!ctx) return;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-    }, []);
+    }, [getCanvasContext]);
 
     const renderDetections = useCallback(
         (predictions: DetectedObject[]) => {
@@ -167,7 +160,7 @@ export const Home = () => {
                 );
                 const textY = Math.round(Math.max(60, y - textHeight - 10));
 
-                ctx.fillStyle = hexToRGB(getFontColor(), prediction.score);
+                ctx.fillStyle = hexToRGB(CANVAS_TEXT_COLOR, prediction.score);
 
                 if (prediction.score > UNKNOWN_THRESHOLD) {
                     ctx.fillText(label, textX, textY);
@@ -192,7 +185,7 @@ export const Home = () => {
                 );
             });
         },
-        [clearCanvas, getFontColor]
+        [clearCanvas, getCanvasContext]
     );
 
     const [detectedObjects, setDetectedObjects] = useState<
@@ -216,22 +209,30 @@ export const Home = () => {
     const videoWidth = webcamAttachedVideoEl?.videoWidth;
     const videoHeight = webcamAttachedVideoEl?.videoHeight;
 
-    const setVideoVisible = debounce(
-        () => {
-            if (isLoading) return;
-            setIsVideoVisible(true);
-        },
-        1000,
-        { leading: true, trailing: false }
+    const setVideoVisible = useMemo(
+        () =>
+            debounce(
+                () => {
+                    if (isLoading) return;
+                    setIsVideoVisible(true);
+                },
+                1000,
+                { leading: true, trailing: false }
+            ),
+        [isLoading]
     );
 
-    const setVideoHidden = debounce(
-        () => {
-            if (isLoading) return;
-            setIsVideoVisible(false);
-        },
-        1000,
-        { leading: true, trailing: false }
+    const setVideoHidden = useMemo(
+        () =>
+            debounce(
+                () => {
+                    if (isLoading) return;
+                    setIsVideoVisible(false);
+                },
+                1000,
+                { leading: true, trailing: false }
+            ),
+        [isLoading]
     );
 
     const requestFullscreen = () => {
@@ -265,78 +266,73 @@ export const Home = () => {
     }, [loadingStatus]);
 
     useEffect(() => {
-        (async () => {
-            if (!webcamAttachedVideoEl) return;
+        if (!webcamAttachedVideoEl) return;
 
-            const detectedObjects$ = getDetectedObjects$(webcamAttachedVideoEl);
+        const { observable, cleanup } = getDetectedObjects$(webcamAttachedVideoEl);
 
-            detectedObjects$.subscribe((detectedObjects) => {
-                setDetectedObjects(detectedObjects);
+        const subscription = observable.subscribe((detectedObjects) => {
+            setDetectedObjects(detectedObjects);
 
-                if (loadingStatus) {
-                    setLoadingStatus(null);
-                    setVideoHidden();
-                }
-            });
-        })();
+            if (loadingStatus) {
+                setLoadingStatus(null);
+                setVideoHidden();
+            }
+        });
+
+        return () => {
+            subscription.unsubscribe();
+            cleanup();
+        };
     }, [webcamAttachedVideoEl, loadingStatus, setVideoHidden]);
 
-    useEffect(() => {
-        (async () => {
-            const videoEl = videoRef?.current;
-            if (!videoEl) {
-                console.warn("No video ref");
-                return;
-            }
+    const initializeWebcam = useCallback(async () => {
+        const videoEl = videoRef?.current;
+        if (!videoEl) {
+            console.warn("No video ref");
+            return;
+        }
 
-            try {
-                const videoTrack = await addWebcamStreamToVideoEl(videoEl);
+        setWebcamError(null);
+        setErrorStatus(null);
+        setLoadingStatus("Initializing camera...");
 
-                if (!videoTrack) {
-                    throw new Error("Please enable camera access to continue");
-                }
+        const result = await addWebcamStreamToVideoEl(videoEl);
 
-                videoTrack.addEventListener("ended", (e) => {
-                    console.error("track ended", e);
-                    setErrorStatus("Unable to access camera");
-                    reloadWindowDelayed();
-                });
+        if (result.error) {
+            setWebcamError(result.error);
+            setLoadingStatus(null);
+            speakThrottled(result.error.message);
+            return;
+        }
 
-                setWebcamAttachedVideoEl(videoEl);
-            } catch (err) {
-                setErrorStatus("Please enable camera access to continue");
-            }
-        })();
+        if (!result.track) {
+            setErrorStatus("Unable to access camera");
+            setLoadingStatus(null);
+            return;
+        }
+
+        result.track.addEventListener("ended", (e) => {
+            console.error("track ended", e);
+            setErrorStatus("Camera disconnected");
+        });
+
+        setWebcamAttachedVideoEl(videoEl);
     }, [videoRef]);
 
     useEffect(() => {
-        (async () => {
-            setLoadingStatus("Waiting for sensor permission...");
+        initializeWebcam();
+    }, [initializeWebcam]);
 
-            if (typeof window !== "undefined") {
-                window.oncontextmenu = function (e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false;
-                };
-            }
+    useEffect(() => {
+        setLoadingStatus("Waiting for sensor permission...");
 
-            /** @todo remove hack */
-            setTimeout(() => {
-                setLoadingStatus(null);
-            }, 10_000);
-
-            /** @todo remove hack */
-            setInterval(() => {
-                const canvas = canvasRef.current;
-                if (!canvas) return;
-
-                const ctx = getCanvasContext();
-
-                if (!ctx) return;
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-            }, 5_000);
-        })();
+        if (typeof window !== "undefined") {
+            window.oncontextmenu = function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            };
+        }
     }, []);
 
     return (
@@ -346,8 +342,23 @@ export const Home = () => {
             </Head>
             {isLoading && <Loading />}
             {isError && (
-                <div id="error" onClick={reloadWindow}>
-                    {errorStatus}
+                <div id="error">
+                    <div className="error-message">
+                        {webcamError ? webcamError.message : errorStatus}
+                    </div>
+                    <button onClick={initializeWebcam} className="retry-button">
+                        Try Again
+                    </button>
+                    {webcamError?.type === 'permission_denied' && (
+                        <div className="error-help">
+                            Tip: Check your browser settings or system preferences to allow camera access
+                        </div>
+                    )}
+                    {webcamError?.type === 'not_readable' && (
+                        <div className="error-help">
+                            Tip: Close other applications that might be using your camera
+                        </div>
+                    )}
                 </div>
             )}
             <video
