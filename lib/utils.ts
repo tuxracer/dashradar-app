@@ -1,6 +1,5 @@
 import { Observable } from "rxjs";
 import { useEffect } from "react";
-import randomColor from "randomcolor";
 import memoizee from "memoizee";
 import { once, throttle } from "lodash";
 
@@ -37,18 +36,26 @@ export const useObservable = <T>(
 
 const RANDOM_SEED_POSTFIX = Math.random();
 
+// Simple hash-based color generator (replaces randomcolor library)
+const hashStringToColor = (str: string): string => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+
+    const isDark = getIsDarkMode();
+
+    // Generate HSL color for better control over brightness
+    const hue = Math.abs(hash % 360);
+    const saturation = isDark ? 70 + (Math.abs(hash) % 30) : 60 + (Math.abs(hash) % 40);
+    const lightness = isDark ? 60 + (Math.abs(hash >> 8) % 20) : 45 + (Math.abs(hash >> 8) % 20);
+
+    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+};
+
 export const getColor = memoizee(
     (seed: string) => {
-        // const predefinedColor = DETECTION_COLOR_MAP[id];
-        // if (predefinedColor) return predefinedColor;
-
-        const luminosity = getIsDarkMode() ? "bright" : "random";
-
-        return randomColor({
-            seed: seed + RANDOM_SEED_POSTFIX,
-            luminosity,
-            hue: "random",
-        });
+        return hashStringToColor(seed + RANDOM_SEED_POSTFIX);
     },
     { max: 20 }
 );
