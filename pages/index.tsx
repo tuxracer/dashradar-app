@@ -8,6 +8,7 @@ import {
 import {
     getColor,
     hexToRGB,
+    colorToRGBA,
     reloadWindow,
     getIsDarkMode,
 } from "../lib/utils";
@@ -127,7 +128,7 @@ export const Home = () => {
                 // Set the color
                 const classColor =
                     prediction.score > UNKNOWN_THRESHOLD
-                        ? hexToRGB(
+                        ? colorToRGBA(
                               getColor(prediction.id || ""),
                               prediction.score / 2
                           )
@@ -172,7 +173,7 @@ export const Home = () => {
 
                 ctx.fillStyle =
                     prediction.score > UNKNOWN_THRESHOLD
-                        ? getColor(prediction.id || "")
+                        ? colorToRGBA(getColor(prediction.id || ""), 1)
                         : hexToRGB(CANVAS_TEXT_COLOR, 0.3);
                 // const centerLabelFont = `${fontSize}px sans-serif`;
                 // ctx.font = centerLabelFont;

@@ -24,6 +24,22 @@ export const hexToRGB = (hex: string, alpha: number) => {
     }
 };
 
+// Convert any color format (hex or HSL) to RGBA with alpha
+export const colorToRGBA = (color: string, alpha: number): string => {
+    // If it's already an HSL color, convert to HSLA
+    if (color.startsWith('hsl(')) {
+        // Extract hsl values: "hsl(180, 80%, 65%)" -> ["180", "80%", "65%"]
+        const hslMatch = color.match(/hsl\((\d+),\s*([\d.]+)%,\s*([\d.]+)%\)/);
+        if (hslMatch) {
+            const [, h, s, l] = hslMatch;
+            return `hsla(${h}, ${s}%, ${l}%, ${alpha})`;
+        }
+    }
+
+    // Otherwise assume it's hex and use hexToRGB
+    return hexToRGB(color, alpha);
+};
+
 export const useObservable = <T>(
     observable: Observable<T>,
     setter: (value: T) => void
