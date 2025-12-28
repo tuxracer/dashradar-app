@@ -4,12 +4,11 @@ import * as tf from "@tensorflow/tfjs";
 import * as cocoSsd from "@tensorflow-models/coco-ssd";
 import memoizee from "memoizee";
 import { Subject, pairwise, map, filter } from "rxjs";
+import { v4 as uuidv4 } from "uuid";
 
 export const UNKNOWN_THRESHOLD = 0.7;
 export const OVERLAP_THRESHOLD_ID = 0.6;
 export const OVERLAP_THRESHOLD_BBOX = 0.9;
-
-// import { v4 as uuidv4 } from "uuid";
 
 const allowList = [
     "person",
@@ -32,13 +31,6 @@ const allowList = [
     "bird",
     "horse",
 ];
-
-let count = 0;
-
-const uuidv4 = () => {
-    count += 1;
-    return count.toString();
-};
 
 // setWasmPaths({
 //     "tfjs-backend-wasm.wasm": "/tfjs-backend-wasm.wasm",
@@ -125,153 +117,167 @@ const getOverlapPercentage = (
     return overlapPercentage;
 };
 
-export const getDetectedObjects$ = memoizee(
-    (
-        videoEl: HTMLVideoElement | null,
-        options: DetectedObjectOptions = {
-            tensorFlowBackend: DEFAULT_TENSORFLOW_BACKEND,
-            tensorFlowBase: DEFAULT_TENSORFLOW_BASE,
-        }
-    ) => {
-        const detectedObjects$ = new Subject<DetectedObject[]>();
-
-        /** If overlap is detected use the id from the object that is overlapped */
-        const uniqueDetectedObjects$ = detectedObjects$.pipe(
-            filter((detectedObjects) => detectedObjects.length > 0),
-            pairwise(),
-            map(([prevDetectedObjects, detectedObjects]) => {
-                const uniqueDetectedObjects = detectedObjects.map(
-                    (detectedObject) => {
-                        const prevDetectedObjectsWithOverlap =
-                            prevDetectedObjects
-                                .map((prevDetectedObject) => {
-                                    let overlap = 0;
-                                    if (
-                                        prevDetectedObject.class ===
-                                        detectedObject.class
-                                    ) {
-                                        overlap = getOverlapPercentage(
-                                            detectedObject.bbox,
-                                            prevDetectedObject.bbox
-                                        );
-                                    }
-
-                                    // console.log({
-                                    //     overlap,
-                                    //     prevDetectedObject,
-                                    //     detectedObject,
-                                    // });
-
-                                    return {
-                                        ...prevDetectedObject,
-                                        overlap,
-                                    };
-                                })
-                                .sort((a, b) => b.overlap - a.overlap);
-
-                        const [mostOverlap] = prevDetectedObjectsWithOverlap;
-
-                        const maxScore = Math.max(
-                            detectedObject.score,
-                            mostOverlap.score
-                        );
-
-                        // console.log({ mostOverlap, maxScore });
-
-                        // console.log({ maxScore });
-
-                        // const mostOverlapAge =
-                        //     detectedObject.timestamp - mostOverlap.timestamp;
-
-                        // if (
-                        //     maxScore > UNKNOWN_THRESHOLD &&
-                        //     mostOverlapAge < 500
-                        // ) {
-                        //     return mostOverlap;
-                        // }
-
-                        if (mostOverlap.overlap > OVERLAP_THRESHOLD_ID) {
-                            detectedObject.id = mostOverlap.id;
-                            detectedObject.score = maxScore;
-                        }
-
-                        if (
-                            maxScore > UNKNOWN_THRESHOLD &&
-                            mostOverlap.overlap > OVERLAP_THRESHOLD_BBOX
-                        ) {
-                            detectedObject.bbox = mostOverlap.bbox;
-                        }
-
-                        return detectedObject;
-                    }
-                );
-                // .filter(({ score }) => score > 0.5);
-
-                return uniqueDetectedObjects;
-            })
-        );
-
-        const detectFromVideoFrame = async (model: cocoSsd.ObjectDetection) => {
-            let detectedObjects: DetectedObject[] | null = null;
-
-            if (!videoEl) {
-                detectedObjects$.error("No video element provided");
-                return;
-            }
-
-            // const startTimestamp = performance.now();
-            try {
-                detectedObjects$.next([]);
-                // @ts-ignore
-                detectedObjects = await model.detect(videoEl);
-
-                if (detectedObjects) {
-                    const detectedObjectsWithId = detectedObjects
-                        .filter((d) =>
-                            allowList.includes(d.class.toLowerCase())
-                        )
-                        .map((d) => {
-                            return {
-                                ...d,
-                                id: uuidv4(),
-                                timestamp: Date.now(),
-                            };
-                        });
-                    detectedObjects$.next(detectedObjectsWithId);
-                } else {
-                    detectedObjects$.next([]);
-                }
-            } catch (error) {
-                console.warn("Unable to detect objects in video frame", error);
-                detectedObjects$.error(error);
-            }
-            // const endTimestamp = performance.now();
-            // const elapsedTimeMs = Math.round(endTimestamp - startTimestamp);
-
-            // console.log({ elapsedTimeMs });
-
-            /** await exactly 1 next frame, every 3rd frame you jump to latest available frame  */
-            videoEl.requestVideoFrameCallback(() => {
-                detectFromVideoFrame(model);
-            });
-        };
-
-        getTensorflowModel(options).then((model) => {
-            if (typeof requestIdleCallback === "undefined") {
-                detectFromVideoFrame(model);
-                return;
-            }
-
-            requestIdleCallback(() => {
-                detectFromVideoFrame(model);
-            });
-        });
-
-        return uniqueDetectedObjects$;
-    },
-    {
-        normalizer: ([videoEl, options]) => {
-            return `${videoEl?.id}` + `${JSON.stringify(options)}`;
-        },
+export const getDetectedObjects$ = (
+    videoEl: HTMLVideoElement | null,
+    options: DetectedObjectOptions = {
+        tensorFlowBackend: DEFAULT_TENSORFLOW_BACKEND,
+        tensorFlowBase: DEFAULT_TENSORFLOW_BASE,
     }
-);
+) => {
+    const detectedObjects$ = new Subject<DetectedObject[]>();
+    let cancelled = false;
+    let frameCallbackId: number | null = null;
+
+    /** If overlap is detected use the id from the object that is overlapped */
+    const uniqueDetectedObjects$ = detectedObjects$.pipe(
+        filter((detectedObjects) => detectedObjects.length > 0),
+        pairwise(),
+        map(([prevDetectedObjects, detectedObjects]) => {
+            const uniqueDetectedObjects = detectedObjects.map(
+                (detectedObject) => {
+                    const prevDetectedObjectsWithOverlap =
+                        prevDetectedObjects
+                            .map((prevDetectedObject) => {
+                                let overlap = 0;
+                                if (
+                                    prevDetectedObject.class ===
+                                    detectedObject.class
+                                ) {
+                                    overlap = getOverlapPercentage(
+                                        detectedObject.bbox,
+                                        prevDetectedObject.bbox
+                                    );
+                                }
+
+                                // console.log({
+                                //     overlap,
+                                //     prevDetectedObject,
+                                //     detectedObject,
+                                // });
+
+                                return {
+                                    ...prevDetectedObject,
+                                    overlap,
+                                };
+                            })
+                            .sort((a, b) => b.overlap - a.overlap);
+
+                    const [mostOverlap] = prevDetectedObjectsWithOverlap;
+
+                    const maxScore = Math.max(
+                        detectedObject.score,
+                        mostOverlap.score
+                    );
+
+                    // console.log({ mostOverlap, maxScore });
+
+                    // console.log({ maxScore });
+
+                    // const mostOverlapAge =
+                    //     detectedObject.timestamp - mostOverlap.timestamp;
+
+                    // if (
+                    //     maxScore > UNKNOWN_THRESHOLD &&
+                    //     mostOverlapAge < 500
+                    // ) {
+                    //     return mostOverlap;
+                    // }
+
+                    if (mostOverlap.overlap > OVERLAP_THRESHOLD_ID) {
+                        detectedObject.id = mostOverlap.id;
+                        detectedObject.score = maxScore;
+                    }
+
+                    if (
+                        maxScore > UNKNOWN_THRESHOLD &&
+                        mostOverlap.overlap > OVERLAP_THRESHOLD_BBOX
+                    ) {
+                        detectedObject.bbox = mostOverlap.bbox;
+                    }
+
+                    return detectedObject;
+                }
+            );
+            // .filter(({ score }) => score > 0.5);
+
+            return uniqueDetectedObjects;
+        })
+    );
+
+    const detectFromVideoFrame = async (model: cocoSsd.ObjectDetection) => {
+        if (cancelled) return;
+
+        let detectedObjects: DetectedObject[] | null = null;
+
+        if (!videoEl) {
+            detectedObjects$.error("No video element provided");
+            return;
+        }
+
+        // const startTimestamp = performance.now();
+        try {
+            detectedObjects = await model.detect(videoEl) as DetectedObject[];
+
+            if (cancelled) return;
+
+            if (detectedObjects) {
+                const detectedObjectsWithId = detectedObjects
+                    .filter((d) =>
+                        allowList.includes(d.class.toLowerCase())
+                    )
+                    .map((d) => {
+                        return {
+                            ...d,
+                            id: uuidv4(),
+                            timestamp: Date.now(),
+                        };
+                    });
+                detectedObjects$.next(detectedObjectsWithId);
+            } else {
+                detectedObjects$.next([]);
+            }
+        } catch (error) {
+            if (cancelled) return;
+            console.warn("Unable to detect objects in video frame", error);
+            detectedObjects$.error(error);
+            return;
+        }
+        // const endTimestamp = performance.now();
+        // const elapsedTimeMs = Math.round(endTimestamp - startTimestamp);
+
+        // console.log({ elapsedTimeMs });
+
+        /** await exactly 1 next frame, every 3rd frame you jump to latest available frame  */
+        if (!cancelled && videoEl.requestVideoFrameCallback) {
+            frameCallbackId = videoEl.requestVideoFrameCallback(() => {
+                detectFromVideoFrame(model);
+            });
+        }
+    };
+
+    getTensorflowModel(options).then((model) => {
+        if (cancelled) return;
+
+        if (typeof requestIdleCallback === "undefined") {
+            detectFromVideoFrame(model);
+            return;
+        }
+
+        requestIdleCallback(() => {
+            if (!cancelled) {
+                detectFromVideoFrame(model);
+            }
+        });
+    });
+
+    // Provide cleanup function
+    const cleanup = () => {
+        cancelled = true;
+        if (frameCallbackId !== null && videoEl?.cancelVideoFrameCallback) {
+            videoEl.cancelVideoFrameCallback(frameCallbackId);
+        }
+        detectedObjects$.complete();
+    };
+
+    return { observable: uniqueDetectedObjects$, cleanup };
+};
