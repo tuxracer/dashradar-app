@@ -29,7 +29,14 @@ const commitShaMeta = (): Plugin => {
   };
 };
 
-const PRECACHE_MAX_FILE_SIZE = 40_000_000; // the ONNX runtime .wasm emitted into the bundle is ~20 MB and must precache for offline cold-loads
+// Generous ceiling for the JS/CSS bundle. The ONNX runtime .wasm that Vite
+// emits into dist/assets (~20 MB) is deliberately excluded from globPatterns
+// below: onnxruntime-web always fetches its wasm/mjs from cdn.jsdelivr.net
+// unless env.backends.onnx.wasm.wasmPaths is set (it isn't, here), so the
+// bundled copy is dead weight. The jsdelivr fetch is covered by the
+// "ort-runtime" CacheFirst route instead, which is what makes offline
+// cold-loads work after the first run.
+const PRECACHE_MAX_FILE_SIZE = 40_000_000;
 
 const pwa = () =>
   VitePWA({
@@ -55,7 +62,7 @@ const pwa = () =>
       ],
     },
     workbox: {
-      globPatterns: ["**/*.{js,css,html,svg,png,woff,woff2,wasm}"],
+      globPatterns: ["**/*.{js,css,html,svg,png,woff,woff2}"],
       maximumFileSizeToCacheInBytes: PRECACHE_MAX_FILE_SIZE,
       runtimeCaching: [
         {
