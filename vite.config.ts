@@ -29,22 +29,20 @@ const commitShaMeta = (): Plugin => {
   };
 };
 
-const PRECACHE_MAX_FILE_SIZE = 5_000_000; // headroom so the single no-split bundle (libsodium + supabase) stays precacheable as it grows past workbox's 2 MiB default
+const PRECACHE_MAX_FILE_SIZE = 5_000_000; // headroom so the single no-split bundle stays precacheable as it grows past workbox's 2 MiB default
 
 const pwa = () =>
   VitePWA({
     registerType: "autoUpdate",
     manifest: {
-      name: "TuxBank",
-      short_name: "TuxBank",
+      name: "dashradar",
+      short_name: "dashradar",
       description:
-        "Local-first budget calendar that tracks deposits and withdrawals on a full-page month view, works offline with no account, and offers optional end-to-end encrypted sync across devices.",
+        "Turn your phone into a dashcam with live on-device object detection. Runs entirely in the browser, works offline, and no data leaves your device.",
       display: "standalone",
       start_url: "/",
-      // Suppress the plugin's defaults (#ffffff / #42b883); undefined keys are
-      // dropped from the serialized manifest.
-      background_color: undefined,
-      theme_color: undefined,
+      background_color: "#0B0A10",
+      theme_color: "#0B0A10",
       icons: [
         { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
         { src: "/icon-512.png", sizes: "512x512", type: "image/png" },

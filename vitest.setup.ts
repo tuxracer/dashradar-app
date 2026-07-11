@@ -1,7 +1,6 @@
 import "@testing-library/jest-dom/vitest";
-import "fake-indexeddb/auto";
 
-// jsdom stubs for cmdk/Radix components
+// jsdom stubs for browser APIs missing from the test environment
 if (typeof window !== "undefined") {
   if (!window.ResizeObserver) {
     window.ResizeObserver = class ResizeObserver {
@@ -9,12 +8,6 @@ if (typeof window !== "undefined") {
       unobserve() {}
       disconnect() {}
     };
-  }
-  if (!Element.prototype.hasPointerCapture) {
-    Element.prototype.hasPointerCapture = () => false;
-  }
-  if (!Element.prototype.scrollIntoView) {
-    Element.prototype.scrollIntoView = () => {};
   }
   if (!window.matchMedia) {
     window.matchMedia = (query: string): MediaQueryList => ({
