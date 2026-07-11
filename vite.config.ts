@@ -29,7 +29,7 @@ const commitShaMeta = (): Plugin => {
   };
 };
 
-const PRECACHE_MAX_FILE_SIZE = 5_000_000; // headroom so the single no-split bundle stays precacheable as it grows past workbox's 2 MiB default
+const PRECACHE_MAX_FILE_SIZE = 40_000_000; // the ONNX runtime .wasm emitted into the bundle is ~20 MB and must precache for offline cold-loads
 
 const pwa = () =>
   VitePWA({
@@ -55,8 +55,22 @@ const pwa = () =>
       ],
     },
     workbox: {
-      globPatterns: ["**/*.{js,css,html,svg,png,woff,woff2}"],
+      globPatterns: ["**/*.{js,css,html,svg,png,woff,woff2,wasm}"],
       maximumFileSizeToCacheInBytes: PRECACHE_MAX_FILE_SIZE,
+      runtimeCaching: [
+        {
+          // onnxruntime-web may fetch its .wasm/.mjs from jsdelivr instead of
+          // the bundle depending on how the build resolves it; cache-first so
+          // the app still cold-loads offline after the first run.
+          urlPattern: ({ url }) => url.hostname === "cdn.jsdelivr.net",
+          handler: "CacheFirst",
+          options: {
+            cacheName: "ort-runtime",
+            expiration: { maxEntries: 8 },
+            cacheableResponse: { statuses: [0, 200] },
+          },
+        },
+      ],
     },
   });
 
