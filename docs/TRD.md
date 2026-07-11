@@ -1,34 +1,47 @@
-# TRD: Full-Page Cyberpunk Calendar
+# TRD: dashradar
 
 > Technical Reference Document. See [CLAUDE.md](../CLAUDE.md) for project conventions.
 
-**Status:** Draft for review · **Date:** 2026-05-30 · **Owner:** Derek Petersen
+**Status:** Shipped (v1) · **Date:** 2026-07-11 · **Owner:** Derek Petersen
 
-A single-user, full-page **month calendar** web app with a **cyberpunk-inspired** interface. Events are created, edited, and deleted entirely in the browser and persist locally in **IndexedDB** (via the `idb` library) with no backend or account by default. An optional, end-to-end-encrypted account sync (managed Supabase backend, required TOTP 2FA) can be enabled for cross-device sync; see the Optional account sync section. Local-only use is unchanged when signed out. Events can repeat, and repeating events can be edited or deleted at three scopes (this occurrence / this and following / the whole series).
+dashradar turns a phone mounted on a car dash into a live "radar" view: a full-screen rear-camera feed with real-time object detection drawn as a clean, automotive-minimal HUD overlay. Detection runs entirely in the browser via Transformers.js (`@huggingface/transformers`), in a Web Worker, with WebGPU acceleration when available and a quantized WASM fallback otherwise. It is a client-only Vite React SPA, installable as an offline-first PWA. There is no backend, no accounts, and no data leaves the device: no video, frame, or detection is ever sent anywhere.
 
 ---
 
 ## 1. Goals & Non-Goals
 
 ### Goals
-- A calendar that **fills the entire viewport** and is the whole app, with no chrome competing for space.
-- A **striking, cohesive cyberpunk aesthetic** (neon-on-black, angular HUD), not a generic theme.
-- Fast, fully **client-side** personal scheduling: create/edit/delete events with **no sign-in and no network dependency**.
-- **Local persistence** that survives reloads via IndexedDB.
-- Support **recurring events** with familiar Google-Calendar-style edit/delete scopes.
+
+- Turn a phone's camera into a live object-detection HUD, useful mounted on a car dash.
+- Detection entirely **on-device**, in a **Web Worker** so inference never blocks the video.
+- A clean, **automotive-minimal HUD** ("Autopilot" direction): the road view stays uncluttered, position is communicated spatially (the radar strip), words are reserved for what matters.
+- **Offline-first**: works with no connection after the model has downloaded once.
+- Keep the phone's screen from sleeping while running (Screen Wake Lock).
+- **WebGPU when available, WASM fallback otherwise**, chosen automatically with no user-facing setting.
 
 ### Non-Goals (v1)
-- No multi-user or sharing. (Single-user cross-device sync was added after v1 as an optional, end-to-end-encrypted account feature; see Optional account sync.)
-- Local-first: no backend of our own for event data. (An optional managed Supabase backend can be enabled for encrypted sync; the client talks to it directly, with authorization in Row Level Security and no server code of ours.)
-- No timed events (no start/end times), no multi-day events.
-- No week / day / agenda views (month view only).
-- No reminders/notifications; no external calendar (Google/ICS) sync. (A whole-database JSON backup export/restore *is* supported; see the Backup / restore section.)
+
+- No video recording, no logging of detection events, no audible alerts.
+- No accounts, sync, or server component of any kind. Nothing persists across reloads beyond the browser's own model-weight cache; there is no IndexedDB, no settings screen, no history.
+- No manual model/backend picker, no in-app settings UI, no nav, no dialogs.
+- No object count in the HUD, no confidence scores shown to the user (used internally for thresholding only).
+
+Success criteria: on a phone with WebGPU, smooth video with boxes updating at several detections per second; on the WASM fallback, box updates slow down but the video itself never stutters; the app works offline after the first launch.
 
 ---
 
-## 2. Target User & Use Case
+## 2. Target Platforms & Device Support
 
-A single person managing their own schedule of **all-day, date-based events**: meetings, reminders, birthdays, recurring obligations ("pay rent", "weekly standup"). The calendar is opened on a desktop browser as a focused, full-screen tool. All data lives on that device.
+Primary target: a phone mounted in landscape on a car dash, orientation unlocked (the overlay math handles either orientation, see §5). Modern iPhone Safari and Android Chrome are the intended runtime; desktop Chrome/Edge work and are useful for development but are secondary.
+
+| Backend | Chosen when | Weight precision | Notes |
+| --- | --- | --- | --- |
+| WebGPU | `"gpu" in navigator && navigator.gpu` is truthy (`resolveBackend()`, `src/workers/detection/index.ts`) | `fp16` | Faster; verified end-to-end against the shipped model in Chrome via chrome-devtools MCP (`GPU · 7-10 FPS` against a synthetic camera feed) |
+| WASM | No WebGPU (`navigator.gpu` absent), or the browser doesn't expose it | `q8` (8-bit quantized) | Universal fallback; verified working with the shipped model (`CPU · 1-5 FPS` in the same Chrome-based testing, slower because of the larger r18vd backbone on CPU int8, but correct and error-free) |
+
+No WebGPU is not treated as an error: the backend badge in `StatusBar` (`GPU` vs `CPU`) is the only place this is surfaced. There is no manual override.
+
+Real camera video, sustained frame rates against real-world objects, and on-device battery/thermal behavior are verified on-device by the user after merge; jsdom and headless Chrome cannot exercise a real camera or a real driving scene (see §9).
 
 ---
 
@@ -36,621 +49,268 @@ A single person managing their own schedule of **all-day, date-based events**: m
 
 | Concern | Choice | Notes |
 | --- | --- | --- |
-| Framework | **Vite 8 (React SPA)** | Static client app; `index.html` + `src/main.tsx` entry, no server runtime. |
-| PWA / offline | **vite-plugin-pwa** (Workbox) | Service worker precaches the build for offline cold-loads; installable web manifest + icons in `public/`. Build emits `sw.js`, a `workbox-*.js` helper it loads, and `manifest.webmanifest` into `dist/`; registration uses `workbox-window` via `virtual:pwa-register`. |
+| Framework | **Vite 8 (Rolldown)** + **React 19 SPA** | Static client app; `index.html` + `src/main.tsx` entry, no server runtime. |
 | Language | **TypeScript** (ESM) | Per repo conventions in `CLAUDE.md`. |
-| UI library | **React** | |
-| Styling | **Tailwind CSS** | Utility-first; cyberpunk design tokens defined as CSS variables in `globals.css`. |
-| Components | **shadcn/ui** (Radix primitives) | Dialog, Select, Popover, RadioGroup, Button, Input, Textarea, Label, Form, restyled to the cyberpunk theme. |
-| Forms | **react-hook-form** + **zod** (via `@hookform/resolvers`) | Form state & validation for the event editor; drives shadcn's `Form` component and its accessible field errors. |
-| Date math | **date-fns** | Grid generation, recurrence stepping, comparisons. |
-| Date picker | **Native `<input type="date">`** | Used for the event form's Date field; main month grid is custom-built. The shadcn `calendar` primitive remains available for future use. |
-| Persistence | **IndexedDB** via **idb** | Two object stores (events, categories); see §"Persistence: IndexedDB". |
-| Fonts | **Rajdhani**, **Chakra Petch**, **Share Tech Mono** | Self-hosted via `@fontsource` packages (latin subsets), imported in `src/main.tsx`. Display / UI / data, respectively. |
-| Drag-and-drop | **@dnd-kit/core** | `DndContext` + `PointerSensor` in `src/App.tsx`; chips use `useDraggable`, cells use `useDroppable`. |
-| Toasts | **sonner** | Move confirmations with Undo; themed wrapper in `src/components/ui/sonner.tsx`. |
-| Testing | **vitest** + **@testing-library/react** | Behavior-focused tests per `CLAUDE.md`; storage tests run against fake-indexeddb. |
+| Detection | **`@huggingface/transformers`** (Transformers.js) | Runs the `object-detection` pipeline; WebGPU or WASM execution provider via onnxruntime-web underneath. |
+| PWA / offline | **vite-plugin-pwa** (Workbox) | Precaches the app shell; runtime-caches the ONNX runtime's CDN fetch. See §7. |
+| Styling | **Tailwind CSS v4** | Utility classes directly on HUD elements; one CSS custom property (`--color-hud-amber`) plus the surface color in `src/globals.css`. |
+| UI kit | shadcn/Radix tooling present (`radix-ui`, `class-variance-authority`, `tailwind-merge`, `lucide-react`) | Kept from the starter, unused in v1: the whole HUD is bespoke Tailwind-styled elements, no `src/components/ui/` primitives exist yet. |
+| Fonts | **Rajdhani** | Self-hosted via `@fontsource/rajdhani` (weights 500/600/700), imported in `src/main.tsx`. Only font in the app. |
+| Utilities | **remeda** | Type guards (`isString`, `isNumber`, `isPlainObject`) validating worker messages and pipeline output crossing the `postMessage` boundary. |
+| Analytics | **`@vercel/analytics`** | `inject()` in `src/main.tsx`; page-view analytics only, no camera/detection data. |
+| Testing | **vitest** + **@testing-library/react** | jsdom environment; the worker, pipeline, and camera are stubbed or injected (see §9). |
 
-> **As-built stack versions:** Vite 8 (Rolldown), React 19, Tailwind v4, zod v4, react-day-picker v10.
-
-> **Build note:** `package.json` scripts: `pnpm dev` → `vite`, `pnpm build` → `vite build`, `pnpm start` → `vite preview`. `pnpm test` runs vitest. `pnpm check` continues to run format + lint + typecheck and must pass before commits.
+> **Build note:** `package.json` scripts: `pnpm dev` → `vite`, `pnpm build` → `vite build`, `pnpm start` → `vite preview`. `pnpm test` runs vitest. `pnpm check` runs format + lint + typecheck and must pass before commits.
 
 ---
 
-## 4. Functional Requirements
+## 4. Architecture & Project Structure
 
-### 4.1 Month view & navigation
-- On load, the calendar shows the **current month** in the viewer's local time zone, filling the viewport (`100dvh`).
-- A **7-column grid** (Sunday-first) renders a fixed **6-week (6×7) matrix** so layout height is stable; leading/trailing days from adjacent months are shown **dimmed**.
-- The **today** cell is visually emphasized (neon glow).
-- **Toolbar** provides: previous month (‹), next month (›), current **month/year label**, **Today** (jump to current month), a **category filter**, and **+ New Event**.
-- A **HUD status line** shows decorative/real system context (e.g., app name, `LOCAL_DB::INDEXEDDB`, record count).
+Data flow: `src/App.tsx` → `DetectionProvider` (React context, `src/context/DetectionContext`) → a Web Worker (`src/workers/detection`) running the Transformers.js pipeline → `src/lib/detection` (pure filtering and HUD shaping, no React, no DOM).
 
-### 4.2 Events
-- An event has: **title** (required), **date** (required, single all-day date), **category** (required; its color comes from a preset 5-color palette), an **amount** (required, > 0) with a **deposit/withdrawal direction** (required), **notes** (optional), and an optional **recurrence** rule.
-- Events are **all-day and single-day**: no times, no multi-day spans.
-- Day cells render events as **color-coded neon chips**. Recurring occurrences show a **↻** marker.
-- When a day has more chips than fit, it collapses to **"+N more"**, which opens a **day popover** listing all of that day's events.
+Chosen approach: worker-based inference. Inference never blocks the UI thread, so video stays at native frame rate even when detection itself runs at a handful of frames per second. (WebCodecs was considered and rejected for weak Safari support.)
 
-### 4.3 Categories
-- Categories are **user-managed and persisted** (no presets; the store starts empty for a fresh user). Each has a name and a neon color from the 5-color palette (`cyan`, `magenta`, `yellow`, `green`, `orange`).
-- **Created** inline via a creatable combobox in the event editor (pick an existing one or type a new name + pick a color), or from the **Manage Categories** dialog (type a name that does not exist to surface a `Create "<name>"` row with a color picker); **renamed / recolored / deleted** in the Manage Categories dialog opened from the toolbar.
-- Each category has an opaque **GUID** `id` (`crypto.randomUUID()`), generated at creation and stable across renames. Categories live in their own object store (see §4.6); events reference a category by id, so renaming or recoloring propagates to every event that uses it.
-- **Names are unique, case-insensitively** (`categoryKey(name) = name.trim().toLowerCase()` is the match key): creating a name that already exists selects the existing category instead of duplicating it, and renaming to a name another category already uses is rejected inline in the Manage dialog.
-- **Deleting an in-use category** prompts a confirm noting how many events use it; on delete its events keep the now-missing id and render as **Uncategorized** (a neutral cyan fallback) until re-categorized.
-- The toolbar **category filter** is **per category**: a toggle per category currently in use (plus an **Uncategorized** toggle when orphaned events exist); each can be turned on/off independently, all shown by default. The filter affects which event chips display, not the running balance (§4.7).
-
-### 4.4 Create / edit / delete / move (CRUD)
-- **Create:** clicking **+ New Event** or an empty day opens the **Event editor** (shadcn Dialog). Clicking a day prefills its date.
-- **Edit/View:** clicking an event chip opens the editor populated with that event.
-- **Delete:** available within the editor.
-- **Move:** drag a chip onto a different day cell to move the event. A `sonner` toast with an Undo action appears after every successful move. Recurring events prompt for scope (this / this and following / all) before applying; see §7 and §4.4.1.
-- The editor validates input on submit (see §8): invalid input is blocked and surfaces inline, accessible field errors.
-
-#### 4.4.1 Drag-and-drop mechanics
-
-Drag-and-drop is powered by `@dnd-kit/core`. `DndContext` lives in `src/App.tsx`, wrapping `MonthGrid`. Chips rendered directly in a day cell are wrapped by `src/components/DraggableEventChip`, which calls `useDraggable` and passes the `occurrence` as drag data. Each `DayCell` calls `useDroppable({ id: cell.iso })` and adds a `.drop` class while a chip hovers over it, producing a cyan highlight. A `DragOverlay` in `App` renders a themed floating copy of the chip while dragging; the source chip dims via `.cy-chip-dragging`.
-
-A `PointerSensor` with `activationConstraint: { distance: 5 }` requires five pixels of pointer travel before a press becomes a drag, so a plain click still opens the editor. Collision detection uses `pointerWithin`.
-
-`onDragStart` records the active occurrence for the overlay. `onDragEnd` reads the dragged occurrence from `active.data` and the target ISO date from `over.id`. Dropping on the same day, or outside any cell, is a no-op. For a non-recurring event the move applies immediately. For a recurring event the scope dialog opens, and the move runs when the user confirms.
-
-Chips in the "+N more" overflow popover are not draggable; move them by opening the editor and changing the date.
-
-### 4.5 Recurrence
-- Supported frequencies: **Daily, Weekly, Monthly, Yearly**, each with a positive **interval** (e.g., every 2 weeks). **Weekly** repeats on the **anchor date's weekday** (selecting multiple weekdays per week is out of scope for v1).
-- End condition: **forever** or an optional **end date** (inclusive).
-- Monthly recurrence uses the anchor day-of-month; months without that day (e.g., the 31st) are **skipped** (iCalendar `BYMONTHDAY` default). Yearly on Feb 29 occurs only in leap years.
-- Editing, deleting, or dragging a recurring event prompts for a **scope** before applying (§7).
-
-### 4.6 Persistence
-- Events and categories persist in **IndexedDB** (object stores `events` and `categories`, both keyed by `id`) and reload on app start. Records are stored as the in-memory `CalendarEvent`/`Category` objects verbatim; reads filter through the `isCalendarEvent`/`isCategory` type guards.
-- No data leaves the device. Clearing browser data clears the calendar.
-
-### 4.7 Account balance
-- Each event is a transaction (deposit or withdrawal). Each day cell shows the **cumulative running balance**: starts at `0`, equals all deposits minus withdrawals up to and including that day, and carries continuously across months. Computed by the pure `src/lib/balance` engine (`computeRunningBalances`): a per-event carry-in for transactions before the visible window plus the windowed per-day net, accumulated forward (recurrence iteration is uncapped so long/infinite series sum correctly). Balances render cyan when ≥ 0 and magenta when negative; the toolbar HUD shows the end-of-window balance. The balance reflects **all** events regardless of the active category filter.
-
----
-
-## 5. Data Model
-
-A single stored entity, `CalendarEvent`, where a one-off event is simply `recurrence: null`.
-
-```ts
-type CategoryColor = "cyan" | "magenta" | "yellow" | "green" | "orange";
-
-type Category = {
-  id: string;            // GUID (crypto.randomUUID()), stable across renames
-  name: string;          // "Work"
-  color: CategoryColor;
-};
-
-type RecurrenceFreq = "daily" | "weekly" | "monthly" | "yearly";
-
-type Recurrence = {
-  freq: RecurrenceFreq;
-  interval: number;        // >= 1
-  endsOn: string | null;   // "YYYY-MM-DD" inclusive, or null = forever
-};
-
-type OccurrenceOverride = {
-  occurrenceDate: string;  // "YYYY-MM-DD"; the original occurrence this override targets
-  cancelled?: boolean;     // true => "this occurrence" deleted
-  patch?: {                // "this occurrence" edited
-    title?: string;
-    categoryId?: string;
-    notes?: string;
-    amount?: number;
-    direction?: TransactionDirection;
-  };
-};
-
-type TransactionDirection = "deposit" | "withdrawal";
-
-type CalendarEvent = {
-  id: string;
-  title: string;
-  date: string;                    // "YYYY-MM-DD"; for recurring events this is the series anchor/start
-  categoryId: string;
-  amount: number;
-  direction: TransactionDirection;
-  notes?: string;
-  recurrence: Recurrence | null;   // null => one-off
-  overrides: OccurrenceOverride[]; // only meaningful when recurrence !== null
-  createdAt: string;               // ISO timestamp
-  updatedAt: string;               // ISO timestamp
-};
-```
-
-**Date-only storage:** dates are stored as plain `YYYY-MM-DD` strings (no time, no UTC conversion), so all-day events never drift across time zones.
-
-**IndexedDB layout:** object stores `events` (each record embeds its `recurrence` and `overrides`) and `categories`, both `keyPath: "id"`. Given personal-scale data volume, all events are loaded into memory and occurrences are expanded per visible window.
-
-**Type guards:** runtime validation (e.g., `isCalendarEvent`, `isRecurrenceFreq`, `isCategoryColor`) over `as` assertions, per `CLAUDE.md`.
-
----
-
-## 6. Occurrence Expansion
-
-Pure functions in `src/lib/recurrence` turn stored events into rendered occurrences for a date window `[windowStart, windowEnd]` (the visible 6-week grid):
-
-1. **One-off** (`recurrence === null`): include if `date` is within the window.
-2. **Recurring:** step from the anchor `date` by `interval × unit` until the date exceeds `min(windowEnd, endsOn ?? windowEnd)`. For each candidate occurrence date within the window:
-   - Look up a matching `OccurrenceOverride`.
-   - If `cancelled` → skip it.
-   - If `patch` → apply patched fields over the base.
-   - Otherwise → render base fields.
-3. Each produced **`Occurrence`** carries: source `eventId`, resolved `date`, `title`, resolved `Category`, `amount`, `direction`, `notes`, and `isRecurring`.
-
-Occurrences are then grouped by date for the grid, and filtered by the active category filter.
-
-### Date-shift helpers (`src/lib/recurrence`)
-
-Four pure helpers support moving events to a different day. Each is exported and covered by tests in `src/lib/recurrence/tests.ts`.
-
-- **`shiftISO(iso, days)`** shifts a `YYYY-MM-DD` string by `days` calendar days using date-fns `addDays` + `parseISO`, staying in local time. Negative values shift backward.
-- **`daysBetweenISO(from, to)`** returns the signed whole-day count between two `YYYY-MM-DD` strings (`to - from`) using date-fns `differenceInCalendarDays`.
-- **`shiftSeries(event, offsetDays)`** returns a copy of the event with `date`, every `override.occurrenceDate`, and `recurrence.endsOn` (when non-null) each shifted by `offsetDays`. Drives the "All events" move case; the occurrence count is unchanged.
-- **`buildMovedFollowing(event, fromDate, toDate, id, nowISO)`** builds the new tail series for the "This and following" move case. The tail is anchored at `toDate`, carrying forward only overrides where `occurrenceDate >= fromDate`, each shifted by `daysBetweenISO(fromDate, toDate)`. `endsOn` is also shifted by the same offset; a `null` `endsOn` stays `null`. Paired with the existing `truncateBefore(event, fromDate)`, which ends the original series the day before.
-
----
-
-## 7. Recurring Edit / Delete / Move Semantics
-
-When the user saves, deletes, or drags a recurring event (`recurrence !== null`), a **scope prompt** (shadcn Dialog + RadioGroup, `src/components/RecurrenceScopeDialog`) asks which occurrences to affect. Non-recurring events skip the prompt.
-
-The scope dialog supports three actions: `"edit"`, `"delete"`, and `"move"`. The title adjusts to match (`"Edit recurring event"`, `"Delete recurring event"`, `"Move recurring event"`). The scope options (This event / This and following / All events) are the same for all three actions.
-
-| Scope | Edit behavior | Delete behavior | Move behavior |
-| --- | --- | --- | --- |
-| **This event** (single occurrence at date `D`) | Add/update an `OccurrenceOverride { occurrenceDate: D, patch }`. | Add `OccurrenceOverride { occurrenceDate: D, cancelled: true }`. | Cancel occurrence `D` on the series. Create a standalone (non-recurring) event at the drop date from the occurrence's resolved fields. The detached event loses its ↻ series link. |
-| **This and following** (from date `D`) | Truncate the original series: set `recurrence.endsOn` to the day before `D`. Create a **new** `CalendarEvent` anchored at `D` with the edited fields, same recurrence rule, carrying forward overrides where `occurrenceDate >= D`. | Truncate the original series: set `recurrence.endsOn` to the day before `D`. No new event. | Truncate the original series (ends day before `D`). Create a new tail series anchored at the drop date via `buildMovedFollowing`. |
-| **All events** (whole series) | Update the master event's fields/recurrence in place. | Delete the master event (and all its occurrences). | Slide the whole series by the drag offset via `shiftSeries`: anchor date, all override keys, and `endsOn` shift together. |
-
-This mirrors iCalendar semantics (`EXDATE` / `RECURRENCE-ID` for single overrides; series-splitting for "this and following").
-
----
-
-## 8. Validation & Error Handling
-
-**Typed errors over strings** (`CLAUDE.md`): a `StorageError` class with a machine-readable `code`:
-
-`UNAVAILABLE` · `QUOTA_EXCEEDED` · `BLOCKED` · `READ_FAILED` · `WRITE_FAILED` · `IMPORT_INVALID` · `EXPORT_FAILED`, plus an `isStorageError` guard.
-
-- **Storage unavailable** (no IndexedDB, or private-browsing restrictions) → show a **non-blocking banner** warning that changes won't be saved this session, and keep the calendar usable in-memory. Never swallow the error silently. `CalendarContext` exposes a `loaded` flag; the banner renders only when `loaded && !storageAvailable` so it never flashes during the initial load.
-- **Write/quota failures** → surface a banner/toast; do not lose the user's in-progress edit.
-- **Forms & validation:** the event editor is built with **react-hook-form** wired to a **zod** schema (via `@hookform/resolvers`) and rendered through shadcn's `Form` primitives. Rules: title required and non-empty; recurrence `interval >= 1`; `endsOn` (if set) `>= ` anchor date. Validation runs on submit; submitting with invalid input is blocked and shows inline, accessible field errors.
-
----
-
-## 9. UI & Layout
-
-- **Full-viewport layout:** `HUD status line` → `toolbar` → `weekday header` → `month grid` (the grid flexes to consume all remaining height). On desktop the grid renders only the week-rows the visible month spans (4-6, via `inMonthWeekCount`), so day cells get more height; trailing weeks that fall entirely in the next month are dropped. Compact mode always renders the full 6 rows (see Responsive / compact mode).
-- **Toolbar:** ‹ / month-year / › · **Today** · **category filter** · **+ New Event** (primary CTA).
-- **Day cell:** date number; **today** glow; dimmed out-of-month days; stacked neon **event chips** (with ↻ for recurring); **"+N more"** → **day popover**. On short windows, day cells show only as many event chips as fit the row height and collapse the rest into the "+N more" popover, so chips never clip. When no chips fit, the trigger reads "N events" instead.
-- **Event editor (Dialog):** built with shadcn `Form` + **react-hook-form**/zod. Fields: Title, Date (native `<input type="date">`), Category (`CategoryCombobox`: creatable combobox built on shadcn `Command` + `Popover`; backed by `useCategorySearch` for filtering and exact-match detection; pick existing or create a new name + color via `CategoryCreateRow`), Notes (Textarea), Repeat (native `<select>`: Does-not-repeat / Daily / Weekly / Monthly / Yearly) with interval + optional end date; footer with **Delete**, **Cancel**, **Save**. The shadcn `calendar`/`Select` primitives remain available for future use.
-- **Recurring scope dialog:** This event / This and following / All events (used for edit, delete, and move).
-- **Move toast:** a `sonner` toast at the bottom center confirms every move and provides an Undo action. Styled to the cyberpunk panel look via `.cy-toast` / `.cy-toast-action` in `globals.css`.
-- **Responsive / compact mode:** below 640px (Tailwind's `sm` breakpoint) the `useIsCompact()` hook (`src/hooks/useIsCompact/`, matchMedia-driven) switches the calendar to compact rendering. The grid always shows the full 6 week-rows (unlike desktop, which trims to the weeks the month spans). Day cells show up to 4 category-colored dots (plus a `+` marker when there are more) instead of full chips, and tapping a day selects it. Swiping the grid left or right changes months (left for next, right for previous), with a brief glitch flash as feedback. The selected day's events, running balance, and an Add button appear in a `DayPanel` below the grid. The toolbar becomes two rows: navigation and an overflow menu (shadcn Popover) on row 1, the category legend on row 2; the menu holds SYNC, DATA, and CATEGORIES, and its trigger shows a bare attention dot when any item inside needs attention. Drag-and-drop is disabled in compact mode; events move between days by editing the date in the event editor. Dialogs cap their height at `85dvh` and scroll internally.
-- **Empty state:** a styled prompt to create the first event when the calendar has none.
-
----
-
-## 10. Design Language: "Night City"
-
-A bold, cohesive **cyberpunk-inspired** treatment. This section is the canonical visual spec; final pixel-level polish happens during implementation.
-
-### Palette: **cyan/magenta synthwave-forward**
-- **Dominant neons:** cyan `#00F0FF` and magenta `#FF2A6D`.
-- **Yellow `#FCEE0A`** used sparingly as a rare spark/highlight (not the primary accent).
-- **Supporting category neons:** green `#00FF9F`, orange `#FF9F1C`.
-- **Backgrounds:** near-black `#07080D` / panels `#0B0E16`, with faint cyan/magenta radial glows.
-
-### Effects: **full HUD**
-- Subtle **scanline** overlay and a faint background **grid**.
-- **Neon glow** (text-shadow / box-shadow) on accents, chips, and the today cell.
-- **Glitch** flickers on key transitions (e.g., month change, dialog open) and hover.
-- **Angular clipped panels** (cut corners via `clip-path`) and **corner brackets**.
-- **`prefers-reduced-motion`:** disable glitch/scanline animation and flicker; retain the static neon look.
-
-### Typography
-- **Rajdhani** (600/700): display headings, month label, CTAs.
-- **Chakra Petch**: general UI text.
-- **Share Tech Mono**: data, date numbers, HUD readouts, field labels.
-
-### Component styling
-- Event chips: dark fill, neon left-border + matching glow, clipped corner.
-- Primary CTA: neon fill with clipped corners and glow.
-- Dialogs: dark glass panels, neon border, corner brackets, mono uppercase labels.
-- Chamfered panels (`.cy-dialog`, `.cy-toolbar`, `.cy-cell`) split shape from border: a `::before` `clip-path` paints the dark fill, and `<CyberFrame>` (`src/components/CyberFrame`) draws the neon border as an SVG vector stroke so it stays a uniform width/brightness on the 45° chamfers (a CSS clip-path fill rasterizes diagonal edges brighter than straight ones, leaving square corners comparatively dark). CyberFrame props (`chamfer`, `corners`, `color`) must match each host's `::before` shape: dialogs cut top-right + bottom-left (cyan); the toolbar likewise (dim `--cy-line`); cells cut only top-right (`--cy-line`, or `--cy-yellow` on today).
-- Chamfered controls (`.cy-btn` and `.cy-nav` buttons/selects) split shape from border the same way: the class clips the control's fill and sets no CSS `border` (the clip-path would slice the border off at the bottom-right chamfer, leaving that corner open). Each control is wrapped in `<CyControlFrame>` (`src/components/CyControlFrame`), which overlays a `<CyberFrame>` stroke tracing the full outline. The frame renders as an overlay sibling rather than a child, so it works for `<select>` (which cannot contain children or pseudo-elements) and is never clipped by the host. Chamfer sizes (8px btn with `--cy-line`, 9px nav with `--cy-cyan`) must match the clip-paths in `globals.css`.
-
-### Theming: light/dark (auto, follows OS)
-- Both themes are selected automatically from `prefers-color-scheme`; there is **no in-app toggle and no persistence**. Pure CSS: no JS, no theme class.
-- Every theme-able color is a CSS custom property: light values live in `:root`, dark values in `@media (prefers-color-scheme: dark) { :root { … } }`. The Tailwind `dark:` variant is media-query-driven (`@custom-variant dark (@media (prefers-color-scheme: dark))`), and `:root` sets `color-scheme: light dark` for native controls.
-- **Dark** is the original neon-on-black palette (unchanged). **Light** (Direction C, neutral/minimal) uses near-white surfaces, slate text, category/accent hues darkened to ~700 shades for contrast, and drops scanlines, body glows, and neon `box-/text-shadow` glows (glow tokens resolve to `transparent`).
-- Category accents are CSS tokens `--cat-{color}` / `--cat-{color}-glow` (not a JS hex map); components reference them via `catColorVar` / `catGlowVar` in `src/utils/categoryColor`.
-- `<CyberFrame>` borders re-theme for free because their stroke color is already a `var(--cy-*)` token; on a light surface the border reads as a dark line whose width stays uniform across the 45° chamfers via the same SVG-stroke mechanism (not a `clip-path` border).
-
----
-
-## 11. Architecture & Project Structure
-
-Client-side layered architecture; UI ← state (Context) ← pure logic (recurrence, dateGrid) ← storage (IndexedDB via `idb`; see §"Persistence: IndexedDB").
-
-Per `CLAUDE.md` module conventions, each module is a **directory** named after its primary export, containing `index.ts(x)` and, as needed, `types.ts`, `consts.ts`, `tests.ts`; `index` re-exports the module's types/consts. Import from the module, not its internal files. No barrel-only files.
+Per `CLAUDE.md` module conventions, each module is a **directory** named after its primary export, containing `index.ts(x)` and, as needed, `types.ts`, `consts.ts`, `tests.ts`; `index` re-exports the module's types/consts, except the one deliberate exception noted below.
 
 ```
-index.html                  # Vite HTML entry
+index.html                      # Vite HTML entry; PWA meta tags, description, repo link
 src/
-  main.tsx                  # Vite entry: fonts, globals.css, mounts <App />
-  App.tsx                   # calendar page composition
-  globals.css               # Tailwind layers + cyberpunk tokens & overlays
+  main.tsx                      # Vite entry: fonts, globals.css, Vercel Analytics, mounts <App />, registers the service worker
+  App.tsx                       # composes the single screen (RadarScreen) inside <DetectionProvider>
+  App.test.tsx                  # top-level smoke test (camera-unavailable path)
+  globals.css                   # Tailwind import + HUD design tokens (--color-hud-amber, --color-surface)
   components/
-    CalendarToolbar/        # month nav, Today, category filter, New Event, HUD line
-    MonthGrid/              # week-grid (desktop trims to weeks spanned; compact = 6 rows); consumes dateGrid + grouped occurrences
-    DayCell/                # date number, today glow, chips, "+N more"; droppable target
-    EventChip/              # neon chip; accepts optional drag props for draggable use
-    DraggableEventChip/     # wraps EventChip with useDraggable for cells (not the overflow popover)
-    CyberFrame/             # SVG vector-stroke neon border for chamfered panels (.cy-dialog, .cy-toolbar, .cy-cell)
-    CyControlFrame/         # wraps a .cy-btn/.cy-nav control; overlays a CyberFrame border that follows the chamfer
-    DayPanel/               # compact-mode selected-day detail: event chips, running balance, Add button
-    DayEventsPopover/       # overflow list (shadcn Popover)
-    CategoryCombobox/       # creatable combobox (shadcn Command + Popover); uses useCategorySearch + CategoryCreateRow
-    ManageCategoriesDialog/ # rename / recolor / delete categories; search field + CategoryCreateRow for in-dialog creation
-    CategoryCreateRow/      # "Create <name>" row with CategoryColorPicker; exports useCategorySearch hook
-    CategoryColorPicker/    # row of selectable color swatches (used by CategoryCreateRow and ManageCategoriesDialog)
-    CategoryDot/            # shared neon color swatch used by the picker and chips
-    EventDialog/            # create/edit form (shadcn Form + react-hook-form/zod, Dialog/Select/Textarea + date picker)
-    RecurrenceScopeDialog/  # This / This & following / All (shadcn Dialog + RadioGroup)
-    DataDialog/             # JSON backup export/import (validate -> confirm -> swap) + guarded clear-all
-    StorageUnavailableBanner/ # shown when storage fails; offers a reset when the DB is unopenable
-    SyncDialog/             # optional account sync: create / sign-in / TOTP / recovery-key / change-password
+    CameraView/                 # the <video> element; owns getUserMedia lifecycle, reports the element + errors
+    HudOverlay/                 # nearest-object box (amber when NEAR, white otherwise) + floating tag markers
+    RadarStrip/                 # lane-radar strip: one blip per detection, amber + larger for the nearest-when-NEAR
+    StatusBar/                  # wordmark + backend/FPS readout
+    ModelLoadScreen/            # download-progress screen (percent + MB), delayed to avoid a flash
+    ErrorScreen/                # full-screen camera/detection error copy + reload action
   context/
-    CalendarContext/        # visible month, events, CRUD actions (including moveEvent), filter state
-    SyncContext/            # optional account-sync state machine; consume via useSync()
-  hooks/
-    useIsCompact/           # matchMedia hook; true below 640px (Tailwind sm breakpoint)
+    DetectionContext/           # worker lifecycle, frame pump, status machine; consume via useDetection()
   lib/
-    storage/                # IndexedDB (idb); StorageError + guards; JSON backup
-    tabSync/                # cross-tab change signal (BroadcastChannel)
-    recurrence/             # expand(window) + recurrence override/split/move helpers (pure)
-    dateGrid/               # month -> 6x7 date matrix; inMonthWeekCount() for the weeks a month spans
-    balance/                # running balance from deposits/withdrawals
-  types/                    # CalendarEvent, Category, Recurrence + type guards
-  utils/
-    categoryColor/          # PALETTE, DEFAULT_CATEGORY_COLOR, catColorVar, catGlowVar
-    formatCurrency/         # Intl.NumberFormat wrapper
-    base64/                 # base64 encode/decode helpers (used by the sync layer)
-  components/
-    ui/                     # shadcn primitives (shadcn CLI default location)
+    camera/                     # getUserMedia wrapper; typed CameraError; rear-camera constraints
+    detection/                  # road-class filter, NEAR heuristic, HUD shaping, coordinate mapping (pure)
+    wakeLock/                   # Screen Wake Lock acquire/release with visibilitychange re-acquire
+  types/
+    index.ts                    # RawDetection, NormalizedBox, Detection, RoadCategory + type guards
+  workers/
+    detection/                  # the Web Worker: loads the pipeline, runs inference, typed message protocol
+  vite-env.d.ts
+public/
+  icon.svg, icon-maskable.svg, icon-192.png, icon-512.png,
+  icon-maskable-512.png, apple-touch-icon.png   # radar-motif PWA icons; see §7 for regeneration
 ```
 
-State is shared via **React Context** rather than prop drilling (`CLAUDE.md`). Labels/formatting use **`Intl.DateTimeFormat`**; array/object work prefers **remeda** utilities where it improves clarity. Constants are named (no magic numbers); numeric literals ≥ 1000 use underscore separators.
+State is shared via **React Context** rather than prop drilling (`CLAUDE.md`). Constants are named (no magic numbers); numeric literals ≥ 1000 use underscore separators.
 
-### `CalendarContext` / `useCalendar()` API additions
-
-`moveEvent` is the context method for moving an event to a different day:
+### `DetectionContext` / `useDetection()`
 
 ```ts
-moveEvent(
-  occurrence: Occurrence,
-  toDate: string,
-  scope: EditScope,
-): Promise<() => Promise<void>>
+type DetectionStatus = "loading-model" | "ready" | "running" | "error";
+
+type DetectionContextValue = {
+  status: DetectionStatus;
+  backend: DetectionBackend | undefined;   // "webgpu" | "wasm", set once the pipeline is ready
+  modelProgress: ModelProgress;             // { loadedBytes, totalBytes }, summed across files
+  hud: HudModel | undefined;                // latest shaped detections for the UI to render
+  fps: number;                              // rolling detection-result rate
+  error: DetectionErrorCode | undefined;
+  start: (video: HTMLVideoElement) => void;
+  stop: () => void;
+};
 ```
 
-It branches on four cases driven by `scope` and whether the event recurs:
+Status transitions: the provider posts `{ type: "load" }` to the worker once on mount, regardless of whether `start()` has been called yet. `loading-model → ready` happens when the worker replies `ready` and `start()` hasn't run; `loading-model → running` (skipping `ready`) happens when the worker replies `ready` and `start()` already ran. `ready → running` happens on `start()`. `running → ready` happens on `stop()`. Any worker error or worker crash moves to `error` from any state; there is no in-app path back out of `error`. `ErrorScreen`'s "TRY AGAIN" button does a full `window.location.reload()`.
 
-- **Non-recurring, or `scope === "all"` on a recurring event:** for a non-recurring event, sets `date` to `toDate`; for a recurring event, calls `shiftSeries` with `daysBetweenISO(occurrence.date, toDate)` so the whole timeline slides rigidly.
-- **`scope === "this"` on a recurring event:** cancels the occurrence on its original day via `cancelOccurrence`, then creates a new standalone (non-recurring) `CalendarEvent` at `toDate` from the occurrence's resolved fields (`title`, `amount`, `categoryId`, `direction`, `notes`). The detached event has `recurrence: null`.
-- **`scope === "following"` on a recurring event:** truncates the original series to end the day before `occurrence.date` via `truncateBefore`, then creates a new tail series anchored at `toDate` via `buildMovedFollowing`.
+### Detection loop (frame pump)
 
-`moveEvent` persists all writes through the same `persist()` / `putEvent` path as the other mutations, so cross-tab sync (the storage layer broadcasts after writes) and the storage-unavailable banner apply without additional wiring. After writing, it returns an **undo thunk**: a closure that snapshots the affected events before the move (with `null` marking events that did not exist before, such as the detached one-off or the new tail) and restores them by putting back each previous state or deleting events that are new. Calling the thunk re-persists the restored state through the same storage path.
+1. `App`'s `RadarScreen` calls `start(video)` once `CameraView` reports a live `<video>` element.
+2. The pump (`sendFrame`, in `DetectionContext`) bails if detection isn't running, there's no video/worker, or a frame is already in flight (`inFlightRef.current > 0`). Otherwise it captures `createImageBitmap(video)`, increments `inFlightRef`, and posts `{ type: "detect", frame }` with the bitmap **transferred** (zero-copy) to the worker.
+3. The worker draws the bitmap onto an `OffscreenCanvas`, reads back `ImageData`, wraps it in a Transformers.js `RawImage`, and runs the pipeline with `{ threshold: CONFIDENCE_THRESHOLD, percentage: true }`. The bitmap is `close()`d in a `finally` regardless of outcome.
+4. On the `detections` reply, `DetectionContext` decrements `inFlightRef`, runs `toRoadDetections` + `buildHudModel` (`src/lib/detection`) to produce the `HudModel` the UI renders, records a result timestamp for the FPS estimate, and immediately calls `sendFrame()` again.
+5. **Backpressure**: only one frame is ever in flight; the next capture is sent only once the previous result returns (latest-wins, no queue), so detection self-paces to whatever the device can sustain without ever blocking the video element.
+6. If `createImageBitmap` throws (the video has no frame data yet, e.g. right after attaching), the pump retries after `FRAME_RETRY_MS` (100 ms).
+7. `stop()` sets a "not running" flag and bumps a generation counter (`pumpGenerationRef`), so a `createImageBitmap()` capture still in flight from before the stop discards its frame instead of posting it, checked against the captured generation after the `await`.
+8. FPS is a rolling average over the last `FPS_SAMPLE_SIZE` (10) result timestamps; a same-millisecond pair of results is skipped rather than producing a divide-by-zero reading.
+
+These invariants (one frame in flight, the generation guard, and keeping frame-sending out of `setState` updater functions so React StrictMode's double-invocation can't double-pump) are hard-won race fixes; see `CLAUDE.md`'s Gotchas before touching this code.
+
+### Worker protocol (`src/workers/detection/types.ts`)
+
+`WorkerRequest` (main thread → worker):
+
+| Message | Payload | Purpose |
+| --- | --- | --- |
+| `load` | none | Load the Transformers.js pipeline for `MODEL_ID`, posted once on mount |
+| `detect` | `frame: ImageBitmap` (transferred) | Run one frame through the pipeline |
+
+`WorkerResponse` (worker → main thread):
+
+| Message | Payload | Purpose |
+| --- | --- | --- |
+| `model-progress` | `progress: { file, loaded, total }` | One tick per file from the pipeline's `progress_callback`; `DetectionContext` sums per-file totals into a single `ModelProgress` |
+| `ready` | `backend: "webgpu" \| "wasm"` | Pipeline finished loading; starts the frame pump immediately if `start()` already ran, otherwise moves to `"ready"` |
+| `detections` | `detections: RawDetection[]` | Raw pipeline output for one frame, boxes normalized 0-1 (`percentage: true`) |
+| `worker-error` | `code: DetectionErrorCode` | `MODEL_LOAD_FAILED` from the pipeline load failing, or `INFERENCE_FAILED` from a per-frame inference failure |
+
+`WORKER_CRASHED` is a third `DetectionErrorCode` value, but the worker never posts it as a `worker-error` message: it's set directly by `DetectionContext`'s `worker.onerror` handler on the main thread, for an uncaught exception in the worker that its own try/catch didn't handle.
+
+Every message crossing the boundary is validated by a type guard (`isWorkerRequest`, `isWorkerResponse`) before being trusted; a malformed message is silently ignored rather than crashing either side.
 
 ---
 
-## 12. Accessibility & Performance
+## 5. Detection Domain (`src/lib/detection`)
 
-- Grid uses semantic roles (`grid` / `row` / `gridcell`); **arrow keys** (←/→/↑/↓) move day focus via a **roving tabindex** in `MonthGrid`; **PageUp/PageDown** navigate months; **Enter** opens a day; dialogs trap focus (Radix-managed).
-- **Color is never the only signal**: chips carry text + ↻; categories have names.
-- **Contrast:** ensure text remains legible over the dark HUD (target WCAG AA for body text).
-- **`prefers-reduced-motion`** honored (see §10).
-- **Performance:** recurrence expansion is windowed to the visible month; events load once into context; loading indicators (if any) are delayed ~1s to avoid flashes (`CLAUDE.md`).
+### Road-class filter and confidence threshold
+
+The pipeline can return any of the 80 COCO classes; only the road-relevant ones are ever shown. `ROAD_CLASSES` (`src/lib/detection/consts.ts`) maps a COCO label to a display label and category:
+
+| COCO label(s) | Display label | Category |
+| --- | --- | --- |
+| `car` | CAR | vehicle |
+| `truck` | TRUCK | vehicle |
+| `bus` | BUS | vehicle |
+| `motorcycle` | MOTO | bike |
+| `bicycle` | BIKE | bike |
+| `person` | PERSON | person |
+| `traffic light` | SIGNAL | signal |
+| `stop sign` | STOP | signal |
+| `bird`, `cat`, `dog`, `horse`, `sheep`, `cow`, `bear`, `elephant`, `zebra`, `giraffe` | ANIMAL | animal |
+
+Every other COCO class (furniture, food, electronics, and so on) is detected internally but dropped by `toRoadDetections` before it ever reaches the UI, even at high confidence.
+
+`CONFIDENCE_THRESHOLD` is `0.5`. It's applied twice: once as the `threshold` option passed straight to the Transformers.js pipeline call in the worker, and again defensively in `toRoadDetections` (`candidate.score < CONFIDENCE_THRESHOLD` is dropped) so a class-relevant, low-confidence result can never slip through even if the pipeline's own thresholding changes.
+
+### Nearest object and the NEAR heuristic
+
+`buildHudModel` (`src/lib/detection`) shapes one frame's filtered detections for the HUD:
+
+- **Nearest**: the detection with the largest normalized box area (`(xmax - xmin) * (ymax - ymin)`, clamped to non-negative). There is always at most one nearest detection, and it's excluded from `others`.
+- **NEAR flag**: `true` only when the nearest detection's box area is at least `NEAR_AREA_FRACTION` (`0.06`, i.e. the box covers 6% or more of the frame). A "nearest" detection below that fraction still gets the single full box (just without the amber/NEAR treatment); see §6.
+- **Blips**: one per filtered detection, positioned at the box's horizontal center (`(xmin + xmax) / 2`). Only the nearest detection's blip is flagged `near`, and only when the NEAR flag itself is true.
+
+### Coordinate mapping (`mapBoxToViewport`)
+
+The camera `<video>` renders with `object-fit: cover` (`src/components/CameraView`): scaled up and center-cropped to fill the viewport. `mapBoxToViewport` reverses that transform for a normalized box:
+
+```
+scale = max(viewport.width / video.width, viewport.height / video.height)
+displayedWidth = video.width * scale
+displayedHeight = video.height * scale
+offsetX = (viewport.width - displayedWidth) / 2   // negative when video is cropped horizontally
+offsetY = (viewport.height - displayedHeight) / 2  // negative when video is cropped vertically
+
+left   = offsetX + box.xmin * displayedWidth
+top    = offsetY + box.ymin * displayedHeight
+width  = (box.xmax - box.xmin) * displayedWidth
+height = (box.ymax - box.ymin) * displayedHeight
+```
+
+This holds regardless of phone orientation (the same formula crops horizontally in portrait and vertically in landscape, whichever dimension overflows the viewport). If the video's CSS ever changes away from `object-fit: cover`, this function's scale/offset math has to change with it, or boxes will drift off their objects.
+
+`HudOverlay` rounds every computed pixel offset (`Math.round`) before handing it to an inline style, since the scale/offset arithmetic accumulates floating-point error that would otherwise show up as visible sub-pixel jitter.
 
 ---
 
-## 13. Testing Strategy
+## 6. HUD & Visual Design ("Autopilot")
 
-Vitest, **behavior-focused** (verify behavior, not implementation constants, per `CLAUDE.md`):
+Automotive-minimal HUD over a full-bleed video feed. Design principle: the road view stays clean, position is communicated spatially (the radar strip), and words are reserved for what matters. **Amber (`#FFB340`, the `--color-hud-amber` token) is the only accent color**; everything else is white/translucent-black on a near-black surface (`#0B0A10`, `--color-surface`). Dark theme only, no light variant and no in-app toggle. Typography is Rajdhani throughout.
 
-- **`dateGrid`:** correct 6×7 matrix, Sunday-first, accurate leading/trailing days across month/year boundaries; `inMonthWeekCount` reports the weeks a month spans (4-6).
-- **`recurrence`:** daily/weekly/monthly/yearly expansion within a window; interval honored; `endsOn` boundary inclusive; month-skip (31st) and Feb-29 leap rules; overrides (cancel + patch); **split-series** ("this and following"); single-occurrence exception; date-shift helpers (`shiftISO`, `daysBetweenISO`, `shiftSeries`, `buildMovedFollowing`).
-- **`storage`:** CRUD round-trips against fake-indexeddb (`resetDbForTests()` per test); errors map to the correct `StorageError` codes; backup export → validate → commit round-trips.
-- **`tabSync`:** notifications cross channel instances and never echo to the
-  sender; unsubscribe stops callbacks; both functions are no-ops without
-  `BroadcastChannel`. Storage writes broadcast on success only (one signal per
-  import). The provider refreshes on a notification and keeps per-tab filters.
-- **Components** (RTL): create/edit/delete flow; **form validation** (empty title, `interval < 1`, or `endsOn` before the anchor block submission and surface field errors); the recurring-scope prompt appears only for recurring events; "+N more" opens the day popover; category filter hides/shows chips.
+- **Nearest object** (`HudOverlay`): the only full bounding box, rounded corners (10px). When flagged NEAR: a 2px amber border with a soft amber glow (`shadow-[0_0_18px_-6px_var(--color-hud-amber)]`) and an amber pill label (`<LABEL> · NEAR`, black text). When nearest but not NEAR (largest box, but under the area threshold): a plain white/85 border and a white-on-black pill label with no "· NEAR" suffix.
+- **Other detections**: no box. A floating tag above the object: a rounded pill (translucent black, thin white border, uppercase tracked Rajdhani, no confidence numbers) with a short fading vertical tick pointing down toward the object (offset `TAG_OFFSET_PX` = 30px above the box, clamped so it never goes negative).
+- **Lane-radar strip** (`RadarStrip`, the signature glance element): a pill-shaped translucent bar bottom-center (46% of viewport width, minimum 16rem), divided into three lane segments by two faint vertical dividers. One blip per filtered detection, positioned by the object's horizontal box-center fraction. The nearest object's blip is larger (12px) and amber with a glow, but only when the NEAR flag is true; every other blip is a small (8px) white dot. Tells the driver where things are, left/center/right, without reading anything.
+- **Status bar** (`StatusBar`, safe-area aware): `DASHRADAR` wordmark top-left, a minimal `GPU · N FPS` / `CPU · N FPS` readout top-right once the backend is known (hidden before then). No object count is ever shown.
+- **Model load screen** (`ModelLoadScreen`): same visual language, amber progress bar, byte counters formatted with `Intl.NumberFormat` (one decimal place, decimal megabytes). Delayed `LOADING_INDICATOR_DELAY_MS` (1 second) before appearing, so a fast (already-cached) load never flashes it.
+- **Error screen** (`ErrorScreen`): wordmark, centered error copy keyed by error code (§8), and a "TRY AGAIN" button that does a full page reload.
+- No nav, no dialogs, no settings UI.
 
 ---
 
-## 14. Non-Functional Requirements
+## 7. Offline & PWA Strategy
 
-- **Offline-first:** fully functional with no network after the first visit. A Workbox service worker (generated by `vite-plugin-pwa`, registered in `src/main.tsx`) precaches the entire build (JS, CSS, fonts, icons, `index.html`), so a cold load works with zero connectivity. Updates apply silently with no UI: the worker downloads new versions in the background, activates immediately, and the registration client reloads the page to pick up the new assets (in practice moments after a load, since update checks run at registration). Only precached files are served from cache; Supabase requests always go to the network.
-- **No secrets / no logging of sensitive data** (`CLAUDE.md`), though v1 has no secrets.
+`vite-plugin-pwa` generates a Workbox service worker, registered in `src/main.tsx` via `virtual:pwa-register` with `registerType: "autoUpdate"` (silent background updates, no update-available prompt). The manifest (`vite.config.ts`) sets `name`/`short_name` to `dashradar`, `display: "standalone"`, `background_color`/`theme_color` to `#0B0A10`, and points at the icons in `public/` (192, 512, and a maskable 512 variant).
+
+**Two independent caches make the app work fully offline, and each is populated by a different mechanism:**
+
+1. **App shell precache** (Workbox `globPatterns: ["**/*.{js,css,html,svg,png,woff,woff2}"]`, `maximumFileSizeToCacheInBytes: 40_000_000`): every built JS/CSS/HTML/font/icon file, including the detection worker's own chunk. It's built via `new Worker(new URL(...), { type: "module" })`, so Vite emits it as a separate chunk, but that chunk is still matched by the `js` glob and precached like any other script. This is what makes a cold load work with zero connectivity.
+2. **Model weights + the ONNX runtime itself**: `@huggingface/transformers` unconditionally points onnxruntime-web's `wasmPaths` at `cdn.jsdelivr.net` for any web environment unless the app sets `wasmPaths` itself (it doesn't), so onnxruntime-web always fetches its `.wasm`/`.mjs` runtime from jsdelivr rather than from the local bundle, regardless of which detection model is loaded. Transformers.js caches everything it fetches (model weight files from huggingface.co, and the jsdelivr ONNX runtime files) in its own browser Cache API store (`transformers-cache`). A Workbox `CacheFirst` runtime-caching route named `"ort-runtime"` (`vite.config.ts`) independently also caches the same `cdn.jsdelivr.net` requests, as a hedge alongside Transformers.js's own cache.
+
+**Known dead weight**: Vite still bundles a copy of the ONNX runtime `.wasm` (~23.5 MB, `ort-wasm-simd-threaded.asyncify.wasm` from `onnxruntime-web`) into `dist/assets/` as a build artifact, because `@huggingface/transformers` references it internally. It is never fetched at runtime (onnxruntime-web always resolves its own jsdelivr URL instead) and is deliberately **excluded** from the Workbox precache glob (no `wasm` extension in `globPatterns`) so it doesn't bloat the service-worker cache for a file nothing ever reads. This was confirmed by inspecting the network log and Cache Storage in a real browser: after a fresh load, `caches.keys()` returns `["workbox-precache-v2-...", "transformers-cache", "ort-runtime"]`, and a subsequent offline hard reload cold-loads the app and runs live inference with no network requests at all.
+
+**Regenerating PWA icons**: rasterizing `public/icon.svg`/`icon-maskable.svg` to PNG with headless Chrome (`--screenshot`) at a small `--window-size` (e.g. 192x192 or 180x180) produces a cropped/misaligned image even though the reported pixel dimensions look correct. Render at 512x512 (reliable) and downscale with `sips -z <height> <width>` for the smaller sizes instead.
+
+---
+
+## 8. Error Handling
+
+Typed error classes with a machine-readable `code` (`CLAUDE.md`'s "Typed errors over string messages"), not string-matched `Error` messages.
+
+### `CameraError` (`src/lib/camera/types.ts`)
+
+`getCameraStream` maps failures from `getUserMedia` (`toCameraError`, `src/lib/camera/index.ts`):
+
+| `DOMException.name` | `CameraErrorCode` |
+| --- | --- |
+| `NotAllowedError`, `SecurityError` | `PERMISSION_DENIED` |
+| `NotFoundError`, `OverconstrainedError` | `NO_CAMERA` |
+| `NotReadableError`, `AbortError` | `CAMERA_IN_USE` |
+| any other `DOMException`, or a non-`DOMException` throw | `NO_CAMERA` (default) |
+| `navigator.mediaDevices.getUserMedia` missing entirely | `UNSUPPORTED` (thrown directly, before any `getUserMedia` call) |
+
+### `DetectionError` (`src/workers/detection/types.ts`)
+
+| `DetectionErrorCode` | Raised when |
+| --- | --- |
+| `MODEL_LOAD_FAILED` | The Transformers.js `pipeline()` call throws while loading the model (`loadModel`'s catch) |
+| `INFERENCE_FAILED` | A single frame's inference throws (`detect`'s catch), including a missing 2D canvas context |
+| `WORKER_CRASHED` | The worker thread crashes outside its own try/catch; set by `DetectionContext`'s `worker.onerror` handler on the main thread. The worker itself never posts this code |
+
+### User-facing copy (`AppErrorCode = CameraErrorCode | DetectionErrorCode`, `src/components/ErrorScreen/consts.ts`)
+
+| Code | Copy shown in `ErrorScreen` |
+| --- | --- |
+| `PERMISSION_DENIED` | "Camera access is blocked. Allow camera access for this site in your browser settings, then try again." |
+| `NO_CAMERA` | "No camera was found on this device." |
+| `CAMERA_IN_USE` | "The camera is in use by another app. Close it, then try again." |
+| `UNSUPPORTED` | "This browser can't access the camera. Try a recent version of Chrome or Safari." |
+| `MODEL_LOAD_FAILED` | "The detection model couldn't be downloaded. Check your connection, then try again." |
+| `INFERENCE_FAILED` | "Detection stopped unexpectedly. Reload to restart it." |
+| `WORKER_CRASHED` | "Detection stopped unexpectedly. Reload to restart it." |
+
+Every code renders a "TRY AGAIN" button that does a full `window.location.reload()`; there is no soft, in-app retry path.
+
+---
+
+## 9. Testing Strategy
+
+Vitest + Testing Library, **behavior-focused** (verify behavior, not implementation constants, per `CLAUDE.md`). jsdom has no camera, no Worker that can run real code, no WebGPU/WASM, and no layout engine, so the worker, the Transformers.js pipeline, the camera, and real rendering are verified separately in a real browser (chrome-devtools MCP) and on-device by the user; unit tests stub or inject those seams:
+
+- **`src/lib/detection`**: the road-class filter and confidence threshold (`toRoadDetections`); the nearest/NEAR heuristic and blip shaping (`buildHudModel`), including the empty-frame case and the exact `NEAR_AREA_FRACTION` boundary; `mapBoxToViewport`'s cover-fit math for square, portrait-crop, and landscape-crop cases.
+- **`src/lib/camera`**: constraint building (rear camera requested) and every `DOMException` name mapped to its `CameraErrorCode`, plus the `UNSUPPORTED` path when `mediaDevices` is missing, via `vi.stubGlobal("navigator", …)`.
+- **`src/lib/wakeLock`**: acquire/release call the Wake Lock API correctly, re-acquires on a stubbed `visibilitychange` event, stops re-requesting after release, and is a safe no-op when the API is unsupported.
+- **`src/workers/detection`**: `isWorkerResponse` accepts every valid message variant and rejects malformed ones (unknown backend, missing fields, unknown error code).
+- **`src/context/DetectionContext`**: the full status machine against an injected fake worker (the `createWorker` test seam), including the one-frame-in-flight invariant across a fast `stop()`-then-`start()` (a regression test for a real race that was fixed), retrying after a `createImageBitmap` failure, and the FPS calculation staying finite.
+- **Components** (RTL): `CameraView` attaches the stream and reports a typed error on failure (stubbing `getUserMedia`); `HudOverlay` renders the nearest box with/without the NEAR pill and positions floating tags, using exact pixel assertions against known inputs; `RadarStrip` positions one blip per detection by fraction and styles the near blip amber; `StatusBar` shows the right backend label and hides the FPS readout until a backend is known; `ModelLoadScreen` stays hidden during the anti-flash delay and then shows byte/percent progress; `ErrorScreen` covers every error code with non-empty copy; `App` shows the camera-unavailable error screen end-to-end with a stubbed `Worker` and `navigator`.
+
+Real camera video, the real Transformers.js pipeline (both backends), and real layout/visual rendering are verified manually: chrome-devtools MCP against a built preview (`pnpm build && pnpm start`) for the model-load screen, backend detection, offline cold-load, and Cache Storage contents; genuine on-device phone testing (sustained FPS against real traffic, both orientations, thermal/battery behavior) is the user's job post-merge, since neither jsdom nor a desktop headless browser has a real dash-mounted camera.
+
+---
+
+## 10. Non-Functional Requirements
+
+- **Offline-first**: fully functional with no network after the first successful model download (see §7). Service worker updates apply silently (`autoUpdate`, no UI prompt).
+- **No secrets, no logging of sensitive data** (`CLAUDE.md`): v1 has no secrets and no user data to log in the first place; the camera stream and every detection stay in the tab.
 - **`pnpm check` clean** (format, lint, typecheck) before commits.
-- Reasonable bundle size: no calendar framework; only date-fns, Radix/shadcn, fonts.
+- **Bundle size**: no date-picker, form, or crypto libraries carried over from the starter; the largest addition is `@huggingface/transformers` itself, an accepted cost for on-device inference. The unused ~23.5 MB bundled ONNX `.wasm` build artifact (§7) is known dead weight, not part of the runtime path, and deliberately excluded from the service-worker precache.
 
----
+## 11. Success Criteria (Acceptance)
 
-## 15. Success Criteria (Acceptance)
-
-1. Opening the app shows the current month full-screen in the cyberpunk theme.
-2. A user can create, edit, and delete a one-off event; it persists across reload.
-3. A user can create a recurring event (e.g., weekly), and it renders on the correct days within the visible month.
-4. Editing/deleting/moving a recurring event prompts for scope, and **This / This-and-following / All** each behave per §7 and persist correctly.
-5. "+N more" reveals all events for a day via the popover; the category filter hides/shows chips.
-6. With storage unavailable (no IndexedDB), the app shows a non-blocking banner and remains usable in-memory.
-7. `prefers-reduced-motion` disables animated effects while preserving the neon look.
+1. Opening the app on a phone requests the rear camera and shows the live feed full-screen.
+2. On a WebGPU-capable device, the nearest road-relevant object gets an amber box and label once its box is large enough to count as NEAR; other road-relevant objects get floating tags; the radar strip shows a blip per detection.
+3. On a device without WebGPU, the same behavior runs on the WASM fallback, more slowly, with the status bar reading `CPU` instead of `GPU`.
+4. Camera permission denial, no camera, camera-in-use, and an unsupported browser each show their own explanatory `ErrorScreen`, never a blank page or an uncaught exception.
+5. A model load failure or an inference crash shows an error screen with a working reload action, not a blank page.
+6. The screen does not sleep while detection is running, and re-locks/re-acquires correctly around tab visibility changes.
+7. After the first successful load, the app cold-loads and runs live detection fully offline.
 8. All tests pass and `pnpm check` is clean.
-
----
-
-## 16. Future Enhancements (Out of Scope for v1)
-
-- Week / Day / Agenda views.
-- Timed and multi-day events; drag-to-resize or drag-to-create (move by drag is supported for single-day events).
-- Tags; search.
-- Reminders/notifications; ICS or Google Calendar import/export/sync.
-- Multi-device sync / accounts / backend (added after v1 as an optional, end-to-end-encrypted account sync; see Optional account sync).
-- Manual theme toggle / alternate palettes (light & dark already follow the OS automatically).
-
----
-
-## 17. Assumptions
-
-- Single user. Multiple open tabs stay in sync via `src/lib/tabSync` with
-  last-write-wins semantics; cross-device sync is available as an opt-in,
-  end-to-end-encrypted account feature (see Optional account sync).
-- Personal-scale data volume (hundreds to low thousands of events); in-memory expansion is acceptable.
-- Modern evergreen browser with IndexedDB support.
-- Sunday-first week (can be made configurable later).
-
-## Persistence: IndexedDB
-
-All data persists locally in **IndexedDB** via the
-[`idb`](https://github.com/jakearchibald/idb) library (a thin promise wrapper).
-The local database lives entirely in the browser profile; optional cloud sync is
-a separate, encrypted layer (see Optional account sync).
-
-- **Database:** `tuxbank`, version `2`. Object stores: `events` and
-  `categories` (keyed by `id`), plus `tombstones` (deleted-row markers, keyed by
-  `id`) and `syncMeta` (key-value; holds the sync cursor), both added for
-  optional sync. The v1 to v2 upgrade backfills a per-row `updatedAt` on
-  existing rows. Records are stored as the in-memory `CalendarEvent` /
-  `Category` objects verbatim; there is no mapping layer.
-- **Connection:** a lazily created, module-cached `openDB()` promise
-  (`src/lib/storage/index.ts`). A missing `indexedDB` global or a failed open
-  maps to `StorageError("UNAVAILABLE")`; the cache resets on failure so a later
-  call can retry.
-- **Reads** filter every record through the `isCalendarEvent` / `isCategory`
-  type guards; corrupt or foreign records are skipped and never crash the app.
-- **Errors:** every repository function throws a typed `StorageError`
-  (`UNAVAILABLE | QUOTA_EXCEEDED | BLOCKED | READ_FAILED | WRITE_FAILED |
-  IMPORT_INVALID | EXPORT_FAILED`).
-- **Multi-tab:** no locking; IndexedDB supports concurrent connections. After
-  every successful write the storage layer broadcasts a signal-only message on
-  a `BroadcastChannel` (`src/lib/tabSync`); other tabs re-read events and
-  categories from IndexedDB and update live. Last write wins: saving an edit
-  whose event another tab deleted recreates it. Per-tab UI state (visible
-  month, hidden-category filters) stays independent per tab.
-- **Testing:** vitest swaps in a fresh `fake-indexeddb` `IDBFactory` per test
-  via `resetDbForTests()` (`src/lib/storage/testing.ts`).
-
-### Backup / restore (JSON)
-
-- **Export** (`exportDatabase`): downloads a pretty-printed JSON snapshot named
-  `tuxbank-backup-YYYY-MM-DD.json`:
-
-  ```json
-  {
-    "app": "tuxbank",
-    "schemaVersion": 1,
-    "exportedAt": "2026-06-03T18:00:00.000Z",
-    "events": [],
-    "categories": []
-  }
-  ```
-
-- **Import** is a staged, destructive replace, routed by sign-in state through
-  `useSync().importData()`; the confirmation copy states the scope.
-  `validateImport(text)` parses and validates the candidate (app marker,
-  supported `schemaVersion`, every record passes its type guard) without
-  touching the live database and returns an `ImportPreview`
-  (`{ events, categories, schemaVersion }`) for the confirmation dialog.
-  Signed in and unlocked, `commitImportSynced(text)` makes the backup the
-  truth everywhere: it re-stamps every imported row to now, writes a fresh
-  tombstone for every pre-import id the backup lacks, drops tombstones for
-  ids the backup re-introduces, and keeps the sync cursor; a best-effort pull
-  runs before the import (so rows this device has never seen get tombstoned
-  too) and a sync runs after it to push the backup and its removals. Signed
-  out or locked, `commitImportLocal(text)` replaces local data keeping the
-  backup's original timestamps, clears tombstones, and drops the sync cursor,
-  so the next sign-in merges backup and cloud last-write-wins without
-  deleting anything from the account. Both run in a single `readwrite`
-  transaction rolled back on failure (explicit abort), so a failed import
-  never half-wipes data, and invalid input throws
-  `StorageError("IMPORT_INVALID")`.
-
-- **Clear all data** is a guarded full reset in the Data dialog: the user types
-  the word `reset` to enable the destructive button, and the confirmation copy
-  states whether the wipe reaches the cloud. `useSync().resetAllData()` routes
-  the reset by sign-in state. Signed in and unlocked, `clearAllData()` clears
-  the event and category stores and writes a tombstone for every former id in
-  one `readwrite` transaction, keeping the tombstone store and the sync cursor,
-  then pushes so the cloud account is cleared on every device. Signed out or
-  locked, the reset instead signs out locally and runs `clearLocalData()`,
-  which wipes all four stores (tombstones and cursor included) without
-  recording anything, leaving the browser as if the app had never run; a later
-  sign-in pulls the account's data untouched. The wipe runs inside
-  `resetAllData()` rather than through the sign-out path so a failed wipe
-  rejects and the dialog shows an error instead of closing as if it succeeded.
-  Only an unlocked session can destroy cloud data.
-
-## Optional account sync (end-to-end encrypted)
-
-Sync is **optional and additive**. With no account the app is exactly as
-described above: local-only, offline, no password. Signing in turns on an
-encrypted cloud mirror, and IndexedDB stays the source of truth. The feature
-spans `src/lib/{crypto,account,sync,supabase}`, `src/context/SyncContext`
-(`useSync()`), and `src/components/SyncDialog`. The full design rationale is in
-[the design spec](superpowers/specs/2026-06-08-optional-supabase-e2ee-sync-design.md).
-
-### Backend (Supabase)
-
-A managed Supabase project (Postgres + Auth). The browser talks to it directly
-with the public publishable key; authorization is entirely Row Level Security,
-so there is no server code of ours. Config lives in `VITE_SUPABASE_URL` and
-`VITE_SUPABASE_PUBLISHABLE_KEY` (public values, safe in the bundle; kept in
-gitignored `.env.local`, template in `.env.example`). The applied schema is
-recorded in `supabase/migrations/` (`0001_e2ee_sync.sql`). Step-by-step setup
-instructions (create the project, apply the schema, configure auth, set the env
-vars) live in [docs/sync.md](sync.md).
-
-Three tables, all keyed by `user_id` (= `auth.users.id`):
-
-- `events` and `categories`:
-  `( id uuid, user_id uuid, updated_at timestamptz, deleted bool, nonce text, ciphertext text, primary key (user_id, id) )`.
-  Only routing metadata is plaintext; the record's sensitive fields live inside
-  `ciphertext` (base64). `deleted = true` is a tombstone. The primary key is
-  composite on purpose: ids are client-generated and travel inside JSON
-  backups, so the same id can exist under two accounts, and upserts (which
-  PostgREST resolves on the primary key) must only ever conflict with the
-  caller's own rows. A global `id` key would make a backup imported under a
-  second account fail sync with RLS error 42501.
-- `key_material`: per-user wrapped keys
-  `( user_id pk, wrapped_dek, wrapped_dek_nonce, recovery_wrapped_dek, recovery_nonce, kdf_version, created_at )`.
-
-**RLS** on every table combines a permissive owner policy
-(`user_id = auth.uid()`) with a restrictive `aal2` policy
-(`auth.jwt() ->> 'aal' = 'aal2'`). The `aal2` clause is what makes TOTP
-mandatory at the database, not just in the UI.
-
-### Encryption and keys (`src/lib/crypto`, `src/lib/account`)
-
-Zero-knowledge: the server never holds a key it can decrypt with. Every
-primitive comes from libsodium (`libsodium-wrappers-sumo`); no protocol is
-hand-rolled.
-
-- `KEK = Argon2id(password, salt = normalized email)` wraps a random 256-bit
-  `DEK`. The DEK encrypts each record with XChaCha20-Poly1305 (a fresh nonce per
-  write). Plaintext columns (`id`, `updated_at`, `deleted`) carry only routing
-  metadata.
-- `authSecret = Argon2id(password, email, distinct context)` is the value sent
-  to Supabase auth, so the real password never leaves the device. The two
-  derivations use different domain-separation contexts, so knowing one does not
-  reveal the other.
-- A one-time **recovery key** independently wraps the same DEK (the `recovery_*`
-  columns), so a forgotten password is recoverable.
-- A password change re-wraps only the small DEK blob (`rewrapForNewPassword`);
-  data is never re-encrypted, and the recovery columns are untouched.
-
-The pure key functions (`provisionAccountKeys`, `unlockWithPassword`,
-`unlockWithRecoveryKey`, `rewrapForNewPassword`) live in `src/lib/account`
-alongside the thin Supabase auth/MFA/key-material wrappers; base64 helpers are
-shared in `src/utils/base64`.
-
-### Local storage (`src/lib/storage`, DB v1)
-
-The database opens at v1 and creates all four stores up front (`events`,
-`categories`, `tombstones`, `syncMeta`); there is no migration history. Both
-`CalendarEvent` and `Category` carry an `updatedAt`. Deleting a row writes a
-tombstone; writing a row clears any tombstone for its id. A signed-out import
-(`commitImportLocal`) clears all tombstones, while a signed-in import
-(`commitImportSynced`) rewrites them: it tombstones ids the backup drops and
-clears tombstones for ids it re-introduces (see the Import bullet above).
-`applyRemoteDelete` removes a row **without** writing a
-new tombstone, so an applied remote delete does not bounce back to the server.
-`getSyncCursor` / `setSyncCursor` persist the sync cursor in `syncMeta`.
-
-Opening the database distinguishes two failure modes. `UNAVAILABLE` means there
-is no IndexedDB at all (e.g. a hostile private-mode context); nothing can be
-done. `OPEN_FAILED` means the database exists but cannot be opened, almost always
-because it was written by a newer, incompatible build (IndexedDB cannot
-downgrade) or is corrupt. The latter is recoverable: `deleteDatabase()` drops the
-whole database so the next open recreates an empty one. `CalendarContext` exposes
-`storageResettable` (true on `OPEN_FAILED`) and `resetLocalData`, and the
-`StorageUnavailableBanner` surfaces a confirm-gated "Reset local data" button
-that deletes the database and reloads.
-
-### Sync engine (`src/lib/sync`)
-
-`runSync(dek, remote)` runs one last-write-wins push/pull cycle against a
-`SyncRemote` interface (the real implementation wraps the Supabase client; tests
-use an in-memory fake). A single ISO-timestamp **cursor** bounds each run. Pull
-applies remote rows whose `updated_at` is strictly greater than the local copy
-(decrypt and upsert, or delete); push uploads local rows and tombstones newer
-than the cursor that were not just pulled (which prevents an echo). On the
-**first sync** (no stored cursor) push uploads every local row regardless of
-timestamp, so a row stamped at the epoch (e.g. restored from an old backup that
-predates per-row timestamps) still reaches the cloud; a cursor is always
-persisted afterward so later syncs stay incremental. Each row's payload is
-encrypted with the DEK before it leaves the device. Known limitation:
-last-write-wins by client timestamp is vulnerable to clock skew across devices,
-which is acceptable for a single user.
-
-`SyncContext` drives the triggers: an initial sync on unlock/sign-in, on window
-focus, on network reconnect (the `online` event), debounced after edits and
-month navigation, and a manual "Sync now". Sync attempts are skipped while the
-browser reports offline (`navigator.onLine` false): the status becomes
-**offline** until the connection returns, and the sync dialog shows how many
-local changes are waiting to push (rows and tombstones newer than the cursor).
-Pull and push requests abort after 30 seconds so a dead connection fails into
-the error state instead of hanging. The toolbar's SYNC button shows a persistent
-badge (OFFLINE, LOCKED, or ERROR) whenever sync needs attention, so a stopped
-sync is visible without opening the dialog. The data key is held in a
-ref and also cached on the device (the `dek` key in the `syncMeta` store, via
-`setStoredDek`/`getStoredDek`), so a reload or restart resumes unlocked and
-re-syncs instead of re-prompting. The cache is cleared only on sign-out
-(`clearStoredDek`, and by the `clearLocalData` wipe). When a signed-in (`aal2`)
-session finds no cached key (a new device, or after sign-out), the app falls back
-to a **locked** state until the user re-enters their password.
-
-### Auth, onboarding, and recovery flows (`SyncContext`, `SyncDialog`)
-
-- **Create account:** sign up, then (email confirmation is required) a "confirm
-  your email" screen. The first sign-in completes setup: enroll TOTP, reach
-  `aal2`, generate keys, upload `key_material`, show the recovery key, and push
-  local data.
-- **Sign in (returning device):** password, TOTP challenge, fetch
-  `key_material`, unlock the DEK, pull.
-- **Unlock:** a persisted `aal2` session with no cached DEK (a new device, or
-  after an explicit sign-out); re-enter the password, which re-caches the key.
-  "No key material yet" is treated as first-time setup, not an error.
-- **Change password / forgot password:** set a new password from the synced
-  state, or recover from the locked state with the recovery key (which unlocks
-  the DEK and sets a new password). Both support Supabase "Secure password
-  change" by prompting for an emailed reauthentication code when required.
-
-### Security properties and accepted limitations
-
-- Local IndexedDB is **plaintext at rest** (the same as local-only mode); E2EE
-  protects data on the server and in transit. The app works with no password
-  when signed out or locked.
-- The data key is **cached at rest** in IndexedDB so a signed-in session stays
-  unlocked across reloads and restarts until an explicit sign-out. Local records
-  are already plaintext on the device, so this adds no local exposure beyond what
-  is there already. It does mean a device holding the cache can decrypt the
-  server copy without the password, so signing out (which clears the cache) is
-  how to lock a shared device.
-- Security is bounded by **password strength**; a minimum length is enforced.
-- A **lost authenticator** (no 2FA recovery factor exists) locks the user out of
-  the cloud copy. Local data is unaffected; the path forward is a fresh account.
-- A **forgotten password plus a lost recovery key** makes the cloud data
-  unrecoverable by design (zero-knowledge). Local data is unaffected.
-- The server sees record counts and modification timestamps; the sensitive
-  fields are encrypted.
-- Not built yet: a password-strength meter, fully-signed-out (no-session)
-  password reset by email, and Realtime live push. Code-splitting/lazy-loading
-  is deliberately avoided to keep the app offline-capable.
