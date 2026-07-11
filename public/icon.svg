@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#07080d" />
+  <!-- outer glow ring (layered strokes, no filters) -->
+  <path
+    d="M96 128 L384 128 L416 160 L416 416 L128 416 L96 384 Z"
+    fill="none" stroke="#00f0ff" stroke-width="28" opacity="0.18" />
+  <!-- calendar body: angular panel with clipped corners -->
+  <path
+    d="M96 128 L384 128 L416 160 L416 416 L128 416 L96 384 Z"
+    fill="#0b0e16" stroke="#00f0ff" stroke-width="12" />
+  <!-- header bar -->
+  <path d="M102 134 L381 134 L410 163 L410 196 L102 196 Z" fill="#ff2a6d" />
+  <!-- binding pegs -->
+  <rect x="148" y="84" width="26" height="76" fill="#00f0ff" />
+  <rect x="338" y="84" width="26" height="76" fill="#00f0ff" />
+  <!-- grid cells: 3 cols x 2 rows -->
+  <g fill="none" stroke="#00f0ff" stroke-width="6" opacity="0.55">
+    <rect x="132" y="228" width="72" height="64" />
+    <rect x="220" y="228" width="72" height="64" />
+    <rect x="308" y="228" width="72" height="64" />
+    <rect x="132" y="312" width="72" height="64" />
+    <rect x="308" y="312" width="72" height="64" />
+  </g>
+  <!-- "today" cell -->
+  <rect x="220" y="312" width="72" height="64" fill="#fcee0a" />
+</svg>

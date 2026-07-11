@@ -1,0 +1,12 @@
+# Build artifacts & generated
+node_modules
+dist
+build
+coverage
+pnpm-lock.yaml
+*.tsbuildinfo
+
+# Hand-maintained prose (not subject to Prettier prose-wrap)
+CLAUDE.md
+README.md
+docs/
