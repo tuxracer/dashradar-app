@@ -1,6 +1,9 @@
 /// <reference lib="webworker" />
 import { pipeline, RawImage } from "@huggingface/transformers";
-import type { ObjectDetectionPipeline } from "@huggingface/transformers";
+import type {
+  ObjectDetectionPipeline,
+  ProgressCallback,
+} from "@huggingface/transformers";
 import { isNumber, isString } from "remeda";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 import { DTYPE_BY_BACKEND, MODEL_ID } from "./consts";
@@ -19,31 +22,47 @@ const resolveBackend = (): DetectionBackend => {
   return "gpu" in navigator && navigator.gpu ? "webgpu" : "wasm";
 };
 
-const loadModel = async () => {
-  const backend = resolveBackend();
-  try {
-    detector = await pipeline("object-detection", MODEL_ID, {
-      device: backend,
-      dtype: DTYPE_BY_BACKEND[backend],
-      progress_callback: (info) => {
-        if (
-          info.status === "progress" &&
-          isString(info.file) &&
-          isNumber(info.loaded) &&
-          isNumber(info.total)
-        ) {
-          post({
-            type: "model-progress",
-            progress: {
-              file: info.file,
-              loaded: info.loaded,
-              total: info.total,
-            },
-          });
-        }
-      },
+const reportProgress: ProgressCallback = (info) => {
+  if (
+    info.status === "progress" &&
+    isString(info.file) &&
+    isNumber(info.loaded) &&
+    isNumber(info.total)
+  ) {
+    post({
+      type: "model-progress",
+      progress: { file: info.file, loaded: info.loaded, total: info.total },
     });
-    post({ type: "ready", backend });
+  }
+};
+
+const loadPipeline = (backend: DetectionBackend) => {
+  return pipeline("object-detection", MODEL_ID, {
+    device: backend,
+    dtype: DTYPE_BY_BACKEND[backend],
+    progress_callback: reportProgress,
+  });
+};
+
+const loadModel = async () => {
+  const preferredBackend = resolveBackend();
+  try {
+    detector = await loadPipeline(preferredBackend);
+    post({ type: "ready", backend: preferredBackend });
+    return;
+  } catch {
+    if (preferredBackend !== "webgpu") {
+      post({ type: "worker-error", code: "MODEL_LOAD_FAILED" });
+      return;
+    }
+  }
+
+  // The WebGPU API was present but the pipeline still failed to load (e.g. a
+  // blocklisted or otherwise unusable adapter). That isn't fatal on its own,
+  // so fall back to wasm once before giving up.
+  try {
+    detector = await loadPipeline("wasm");
+    post({ type: "ready", backend: "wasm" });
   } catch {
     post({ type: "worker-error", code: "MODEL_LOAD_FAILED" });
   }
