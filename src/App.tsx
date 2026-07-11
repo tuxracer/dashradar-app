@@ -42,12 +42,16 @@ const RadarScreen = () => {
     }
   }, [status, wakeLock]);
 
+  const updateVideoSize = useCallback((video: HTMLVideoElement) => {
+    setVideoSize({ width: video.videoWidth, height: video.videoHeight });
+  }, []);
+
   const handleStream = useCallback(
     (video: HTMLVideoElement) => {
-      setVideoSize({ width: video.videoWidth, height: video.videoHeight });
+      updateVideoSize(video);
       start(video);
     },
-    [start],
+    [start, updateVideoSize],
   );
 
   if (cameraError) {
@@ -59,7 +63,11 @@ const RadarScreen = () => {
 
   return (
     <main className="fixed inset-0 bg-surface">
-      <CameraView onStream={handleStream} onError={setCameraError} />
+      <CameraView
+        onStream={handleStream}
+        onError={setCameraError}
+        onVideoResize={updateVideoSize}
+      />
       {hud && videoSize && (
         <HudOverlay
           hud={hud}

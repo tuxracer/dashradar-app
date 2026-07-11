@@ -9,9 +9,20 @@ import {
 type CameraViewProps = {
   onStream: (video: HTMLVideoElement) => void;
   onError: (error: CameraError) => void;
+  /**
+   * Fires whenever the video element's intrinsic dimensions change (the
+   * `resize` event) — e.g. a phone rotates and the camera track swaps its
+   * width/height. Lets callers keep aspect-ratio-dependent layout (like the
+   * HUD overlay) in sync without a reload.
+   */
+  onVideoResize?: (video: HTMLVideoElement) => void;
 };
 
-export const CameraView = ({ onStream, onError }: CameraViewProps) => {
+export const CameraView = ({
+  onStream,
+  onError,
+  onVideoResize,
+}: CameraViewProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -21,6 +32,10 @@ export const CameraView = ({ onStream, onError }: CameraViewProps) => {
     }
     let stream: MediaStream | undefined;
     let cancelled = false;
+
+    const handleVideoResize = () => {
+      onVideoResize?.(video);
+    };
 
     const startCamera = async () => {
       try {
@@ -32,6 +47,7 @@ export const CameraView = ({ onStream, onError }: CameraViewProps) => {
         video.srcObject = stream;
         await video.play();
         onStream(video);
+        video.addEventListener("resize", handleVideoResize);
       } catch (error) {
         if (!cancelled) {
           onError(
@@ -45,8 +61,9 @@ export const CameraView = ({ onStream, onError }: CameraViewProps) => {
     return () => {
       cancelled = true;
       stream?.getTracks().forEach((track) => track.stop());
+      video.removeEventListener("resize", handleVideoResize);
     };
-  }, [onStream, onError]);
+  }, [onStream, onError, onVideoResize]);
 
   return (
     <video
