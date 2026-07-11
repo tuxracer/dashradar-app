@@ -70,6 +70,12 @@ export const DetectionProvider = ({
   const workerRef = useRef<DetectionWorkerLike | undefined>(undefined);
   const videoRef = useRef<HTMLVideoElement | undefined>(undefined);
   const runningRef = useRef(false);
+  // Bumped on stop() and worker errors so an in-flight createImageBitmap from
+  // a previous pump run discards its frame instead of posting it. A bare
+  // runningRef re-check after the await is not enough: a fast stop()-then-
+  // start() flips runningRef back to true while the stale capture is still
+  // pending, which would put two frames in flight.
+  const pumpGenerationRef = useRef(0);
   const retryTimerRef = useRef<number | undefined>(undefined);
   const fileProgressRef = useRef(new Map<string, ModelProgress>());
   const resultTimesRef = useRef<number[]>([]);
@@ -84,10 +90,20 @@ export const DetectionProvider = ({
     if (!runningRef.current || !video || !worker) {
       return;
     }
+    const generation = pumpGenerationRef.current;
     try {
       const frame = await createImageBitmap(video);
+      if (generation !== pumpGenerationRef.current || !runningRef.current) {
+        // The pump was stopped (and possibly restarted) while this capture
+        // was pending; the restarted pump owns the in-flight slot now.
+        frame.close();
+        return;
+      }
       worker.postMessage({ type: "detect", frame }, [frame]);
     } catch {
+      if (generation !== pumpGenerationRef.current || !runningRef.current) {
+        return;
+      }
       // Video has no frame data yet (still attaching): retry shortly.
       retryTimerRef.current = window.setTimeout(() => {
         void sendFrameRef.current();
@@ -106,7 +122,11 @@ export const DetectionProvider = ({
     }
     if (times.length >= 2) {
       const elapsed = times[times.length - 1] - times[0];
-      setFps(Math.round(((times.length - 1) * 1000) / elapsed));
+      // Two results inside the same millisecond would divide by zero; keep
+      // the previous reading until a measurable interval accumulates.
+      if (elapsed > 0) {
+        setFps(Math.round(((times.length - 1) * 1000) / elapsed));
+      }
     }
   }, []);
 
@@ -153,6 +173,8 @@ export const DetectionProvider = ({
           setError(message.code);
           setStatus("error");
           runningRef.current = false;
+          pumpGenerationRef.current += 1;
+          window.clearTimeout(retryTimerRef.current);
           break;
         }
       }
@@ -161,6 +183,8 @@ export const DetectionProvider = ({
       setError("WORKER_CRASHED");
       setStatus("error");
       runningRef.current = false;
+      pumpGenerationRef.current += 1;
+      window.clearTimeout(retryTimerRef.current);
     };
     worker.postMessage({ type: "load" });
     return () => {
@@ -189,6 +213,7 @@ export const DetectionProvider = ({
 
   const stop = useCallback(() => {
     runningRef.current = false;
+    pumpGenerationRef.current += 1;
     window.clearTimeout(retryTimerRef.current);
     setStatus((current) => (current === "running" ? "ready" : current));
   }, []);

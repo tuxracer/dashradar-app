@@ -1,7 +1,11 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DetectionProvider, useDetection } from "@/context/DetectionContext";
+import {
+  DetectionProvider,
+  FRAME_RETRY_MS,
+  useDetection,
+} from "@/context/DetectionContext";
 import type { DetectionWorkerLike } from "@/context/DetectionContext";
 import type { WorkerRequest, WorkerResponse } from "@/workers/detection/types";
 
@@ -22,13 +26,14 @@ class FakeWorker implements DetectionWorkerLike {
 }
 
 const Probe = () => {
-  const { status, backend, modelProgress, hud, error } = useDetection();
+  const { status, backend, modelProgress, hud, fps, error } = useDetection();
   return (
     <div>
       <span data-testid="status">{status}</span>
       <span data-testid="backend">{backend ?? "none"}</span>
       <span data-testid="loaded">{modelProgress.loadedBytes}</span>
       <span data-testid="objects">{hud ? hud.blips.length : "none"}</span>
+      <span data-testid="fps">{fps}</span>
       <span data-testid="error">{error ?? "none"}</span>
     </div>
   );
@@ -44,6 +49,23 @@ const StartOnReady = () => {
     >
       start
     </button>
+  );
+};
+
+const StartStop = () => {
+  const { start, stop } = useDetection();
+  return (
+    <>
+      <button
+        onClick={() => start(document.createElement("video"))}
+        data-testid="start"
+      >
+        start
+      </button>
+      <button onClick={() => stop()} data-testid="stop">
+        stop
+      </button>
+    </>
   );
 };
 
@@ -65,6 +87,7 @@ const fakeBitmap = () => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe("DetectionProvider", () => {
@@ -152,6 +175,119 @@ describe("DetectionProvider", () => {
         worker.posted.filter((message) => message.type === "detect"),
       ).toHaveLength(2);
     });
+  });
+
+  it("retries frame capture after createImageBitmap fails once", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi
+        .fn()
+        .mockRejectedValueOnce(new Error("video has no frame data"))
+        .mockImplementation(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    // First capture rejects (no detect posted), scheduling a retry.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(0);
+    // The retry fires after FRAME_RETRY_MS and succeeds.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FRAME_RETRY_MS);
+    });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(1);
+  });
+
+  it("keeps one frame in flight across a fast stop-then-start", async () => {
+    let closedFrames = 0;
+    const pendingCaptures: Array<(bitmap: ImageBitmap) => void> = [];
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(
+        () =>
+          new Promise<ImageBitmap>((resolve) => {
+            pendingCaptures.push(resolve);
+          }),
+      ),
+    );
+    const countingBitmap = () => {
+      return {
+        width: 1280,
+        height: 720,
+        close: () => {
+          closedFrames += 1;
+        },
+      } as unknown as ImageBitmap;
+    };
+    const worker = renderWithProvider(<StartStop />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    // Capture #1 is pending; stop then quickly start again (capture #2).
+    act(() => {
+      screen.getByTestId("stop").click();
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      for (const resolveCapture of pendingCaptures.splice(0)) {
+        resolveCapture(countingBitmap());
+      }
+    });
+    // Only the restarted pump's frame is posted; the stale one is closed.
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    expect(closedFrames).toBe(1);
+  });
+
+  it("exposes a finite fps after multiple detection results", async () => {
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(
+      <>
+        <Probe />
+        <StartOnReady />
+      </>,
+    );
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    for (let result = 0; result < 2; result += 1) {
+      await waitFor(() => {
+        expect(
+          worker.posted.filter((message) => message.type === "detect"),
+        ).toHaveLength(result + 1);
+      });
+      act(() => {
+        worker.emit({ type: "detections", detections: [] });
+      });
+    }
+    const fps = Number(screen.getByTestId("fps").textContent);
+    expect(Number.isFinite(fps)).toBe(true);
+    expect(fps).toBeGreaterThanOrEqual(0);
   });
 
   it("auto-starts detection when ready arrives after start", async () => {
