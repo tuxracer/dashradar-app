@@ -30,7 +30,7 @@ pnpm format      # Auto-fix formatting (prettier --write)
 
 ## Privacy
 
-Everything happens on the device. There is no backend, no account, and no analytics on camera frames or detections; the camera stream and every detection stay in the browser tab and are never uploaded. The only thing fetched over the network is the detection model itself (once, then cached for offline use) and the app's own static files.
+Camera frames and detection results never leave the device: they stay in the browser tab and are never uploaded, and there's no account to sign into. Network traffic is limited to the app's static files, the one-time detection model download (huggingface.co), the ONNX runtime (cdn.jsdelivr.net), and anonymous page-view analytics (Vercel).
 
 ## Contact
 

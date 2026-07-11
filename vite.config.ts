@@ -30,7 +30,7 @@ const commitShaMeta = (): Plugin => {
 };
 
 // Generous ceiling for the JS/CSS bundle. The ONNX runtime .wasm that Vite
-// emits into dist/assets (~20 MB) is deliberately excluded from globPatterns
+// emits into dist/assets (~23.5 MB) is deliberately excluded from globPatterns
 // below: onnxruntime-web always fetches its wasm/mjs from cdn.jsdelivr.net
 // unless env.backends.onnx.wasm.wasmPaths is set (it isn't, here), so the
 // bundled copy is dead weight. The jsdelivr fetch is covered by the
