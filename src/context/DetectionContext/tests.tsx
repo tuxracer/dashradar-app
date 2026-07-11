@@ -1,4 +1,5 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -256,6 +257,95 @@ describe("DetectionProvider", () => {
       ).toHaveLength(1);
     });
     expect(closedFrames).toBe(1);
+  });
+
+  it("posts exactly one frame per start under StrictMode", async () => {
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = new FakeWorker();
+    render(
+      <StrictMode>
+        <DetectionProvider createWorker={() => worker}>
+          <StartOnReady />
+        </DetectionProvider>
+      </StrictMode>,
+    );
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    // Flush any second (double-invoked) capture before asserting the count
+    // did not grow past one.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(1);
+  });
+
+  it("re-primes at depth one when a stale result lands after stop/start", async () => {
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartStop />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    // Frame #1 reaches the worker; its result is still pending.
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    // Stop, then restart before the stale result comes back.
+    act(() => {
+      screen.getByTestId("stop").click();
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    // The restarted pump must not post while frame #1's result is pending.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(1);
+    // The stale result re-primes the pump: exactly one more post.
+    act(() => {
+      worker.emit({ type: "detections", detections: [] });
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(2);
+    });
+    // Pipeline continues at depth one: the next result posts exactly one more.
+    act(() => {
+      worker.emit({ type: "detections", detections: [] });
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(3);
+    });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(3);
   });
 
   it("exposes a finite fps after multiple detection results", async () => {

@@ -18,6 +18,7 @@ import { isWorkerResponse } from "@/workers/detection/types";
 import { FPS_SAMPLE_SIZE, FRAME_RETRY_MS } from "./consts";
 import type {
   DetectionContextValue,
+  DetectionStatus,
   DetectionWorkerLike,
   ModelProgress,
 } from "./types";
@@ -54,9 +55,7 @@ export const DetectionProvider = ({
   children,
   createWorker = createDetectionWorker,
 }: DetectionProviderProps) => {
-  const [status, setStatus] = useState<
-    "loading-model" | "ready" | "running" | "error"
-  >("loading-model");
+  const [status, setStatus] = useState<DetectionStatus>("loading-model");
   const [backend, setBackend] = useState<DetectionBackend>();
   const [modelProgress, setModelProgress] = useState<ModelProgress>({
     loadedBytes: 0,
@@ -70,6 +69,16 @@ export const DetectionProvider = ({
   const workerRef = useRef<DetectionWorkerLike | undefined>(undefined);
   const videoRef = useRef<HTMLVideoElement | undefined>(undefined);
   const runningRef = useRef(false);
+  // Mirrors `status` so event handlers can branch on the current status
+  // without putting side effects inside setStatus updater functions (React
+  // double-invokes updaters under StrictMode, which would double-pump).
+  // Every setStatus call site updates this ref alongside it.
+  const statusRef = useRef<DetectionStatus>("loading-model");
+  // Count of detect frames posted to the worker whose results have not come
+  // back yet. The pump bails while this is nonzero, so a stale result from
+  // before a stop()/start() re-primes the pipeline at depth 1 instead of
+  // stacking a second frame on top of the restarted pump's frame.
+  const inFlightRef = useRef(0);
   // Bumped on stop() and worker errors so an in-flight createImageBitmap from
   // a previous pump run discards its frame instead of posting it. A bare
   // runningRef re-check after the await is not enough: a fast stop()-then-
@@ -90,15 +99,24 @@ export const DetectionProvider = ({
     if (!runningRef.current || !video || !worker) {
       return;
     }
+    if (inFlightRef.current > 0) {
+      // A frame is already at the worker; its result will re-prime the pump.
+      return;
+    }
     const generation = pumpGenerationRef.current;
     try {
       const frame = await createImageBitmap(video);
-      if (generation !== pumpGenerationRef.current || !runningRef.current) {
+      if (
+        generation !== pumpGenerationRef.current ||
+        !runningRef.current ||
+        inFlightRef.current > 0
+      ) {
         // The pump was stopped (and possibly restarted) while this capture
         // was pending; the restarted pump owns the in-flight slot now.
         frame.close();
         return;
       }
+      inFlightRef.current += 1;
       worker.postMessage({ type: "detect", frame }, [frame]);
     } catch {
       if (generation !== pumpGenerationRef.current || !runningRef.current) {
@@ -156,14 +174,17 @@ export const DetectionProvider = ({
         case "ready": {
           setBackend(message.backend);
           if (runningRef.current) {
+            statusRef.current = "running";
             setStatus("running");
             void sendFrame();
           } else {
+            statusRef.current = "ready";
             setStatus("ready");
           }
           break;
         }
         case "detections": {
+          inFlightRef.current = Math.max(0, inFlightRef.current - 1);
           setHud(buildHudModel(toRoadDetections(message.detections)));
           recordResultTime();
           void sendFrame();
@@ -171,9 +192,11 @@ export const DetectionProvider = ({
         }
         case "worker-error": {
           setError(message.code);
+          statusRef.current = "error";
           setStatus("error");
           runningRef.current = false;
           pumpGenerationRef.current += 1;
+          inFlightRef.current = 0;
           window.clearTimeout(retryTimerRef.current);
           break;
         }
@@ -181,9 +204,11 @@ export const DetectionProvider = ({
     };
     worker.onerror = () => {
       setError("WORKER_CRASHED");
+      statusRef.current = "error";
       setStatus("error");
       runningRef.current = false;
       pumpGenerationRef.current += 1;
+      inFlightRef.current = 0;
       window.clearTimeout(retryTimerRef.current);
     };
     worker.postMessage({ type: "load" });
@@ -200,13 +225,16 @@ export const DetectionProvider = ({
         return;
       }
       runningRef.current = true;
-      setStatus((current) => {
-        if (current === "ready") {
-          void sendFrame();
-          return "running";
-        }
-        return current;
-      });
+      // Branch on statusRef outside the setStatus updater: StrictMode
+      // double-invokes updater functions, so a side effect (the frame pump)
+      // inside one would post two frames per start().
+      if (statusRef.current === "ready") {
+        statusRef.current = "running";
+        setStatus("running");
+        void sendFrame();
+      }
+      // Otherwise stay as-is; the "ready" handler starts the pump via
+      // runningRef when the model finishes loading.
     },
     [sendFrame],
   );
@@ -215,7 +243,10 @@ export const DetectionProvider = ({
     runningRef.current = false;
     pumpGenerationRef.current += 1;
     window.clearTimeout(retryTimerRef.current);
-    setStatus((current) => (current === "running" ? "ready" : current));
+    if (statusRef.current === "running") {
+      statusRef.current = "ready";
+      setStatus("ready");
+    }
   }, []);
 
   const value = useMemo(
