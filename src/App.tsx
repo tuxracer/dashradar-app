@@ -3,9 +3,11 @@ import { CameraView } from "@/components/CameraView";
 import { ErrorScreen } from "@/components/ErrorScreen";
 import { HudOverlay } from "@/components/HudOverlay";
 import { ModelLoadScreen } from "@/components/ModelLoadScreen";
+import { RadarBackdrop } from "@/components/RadarBackdrop";
 import { RadarStrip } from "@/components/RadarStrip";
 import { StatusBar } from "@/components/StatusBar";
 import { DetectionProvider, useDetection } from "@/context/DetectionContext";
+import { SettingsProvider, useSettings } from "@/context/SettingsContext";
 import type { CameraError } from "@/lib/camera";
 import type { Size } from "@/lib/detection";
 import { createWakeLockManager } from "@/lib/wakeLock";
@@ -28,6 +30,7 @@ const useViewportSize = (): Size => {
 const RadarScreen = () => {
   const { status, backend, modelProgress, hud, fps, error, start } =
     useDetection();
+  const { showVideo } = useSettings();
   const [cameraError, setCameraError] = useState<CameraError>();
   const [videoSize, setVideoSize] = useState<Size>();
   const viewportSize = useViewportSize();
@@ -63,10 +66,12 @@ const RadarScreen = () => {
 
   return (
     <main className="fixed inset-0 bg-surface">
+      <RadarBackdrop />
       <CameraView
         onStream={handleStream}
         onError={setCameraError}
         onVideoResize={updateVideoSize}
+        visible={showVideo}
       />
       {hud && videoSize && (
         <HudOverlay
@@ -86,9 +91,11 @@ const RadarScreen = () => {
 
 const App = () => {
   return (
-    <DetectionProvider>
-      <RadarScreen />
-    </DetectionProvider>
+    <SettingsProvider>
+      <DetectionProvider>
+        <RadarScreen />
+      </DetectionProvider>
+    </SettingsProvider>
   );
 };
 

@@ -1,3 +1,4 @@
+import { SettingsMenu } from "@/components/SettingsMenu";
 import type { DetectionBackend } from "@/workers/detection/types";
 
 type StatusBarProps = {
@@ -11,11 +12,14 @@ export const StatusBar = ({ backend, fps }: StatusBarProps) => {
       <span className="text-[13px] font-semibold tracking-[0.34em] text-white/85">
         DASHRADAR
       </span>
-      {backend && (
-        <span className="text-xs font-semibold tracking-[0.18em] text-white/60">
-          {backend === "webgpu" ? "GPU" : "CPU"} · {fps} FPS
-        </span>
-      )}
+      <div className="flex items-center gap-3">
+        {backend && (
+          <span className="text-xs font-semibold tracking-[0.18em] text-white/60">
+            {backend === "webgpu" ? "GPU" : "CPU"} · {fps} FPS
+          </span>
+        )}
+        <SettingsMenu />
+      </div>
     </div>
   );
 };
