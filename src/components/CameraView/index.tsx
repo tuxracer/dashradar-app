@@ -16,12 +16,19 @@ type CameraViewProps = {
    * HUD overlay) in sync without a reload.
    */
   onVideoResize?: (video: HTMLVideoElement) => void;
+  /**
+   * When false, the video stays mounted and playing (so detection keeps
+   * reading frames) but is visually hidden, revealing the RadarBackdrop
+   * behind it. Defaults to true.
+   */
+  visible?: boolean;
 };
 
 export const CameraView = ({
   onStream,
   onError,
   onVideoResize,
+  visible = true,
 }: CameraViewProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -71,7 +78,7 @@ export const CameraView = ({
       autoPlay
       muted
       playsInline
-      className="h-full w-full object-cover"
+      className={`h-full w-full object-cover ${visible ? "" : "opacity-0"}`}
     />
   );
 };

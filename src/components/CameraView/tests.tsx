@@ -81,4 +81,23 @@ describe("CameraView", () => {
     const error: unknown = onError.mock.calls[0][0];
     expect(isCameraError(error) && error.code).toBe("PERMISSION_DENIED");
   });
+
+  it("keeps the video mounted but hidden when visible is false", async () => {
+    const fakeStream = {
+      getTracks: () => [{ stop: () => {} }],
+    } as unknown as MediaStream;
+    vi.stubGlobal("navigator", {
+      mediaDevices: { getUserMedia: vi.fn(() => Promise.resolve(fakeStream)) },
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+
+    const onStream = vi.fn();
+    const { container } = render(
+      <CameraView onStream={onStream} onError={() => {}} visible={false} />,
+    );
+    await waitFor(() => expect(onStream).toHaveBeenCalled());
+    const video = container.querySelector("video");
+    expect(video).not.toBeNull();
+    expect(video).toHaveClass("opacity-0");
+  });
 });
