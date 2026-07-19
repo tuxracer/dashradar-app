@@ -14,10 +14,12 @@ import { isPersistedSettings } from "./types";
 export * from "./consts";
 export * from "./types";
 
+/** React context for managing app settings. */
 const SettingsContext = createContext<SettingsContextValue | undefined>(
   undefined,
 );
 
+/** Hook to access settings and controls from SettingsProvider. */
 export const useSettings = (): SettingsContextValue => {
   const value = useContext(SettingsContext);
   if (!value) {
@@ -43,10 +45,12 @@ const loadSettings = (): Settings => {
   }
 };
 
+/** Props for SettingsProvider component. */
 type SettingsProviderProps = {
   children: ReactNode;
 };
 
+/** Provider component for settings state management and persistence. */
 export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const [showVideo, setShowVideo] = useState(() => loadSettings().showVideo);
 
