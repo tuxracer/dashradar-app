@@ -11,14 +11,15 @@ import type { DetectionBackend } from "./types";
  * unused slot), so the pipeline decoder reads the logits wrong and drops every
  * detection. Bypassing it lets us apply the correct sigmoid + cxcywh decode.
  *
- * Two builds are published: an fp16-weight model for the WebGPU backend and a
- * larger fp32 model for the WASM fallback. Both have fp32 inputs/outputs.
+ * Two builds are published: an fp16-weight model (~64 MB) for the WebGPU
+ * backend and a smaller int8-quantized model (~35 MB) for the WASM fallback.
+ * Both have fp32 inputs/outputs, so the same pre/post-processing works for each.
  */
 export const MODEL_URL_BY_BACKEND: Readonly<Record<DetectionBackend, string>> =
   {
     webgpu:
       "https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1/resolve/main/onnx/model_fp16.onnx",
-    wasm: "https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1/resolve/main/onnx/model.onnx",
+    wasm: "https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1/resolve/main/onnx/model_int8.onnx",
   };
 
 /** Square input edge the model expects (NCHW `[1,3,512,512]`). */
