@@ -4,7 +4,7 @@ A single-screen web app that turns a phone mounted on a car dash into a live obj
 
 See [docs/TRD.md](docs/TRD.md) for the full technical reference.
 
-**Repository URL**: https://github.com/tuxracer/dashradar
+**Repository URL**: https://github.com/tuxracer/dashradar-app
 
 ## Architecture
 
