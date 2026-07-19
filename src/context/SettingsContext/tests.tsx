@@ -1,0 +1,63 @@
+import { act, render, renderHook } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  SettingsProvider,
+  STORAGE_KEY,
+  useSettings,
+} from "@/context/SettingsContext";
+
+afterEach(() => {
+  window.localStorage.clear();
+});
+
+const wrapper = ({ children }: { children: ReactNode }) => (
+  <SettingsProvider>{children}</SettingsProvider>
+);
+
+describe("SettingsContext", () => {
+  it("defaults showVideo to true when storage is empty", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.showVideo).toBe(true);
+  });
+
+  it("toggling flips showVideo and persists it to localStorage", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleShowVideo());
+    expect(result.current.showVideo).toBe(false);
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({ showVideo: false }),
+    );
+  });
+
+  it("restores the persisted value on a fresh mount", () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ showVideo: false }),
+    );
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.showVideo).toBe(false);
+  });
+
+  it("falls back to defaults when stored JSON is corrupt", () => {
+    window.localStorage.setItem(STORAGE_KEY, "not json {");
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.showVideo).toBe(true);
+  });
+
+  it("falls back to defaults when stored shape is wrong", () => {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ showVideo: 1 }));
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.showVideo).toBe(true);
+  });
+
+  it("throws when useSettings is used without a provider", () => {
+    const Probe = () => {
+      useSettings();
+      return null;
+    };
+    expect(() => render(<Probe />)).toThrow(
+      "useSettings must be used within a SettingsProvider",
+    );
+  });
+});
