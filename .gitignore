@@ -21,6 +21,16 @@ docs/superpowers/
 # vite
 /dist
 
+# vite-plugin-pwa generated service worker (emitted into public/ on build)
+public/sw.js
+public/sw.js.map
+public/workbox-*.js
+public/workbox-*.js.map
+
+# stale Next.js build output (this is a Vite app now)
+.next/
+next-env.d.ts
+
 # production
 /build
 

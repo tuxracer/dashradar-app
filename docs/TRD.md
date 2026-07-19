@@ -4,7 +4,7 @@
 
 **Status:** Shipped (v1) · **Date:** 2026-07-11 · **Owner:** Derek Petersen
 
-dashradar turns a phone mounted on a car dash into a live "radar" view: a full-screen rear-camera feed with real-time object detection drawn as a clean, automotive-minimal HUD overlay. Detection runs entirely in the browser via Transformers.js (`@huggingface/transformers`), in a Web Worker, with WebGPU acceleration when available and a quantized WASM fallback otherwise. It is a client-only Vite React SPA, installable as an offline-first PWA. There is no backend, no accounts, and no data leaves the device: no video, frame, or detection is ever sent anywhere.
+dashradar turns a phone mounted on a car dash into a live "radar" view: a full-screen rear-camera feed with real-time object detection drawn as a clean, automotive-minimal HUD overlay. Detection runs entirely in the browser via a custom RF-DETR ONNX model on raw onnxruntime-web, in a Web Worker, with WebGPU acceleration when available and a quantized WASM fallback otherwise. It is a client-only Vite React SPA, installable as an offline-first PWA. There is no backend, no accounts, and no data leaves the device: no video, frame, or detection is ever sent anywhere.
 
 ---
 
@@ -34,10 +34,10 @@ Success criteria: on a phone with WebGPU, smooth video with boxes updating at se
 
 Primary target: a phone mounted in landscape on a car dash, orientation unlocked (the overlay math handles either orientation, see §5). Modern iPhone Safari and Android Chrome are the intended runtime; desktop Chrome/Edge work and are useful for development but are secondary.
 
-| Backend | Chosen when | Weight precision | Notes |
+| Backend | Chosen when | Model build | Notes |
 | --- | --- | --- | --- |
-| WebGPU | `"gpu" in navigator && navigator.gpu` is truthy (`resolveBackend()`, `src/workers/detection/index.ts`) | `fp16` | Faster; verified end-to-end against the shipped model in Chrome via chrome-devtools MCP (`GPU · 7-10 FPS` against a synthetic camera feed) |
-| WASM | No WebGPU (`navigator.gpu` absent), or the browser doesn't expose it | `q8` (8-bit quantized) | Universal fallback; verified working with the shipped model (`CPU · 1-5 FPS` in the same Chrome-based testing, slower because of the larger r18vd backbone on CPU int8, but correct and error-free) |
+| WebGPU | `"gpu" in navigator && navigator.gpu` is truthy (`resolveBackend()`, `src/workers/detection/index.ts`) | `model_fp16.onnx` (fp16 weights, fp32 I/O, ~64 MB) | Faster; verified end-to-end against the shipped model in Chrome via chrome-devtools MCP |
+| WASM | No WebGPU (`navigator.gpu` absent), or the browser doesn't expose it | `model_int8.onnx` (int8 dynamic quant, fp32 I/O, ~35 MB) | Universal fallback; the smaller int8 build keeps the CPU path usable |
 
 No WebGPU is not treated as an error: the backend badge in `StatusBar` (`GPU` vs `CPU`) is the only place this is surfaced. There is no manual override.
 
@@ -51,14 +51,14 @@ Real camera video, sustained frame rates against real-world objects, and on-devi
 | --- | --- | --- |
 | Framework | **Vite 8 (Rolldown)** + **React 19 SPA** | Static client app; `index.html` + `src/main.tsx` entry, no server runtime. |
 | Language | **TypeScript** (ESM) | Per repo conventions in `CLAUDE.md`. |
-| Detection | **`@huggingface/transformers`** (Transformers.js) | Runs the `object-detection` pipeline; WebGPU or WASM execution provider via onnxruntime-web underneath. |
-| PWA / offline | **vite-plugin-pwa** (Workbox) | Precaches the app shell; runtime-caches the ONNX runtime's CDN fetch. See §7. |
+| Detection | **`onnxruntime-web`** | Runs the RF-DETR ONNX model directly via an `InferenceSession`; WebGPU or WASM execution provider. Preprocess and decode are hand-rolled in `src/workers/detection/inference.ts` (no Transformers.js pipeline). See §4 (Model). |
+| PWA / offline | **vite-plugin-pwa** (Workbox) | Precaches the app shell; runtime-caches the model weights from Hugging Face and the ONNX runtime's CDN fetch. See §7. |
 | Styling | **Tailwind CSS v4** | Utility classes directly on HUD elements; one CSS custom property (`--color-hud-amber`) plus the surface color in `src/globals.css`. |
 | UI kit | shadcn/Radix tooling present (`radix-ui`, `class-variance-authority`, `tailwind-merge`, `lucide-react`) | Kept from the starter, unused in v1: the whole HUD is bespoke Tailwind-styled elements, no `src/components/ui/` primitives exist yet. |
 | Fonts | **Rajdhani** | Self-hosted via `@fontsource/rajdhani` (weights 500/600/700), imported in `src/main.tsx`. Only font in the app. |
-| Utilities | **remeda** | Type guards (`isString`, `isNumber`, `isPlainObject`) validating worker messages and pipeline output crossing the `postMessage` boundary. |
+| Utilities | **remeda** | Type guards (`isString`, `isNumber`, `isPlainObject`) validating worker messages crossing the `postMessage` boundary. |
 | Analytics | **`@vercel/analytics`** | `inject()` in `src/main.tsx`; page-view analytics only, no camera/detection data. |
-| Testing | **vitest** + **@testing-library/react** | jsdom environment; the worker, pipeline, and camera are stubbed or injected (see §9). |
+| Testing | **vitest** + **@testing-library/react** | jsdom environment; the worker, onnxruntime-web inference, and camera are stubbed or injected (see §9). The pure preprocess/decode helpers are unit-tested directly. |
 
 > **Build note:** `package.json` scripts: `pnpm dev` → `vite`, `pnpm build` → `vite build`, `pnpm start` → `vite preview`. `pnpm test` runs vitest. `pnpm check` runs format + lint + typecheck and must pass before commits.
 
@@ -66,7 +66,7 @@ Real camera video, sustained frame rates against real-world objects, and on-devi
 
 ## 4. Architecture & Project Structure
 
-Data flow: `src/App.tsx` → `DetectionProvider` (React context, `src/context/DetectionContext`) → a Web Worker (`src/workers/detection`) running the Transformers.js pipeline → `src/lib/detection` (pure filtering and HUD shaping, no React, no DOM).
+Data flow: `src/App.tsx` → `DetectionProvider` (React context, `src/context/DetectionContext`) → a Web Worker (`src/workers/detection`) running the RF-DETR ONNX model on onnxruntime-web → `src/lib/detection` (pure filtering and HUD shaping, no React, no DOM).
 
 Chosen approach: worker-based inference. Inference never blocks the UI thread, so video stays at native frame rate even when detection itself runs at a handful of frames per second. (WebCodecs was considered and rejected for weak Safari support.)
 
@@ -95,7 +95,7 @@ src/
   types/
     index.ts                    # RawDetection, NormalizedBox, Detection, RoadCategory + type guards
   workers/
-    detection/                  # the Web Worker: loads the pipeline, runs inference, typed message protocol
+    detection/                  # the Web Worker: downloads the ONNX model, runs inference (index.ts), pure preprocess/decode (inference.ts), model URLs + normalization consts (consts.ts), typed message protocol (types.ts)
   vite-env.d.ts
 public/
   icon.svg, icon-maskable.svg, icon-192.png, icon-512.png,
@@ -111,7 +111,7 @@ type DetectionStatus = "loading-model" | "ready" | "running" | "error";
 
 type DetectionContextValue = {
   status: DetectionStatus;
-  backend: DetectionBackend | undefined;   // "webgpu" | "wasm", set once the pipeline is ready
+  backend: DetectionBackend | undefined;   // "webgpu" | "wasm", set once the model is ready
   modelProgress: ModelProgress;             // { loadedBytes, totalBytes }, summed across files
   hud: HudModel | undefined;                // latest shaped detections for the UI to render
   fps: number;                              // rolling detection-result rate
@@ -127,7 +127,7 @@ Status transitions: the provider posts `{ type: "load" }` to the worker once on 
 
 1. `App`'s `RadarScreen` calls `start(video)` once `CameraView` reports a live `<video>` element.
 2. The pump (`sendFrame`, in `DetectionContext`) bails if detection isn't running, there's no video/worker, or a frame is already in flight (`inFlightRef.current > 0`). Otherwise it captures `createImageBitmap(video)`, increments `inFlightRef`, and posts `{ type: "detect", frame }` with the bitmap **transferred** (zero-copy) to the worker.
-3. The worker draws the bitmap onto an `OffscreenCanvas`, reads back `ImageData`, wraps it in a Transformers.js `RawImage`, and runs the pipeline with `{ threshold: CONFIDENCE_THRESHOLD, percentage: true }`. The bitmap is `close()`d in a `finally` regardless of outcome.
+3. The worker draws the bitmap onto a 512x512 `OffscreenCanvas`, reads back `ImageData`, and `preprocess`es it (`src/workers/detection/inference.ts`) into the model's `[1,3,512,512]` NCHW ImageNet-normalized float32 input tensor. It runs `session.run`, then `decodeDetections` applies a per-query sigmoid, thresholds at `CONFIDENCE_THRESHOLD`, and converts the cxcywh boxes to normalized xyxy `RawDetection[]`. The bitmap is `close()`d in a `finally` regardless of outcome.
 4. On the `detections` reply, `DetectionContext` decrements `inFlightRef`, runs `toRoadDetections` + `buildHudModel` (`src/lib/detection`) to produce the `HudModel` the UI renders, records a result timestamp for the FPS estimate, and immediately calls `sendFrame()` again.
 5. **Backpressure**: only one frame is ever in flight; the next capture is sent only once the previous result returns (latest-wins, no queue), so detection self-paces to whatever the device can sustain without ever blocking the video element.
 6. If `createImageBitmap` throws (the video has no frame data yet, e.g. right after attaching), the pump retries after `FRAME_RETRY_MS` (100 ms).
@@ -142,21 +142,31 @@ These invariants (one frame in flight, the generation guard, and keeping frame-s
 
 | Message | Payload | Purpose |
 | --- | --- | --- |
-| `load` | none | Load the Transformers.js pipeline for `MODEL_ID`, posted once on mount |
-| `detect` | `frame: ImageBitmap` (transferred) | Run one frame through the pipeline |
+| `load` | none | Download the ONNX weights and create the `InferenceSession`, posted once on mount |
+| `detect` | `frame: ImageBitmap` (transferred) | Run one frame through the model |
 
 `WorkerResponse` (worker → main thread):
 
 | Message | Payload | Purpose |
 | --- | --- | --- |
-| `model-progress` | `progress: { file, loaded, total }` | One tick per file from the pipeline's `progress_callback`; `DetectionContext` sums per-file totals into a single `ModelProgress` |
-| `ready` | `backend: "webgpu" \| "wasm"` | Pipeline finished loading; starts the frame pump immediately if `start()` already ran, otherwise moves to `"ready"` |
-| `detections` | `detections: RawDetection[]` | Raw pipeline output for one frame, boxes normalized 0-1 (`percentage: true`) |
-| `worker-error` | `code: DetectionErrorCode` | `MODEL_LOAD_FAILED` from the pipeline load failing, or `INFERENCE_FAILED` from a per-frame inference failure |
+| `model-progress` | `progress: { file, loaded, total }` | One tick per streamed chunk while `fetchModel` downloads the weights (byte counts from the `Content-Length` header); `DetectionContext` sums into a single `ModelProgress` |
+| `ready` | `backend: "webgpu" \| "wasm"` | Session finished loading; starts the frame pump immediately if `start()` already ran, otherwise moves to `"ready"` |
+| `detections` | `detections: RawDetection[]` | Decoded output for one frame, boxes normalized 0-1 (xyxy) |
+| `worker-error` | `code: DetectionErrorCode` | `MODEL_LOAD_FAILED` from the download or session creation failing, or `INFERENCE_FAILED` from a per-frame inference failure |
 
 `WORKER_CRASHED` is a third `DetectionErrorCode` value, but the worker never posts it as a `worker-error` message: it's set directly by `DetectionContext`'s `worker.onerror` handler on the main thread, for an uncaught exception in the worker that its own try/catch didn't handle.
 
 Every message crossing the boundary is validated by a type guard (`isWorkerRequest`, `isWorkerResponse`) before being trusted; a malformed message is silently ignored rather than crashing either side.
+
+### Model (`src/workers/detection`)
+
+The detection model is a custom **RF-DETR Small** checkpoint fine-tuned to detect Las Vegas Metro police vehicles, published as ONNX at [`tuxracer/las-vegas-metro-rfdetr-small-t1`](https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1) and trained/exported from the sibling repo `~/Development/las-vegas-metro-rfdetr-small-t1` (its `CLAUDE.md` documents the export and quantization recipes). `MODEL_URL_BY_BACKEND` (`consts.ts`) streams `onnx/model_fp16.onnx` on WebGPU and `onnx/model_int8.onnx` on WASM, directly from Hugging Face at runtime. Both builds share one signature:
+
+- **Input** `input`: `[1,3,512,512]` fp32 NCHW. Fixed 512x512, ImageNet-normalized (`mean=[0.485,0.456,0.406]`, `std=[0.229,0.224,0.225]`), bilinear resize.
+- **Output** `dets`: `[1,300,4]` fp32, boxes in cxcywh normalized 0..1.
+- **Output** `labels`: `[1,300,2]` fp32, raw class logits (apply sigmoid).
+
+Why raw onnxruntime-web and not the Transformers.js `pipeline("object-detection")`: this checkpoint's head is a single real class scored with a per-query **sigmoid**, with the police class at index 1 (index 0 unused). Transformers.js decodes `rf_detr` with the RT-DETR post-processor (softmax + "last class index is background, skip it"), which drops every real detection, and `RfDetrImageProcessor` isn't a registered JS processor type. So the worker bypasses the pipeline entirely: it does its own ImageNet preprocess and its own sigmoid + cxcywh decode (`inference.ts`). No NMS is applied (RF-DETR is set-based). The graph's output names are read from the session at load time, falling back to the expected `dets`/`labels` if the graph doesn't expose them literally.
 
 ---
 
@@ -164,10 +174,11 @@ Every message crossing the boundary is validated by a type guard (`isWorkerReque
 
 ### Road-class filter and confidence threshold
 
-The pipeline can return any of the 80 COCO classes; only the road-relevant ones are ever shown. `ROAD_CLASSES` (`src/lib/detection/consts.ts`) maps a COCO label to a display label and category:
+The worker emits `RawDetection`s whose `label` is a string; only labels in the allowlist are ever shown. `ROAD_CLASSES` (`src/lib/detection/consts.ts`) maps a label to a display label and category:
 
-| COCO label(s) | Display label | Category |
+| Label(s) | Display label | Category |
 | --- | --- | --- |
+| `police` | POLICE | vehicle |
 | `car` | CAR | vehicle |
 | `truck` | TRUCK | vehicle |
 | `bus` | BUS | vehicle |
@@ -178,9 +189,9 @@ The pipeline can return any of the 80 COCO classes; only the road-relevant ones 
 | `stop sign` | STOP | signal |
 | `bird`, `cat`, `dog`, `horse`, `sheep`, `cow`, `bear`, `elephant`, `zebra`, `giraffe` | ANIMAL | animal |
 
-Every other COCO class (furniture, food, electronics, and so on) is detected internally but dropped by `toRoadDetections` before it ever reaches the UI, even at high confidence.
+The shipped RF-DETR model is single-class and only ever emits `police`; the remaining (COCO) entries are dormant carryovers from when a generic COCO detector was loaded, kept so a multi-class model can be swapped back in without touching the filter. Any label not in `ROAD_CLASSES` is dropped by `toRoadDetections` before it reaches the UI.
 
-`CONFIDENCE_THRESHOLD` is `0.5`. It's applied twice: once as the `threshold` option passed straight to the Transformers.js pipeline call in the worker, and again defensively in `toRoadDetections` (`candidate.score < CONFIDENCE_THRESHOLD` is dropped) so a class-relevant, low-confidence result can never slip through even if the pipeline's own thresholding changes.
+`CONFIDENCE_THRESHOLD` is `0.5`. It's applied twice: once in the worker's `decodeDetections` (a query is emitted only when `sigmoid(policeLogit) >= CONFIDENCE_THRESHOLD`), and again defensively in `toRoadDetections` (`candidate.score < CONFIDENCE_THRESHOLD` is dropped) so a low-confidence result can never slip through.
 
 ### Nearest object and the NEAR heuristic
 
@@ -234,9 +245,11 @@ Automotive-minimal HUD over a full-bleed video feed. Design principle: the road 
 **Two independent caches make the app work fully offline, and each is populated by a different mechanism:**
 
 1. **App shell precache** (Workbox `globPatterns: ["**/*.{js,css,html,svg,png,woff,woff2}"]`, `maximumFileSizeToCacheInBytes: 40_000_000`): every built JS/CSS/HTML/font/icon file, including the detection worker's own chunk. It's built via `new Worker(new URL(...), { type: "module" })`, so Vite emits it as a separate chunk, but that chunk is still matched by the `js` glob and precached like any other script. This is what makes a cold load work with zero connectivity.
-2. **Model weights + the ONNX runtime itself**: `@huggingface/transformers` unconditionally points onnxruntime-web's `wasmPaths` at `cdn.jsdelivr.net` for any web environment unless the app sets `wasmPaths` itself (it doesn't), so onnxruntime-web always fetches its `.wasm`/`.mjs` runtime from jsdelivr rather than from the local bundle, regardless of which detection model is loaded. Transformers.js caches everything it fetches (model weight files from huggingface.co, and the jsdelivr ONNX runtime files) in its own browser Cache API store (`transformers-cache`). A Workbox `CacheFirst` runtime-caching route named `"ort-runtime"` (`vite.config.ts`) independently also caches the same `cdn.jsdelivr.net` requests, as a hedge alongside Transformers.js's own cache.
+2. **Model weights + the ONNX runtime itself**, cached by two Workbox `CacheFirst` runtime-caching routes (`vite.config.ts`):
+   - The `"model-cache"` route caches the RF-DETR ONNX weights the worker `fetch()`es from `huggingface.co`. The worker streams the download itself (reading the response body chunk by chunk) to report byte progress, so the weights are not part of the precache glob; the runtime route is what keeps them offline after the first run.
+   - onnxruntime-web points its `wasmPaths` at `cdn.jsdelivr.net` unless the app sets `wasmPaths` itself (it doesn't), so it fetches its `.wasm`/`.mjs` runtime from jsdelivr rather than from the local bundle. The `"ort-runtime"` route caches those `cdn.jsdelivr.net` requests.
 
-**Known dead weight**: Vite still bundles a copy of the ONNX runtime `.wasm` (~23.5 MB, `ort-wasm-simd-threaded.asyncify.wasm` from `onnxruntime-web`) into `dist/assets/` as a build artifact, because `@huggingface/transformers` references it internally. It is never fetched at runtime (onnxruntime-web always resolves its own jsdelivr URL instead) and is deliberately **excluded** from the Workbox precache glob (no `wasm` extension in `globPatterns`) so it doesn't bloat the service-worker cache for a file nothing ever reads. This was confirmed by inspecting the network log and Cache Storage in a real browser: after a fresh load, `caches.keys()` returns `["workbox-precache-v2-...", "transformers-cache", "ort-runtime"]`, and a subsequent offline hard reload cold-loads the app and runs live inference with no network requests at all.
+**Known dead weight**: Vite still bundles a copy of the ONNX runtime `.wasm` (~26 MB, `ort-wasm-simd-threaded.jsep.wasm` from `onnxruntime-web`) into `dist/assets/` as a build artifact. It is never fetched at runtime (onnxruntime-web resolves its own jsdelivr URL instead) and is deliberately **excluded** from the Workbox precache glob (no `wasm` extension in `globPatterns`) so it doesn't bloat the service-worker cache for a file nothing ever reads. Verify offline behavior by inspecting the network log and Cache Storage in a real browser: after a fresh load `caches.keys()` should include the Workbox precache plus the `"model-cache"` and `"ort-runtime"` routes, and a subsequent offline hard reload should cold-load the app and run live inference with no network requests.
 
 **Regenerating PWA icons**: rasterizing `public/icon.svg`/`icon-maskable.svg` to PNG with headless Chrome (`--screenshot`) at a small `--window-size` (e.g. 192x192 or 180x180) produces a cropped/misaligned image even though the reported pixel dimensions look correct. Render at 512x512 (reliable) and downscale with `sips -z <height> <width>` for the smaller sizes instead.
 
@@ -262,7 +275,7 @@ Typed error classes with a machine-readable `code` (`CLAUDE.md`'s "Typed errors 
 
 | `DetectionErrorCode` | Raised when |
 | --- | --- |
-| `MODEL_LOAD_FAILED` | The Transformers.js `pipeline()` call throws while loading the model (`loadModel`'s catch) |
+| `MODEL_LOAD_FAILED` | The model download or `InferenceSession.create` throws while loading the model (`loadModel`'s catch), on both the preferred backend and the wasm fallback |
 | `INFERENCE_FAILED` | A single frame's inference throws (`detect`'s catch), including a missing 2D canvas context |
 | `WORKER_CRASHED` | The worker thread crashes outside its own try/catch; set by `DetectionContext`'s `worker.onerror` handler on the main thread. The worker itself never posts this code |
 
@@ -284,16 +297,16 @@ Every code renders a "TRY AGAIN" button that does a full `window.location.reload
 
 ## 9. Testing Strategy
 
-Vitest + Testing Library, **behavior-focused** (verify behavior, not implementation constants, per `CLAUDE.md`). jsdom has no camera, no Worker that can run real code, no WebGPU/WASM, and no layout engine, so the worker, the Transformers.js pipeline, the camera, and real rendering are verified separately in a real browser (chrome-devtools MCP) and on-device by the user; unit tests stub or inject those seams:
+Vitest + Testing Library, **behavior-focused** (verify behavior, not implementation constants, per `CLAUDE.md`). jsdom has no camera, no Worker that can run real code, no WebGPU/WASM, and no layout engine, so the worker, onnxruntime-web inference, the camera, and real rendering are verified separately in a real browser (chrome-devtools MCP) and on-device by the user; unit tests stub or inject those seams:
 
 - **`src/lib/detection`**: the road-class filter and confidence threshold (`toRoadDetections`); the nearest/NEAR heuristic and blip shaping (`buildHudModel`), including the empty-frame case and the exact `NEAR_AREA_FRACTION` boundary; `mapBoxToViewport`'s cover-fit math for square, portrait-crop, and landscape-crop cases.
 - **`src/lib/camera`**: constraint building (rear camera requested) and every `DOMException` name mapped to its `CameraErrorCode`, plus the `UNSUPPORTED` path when `mediaDevices` is missing, via `vi.stubGlobal("navigator", …)`.
 - **`src/lib/wakeLock`**: acquire/release call the Wake Lock API correctly, re-acquires on a stubbed `visibilitychange` event, stops re-requesting after release, and is a safe no-op when the API is unsupported.
-- **`src/workers/detection`**: `isWorkerResponse` accepts every valid message variant and rejects malformed ones (unknown backend, missing fields, unknown error code).
+- **`src/workers/detection`**: `isWorkerResponse` accepts every valid message variant and rejects malformed ones (unknown backend, missing fields, unknown error code); the pure `preprocess` (ImageNet normalization, NCHW layout) and `decodeDetections` (sigmoid thresholding, cxcywh-to-xyxy, class-index-1 selection) helpers in `inference.ts` are tested directly against known inputs.
 - **`src/context/DetectionContext`**: the full status machine against an injected fake worker (the `createWorker` test seam), including the one-frame-in-flight invariant across a fast `stop()`-then-`start()` (a regression test for a real race that was fixed), retrying after a `createImageBitmap` failure, and the FPS calculation staying finite.
 - **Components** (RTL): `CameraView` attaches the stream and reports a typed error on failure (stubbing `getUserMedia`); `HudOverlay` renders the nearest box with/without the NEAR pill and positions floating tags, using exact pixel assertions against known inputs; `RadarStrip` positions one blip per detection by fraction and styles the near blip amber; `StatusBar` shows the right backend label and hides the FPS readout until a backend is known; `ModelLoadScreen` stays hidden during the anti-flash delay and then shows byte/percent progress; `ErrorScreen` covers every error code with non-empty copy; `App` shows the camera-unavailable error screen end-to-end with a stubbed `Worker` and `navigator`.
 
-Real camera video, the real Transformers.js pipeline (both backends), and real layout/visual rendering are verified manually: chrome-devtools MCP against a built preview (`pnpm build && pnpm start`) for the model-load screen, backend detection, offline cold-load, and Cache Storage contents; genuine on-device phone testing (sustained FPS against real traffic, both orientations, thermal/battery behavior) is the user's job post-merge, since neither jsdom nor a desktop headless browser has a real dash-mounted camera.
+Real camera video, real onnxruntime-web inference (both backends), and real layout/visual rendering are verified manually: chrome-devtools MCP against a built preview (`pnpm build && pnpm start`) for the model-load screen, backend detection, offline cold-load, and Cache Storage contents; genuine on-device phone testing (sustained FPS against real traffic, both orientations, thermal/battery behavior) is the user's job post-merge, since neither jsdom nor a desktop headless browser has a real dash-mounted camera.
 
 ---
 
@@ -302,7 +315,7 @@ Real camera video, the real Transformers.js pipeline (both backends), and real l
 - **Offline-first**: fully functional with no network after the first successful model download (see §7). Service worker updates apply silently (`autoUpdate`, no UI prompt).
 - **No secrets, no logging of sensitive data** (`CLAUDE.md`): v1 has no secrets and no user data to log in the first place; the camera stream and every detection stay in the tab.
 - **`pnpm check` clean** (format, lint, typecheck) before commits.
-- **Bundle size**: no date-picker, form, or crypto libraries carried over from the starter; the largest addition is `@huggingface/transformers` itself, an accepted cost for on-device inference. The unused ~23.5 MB bundled ONNX `.wasm` build artifact (§7) is known dead weight, not part of the runtime path, and deliberately excluded from the service-worker precache.
+- **Bundle size**: no date-picker, form, or crypto libraries carried over from the starter; the largest code dependency is `onnxruntime-web` itself, an accepted cost for on-device inference (the model weights are downloaded from Hugging Face at runtime, not bundled). The unused ~26 MB bundled ONNX `.wasm` build artifact (§7) is known dead weight, not part of the runtime path, and deliberately excluded from the service-worker precache.
 
 ## 11. Success Criteria (Acceptance)
 
