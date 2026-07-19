@@ -6,6 +6,17 @@ See [docs/TRD.md](docs/TRD.md) for the full technical reference.
 
 **Repository URL**: https://github.com/tuxracer/dashradar-app
 
+## Design & Use Case
+
+**Primary use case: landscape, on a dash mount.** The app is meant to run on a phone mounted on a car dash, in a fixed cradle, facing out the windshield, held in **landscape** orientation. The driver is the user, but they are seated well away from the phone: they interact with it by reaching across the cabin at arm's length, glancing at it briefly, and getting their eyes back on the road. Design every screen and control for that reach-over-at-a-distance interaction, not for a phone held comfortably in the hand. Portrait may happen and shouldn't look broken, but landscape is what we design and tune for.
+
+**Design principles that follow from this:**
+
+- **Beautiful minimalism.** Show only what earns its place on the glass. The HUD should read at a glance with almost no visual parsing: automotive-minimal, high contrast, no clutter or decorative chrome competing with the camera feed and detections.
+- **Large touch targets.** Every interactive control (the settings gear, toggles, retry actions, any future buttons) must be big and well-spaced enough to hit reliably on the first try from the driver's seat, one-handed, without looking closely. Prefer generously oversized hit areas over compact, dense layouts. When in doubt, make controls bigger.
+- **Glanceable, low-effort interaction.** Interactions should be quick and forgiving: few taps, obvious state, nothing that demands sustained attention or fine motor precision. Assume the user's attention is on driving and their hand is stretched across the cabin.
+- **Landscape-first layout.** Lay out and tune for landscape first. Keep controls reachable within a landscape frame and don't push essential touch targets to hard-to-reach corners.
+
 ## Architecture
 
 Client-only **Vite 8 React SPA** with **no backend or server runtime of its own** (the build is a static `dist/`). Data flows `src/App.tsx` → `DetectionProvider` (consumed via `useDetection()`) → `src/workers/detection` (a Web Worker running the RF-DETR ONNX model through raw onnxruntime-web, WebGPU or WASM) → `src/lib/detection` (pure filtering and HUD shaping, no React). `DetectionContext` owns the worker lifecycle and the frame pump; components only ever read `useDetection()`'s state.
