@@ -9,7 +9,16 @@ import globals from "globals";
 // No jsx-a11y: accessibility lint is intentionally off — see CLAUDE.md
 // ("No accessibility (a11y) lint" under Coding Standards).
 const eslintConfig = defineConfig([
-  globalIgnores(["dist/**"]),
+  // Generated build output, not source. `dist/**` is Vite's bundle; the others
+  // are stale artifacts (a former Next.js build and vite-plugin-pwa's emitted
+  // service worker) that would otherwise flood lint with thousands of errors.
+  globalIgnores([
+    "dist/**",
+    ".next/**",
+    "next-env.d.ts",
+    "public/sw.js",
+    "public/workbox-*.js",
+  ]),
   js.configs.recommended,
   tseslint.configs.recommended,
   react.configs.flat.recommended,

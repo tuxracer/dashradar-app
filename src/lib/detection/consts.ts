@@ -13,6 +13,7 @@ type RoadClass = { displayLabel: string; category: RoadCategory };
 
 /** COCO labels shown on the HUD; every other class is detected but hidden. */
 export const ROAD_CLASSES: Readonly<Record<string, RoadClass>> = {
+  police: { displayLabel: "POLICE", category: "vehicle" },
   car: { displayLabel: "CAR", category: "vehicle" },
   truck: { displayLabel: "TRUCK", category: "vehicle" },
   bus: { displayLabel: "BUS", category: "vehicle" },

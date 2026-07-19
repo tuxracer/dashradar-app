@@ -1,20 +1,38 @@
-import type { DataType } from "@huggingface/transformers";
 import type { DetectionBackend } from "./types";
 
 /**
- * RT-DETRv2 (r18vd backbone), COCO-trained, converted for Transformers.js.
+ * RF-DETR small, fine-tuned to detect Las Vegas Metro police vehicles.
  *
- * D-FINE nano ("onnx-community/dfine_n_coco-ONNX") was tried first but its
- * graph fails onnxruntime-web's WebGPU execution provider on every frame
- * (OrtRun: "Invalid dimension of 4294967295 for SizeToDimension") regardless
- * of dtype (reproduced with both fp16 and fp32); it only works on wasm. This
- * model runs cleanly on both the webgpu and wasm backends, so it replaces
- * D-FINE rather than adding a workaround for a broken graph.
+ * We run this ONNX model through raw onnxruntime-web rather than the
+ * Transformers.js `pipeline("object-detection")` path. The pipeline's built-in
+ * DETR post-processor assumes a softmax multi-class head with a background
+ * class and picks the arg-max label per query. This model's head is a single
+ * real class scored with a per-query sigmoid (index 1 = police, index 0 is an
+ * unused slot), so the pipeline decoder reads the logits wrong and drops every
+ * detection. Bypassing it lets us apply the correct sigmoid + cxcywh decode.
+ *
+ * Two builds are published: an fp16-weight model for the WebGPU backend and a
+ * larger fp32 model for the WASM fallback. Both have fp32 inputs/outputs.
  */
-export const MODEL_ID = "onnx-community/rtdetr_v2_r18vd-ONNX";
+export const MODEL_URL_BY_BACKEND: Readonly<Record<DetectionBackend, string>> =
+  {
+    webgpu:
+      "https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1/resolve/main/onnx/model_fp16.onnx",
+    wasm: "https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1/resolve/main/onnx/model.onnx",
+  };
 
-/** Weight precision per backend: fp16 on GPU, 8-bit quantized on WASM. */
-export const DTYPE_BY_BACKEND: Readonly<Record<DetectionBackend, DataType>> = {
-  webgpu: "fp16",
-  wasm: "q8",
-};
+/** Square input edge the model expects (NCHW `[1,3,512,512]`). */
+export const INPUT_SIZE = 512;
+
+/** ImageNet channel means (R, G, B) used to normalize the input. */
+export const IMAGENET_MEAN: readonly [number, number, number] = [
+  0.485, 0.456, 0.406,
+];
+
+/** ImageNet channel standard deviations (R, G, B) used to normalize the input. */
+export const IMAGENET_STD: readonly [number, number, number] = [
+  0.229, 0.224, 0.225,
+];
+
+/** Label emitted for every detection this single-class model produces. */
+export const POLICE_LABEL = "police";

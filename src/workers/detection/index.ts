@@ -1,18 +1,22 @@
 /// <reference lib="webworker" />
-import { pipeline, RawImage } from "@huggingface/transformers";
-import type {
-  ObjectDetectionPipeline,
-  ProgressCallback,
-} from "@huggingface/transformers";
-import { isNumber, isString } from "remeda";
+import { InferenceSession, Tensor } from "onnxruntime-web";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
-import { DTYPE_BY_BACKEND, MODEL_ID } from "./consts";
+import { INPUT_SIZE, MODEL_URL_BY_BACKEND } from "./consts";
+import { decodeDetections, preprocess } from "./inference";
 import type { DetectionBackend, WorkerResponse } from "./types";
 import { DetectionError, isWorkerRequest } from "./types";
 
 declare const self: DedicatedWorkerGlobalScope;
 
-let detector: ObjectDetectionPipeline | undefined;
+/** Names discovered from the session graph, resolved at load time. */
+type ModelIo = {
+  session: InferenceSession;
+  inputName: string;
+  detsName: string;
+  labelsName: string;
+};
+
+let model: ModelIo | undefined;
 
 const post = (message: WorkerResponse) => {
   self.postMessage(message);
@@ -22,32 +26,62 @@ const resolveBackend = (): DetectionBackend => {
   return "gpu" in navigator && navigator.gpu ? "webgpu" : "wasm";
 };
 
-const reportProgress: ProgressCallback = (info) => {
-  if (
-    info.status === "progress" &&
-    isString(info.file) &&
-    isNumber(info.loaded) &&
-    isNumber(info.total)
-  ) {
-    post({
-      type: "model-progress",
-      progress: { file: info.file, loaded: info.loaded, total: info.total },
-    });
+/** Expected output names; used when the graph does not expose them literally. */
+const EXPECTED_DETS_NAME = "dets";
+const EXPECTED_LABELS_NAME = "labels";
+
+/**
+ * Stream the model over the network, reporting byte progress, and return the
+ * downloaded weights. Progress mirrors the old Transformers.js load UX.
+ */
+const fetchModel = async (url: string): Promise<Uint8Array> => {
+  const file = url.slice(url.lastIndexOf("/") + 1);
+  const response = await fetch(url);
+  if (!response.ok || !response.body) {
+    throw new DetectionError("MODEL_LOAD_FAILED");
   }
+  const total = Number(response.headers.get("Content-Length")) || 0;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let loaded = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    chunks.push(value);
+    loaded += value.byteLength;
+    post({ type: "model-progress", progress: { file, loaded, total } });
+  }
+  const buffer = new Uint8Array(loaded);
+  let offset = 0;
+  for (const chunk of chunks) {
+    buffer.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return buffer;
 };
 
-const loadPipeline = (backend: DetectionBackend) => {
-  return pipeline("object-detection", MODEL_ID, {
-    device: backend,
-    dtype: DTYPE_BY_BACKEND[backend],
-    progress_callback: reportProgress,
+/** Download and instantiate the session for one backend. */
+const loadForBackend = async (backend: DetectionBackend): Promise<ModelIo> => {
+  const weights = await fetchModel(MODEL_URL_BY_BACKEND[backend]);
+  const session = await InferenceSession.create(weights, {
+    executionProviders: [backend === "webgpu" ? "webgpu" : "wasm"],
   });
+  const inputName = session.inputNames[0];
+  const detsName = session.outputNames.includes(EXPECTED_DETS_NAME)
+    ? EXPECTED_DETS_NAME
+    : session.outputNames[0];
+  const labelsName = session.outputNames.includes(EXPECTED_LABELS_NAME)
+    ? EXPECTED_LABELS_NAME
+    : session.outputNames[1];
+  return { session, inputName, detsName, labelsName };
 };
 
 const loadModel = async () => {
   const preferredBackend = resolveBackend();
   try {
-    detector = await loadPipeline(preferredBackend);
+    model = await loadForBackend(preferredBackend);
     post({ type: "ready", backend: preferredBackend });
     return;
   } catch {
@@ -57,11 +91,11 @@ const loadModel = async () => {
     }
   }
 
-  // The WebGPU API was present but the pipeline still failed to load (e.g. a
+  // The WebGPU API was present but the session still failed to load (e.g. a
   // blocklisted or otherwise unusable adapter). That isn't fatal on its own,
   // so fall back to wasm once before giving up.
   try {
-    detector = await loadPipeline("wasm");
+    model = await loadForBackend("wasm");
     post({ type: "ready", backend: "wasm" });
   } catch {
     post({ type: "worker-error", code: "MODEL_LOAD_FAILED" });
@@ -69,23 +103,28 @@ const loadModel = async () => {
 };
 
 const detect = async (frame: ImageBitmap) => {
-  if (!detector) {
+  if (!model) {
     frame.close();
     return;
   }
   try {
-    const canvas = new OffscreenCanvas(frame.width, frame.height);
+    const canvas = new OffscreenCanvas(INPUT_SIZE, INPUT_SIZE);
     const context = canvas.getContext("2d");
     if (!context) {
       throw new DetectionError("INFERENCE_FAILED");
     }
-    context.drawImage(frame, 0, 0);
-    const { data } = context.getImageData(0, 0, frame.width, frame.height);
-    const image = new RawImage(data, frame.width, frame.height, 4);
-    const detections = await detector(image, {
-      threshold: CONFIDENCE_THRESHOLD,
-      percentage: true,
-    });
+    context.drawImage(frame, 0, 0, INPUT_SIZE, INPUT_SIZE);
+    const imageData = context.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
+    const input = new Tensor("float32", preprocess(imageData), [
+      1,
+      3,
+      INPUT_SIZE,
+      INPUT_SIZE,
+    ]);
+    const outputs = await model.session.run({ [model.inputName]: input });
+    const dets = outputs[model.detsName].data as Float32Array;
+    const labels = outputs[model.labelsName].data as Float32Array;
+    const detections = decodeDetections(dets, labels, CONFIDENCE_THRESHOLD);
     post({ type: "detections", detections });
   } catch {
     post({ type: "worker-error", code: "INFERENCE_FAILED" });

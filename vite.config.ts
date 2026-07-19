@@ -77,6 +77,17 @@ const pwa = () =>
             cacheableResponse: { statuses: [0, 200] },
           },
         },
+        {
+          // The RF-DETR ONNX weights are downloaded from Hugging Face at
+          // runtime; cache-first so the model survives offline cold-loads.
+          urlPattern: ({ url }) => url.hostname === "huggingface.co",
+          handler: "CacheFirst",
+          options: {
+            cacheName: "model-cache",
+            expiration: { maxEntries: 4 },
+            cacheableResponse: { statuses: [0, 200] },
+          },
+        },
       ],
     },
   });
