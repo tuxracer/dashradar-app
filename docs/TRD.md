@@ -17,7 +17,7 @@ dashradar turns a phone mounted on a car dash into a live "radar" view: a full-s
 - A clean, **automotive-minimal HUD** ("Autopilot" direction): the road view stays uncluttered, position is communicated spatially (the radar strip), words are reserved for what matters.
 - **Offline-first**: works with no connection after the model has downloaded once.
 - Keep the phone's screen from sleeping while running (Screen Wake Lock).
-- **WebGPU when available, WASM fallback otherwise**, chosen automatically with no user-facing setting.
+- **WebGPU when usable, WASM fallback otherwise**, chosen automatically with no user-facing setting.
 
 ### Non-Goals (v1)
 
@@ -36,10 +36,12 @@ Primary target: a phone mounted in landscape on a car dash, orientation unlocked
 
 | Backend | Chosen when | Model build | Notes |
 | --- | --- | --- | --- |
-| WebGPU | `"gpu" in navigator && navigator.gpu` is truthy (`resolveBackend()`, `src/workers/detection/index.ts`) | `model_fp16.onnx` (fp16 weights, fp32 I/O, ~64 MB) | Faster; verified end-to-end against the shipped model in Chrome via chrome-devtools MCP |
-| WASM | No WebGPU (`navigator.gpu` absent), or the browser doesn't expose it | `model_int8.onnx` (int8 dynamic quant, fp32 I/O, ~35 MB) | Universal fallback; the smaller int8 build keeps the CPU path usable |
+| WebGPU | A GPU adapter **and** device can actually be acquired: `resolveBackend()` awaits `navigator.gpu.requestAdapter()` then `adapter.requestDevice()` (`src/workers/detection/index.ts`) | `model_fp16.onnx` (fp16 weights, fp32 I/O, ~64 MB) | Faster; verified end-to-end against the shipped model in Chrome via chrome-devtools MCP |
+| WASM | No usable WebGPU: `navigator.gpu` is absent, or `requestAdapter`/`requestDevice` returns nothing or throws | `model_int8.onnx` (int8 dynamic quant, fp32 I/O, ~35 MB) | Universal fallback; the smaller int8 build keeps the CPU path usable |
 
-No WebGPU is not treated as an error: the backend badge in `StatusBar` (`GPU` vs `CPU`) is the only place this is surfaced. There is no manual override.
+`resolveBackend()` probes for a real device **before** any weights are downloaded, rather than trusting that `navigator.gpu` merely exists. Some devices expose the API but cannot create a device; trusting the existence check would download the larger fp16 build, fail at `InferenceSession.create`, then fall back to downloading the int8 build too. Probing first sends an unusable GPU straight to wasm so only one set of weights is fetched. (`@webgpu/types` provides the ambient WebGPU type declarations, referenced from `src/vite-env.d.ts`.) The webgpu-to-wasm fallback in `loadModel` is kept as a safety net for the rarer case where the probe passes but the session still fails to create.
+
+No usable WebGPU is not treated as an error: the backend badge in `StatusBar` (`GPU` vs `CPU`) is the only place this is surfaced. There is no manual override.
 
 Real camera video, sustained frame rates against real-world objects, and on-device battery/thermal behavior are verified on-device by the user after merge; jsdom and headless Chrome cannot exercise a real camera or a real driving scene (see §9).
 
@@ -95,6 +97,7 @@ src/
   lib/
     camera/                     # getUserMedia wrapper; typed CameraError; rear-camera constraints
     detection/                  # road-class filter, NEAR heuristic, HUD shaping, coordinate mapping (pure)
+    serviceWorker/              # waitForServiceWorkerControl (defer model load until the SW controls the page) + requestPersistentStorage
     wakeLock/                   # Screen Wake Lock acquire/release with visibilitychange re-acquire
   types/
     index.ts                    # RawDetection, NormalizedBox, Detection, RoadCategory + type guards
@@ -125,7 +128,7 @@ type DetectionContextValue = {
 };
 ```
 
-Status transitions: the provider posts `{ type: "load" }` to the worker once on mount, regardless of whether `start()` has been called yet. `loading-model → ready` happens when the worker replies `ready` and `start()` hasn't run; `loading-model → running` (skipping `ready`) happens when the worker replies `ready` and `start()` already ran. `ready → running` happens on `start()`. `running → ready` happens on `stop()`. Any worker error or worker crash moves to `error` from any state; there is no in-app path back out of `error`. `ErrorScreen`'s "TRY AGAIN" button does a full `window.location.reload()`.
+Status transitions: the provider posts `{ type: "load" }` to the worker once, regardless of whether `start()` has been called yet. In production the load message is deferred until a service worker controls the page (`waitForServiceWorkerControl`, `src/lib/serviceWorker`, bounded by `SW_CONTROL_TIMEOUT_MS`) so the first-visit model download flows through Workbox's runtime cache instead of racing ahead of it (see §7); in dev, which has no service worker, it posts immediately. `loading-model → ready` happens when the worker replies `ready` and `start()` hasn't run; `loading-model → running` (skipping `ready`) happens when the worker replies `ready` and `start()` already ran. `ready → running` happens on `start()`. `running → ready` happens on `stop()`. Any worker error or worker crash moves to `error` from any state; there is no in-app path back out of `error`. `ErrorScreen`'s "TRY AGAIN" button does a full `window.location.reload()`.
 
 ### Detection loop (frame pump)
 
@@ -146,7 +149,7 @@ These invariants (one frame in flight, the generation guard, and keeping frame-s
 
 | Message | Payload | Purpose |
 | --- | --- | --- |
-| `load` | none | Download the ONNX weights and create the `InferenceSession`, posted once on mount |
+| `load` | none | Download the ONNX weights and create the `InferenceSession`; posted once, deferred until the service worker controls the page in production (see §7) |
 | `detect` | `frame: ImageBitmap` (transferred) | Run one frame through the model |
 
 `WorkerResponse` (worker → main thread):
@@ -271,8 +274,10 @@ Automotive-minimal HUD over a full-bleed video feed. Design principle: the road 
 
 1. **App shell precache** (Workbox `globPatterns: ["**/*.{js,css,html,svg,png,woff,woff2}"]`, `maximumFileSizeToCacheInBytes: 40_000_000`): every built JS/CSS/HTML/font/icon file, including the detection worker's own chunk. It's built via `new Worker(new URL(...), { type: "module" })`, so Vite emits it as a separate chunk, but that chunk is still matched by the `js` glob and precached like any other script. This is what makes a cold load work with zero connectivity.
 2. **Model weights + the ONNX runtime itself**, cached by two Workbox `CacheFirst` runtime-caching routes (`vite.config.ts`):
-   - The `"model-cache"` route caches the RF-DETR ONNX weights the worker `fetch()`es from `huggingface.co`. The worker streams the download itself (reading the response body chunk by chunk) to report byte progress, so the weights are not part of the precache glob; the runtime route is what keeps them offline after the first run.
+   - The `"model-cache"` route caches the RF-DETR ONNX weights the worker `fetch()`es from `huggingface.co`. The worker streams the download itself (reading the response body chunk by chunk) to report byte progress, so the weights are not part of the precache glob; the runtime route is what keeps them offline after the first run. The `huggingface.co` `resolve` URL responds with a 302 to a signed, per-request CDN URL, but Workbox keys the cache on the stable `huggingface.co` request URL, so later visits still hit the cache even though the redirect target changes each time.
    - onnxruntime-web points its `wasmPaths` at `cdn.jsdelivr.net` unless the app sets `wasmPaths` itself (it doesn't), so it fetches its `.wasm`/`.mjs` runtime from jsdelivr rather than from the local bundle. The `"ort-runtime"` route caches those `cdn.jsdelivr.net` requests.
+
+**First-visit caching depends on the worker being controlled.** The model is `fetch()`ed from inside the detection Web Worker. On a genuine first visit the worker can be created and start fetching before the service worker takes control of the page (the `clientsClaim` race), so that first fetch bypasses the `"model-cache"` route entirely and nothing is stored until a later visit. `DetectionContext` therefore defers the worker's `load` message until `navigator.serviceWorker.controller` is set (`waitForServiceWorkerControl`, `src/lib/serviceWorker`), bounded by `SW_CONTROL_TIMEOUT_MS` (3 s) so startup never stalls, and only in production (dev has no service worker). `src/main.tsx` also calls `requestPersistentStorage()` (a best-effort `navigator.storage.persist()`) so the browser is less likely to evict the cached weights between visits, which matters most on storage-constrained mobile browsers.
 
 **Known dead weight**: Vite still bundles a copy of the ONNX runtime `.wasm` (~26 MB, `ort-wasm-simd-threaded.jsep.wasm` from `onnxruntime-web`) into `dist/assets/` as a build artifact. It is never fetched at runtime (onnxruntime-web resolves its own jsdelivr URL instead) and is deliberately **excluded** from the Workbox precache glob (no `wasm` extension in `globPatterns`) so it doesn't bloat the service-worker cache for a file nothing ever reads. Verify offline behavior by inspecting the network log and Cache Storage in a real browser: after a fresh load `caches.keys()` should include the Workbox precache plus the `"model-cache"` and `"ort-runtime"` routes, and a subsequent offline hard reload should cold-load the app and run live inference with no network requests.
 
@@ -327,12 +332,13 @@ Vitest + Testing Library, **behavior-focused** (verify behavior, not implementat
 - **`src/lib/detection`**: the road-class filter and confidence threshold (`toRoadDetections`); the nearest/NEAR heuristic and blip shaping (`buildHudModel`), including the empty-frame case and the exact `NEAR_AREA_FRACTION` boundary; `mapBoxToViewport`'s cover-fit math for square, portrait-crop, and landscape-crop cases.
 - **`src/lib/camera`**: constraint building (rear camera requested) and every `DOMException` name mapped to its `CameraErrorCode`, plus the `UNSUPPORTED` path when `mediaDevices` is missing, via `vi.stubGlobal("navigator", …)`.
 - **`src/lib/wakeLock`**: acquire/release call the Wake Lock API correctly, re-acquires on a stubbed `visibilitychange` event, stops re-requesting after release, and is a safe no-op when the API is unsupported.
+- **`src/lib/serviceWorker`**: `waitForServiceWorkerControl` resolves immediately when the Service Worker API is absent or a controller already exists, resolves on a `controllerchange` event when initially uncontrolled, and resolves via the timeout when control never arrives (fake timers), via `vi.stubGlobal("navigator", …)`.
 - **`src/workers/detection`**: `isWorkerResponse` accepts every valid message variant and rejects malformed ones (unknown backend, missing fields, unknown error code); the pure `preprocess` (ImageNet normalization, NCHW layout) and `decodeDetections` (sigmoid thresholding, cxcywh-to-xyxy, class-index-1 selection) helpers in `inference.ts` are tested directly against known inputs.
-- **`src/context/DetectionContext`**: the full status machine against an injected fake worker (the `createWorker` test seam), including the one-frame-in-flight invariant across a fast `stop()`-then-`start()` (a regression test for a real race that was fixed), retrying after a `createImageBitmap` failure, and the FPS calculation staying finite.
+- **`src/context/DetectionContext`**: the full status machine against an injected fake worker (the `createWorker` test seam), including the one-frame-in-flight invariant across a fast `stop()`-then-`start()` (a regression test for a real race that was fixed), retrying after a `createImageBitmap` failure, and the FPS calculation staying finite. Because the `load` message is now deferred to a microtask (`import.meta.env.PROD` is false in tests, so it resolves immediately), the "starts loading on mount" test awaits it with `waitFor` rather than asserting synchronously.
 - **`src/context/SettingsContext`**: defaults `showVideo` to true, toggling flips and persists it to `localStorage`, a fresh mount restores the persisted value, and corrupt or wrong-shaped stored JSON falls back to defaults.
 - **Components** (RTL): `CameraView` attaches the stream and reports a typed error on failure (stubbing `getUserMedia`); `HudOverlay` renders the nearest box with/without the NEAR pill and positions floating tags, using exact pixel assertions against known inputs; `RadarStrip` positions one blip per detection by fraction and styles the near blip amber; `StatusBar` renders the wordmark and the settings gear and shows no FPS readout; `ModelLoadScreen` stays hidden during the anti-flash delay and then shows byte/percent progress; `ErrorScreen` covers every error code with non-empty copy; `SettingsButton` opens the panel; `SettingsScreen` renders nothing until opened, toggles and persists the video setting, shows the live engine readout (or a starting placeholder), and closes on the close button or Escape; `RadarBackdrop` renders a non-interactive full-bleed grid; `CameraView` keeps the video mounted but `opacity-0` when `visible` is false; `App` shows the camera-unavailable error screen end-to-end with a stubbed `Worker` and `navigator`.
 
-Real camera video, real onnxruntime-web inference (both backends), and real layout/visual rendering are verified manually: chrome-devtools MCP against a built preview (`pnpm build && pnpm start`) for the model-load screen, backend detection, offline cold-load, and Cache Storage contents; genuine on-device phone testing (sustained FPS against real traffic, both orientations, thermal/battery behavior) is the user's job post-merge, since neither jsdom nor a desktop headless browser has a real dash-mounted camera.
+Real camera video, real onnxruntime-web inference (both backends), and real layout/visual rendering are verified manually: chrome-devtools MCP against a built preview (`pnpm build && pnpm start`) for the model-load screen, backend detection, first-visit model caching, offline cold-load, and Cache Storage contents; genuine on-device phone testing (sustained FPS against real traffic, both orientations, thermal/battery behavior) is the user's job post-merge, since neither jsdom nor a desktop headless browser has a real dash-mounted camera.
 
 ---
 
