@@ -30,7 +30,7 @@ describe("SettingsContext", () => {
         showVideo: false,
         showDebug: false,
         stabilizeMotion: false,
-        radarDetectorMode: false,
+        radarDetectorMode: true,
       }),
     );
   });
@@ -83,7 +83,7 @@ describe("SettingsContext", () => {
         showVideo: true,
         showDebug: false,
         stabilizeMotion: false,
-        radarDetectorMode: false,
+        radarDetectorMode: true,
       }),
     );
   });
@@ -102,7 +102,7 @@ describe("SettingsContext", () => {
         showVideo: true,
         showDebug: true,
         stabilizeMotion: false,
-        radarDetectorMode: false,
+        radarDetectorMode: true,
       }),
     );
   });
@@ -121,7 +121,7 @@ describe("SettingsContext", () => {
         showVideo: true,
         showDebug: false,
         stabilizeMotion: true,
-        radarDetectorMode: false,
+        radarDetectorMode: true,
       }),
     );
   });
@@ -136,21 +136,21 @@ describe("SettingsContext", () => {
     expect(result.current.showDebug).toBe(false);
   });
 
-  it("defaults radarDetectorMode to false when storage is empty", () => {
+  it("defaults radarDetectorMode to true when storage is empty", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
-    expect(result.current.radarDetectorMode).toBe(false);
+    expect(result.current.radarDetectorMode).toBe(true);
   });
 
   it("toggling flips radarDetectorMode and persists it to localStorage", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     act(() => result.current.toggleRadarDetectorMode());
-    expect(result.current.radarDetectorMode).toBe(true);
+    expect(result.current.radarDetectorMode).toBe(false);
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
         showVideo: true,
         showDebug: false,
         stabilizeMotion: false,
-        radarDetectorMode: true,
+        radarDetectorMode: false,
       }),
     );
   });

@@ -236,9 +236,10 @@ gates the `DebugOverlay` panel and the confidence/coords annotations
 either. `stabilizeMotion` (default false) turns on gyro motion compensation
 (§4.2): it drives `HudOverlay`'s `stabilize` prop and, on iOS, is the opt-in
 that lets `StartGate` appear to request motion permission. `radarDetectorMode`
-(default off, persisted like the others) gates the fullscreen radar-detector
+(default on, persisted like the others) gates the fullscreen radar-detector
 meter: `RadarScreen` renders `RadarDetectorScreen` in place of `HudOverlay` and
-`RadarStrip` while it's on. `SettingsProvider`
+`RadarStrip` while it's on, so the radar-detector meter is what a fresh user
+sees first; toggling it off switches to the bounding-box HUD. `SettingsProvider`
 wraps the app outside `DetectionProvider`;
 `SettingsButton` (a gear in `StatusBar`) opens the full-screen
 `SettingsScreen`, which is the only UI that writes any of these options.

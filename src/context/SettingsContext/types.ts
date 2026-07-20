@@ -22,7 +22,7 @@ export type Settings = {
   /**
    * When true, the HUD is replaced by a fullscreen radar-detector meter: a
    * segmented ladder showing how strongly a police vehicle is detected, with no
-   * bounding boxes and no camera feed. Off by default.
+   * bounding boxes and no camera feed. On by default.
    */
   radarDetectorMode: boolean;
 };

@@ -43,7 +43,7 @@ describe("SettingsScreen", () => {
         showVideo: false,
         showDebug: false,
         stabilizeMotion: false,
-        radarDetectorMode: false,
+        radarDetectorMode: true,
       }),
     );
   });
@@ -58,7 +58,7 @@ describe("SettingsScreen", () => {
         showVideo: true,
         showDebug: true,
         stabilizeMotion: false,
-        radarDetectorMode: false,
+        radarDetectorMode: true,
       }),
     );
   });
@@ -73,7 +73,7 @@ describe("SettingsScreen", () => {
         showVideo: true,
         showDebug: false,
         stabilizeMotion: true,
-        radarDetectorMode: false,
+        radarDetectorMode: true,
       }),
     );
   });
