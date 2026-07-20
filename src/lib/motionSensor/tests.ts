@@ -22,11 +22,25 @@ describe("mapRotationRateToScreen", () => {
     });
   });
 
-  it("swaps the axes in landscape (angle 90) so beta drives yaw", () => {
-    const screen = mapRotationRateToScreen(rate(5, 9), 90);
-    // In landscape a left/right pan comes from the device x-axis (beta).
-    expect(Math.abs(screen.yawRate)).toBe(5);
-    expect(Math.abs(screen.pitchRate)).toBe(9);
+  it("swaps and signs the axes for landscape angle 90", () => {
+    expect(mapRotationRateToScreen(rate(5, 9), 90)).toEqual({
+      yawRate: -5,
+      pitchRate: 9,
+    });
+  });
+
+  it("negates both axes at angle 180", () => {
+    expect(mapRotationRateToScreen(rate(5, 9), 180)).toEqual({
+      yawRate: -9,
+      pitchRate: -5,
+    });
+  });
+
+  it("swaps and signs the axes for landscape angle 270", () => {
+    expect(mapRotationRateToScreen(rate(5, 9), 270)).toEqual({
+      yawRate: 5,
+      pitchRate: -9,
+    });
   });
 });
 
@@ -91,5 +105,14 @@ describe("orientationDeltaToPixels", () => {
       viewport,
     );
     expect(big.dx).toBeCloseTo(small.dx * 2);
+  });
+
+  it("moves the box down for a positive pitch (pitch is not negated)", () => {
+    const { dy } = orientationDeltaToPixels(
+      { yaw: 0, pitch: 0.1 },
+      video,
+      viewport,
+    );
+    expect(dy).toBeGreaterThan(0);
   });
 });

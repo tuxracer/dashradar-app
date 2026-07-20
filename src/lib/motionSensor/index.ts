@@ -29,6 +29,7 @@ export const mapRotationRateToScreen = (
   }
 };
 
+/** Radians per degree, for converting deg/s rates into radian orientation. */
 const DEG_TO_RAD = Math.PI / 180;
 
 /** Integrate a screen-aligned deg/s rate into cumulative radians over dt seconds. */
@@ -63,7 +64,7 @@ export const orientationDeltaToPixels = (
   const vFovRad =
     2 * Math.atan(Math.tan(hFovRad / 2) * (displayedHeight / displayedWidth));
   return {
-    dx: -delta.yaw * (displayedWidth / hFovRad) + 0,
-    dy: delta.pitch * (displayedHeight / vFovRad) + 0,
+    dx: -delta.yaw * (displayedWidth / hFovRad) + 0, // + 0 normalizes -0 to 0 so a zero delta returns exactly { dx: 0, dy: 0 }
+    dy: delta.pitch * (displayedHeight / vFovRad) + 0, // + 0 normalizes -0 to 0 so a zero delta returns exactly { dx: 0, dy: 0 }
   };
 };

@@ -9,6 +9,7 @@ export type RotationRate = { alpha: number; beta: number; gamma: number };
 /** Motion-sensor permission state. "unsupported" means no DeviceMotion at all. */
 export type MotionPermission = "unsupported" | "prompt" | "granted" | "denied";
 
+/** All valid MotionPermission values, for the runtime guard below. */
 const MOTION_PERMISSIONS: readonly MotionPermission[] = [
   "unsupported",
   "prompt",
