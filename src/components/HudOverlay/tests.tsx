@@ -74,4 +74,27 @@ describe("HudOverlay", () => {
     );
     expect(container.querySelector("[data-testid=nearest-box]")).toBeNull();
   });
+
+  it("shows confidence and coords on the nearest box when debug is on", () => {
+    const hud: HudModel = {
+      nearest: car,
+      near: true,
+      others: [],
+      blips: [],
+    };
+    render(<HudOverlay hud={hud} videoSize={size} viewportSize={size} debug />);
+    expect(screen.getByText("92%")).toBeInTheDocument();
+    expect(screen.getByText("0.40,0.50 0.60,0.80")).toBeInTheDocument();
+  });
+
+  it("omits confidence and coords when debug is off", () => {
+    const hud: HudModel = {
+      nearest: car,
+      near: true,
+      others: [],
+      blips: [],
+    };
+    render(<HudOverlay hud={hud} videoSize={size} viewportSize={size} />);
+    expect(screen.queryByText("92%")).not.toBeInTheDocument();
+  });
 });

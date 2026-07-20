@@ -1,5 +1,6 @@
 import type { HudModel, Size } from "@/lib/detection";
 import { mapBoxToViewport } from "@/lib/detection";
+import type { Detection, NormalizedBox } from "@/types";
 import { TAG_OFFSET_PX } from "./consts";
 
 export * from "./consts";
@@ -8,6 +9,8 @@ type HudOverlayProps = {
   hud: HudModel;
   videoSize: Size;
   viewportSize: Size;
+  /** When true, annotate each detection with its confidence and box coords. */
+  debug?: boolean;
 };
 
 // `mapBoxToViewport` computes pixel offsets from normalized fractions, which
@@ -15,10 +18,27 @@ type HudOverlayProps = {
 // before handing values to inline styles so CSS pixel offsets land exactly.
 const roundPx = (value: number): number => Math.round(value);
 
+/** Confidence as a whole-number percentage, e.g. 0.92 -> "92%". */
+const formatConfidence = (score: number): string =>
+  `${Math.round(score * 100)}%`;
+
+/** Normalized box as "xmin,ymin xmax,ymax", each to two decimals. */
+const formatBox = (box: NormalizedBox): string =>
+  `${box.xmin.toFixed(2)},${box.ymin.toFixed(2)} ${box.xmax.toFixed(2)},${box.ymax.toFixed(2)}`;
+
+const debugAnnotation = (detection: Detection) => (
+  <span className="mt-0.5 flex items-center justify-center gap-1 whitespace-nowrap rounded bg-black/70 px-1.5 py-px text-center font-mono text-[10px] leading-tight tracking-tight text-hud-amber">
+    <span>{formatConfidence(detection.score)}</span>
+    <span>·</span>
+    <span>{formatBox(detection.box)}</span>
+  </span>
+);
+
 export const HudOverlay = ({
   hud,
   videoSize,
   viewportSize,
+  debug,
 }: HudOverlayProps) => {
   const nearestBox = hud.nearest
     ? mapBoxToViewport(hud.nearest.box, videoSize, viewportSize)
@@ -51,6 +71,11 @@ export const HudOverlay = ({
             {hud.nearest.displayLabel}
             {hud.near ? " · NEAR" : ""}
           </span>
+          {debug && (
+            <span className="absolute -bottom-6 left-1/2 -translate-x-1/2">
+              {debugAnnotation(hud.nearest)}
+            </span>
+          )}
         </div>
       )}
       {hud.others.map((detection, index) => {
@@ -68,6 +93,7 @@ export const HudOverlay = ({
               {detection.displayLabel}
             </span>
             <span className="mx-auto mt-0.5 block h-5 w-px bg-gradient-to-b from-white/75 to-transparent" />
+            {debug && debugAnnotation(detection)}
           </div>
         );
       })}
