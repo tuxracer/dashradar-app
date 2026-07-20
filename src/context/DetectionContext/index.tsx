@@ -28,6 +28,7 @@ import {
   FPS_SAMPLE_SIZE,
   FRAME_RETRY_MS,
   INITIAL_DEBUG,
+  MIN_FRAME_INTERVAL_MS,
   SW_CONTROL_TIMEOUT_MS,
 } from "./consts";
 import type {
@@ -119,6 +120,12 @@ export const DetectionProvider = ({
   // pending, which would put two frames in flight.
   const pumpGenerationRef = useRef(0);
   const retryTimerRef = useRef<number | undefined>(undefined);
+  // Pending pacing timeout scheduled by schedulePacedFrame; cleared wherever
+  // the pump is torn down so a stale timer can't pump a stopped session.
+  const paceTimerRef = useRef<number | undefined>(undefined);
+  // True when the pump was stopped because the page went hidden, so the
+  // visibility handler knows to restart it (and only it) on return.
+  const pausedByVisibilityRef = useRef(false);
   const fileProgressRef = useRef(new Map<string, ModelProgress>());
   const resultTimesRef = useRef<number[]>([]);
   // Capture duration of the most recently posted frame and the timestamp it was
@@ -188,6 +195,23 @@ export const DetectionProvider = ({
   useEffect(() => {
     sendFrameRef.current = sendFrame;
   }, [sendFrame]);
+
+  /**
+   * Re-prime the pump after a result, delaying so captures never start less
+   * than MIN_FRAME_INTERVAL_MS apart. On devices whose round trip already
+   * exceeds the floor this sends immediately (unchanged behavior); on fast
+   * devices it idles the GPU between frames instead of running back-to-back.
+   */
+  const schedulePacedFrame = useCallback((elapsedSincePostMs: number) => {
+    const delay = Math.max(0, MIN_FRAME_INTERVAL_MS - elapsedSincePostMs);
+    if (delay === 0) {
+      void sendFrameRef.current();
+      return;
+    }
+    paceTimerRef.current = window.setTimeout(() => {
+      void sendFrameRef.current();
+    }, delay);
+  }, []);
 
   const recordResultTime = useCallback(() => {
     const times = resultTimesRef.current;
@@ -321,7 +345,7 @@ export const DetectionProvider = ({
             shownCount: tracked.length,
           });
           recordResultTime();
-          void sendFrame();
+          schedulePacedFrame(roundTripMs);
           break;
         }
         case "worker-error": {
@@ -332,6 +356,7 @@ export const DetectionProvider = ({
           pumpGenerationRef.current += 1;
           inFlightRef.current = 0;
           window.clearTimeout(retryTimerRef.current);
+          window.clearTimeout(paceTimerRef.current);
           break;
         }
       }
@@ -344,6 +369,7 @@ export const DetectionProvider = ({
       pumpGenerationRef.current += 1;
       inFlightRef.current = 0;
       window.clearTimeout(retryTimerRef.current);
+      window.clearTimeout(paceTimerRef.current);
     };
     // Defer the model download until a service worker controls the page so its
     // fetch flows through Workbox's runtime cache on a first visit. In dev
@@ -362,9 +388,10 @@ export const DetectionProvider = ({
     return () => {
       cancelled = true;
       window.clearTimeout(retryTimerRef.current);
+      window.clearTimeout(paceTimerRef.current);
       worker.terminate();
     };
-  }, [createWorker, recordResultTime, sendFrame]);
+  }, [createWorker, recordResultTime, schedulePacedFrame, sendFrame]);
 
   const start = useCallback(
     (video: HTMLVideoElement) => {
@@ -391,6 +418,7 @@ export const DetectionProvider = ({
     runningRef.current = false;
     pumpGenerationRef.current += 1;
     window.clearTimeout(retryTimerRef.current);
+    window.clearTimeout(paceTimerRef.current);
     // Confirmation is wall-clock-age based, so a track left pending across a
     // long stop() would otherwise confirm on the first matched frame after
     // restart. A resumed session must re-earn confirmation from scratch.
@@ -400,6 +428,35 @@ export const DetectionProvider = ({
       setStatus("ready");
     }
   }, []);
+
+  // Pause the pump while the page is hidden (app switched away, screen off).
+  // rAF loops throttle on their own, but the pump is driven by worker results,
+  // so without this it keeps capturing and running inference in the background
+  // until the OS freezes the tab. `stop`/`start` already handle the in-flight
+  // races; the ref restricts the resume to sessions this handler paused, so a
+  // visibility bounce never starts a pump the user hadn't started.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        if (runningRef.current) {
+          pausedByVisibilityRef.current = true;
+          stop();
+        }
+        return;
+      }
+      if (pausedByVisibilityRef.current) {
+        pausedByVisibilityRef.current = false;
+        const video = videoRef.current;
+        if (video) {
+          start(video);
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [start, stop]);
 
   /** Angular delta (radians) between the live orientation and the pose the
    * currently displayed detection was captured at. */

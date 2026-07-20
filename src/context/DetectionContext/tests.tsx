@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DetectionProvider,
   FRAME_RETRY_MS,
+  MIN_FRAME_INTERVAL_MS,
   useDetection,
 } from "@/context/DetectionContext";
 import type { DetectionWorkerLike } from "@/context/DetectionContext";
@@ -122,10 +123,22 @@ const fakeBitmap = () => {
   } as unknown as ImageBitmap;
 };
 
+/** Fake the page's visibility state and fire the matching event. */
+const setDocumentVisibility = (state: DocumentVisibilityState) => {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    get: () => state,
+  });
+  document.dispatchEvent(new Event("visibilitychange"));
+};
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
   vi.restoreAllMocks();
+  // Restore the prototype visibilityState getter shadowed by
+  // setDocumentVisibility, so later tests see jsdom's real value.
+  Reflect.deleteProperty(document, "visibilityState");
 });
 
 describe("DetectionProvider", () => {
@@ -265,6 +278,85 @@ describe("DetectionProvider", () => {
     // The retry fires after FRAME_RETRY_MS and succeeds.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(FRAME_RETRY_MS);
+    });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(1);
+  });
+
+  it("paces the next frame to the minimum interval after a fast result", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    // Flush the capture microtask: the first frame posts immediately.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(1);
+    // A result arriving well before the pacing floor must not re-prime the
+    // pump immediately (the old behavior posted on the next microtask).
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(1);
+    // Once the interval elapses, exactly one more frame goes out.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(2);
+  });
+
+  it("does not pump a paced frame scheduled before stop()", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartStop />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    // The result schedules a paced frame, then stop() lands before it fires.
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+      });
+    });
+    act(() => {
+      screen.getByTestId("stop").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS * 2);
     });
     expect(
       worker.posted.filter((message) => message.type === "detect"),
@@ -543,6 +635,85 @@ describe("DetectionProvider", () => {
       worker.emit({ type: "detections", detections: [], timing });
     });
     expect(screen.getByTestId("objects").textContent).toBe("1");
+  });
+});
+
+describe("visibility pause", () => {
+  it("pauses the pump while hidden and resumes on return", async () => {
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(
+      <>
+        <Probe />
+        <StartOnReady />
+      </>,
+    );
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    act(() => {
+      setDocumentVisibility("hidden");
+    });
+    expect(screen.getByTestId("status").textContent).toBe("ready");
+    // The in-flight frame's result lands while hidden: it must not re-prime
+    // the stopped pump.
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+      });
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(1);
+    // Returning to the foreground restarts the pump with the same video.
+    act(() => {
+      setDocumentVisibility("visible");
+    });
+    expect(screen.getByTestId("status").textContent).toBe("running");
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(2);
+    });
+  });
+
+  it("does not start the pump on a visibility bounce when never started", async () => {
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<Probe />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      setDocumentVisibility("hidden");
+    });
+    act(() => {
+      setDocumentVisibility("visible");
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId("status").textContent).toBe("ready");
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(0);
   });
 });
 

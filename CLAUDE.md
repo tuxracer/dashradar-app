@@ -37,7 +37,7 @@ Client-only **Vite 8 React SPA** with **no backend or server runtime of its own*
 
 Each module is a directory named after its primary export, containing `index.ts` and optionally `consts.ts` (constants), `types.ts` (types + guards), and `tests.ts`.
 
-**Frame-pump backpressure**: only one frame is ever in flight to the worker. The next frame is sent only after the previous result comes back (latest-wins, no queue), so detection self-paces to whatever the device can do without ever blocking the video. See Gotchas for the invariants that keep this true under React StrictMode.
+**Frame-pump backpressure and pacing**: only one frame is ever in flight to the worker. The next frame is sent only after the previous result comes back (latest-wins, no queue), and never sooner than `MIN_FRAME_INTERVAL_MS` (125 ms, ~8 Hz) after the previous send: `schedulePacedFrame` defers the re-prime on a timeout when a result returns faster than the floor, so fast WebGPU devices idle between frames instead of running inference back-to-back and thermal-throttling on the dash, while slower devices are unaffected. A `visibilitychange` listener stops the pump when the page goes hidden and restarts it (only if it was the one that paused it) when the page returns, so a backgrounded app doesn't keep burning battery on inference. See Gotchas for the invariants that keep all of this true under React StrictMode.
 
 **Rendering**: pure client-side SPA. There is no server rendering of any kind. Never introduce SSR/SSG or anything that renders app state outside the browser.
 
