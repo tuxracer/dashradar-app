@@ -8,4 +8,5 @@ export const DEFAULT_SETTINGS: Settings = {
   showVideo: true,
   showDebug: false,
   stabilizeMotion: false,
+  radarDetectorMode: false,
 };

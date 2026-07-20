@@ -19,6 +19,12 @@ export type Settings = {
    * the tap-to-start gate once enabled.
    */
   stabilizeMotion: boolean;
+  /**
+   * When true, the HUD is replaced by a fullscreen radar-detector meter: a
+   * segmented ladder showing how strongly a police vehicle is detected, with no
+   * bounding boxes and no camera feed. Off by default.
+   */
+  radarDetectorMode: boolean;
 };
 
 /** Value exposed by the settings context via useSettings(). */
@@ -29,6 +35,8 @@ export type SettingsContextValue = {
   toggleShowDebug: () => void;
   stabilizeMotion: boolean;
   toggleStabilizeMotion: () => void;
+  radarDetectorMode: boolean;
+  toggleRadarDetectorMode: () => void;
   /** Whether the full-screen settings panel is open. Ephemeral, not persisted. */
   settingsOpen: boolean;
   /** Opens the full-screen settings panel. */
@@ -51,6 +59,8 @@ export const isPersistedSettings = (
     isPlainObject(value) &&
     (value.showVideo === undefined || isBoolean(value.showVideo)) &&
     (value.showDebug === undefined || isBoolean(value.showDebug)) &&
-    (value.stabilizeMotion === undefined || isBoolean(value.stabilizeMotion))
+    (value.stabilizeMotion === undefined || isBoolean(value.stabilizeMotion)) &&
+    (value.radarDetectorMode === undefined ||
+      isBoolean(value.radarDetectorMode))
   );
 };

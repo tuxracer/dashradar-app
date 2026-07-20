@@ -31,6 +31,8 @@ export const SettingsScreen = ({ backend, fps }: SettingsScreenProps) => {
     toggleShowDebug,
     stabilizeMotion,
     toggleStabilizeMotion,
+    radarDetectorMode,
+    toggleRadarDetectorMode,
   } = useSettings();
 
   useEffect(() => {
@@ -140,6 +142,34 @@ export const SettingsScreen = ({ backend, fps }: SettingsScreenProps) => {
               <span
                 className={`inline-block h-6 w-6 rounded-full bg-surface transition-transform ${
                   stabilizeMotion
+                    ? "translate-x-[1.75rem]"
+                    : "translate-x-[0.25rem]"
+                }`}
+              />
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={toggleRadarDetectorMode}
+            className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
+          >
+            <span className="flex flex-col gap-1">
+              <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                Radar detector mode
+              </span>
+              <span className="text-sm font-medium text-white/45">
+                Fullscreen police signal meter, no boxes.
+              </span>
+            </span>
+            <span
+              className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors ${
+                radarDetectorMode ? "bg-hud-amber" : "bg-white/25"
+              }`}
+            >
+              <span
+                className={`inline-block h-6 w-6 rounded-full bg-surface transition-transform ${
+                  radarDetectorMode
                     ? "translate-x-[1.75rem]"
                     : "translate-x-[0.25rem]"
                 }`}

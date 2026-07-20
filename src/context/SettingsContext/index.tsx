@@ -62,15 +62,23 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const [stabilizeMotion, setStabilizeMotion] = useState(
     () => loadSettings().stabilizeMotion,
   );
+  const [radarDetectorMode, setRadarDetectorMode] = useState(
+    () => loadSettings().radarDetectorMode,
+  );
 
   useEffect(() => {
-    const next: Settings = { showVideo, showDebug, stabilizeMotion };
+    const next: Settings = {
+      showVideo,
+      showDebug,
+      stabilizeMotion,
+      radarDetectorMode,
+    };
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     } catch {
       // Storage unavailable (private mode / quota); keep the in-memory value.
     }
-  }, [showVideo, showDebug, stabilizeMotion]);
+  }, [showVideo, showDebug, stabilizeMotion, radarDetectorMode]);
 
   const toggleShowVideo = useCallback(() => {
     setShowVideo((prev) => !prev);
@@ -82,6 +90,10 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
 
   const toggleStabilizeMotion = useCallback(() => {
     setStabilizeMotion((prev) => !prev);
+  }, []);
+
+  const toggleRadarDetectorMode = useCallback(() => {
+    setRadarDetectorMode((prev) => !prev);
   }, []);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -102,6 +114,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleShowDebug,
       stabilizeMotion,
       toggleStabilizeMotion,
+      radarDetectorMode,
+      toggleRadarDetectorMode,
       settingsOpen,
       openSettings,
       closeSettings,
@@ -113,6 +127,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleShowDebug,
       stabilizeMotion,
       toggleStabilizeMotion,
+      radarDetectorMode,
+      toggleRadarDetectorMode,
       settingsOpen,
       openSettings,
       closeSettings,
