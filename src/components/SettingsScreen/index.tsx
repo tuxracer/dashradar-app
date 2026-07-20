@@ -15,14 +15,21 @@ type SettingsScreenProps = {
 /**
  * Full-screen settings panel built for driver-first use on a dash mount, in
  * landscape. Renders nothing until the panel is opened. Large, full-width rows
- * with big tap targets: a Video feed toggle plus read-only Detection engine,
- * Model, and About rows. Closes on the large close button or Escape. Detection
- * keeps running underneath while this is open. Reads backend/fps as props (the
- * same way StatusBar used to) so it stays testable without the worker.
+ * with big tap targets: Video feed and Debug overlay toggles plus read-only
+ * Detection engine, Model, and About rows. Closes on the large close button or
+ * Escape. Detection keeps running underneath while this is open. Reads
+ * backend/fps as props (the same way StatusBar used to) so it stays testable
+ * without the worker.
  */
 export const SettingsScreen = ({ backend, fps }: SettingsScreenProps) => {
-  const { settingsOpen, closeSettings, showVideo, toggleShowVideo } =
-    useSettings();
+  const {
+    settingsOpen,
+    closeSettings,
+    showVideo,
+    toggleShowVideo,
+    showDebug,
+    toggleShowDebug,
+  } = useSettings();
 
   useEffect(() => {
     if (!settingsOpen) {
@@ -84,6 +91,27 @@ export const SettingsScreen = ({ backend, fps }: SettingsScreenProps) => {
               <span
                 className={`inline-block h-6 w-6 rounded-full bg-surface transition-transform ${
                   showVideo ? "translate-x-[1.75rem]" : "translate-x-[0.25rem]"
+                }`}
+              />
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={toggleShowDebug}
+            className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
+          >
+            <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+              Debug overlay
+            </span>
+            <span
+              className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors ${
+                showDebug ? "bg-hud-amber" : "bg-white/25"
+              }`}
+            >
+              <span
+                className={`inline-block h-6 w-6 rounded-full bg-surface transition-transform ${
+                  showDebug ? "translate-x-[1.75rem]" : "translate-x-[0.25rem]"
                 }`}
               />
             </span>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CameraView } from "@/components/CameraView";
+import { DebugOverlay } from "@/components/DebugOverlay";
 import { ErrorScreen } from "@/components/ErrorScreen";
 import { HudOverlay } from "@/components/HudOverlay";
 import { ModelLoadScreen } from "@/components/ModelLoadScreen";
@@ -29,9 +30,9 @@ const useViewportSize = (): Size => {
 };
 
 const RadarScreen = () => {
-  const { status, backend, modelProgress, hud, fps, error, start } =
+  const { status, backend, modelProgress, hud, fps, debug, error, start } =
     useDetection();
-  const { showVideo } = useSettings();
+  const { showVideo, showDebug } = useSettings();
   const [cameraError, setCameraError] = useState<CameraError>();
   const [videoSize, setVideoSize] = useState<Size>();
   const viewportSize = useViewportSize();
@@ -79,10 +80,19 @@ const RadarScreen = () => {
           hud={hud}
           videoSize={videoSize}
           viewportSize={viewportSize}
+          debug={showDebug}
         />
       )}
       {hud && <RadarStrip blips={hud.blips} />}
       <StatusBar />
+      <DebugOverlay
+        backend={backend}
+        fps={fps}
+        modelProgress={modelProgress}
+        debug={debug}
+        videoSize={videoSize}
+        viewportSize={viewportSize}
+      />
       <SettingsScreen backend={backend} fps={fps} />
       {status === "loading-model" && (
         <ModelLoadScreen progress={modelProgress} />

@@ -43,6 +43,16 @@ describe("SettingsScreen", () => {
     );
   });
 
+  it("toggles and persists the debug setting from the Debug overlay row", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    await user.click(screen.getByText("Debug overlay"));
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({ showVideo: true, showDebug: true }),
+    );
+  });
+
   it("closes on the close button", async () => {
     const user = userEvent.setup();
     renderScreen();
