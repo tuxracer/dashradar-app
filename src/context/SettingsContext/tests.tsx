@@ -31,6 +31,7 @@ describe("SettingsContext", () => {
         showDebug: false,
         stabilizeMotion: false,
         radarDetectorMode: true,
+        radarAudio: true,
       }),
     );
   });
@@ -84,6 +85,7 @@ describe("SettingsContext", () => {
         showDebug: false,
         stabilizeMotion: false,
         radarDetectorMode: true,
+        radarAudio: true,
       }),
     );
   });
@@ -103,6 +105,7 @@ describe("SettingsContext", () => {
         showDebug: true,
         stabilizeMotion: false,
         radarDetectorMode: true,
+        radarAudio: true,
       }),
     );
   });
@@ -122,6 +125,7 @@ describe("SettingsContext", () => {
         showDebug: false,
         stabilizeMotion: true,
         radarDetectorMode: true,
+        radarAudio: true,
       }),
     );
   });
@@ -141,6 +145,26 @@ describe("SettingsContext", () => {
     expect(result.current.radarDetectorMode).toBe(true);
   });
 
+  it("defaults radarAudio to true when storage is empty", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.radarAudio).toBe(true);
+  });
+
+  it("toggling flips radarAudio and persists it to localStorage", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleRadarAudio());
+    expect(result.current.radarAudio).toBe(false);
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({
+        showVideo: true,
+        showDebug: false,
+        stabilizeMotion: false,
+        radarDetectorMode: true,
+        radarAudio: false,
+      }),
+    );
+  });
+
   it("toggling flips radarDetectorMode and persists it to localStorage", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     act(() => result.current.toggleRadarDetectorMode());
@@ -151,6 +175,7 @@ describe("SettingsContext", () => {
         showDebug: false,
         stabilizeMotion: false,
         radarDetectorMode: false,
+        radarAudio: true,
       }),
     );
   });

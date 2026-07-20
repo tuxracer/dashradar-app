@@ -1,4 +1,6 @@
 import { useEffect, useRef } from "react";
+import { createRadarBeeper } from "@/lib/radarAudio";
+import type { RadarBeeper } from "@/lib/radarAudio";
 import {
   decayPeak,
   litSegments,
@@ -14,6 +16,8 @@ export * from "./consts";
 type RadarDetectorScreenProps = {
   /** Current raw police-signal strength in [0, 1] (see hudSignal). */
   confidence: number;
+  /** Whether the beeping audio indicator is on (the radarAudio setting). */
+  audioEnabled: boolean;
 };
 
 /** Arc angle for a segment, in degrees, 0 pointing straight up. */
@@ -32,12 +36,17 @@ const ALERT_RING_COLOR = `rgb(${SIGNAL_HIGH_COLOR.join(", ")})`;
  * segments, colors, readout, status word, and glow straight to the DOM, off
  * React's render path, so smoothness does not depend on the detector's frame
  * rate. The camera feed and bounding boxes are intentionally not shown in this
- * mode.
+ * mode. The same loop feeds the level to a radar-detector beeper (see
+ * lib/radarAudio), so the sound tracks the meter exactly and exists only while
+ * this mode is mounted; audioEnabled false feeds it silence instead.
  */
 export const RadarDetectorScreen = ({
   confidence,
+  audioEnabled,
 }: RadarDetectorScreenProps) => {
   const confidenceRef = useRef(confidence);
+  const audioEnabledRef = useRef(audioEnabled);
+  const beeperRef = useRef<RadarBeeper | undefined>(undefined);
   const peakRef = useRef(0);
   const lastTimeRef = useRef<number | undefined>(undefined);
   const segmentRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -54,6 +63,21 @@ export const RadarDetectorScreen = ({
   }, [confidence]);
 
   useEffect(() => {
+    audioEnabledRef.current = audioEnabled;
+  }, [audioEnabled]);
+
+  // The beeper lives exactly as long as this screen: leaving radar detector
+  // mode (or unmounting for any reason) tears the audio graph down.
+  useEffect(() => {
+    const beeper = createRadarBeeper();
+    beeperRef.current = beeper;
+    return () => {
+      beeper.dispose();
+      beeperRef.current = undefined;
+    };
+  }, []);
+
+  useEffect(() => {
     let frame = 0;
     const tick = (now: number) => {
       const last = lastTimeRef.current ?? now;
@@ -63,6 +87,10 @@ export const RadarDetectorScreen = ({
 
       const level = decayPeak(peakRef.current, confidenceRef.current, dtSec);
       peakRef.current = level;
+
+      // Feed the audio the same peak-held level the meter shows; a disabled
+      // toggle feeds silence, which also ends any tone already sounding.
+      beeperRef.current?.update(audioEnabledRef.current ? level : 0, now);
 
       const color = signalColor(level);
       const lit = litSegments(level, SEGMENT_COUNT);

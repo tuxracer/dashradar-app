@@ -9,4 +9,5 @@ export const DEFAULT_SETTINGS: Settings = {
   showDebug: false,
   stabilizeMotion: false,
   radarDetectorMode: true,
+  radarAudio: true,
 };

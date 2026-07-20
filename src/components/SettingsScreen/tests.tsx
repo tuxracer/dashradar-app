@@ -45,6 +45,31 @@ describe("SettingsScreen", () => {
     expect(screen.getByText("Motion stabilization")).toBeInTheDocument();
   });
 
+  it("shows the audio row only while radar detector mode is on", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    expect(screen.getByText("Audio alerts")).toBeInTheDocument();
+    await user.click(screen.getByText("Radar detector mode"));
+    expect(screen.queryByText("Audio alerts")).not.toBeInTheDocument();
+  });
+
+  it("toggles and persists the audio setting from the Audio alerts row", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    await user.click(screen.getByText("Audio alerts"));
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({
+        showVideo: true,
+        showDebug: false,
+        stabilizeMotion: false,
+        radarDetectorMode: true,
+        radarAudio: false,
+      }),
+    );
+  });
+
   it("toggles and persists the video setting from the Video feed row", async () => {
     const user = userEvent.setup();
     window.localStorage.setItem(
@@ -60,6 +85,7 @@ describe("SettingsScreen", () => {
         showDebug: false,
         stabilizeMotion: false,
         radarDetectorMode: false,
+        radarAudio: true,
       }),
     );
   });
@@ -75,6 +101,7 @@ describe("SettingsScreen", () => {
         showDebug: true,
         stabilizeMotion: false,
         radarDetectorMode: true,
+        radarAudio: true,
       }),
     );
   });
@@ -94,6 +121,7 @@ describe("SettingsScreen", () => {
         showDebug: false,
         stabilizeMotion: true,
         radarDetectorMode: false,
+        radarAudio: true,
       }),
     );
   });

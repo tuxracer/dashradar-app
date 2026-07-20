@@ -1,0 +1,42 @@
+/**
+ * Master output gain for the beeper. Kept modest because a square wave is
+ * harsh; loud enough to hear over road noise on a dash mount without clipping.
+ */
+export const MASTER_GAIN = 0.13;
+
+/** Oscillator waveform. Square gives the raspy, attention-grabbing detector tone. */
+export const BEEP_WAVEFORM: OscillatorType = "square";
+
+/** Length of one discrete beep, in ms. Kept below INTERVAL_MIN_MS so a gap remains. */
+export const BEEP_DURATION_MS = 70;
+
+/** Gain attack ramp, in seconds. Short, to avoid a click without a slow fade-in. */
+export const ATTACK_SEC = 0.005;
+
+/** Gain release ramp, in seconds. Must stay below BEEP_DURATION_MS. */
+export const RELEASE_SEC = 0.03;
+
+/**
+ * Signal level at or below which the beeper is silent. Just above zero so the
+ * decaying tail of a cleared signal stops beeping instead of trailing forever.
+ */
+export const AUDIO_FLOOR = 0.02;
+
+/**
+ * Signal level at or above which the beeper holds one continuous tone instead
+ * of discrete beeps. Matches RadarDetectorScreen's ALERT_THRESHOLD so the solid
+ * tone coincides with the on-screen pulsing alert ring.
+ */
+export const SOLID_THRESHOLD = 0.85;
+
+/** Gap between beeps at the weakest audible signal, in ms (slowest cadence). */
+export const INTERVAL_MAX_MS = 900;
+
+/** Gap between beeps just below the solid threshold, in ms (fastest cadence). */
+export const INTERVAL_MIN_MS = 130;
+
+/** Beep pitch at zero signal, in Hz. Rises toward FREQ_HIGH_HZ as signal climbs. */
+export const FREQ_LOW_HZ = 620;
+
+/** Beep pitch at full signal, in Hz. */
+export const FREQ_HIGH_HZ = 1200;

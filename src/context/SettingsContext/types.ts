@@ -25,6 +25,12 @@ export type Settings = {
    * bounding boxes and no camera feed. On by default.
    */
   radarDetectorMode: boolean;
+  /**
+   * When true, radar detector mode beeps as a police vehicle is detected:
+   * cadence and pitch rise with signal strength, going to a continuous tone at
+   * the alert level. On by default; only applies in radar detector mode.
+   */
+  radarAudio: boolean;
 };
 
 /** Value exposed by the settings context via useSettings(). */
@@ -37,6 +43,8 @@ export type SettingsContextValue = {
   toggleStabilizeMotion: () => void;
   radarDetectorMode: boolean;
   toggleRadarDetectorMode: () => void;
+  radarAudio: boolean;
+  toggleRadarAudio: () => void;
   /** Whether the full-screen settings panel is open. Ephemeral, not persisted. */
   settingsOpen: boolean;
   /** Opens the full-screen settings panel. */
@@ -61,6 +69,7 @@ export const isPersistedSettings = (
     (value.showDebug === undefined || isBoolean(value.showDebug)) &&
     (value.stabilizeMotion === undefined || isBoolean(value.stabilizeMotion)) &&
     (value.radarDetectorMode === undefined ||
-      isBoolean(value.radarDetectorMode))
+      isBoolean(value.radarDetectorMode)) &&
+    (value.radarAudio === undefined || isBoolean(value.radarAudio))
   );
 };

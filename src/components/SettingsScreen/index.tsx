@@ -36,6 +36,8 @@ export const SettingsScreen = ({ backend, getFps }: SettingsScreenProps) => {
     toggleStabilizeMotion,
     radarDetectorMode,
     toggleRadarDetectorMode,
+    radarAudio,
+    toggleRadarAudio,
   } = useSettings();
 
   // fps lives in a ref on the detection side; poll it while the panel is open.
@@ -123,6 +125,38 @@ export const SettingsScreen = ({ backend, getFps }: SettingsScreenProps) => {
               />
             </span>
           </button>
+
+          {/* The beeping indicator only exists in radar detector mode, so the
+              row hides alongside the mode itself. */}
+          {radarDetectorMode && (
+            <button
+              type="button"
+              onClick={toggleRadarAudio}
+              className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
+            >
+              <span className="flex flex-col gap-1">
+                <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                  Audio alerts
+                </span>
+                <span className="text-sm font-medium text-white/45">
+                  Beeps faster as the signal climbs.
+                </span>
+              </span>
+              <span
+                className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors ${
+                  radarAudio ? "bg-hud-amber" : "bg-white/25"
+                }`}
+              >
+                <span
+                  className={`inline-block h-6 w-6 rounded-full bg-surface transition-transform ${
+                    radarAudio
+                      ? "translate-x-[1.75rem]"
+                      : "translate-x-[0.25rem]"
+                  }`}
+                />
+              </span>
+            </button>
+          )}
 
           {/* Video feed and motion stabilization only matter for the
               box-drawing HUD, so hide them while radar detector mode is on. */}

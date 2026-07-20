@@ -59,6 +59,7 @@ const RadarScreen = () => {
     showDebug,
     stabilizeMotion,
     radarDetectorMode,
+    radarAudio,
     settingsOpen,
   } = useSettings();
   const [showIntro, setShowIntro] = useState(shouldShowIntro);
@@ -123,7 +124,10 @@ const RadarScreen = () => {
       />
       {!modelLoading &&
         (radarDetectorMode ? (
-          <RadarDetectorScreen confidence={hudSignal(hud)} />
+          <RadarDetectorScreen
+            confidence={hudSignal(hud)}
+            audioEnabled={radarAudio}
+          />
         ) : (
           <>
             {hud && videoSize && (

@@ -86,7 +86,7 @@ src/
     RadarBackdrop/              # static radar-grid layer shown behind the feed; the visible background when the video is toggled off
     HudOverlay/                 # nearest-object box (amber when NEAR, white otherwise) + floating tag markers; annotates both with confidence + coords when debug is on; rAF loop applies the motion-compensation transform
     RadarStrip/                 # lane-radar strip: one blip per detection, amber + larger for the nearest-when-NEAR
-    RadarDetectorScreen/        # opaque fullscreen radar-detector instrument (the ladder segments as radial ticks on a tachometer-style arc around a percentage readout and SCANNING/CONTACT/ALERT status word, with a scanning sweep, signal-colored glow, and pulsing alert ring; no camera or boxes), driven by a requestAnimationFrame peak-hold/decay loop writing to the DOM; rendered by RadarScreen in place of HudOverlay + RadarStrip when the radarDetectorMode setting is on
+    RadarDetectorScreen/        # opaque fullscreen radar-detector instrument (the ladder segments as radial ticks on a tachometer-style arc around a percentage readout and SCANNING/CONTACT/ALERT status word, with a scanning sweep, signal-colored glow, and pulsing alert ring; no camera or boxes), driven by a requestAnimationFrame peak-hold/decay loop writing to the DOM; rendered by RadarScreen in place of HudOverlay + RadarStrip when the radarDetectorMode setting is on; the same loop drives the lib/radarAudio beeper (gated by the radarAudio setting)
     StatusBar/                  # wordmark + settings gear
     SettingsButton/             # enlarged gear that opens the full-screen settings panel
     SettingsScreen/             # full-screen settings panel: video + debug overlay toggles + engine/model/about
@@ -97,13 +97,14 @@ src/
     IntroScreen/                # full-screen first-open intro (radar-sweep scope, app pitch, START button); rendered instead of the radar screen until dismissed, persisted under dashradar:introSeen
   context/
     DetectionContext/           # worker lifecycle, frame pump, status machine, motion capture-pose tracking; consume via useDetection()
-    SettingsContext/            # display options (showVideo, showDebug, stabilizeMotion, radarDetectorMode) + ephemeral settings-open state; consume via useSettings()
+    SettingsContext/            # display options (showVideo, showDebug, stabilizeMotion, radarDetectorMode, radarAudio) + ephemeral settings-open state; consume via useSettings()
   lib/
     camera/                     # getUserMedia wrapper; typed CameraError; rear-camera constraints
     detection/                  # road-class filter, NEAR heuristic, HUD shaping, coordinate mapping (pure)
     detectionTracker/           # coasting flicker smoother between toRoadDetections and buildHudModel: greedy IoU matching, show-immediately, coast-on-miss (pure step function + stateful factory)
     motionSensor/               # devicemotion rotationRate integration into yaw/pitch, iOS permission handling (pure)
     radarSignal/                # React-free math for the radar-detector meter: hudSignal (max police score across the HUD, remapped from the [SIGNAL_FLOOR, 1] score band onto [0, 1]), decayPeak (peak-hold + decay step), litSegments, and signalColor (green to amber to red ramp), plus tuning consts SEGMENT_COUNT, DECAY_PER_SEC, SIGNAL_FLOOR
+    radarAudio/                 # React-free Web Audio beeper for radar-detector mode: createRadarBeeper (one persistent square-wave oscillator; discrete beeps whose cadence and pitch rise with the signal level, one continuous tone at SOLID_THRESHOLD, silenced on tab-hide and disposed on mode exit) plus pure beepIntervalMs/beepFrequencyHz helpers; the AudioContext is created lazily on the first audible signal and unlocked from the next user gesture when autoplay policy suspends it
     serviceWorker/              # waitForServiceWorkerControl (defer model load until the SW controls the page) + requestPersistentStorage
     wakeLock/                   # Screen Wake Lock acquire/release with visibilitychange re-acquire
   types/
@@ -215,7 +216,7 @@ The pixel conversion needs a camera field of view the Web platform does not expo
 ### `SettingsContext` / `useSettings()`
 
 App-wide display options, persisted to `localStorage` under `dashradar:settings`
-and validated on read with `isPersistedSettings`. Four options:
+and validated on read with `isPersistedSettings`. Five options:
 
 ```ts
 type SettingsContextValue = {
@@ -227,6 +228,8 @@ type SettingsContextValue = {
   toggleStabilizeMotion: () => void;
   radarDetectorMode: boolean;
   toggleRadarDetectorMode: () => void;
+  radarAudio: boolean;
+  toggleRadarAudio: () => void;
   settingsOpen: boolean; // ephemeral, not persisted
 };
 ```
@@ -243,7 +246,11 @@ that lets `StartGate` appear to request motion permission. `radarDetectorMode`
 (default on, persisted like the others) gates the fullscreen radar-detector
 meter: `RadarScreen` renders `RadarDetectorScreen` in place of `HudOverlay` and
 `RadarStrip` while it's on, so the radar-detector meter is what a fresh user
-sees first; toggling it off switches to the bounding-box HUD. `SettingsProvider`
+sees first; toggling it off switches to the bounding-box HUD. `radarAudio`
+(default on) gates the beeping audio indicator inside radar-detector mode:
+`RadarDetectorScreen` feeds its peak-held signal level to the `lib/radarAudio`
+beeper when the setting is on and silence when it's off, so the sound tracks
+the meter exactly and never plays in the bounding-box HUD. `SettingsProvider`
 wraps the app outside `DetectionProvider`;
 `SettingsButton` (a gear in `StatusBar`) opens the full-screen
 `SettingsScreen`, which is the only UI that writes any of these options.
