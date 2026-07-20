@@ -86,6 +86,7 @@ src/
     RadarBackdrop/              # static radar-grid layer shown behind the feed; the visible background when the video is toggled off
     HudOverlay/                 # nearest-object box (amber when NEAR, white otherwise) + floating tag markers; annotates both with confidence + coords when debug is on; rAF loop applies the motion-compensation transform
     RadarStrip/                 # lane-radar strip: one blip per detection, amber + larger for the nearest-when-NEAR
+    RadarDetectorScreen/        # opaque fullscreen radar-detector meter (segmented ladder + percentage readout, no camera or boxes), driven by a requestAnimationFrame peak-hold/decay loop writing to the DOM; rendered by RadarScreen in place of HudOverlay + RadarStrip when the radarDetectorMode setting is on
     StatusBar/                  # wordmark + settings gear
     SettingsButton/             # enlarged gear that opens the full-screen settings panel
     SettingsScreen/             # full-screen settings panel: video + debug overlay toggles + engine/model/about
@@ -95,11 +96,12 @@ src/
     StartGate/                  # full-screen iOS tap-to-start gate; shown after opting into stabilizeMotion, requests motion permission from the tap
   context/
     DetectionContext/           # worker lifecycle, frame pump, status machine, motion capture-pose tracking; consume via useDetection()
-    SettingsContext/            # display options (showVideo, showDebug, stabilizeMotion) + ephemeral settings-open state; consume via useSettings()
+    SettingsContext/            # display options (showVideo, showDebug, stabilizeMotion, radarDetectorMode) + ephemeral settings-open state; consume via useSettings()
   lib/
     camera/                     # getUserMedia wrapper; typed CameraError; rear-camera constraints
     detection/                  # road-class filter, NEAR heuristic, HUD shaping, coordinate mapping (pure)
     motionSensor/               # devicemotion rotationRate integration into yaw/pitch, iOS permission handling (pure)
+    radarSignal/                # React-free math for the radar-detector meter: hudSignal (max police score across the HUD, remapped from the [SIGNAL_FLOOR, 1] score band onto [0, 1]), decayPeak (peak-hold + decay step), litSegments, and signalColor (green to amber to red ramp), plus tuning consts SEGMENT_COUNT, DECAY_PER_SEC, SIGNAL_FLOOR
     serviceWorker/              # waitForServiceWorkerControl (defer model load until the SW controls the page) + requestPersistentStorage
     wakeLock/                   # Screen Wake Lock acquire/release with visibilitychange re-acquire
   types/
@@ -209,7 +211,7 @@ The pixel conversion needs a camera field of view the Web platform does not expo
 ### `SettingsContext` / `useSettings()`
 
 App-wide display options, persisted to `localStorage` under `dashradar:settings`
-and validated on read with `isPersistedSettings`. Three options:
+and validated on read with `isPersistedSettings`. Four options:
 
 ```ts
 type SettingsContextValue = {
@@ -219,6 +221,8 @@ type SettingsContextValue = {
   toggleShowDebug: () => void;
   stabilizeMotion: boolean;
   toggleStabilizeMotion: () => void;
+  radarDetectorMode: boolean;
+  toggleRadarDetectorMode: () => void;
   settingsOpen: boolean; // ephemeral, not persisted
 };
 ```
@@ -231,10 +235,13 @@ gates the `DebugOverlay` panel and the confidence/coords annotations
 `HudOverlay` draws on each detection; it doesn't change what detection does
 either. `stabilizeMotion` (default false) turns on gyro motion compensation
 (§4.2): it drives `HudOverlay`'s `stabilize` prop and, on iOS, is the opt-in
-that lets `StartGate` appear to request motion permission. `SettingsProvider`
+that lets `StartGate` appear to request motion permission. `radarDetectorMode`
+(default off, persisted like the others) gates the fullscreen radar-detector
+meter: `RadarScreen` renders `RadarDetectorScreen` in place of `HudOverlay` and
+`RadarStrip` while it's on. `SettingsProvider`
 wraps the app outside `DetectionProvider`;
 `SettingsButton` (a gear in `StatusBar`) opens the full-screen
-`SettingsScreen`, which is the only UI that writes either option.
+`SettingsScreen`, which is the only UI that writes any of these options.
 
 `isPersistedSettings` validates a `Partial<Settings>` shape: each known field
 is optional-but-typed, so a stored blob is accepted even if it predates a

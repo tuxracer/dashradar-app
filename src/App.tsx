@@ -5,6 +5,7 @@ import { ErrorScreen } from "@/components/ErrorScreen";
 import { HudOverlay } from "@/components/HudOverlay";
 import { ModelLoadScreen } from "@/components/ModelLoadScreen";
 import { RadarBackdrop } from "@/components/RadarBackdrop";
+import { RadarDetectorScreen } from "@/components/RadarDetectorScreen";
 import { RadarStrip } from "@/components/RadarStrip";
 import { SettingsScreen } from "@/components/SettingsScreen";
 import { StartGate, shouldShowStartGate } from "@/components/StartGate";
@@ -13,6 +14,7 @@ import { DetectionProvider, useDetection } from "@/context/DetectionContext";
 import { SettingsProvider, useSettings } from "@/context/SettingsContext";
 import type { CameraError } from "@/lib/camera";
 import type { Size } from "@/lib/detection";
+import { hudSignal } from "@/lib/radarSignal";
 import { createWakeLockManager } from "@/lib/wakeLock";
 
 const useViewportSize = (): Size => {
@@ -47,7 +49,13 @@ const RadarScreen = () => {
     motionPermission,
     requestMotionPermission,
   } = useDetection();
-  const { showVideo, showDebug, stabilizeMotion, settingsOpen } = useSettings();
+  const {
+    showVideo,
+    showDebug,
+    stabilizeMotion,
+    radarDetectorMode,
+    settingsOpen,
+  } = useSettings();
   const [cameraError, setCameraError] = useState<CameraError>();
   const [videoSize, setVideoSize] = useState<Size>();
   const viewportSize = useViewportSize();
@@ -90,17 +98,23 @@ const RadarScreen = () => {
         onVideoResize={updateVideoSize}
         visible={showVideo}
       />
-      {hud && videoSize && (
-        <HudOverlay
-          hud={hud}
-          videoSize={videoSize}
-          viewportSize={viewportSize}
-          getMotionDelta={getMotionDelta}
-          stabilize={stabilizeMotion}
-          debug={showDebug}
-        />
+      {radarDetectorMode ? (
+        <RadarDetectorScreen confidence={hudSignal(hud)} />
+      ) : (
+        <>
+          {hud && videoSize && (
+            <HudOverlay
+              hud={hud}
+              videoSize={videoSize}
+              viewportSize={viewportSize}
+              getMotionDelta={getMotionDelta}
+              stabilize={stabilizeMotion}
+              debug={showDebug}
+            />
+          )}
+          {hud && <RadarStrip blips={hud.blips} />}
+        </>
       )}
-      {hud && <RadarStrip blips={hud.blips} />}
       <StatusBar />
       <DebugOverlay
         backend={backend}
