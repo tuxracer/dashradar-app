@@ -44,7 +44,7 @@ type BackendChoice = {
  * Pick the execution backend, probing for a usable WebGPU device rather than
  * only checking that the API exists. On some devices `navigator.gpu` is present
  * but no adapter or device can actually be acquired. If we trusted the API
- * check alone, we would download the larger fp16 build for WebGPU, fail at
+ * check alone, we would download the much larger fp32 WebGPU build, fail at
  * session creation, then fall back to wasm and download the int8 build too. A
  * successful adapter + device probe here proves WebGPU works before we commit
  * to that larger download, so an unusable GPU goes straight to wasm and only

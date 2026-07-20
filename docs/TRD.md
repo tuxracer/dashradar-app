@@ -36,10 +36,10 @@ Primary target: a phone mounted in landscape on a car dash, orientation unlocked
 
 | Backend | Chosen when | Model build | Notes |
 | --- | --- | --- | --- |
-| WebGPU | A GPU adapter **and** device can actually be acquired: `resolveBackend()` awaits `navigator.gpu.requestAdapter()` then `adapter.requestDevice()` (`src/workers/detection/index.ts`) | `model_fp16.onnx` (fp16 weights, fp32 I/O, ~64 MB) | Faster; verified end-to-end against the shipped model in Chrome via chrome-devtools MCP |
+| WebGPU | A GPU adapter **and** device can actually be acquired: `resolveBackend()` awaits `navigator.gpu.requestAdapter()` then `adapter.requestDevice()` (`src/workers/detection/index.ts`) | `model.onnx` (full-precision fp32, ~118 MB) | Faster; fp32 not fp16, because onnxruntime-web's WebGPU GridSample kernel is broken for fp16 (§4.1); verified end-to-end in Chrome via chrome-devtools MCP |
 | WASM | No usable WebGPU: `navigator.gpu` is absent, or `requestAdapter`/`requestDevice` returns nothing or throws | `model_int8.onnx` (int8 dynamic quant, fp32 I/O, ~35 MB) | Universal fallback; the smaller int8 build keeps the CPU path usable |
 
-`resolveBackend()` probes for a real device **before** any weights are downloaded, rather than trusting that `navigator.gpu` merely exists. Some devices expose the API but cannot create a device; trusting the existence check would download the larger fp16 build, fail at `InferenceSession.create`, then fall back to downloading the int8 build too. Probing first sends an unusable GPU straight to wasm so only one set of weights is fetched. (`@webgpu/types` provides the ambient WebGPU type declarations, referenced from `src/vite-env.d.ts`.) The webgpu-to-wasm fallback in `loadModel` is kept as a safety net for the rarer case where the probe passes but the session still fails to create.
+`resolveBackend()` probes for a real device **before** any weights are downloaded, rather than trusting that `navigator.gpu` merely exists. Some devices expose the API but cannot create a device; trusting the existence check would download the much larger fp32 WebGPU build, fail at `InferenceSession.create`, then fall back to downloading the int8 build too. Probing first sends an unusable GPU straight to wasm so only one set of weights is fetched. (`@webgpu/types` provides the ambient WebGPU type declarations, referenced from `src/vite-env.d.ts`.) The webgpu-to-wasm fallback in `loadModel` is kept as a safety net for the rarer case where the probe passes but the session still fails to create.
 
 No usable WebGPU is not treated as an error: the backend badge in `StatusBar` (`GPU` vs `CPU`) is the only place this is surfaced. There is no manual override.
 
@@ -173,13 +173,19 @@ Every message crossing the boundary is validated by a type guard (`isWorkerReque
 
 ### Model (`src/workers/detection`)
 
-The detection model is a custom **RF-DETR Small** checkpoint fine-tuned to detect Las Vegas Metro police vehicles, published as ONNX at [`tuxracer/las-vegas-metro-rfdetr-small-t1`](https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1) and trained/exported from the sibling repo `~/Development/las-vegas-metro-rfdetr-small-t1` (its `CLAUDE.md` documents the export and quantization recipes). `MODEL_URL_BY_BACKEND` (`consts.ts`) streams `onnx/model_fp16.onnx` on WebGPU and `onnx/model_int8.onnx` on WASM, directly from Hugging Face at runtime. Both builds share one signature:
+The detection model is a custom **RF-DETR Small** checkpoint fine-tuned to detect Las Vegas Metro police vehicles, published as ONNX at [`tuxracer/las-vegas-metro-rfdetr-small-t1`](https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1) and trained/exported from the sibling repo `~/Development/las-vegas-metro-rfdetr-small-t1` (its `CLAUDE.md` documents the export and quantization recipes). `MODEL_URL_BY_BACKEND` (`consts.ts`) streams `onnx/model.onnx` (full-precision fp32) on WebGPU and `onnx/model_int8.onnx` on WASM, directly from Hugging Face at runtime. All builds share one signature:
 
 - **Input** `input`: `[1,3,512,512]` fp32 NCHW. Fixed 512x512, ImageNet-normalized (`mean=[0.485,0.456,0.406]`, `std=[0.229,0.224,0.225]`), bilinear resize.
 - **Output** `dets`: `[1,300,4]` fp32, boxes in cxcywh normalized 0..1.
 - **Output** `labels`: `[1,300,2]` fp32, raw class logits (apply sigmoid).
 
 Why raw onnxruntime-web and not the Transformers.js `pipeline("object-detection")`: this checkpoint's head is a single real class scored with a per-query **sigmoid**, with the police class at index 1 (index 0 unused). Transformers.js decodes `rf_detr` with the RT-DETR post-processor (softmax + "last class index is background, skip it"), which drops every real detection, and `RfDetrImageProcessor` isn't a registered JS processor type. So the worker bypasses the pipeline entirely: it does its own ImageNet preprocess and its own sigmoid + cxcywh decode (`inference.ts`). No NMS is applied (RF-DETR is set-based). The graph's output names are read from the session at load time, falling back to the expected `dets`/`labels` if the graph doesn't expose them literally.
+
+### 4.1 WebGPU uses fp32, not fp16 (GridSample shader bug)
+
+RF-DETR's decoder samples multi-scale features through `GridSample` (3 nodes in this graph). onnxruntime-web's WebGPU (JSEP) GridSample kernel generates **invalid WGSL for fp16 tensors**: it emits an `f32 * f16` multiply, which WGSL forbids (no implicit mixed precision), so `CreateShaderModule("GridSample")` fails, the compute pipeline is invalid, and the op silently produces garbage. Because GridSample feeds the decoder, the fp16 build yields broken detections on **every** WebGPU device, while the WASM/no-WebGPU path (which never touches these shaders) stays correct.
+
+The fix is to serve the full-precision `model.onnx` on WebGPU, so the multiply is `f32 * f32` and the shader compiles. This was verified in Chrome via chrome-devtools MCP: with `model_fp16.onnx` the console filled with thousands of `Invalid ComputePipeline "GridSample"` validation errors; with `model.onnx` that count drops to zero and inference produces detections. The cost is download size (~118 MB fp32 vs ~64 MB fp16), accepted because a fast-but-wrong detector is useless for this app; a future mixed-precision export (fp16 weights with the GridSample nodes kept in fp32) could reclaim the size. fp32 also requires no `shader-f16` GPU feature, so it runs on GPUs where the fp16 build could not create a session at all. Do not revert WebGPU to fp16 without confirming onnxruntime-web has fixed the fp16 GridSample shader (still broken as of onnxruntime-web 1.27).
 
 ### `SettingsContext` / `useSettings()`
 

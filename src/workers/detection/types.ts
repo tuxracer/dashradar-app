@@ -105,7 +105,11 @@ export type BackendProbe = {
   adapter: boolean;
   /** `requestDevice()` succeeded. */
   device: boolean;
-  /** The adapter advertises the `shader-f16` feature (needed for the fp16 build). */
+  /**
+   * The adapter advertises the `shader-f16` feature. Informational only now
+   * that WebGPU runs the fp32 build (which does not need it); kept because it is
+   * a useful signal when diagnosing GPU capability differences across devices.
+   */
   shaderF16: boolean;
   /** InferenceSession.create failure message for the WebGPU attempt, if any. */
   sessionError?: string;
