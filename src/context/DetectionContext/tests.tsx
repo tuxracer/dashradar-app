@@ -92,10 +92,14 @@ afterEach(() => {
 });
 
 describe("DetectionProvider", () => {
-  it("starts loading the model on mount", () => {
+  it("starts loading the model on mount", async () => {
     const worker = renderWithProvider(<Probe />);
     expect(screen.getByTestId("status").textContent).toBe("loading-model");
-    expect(worker.posted).toContainEqual({ type: "load" });
+    // The load message is deferred to a microtask (Promise.resolve in tests),
+    // so wait for it rather than asserting synchronously.
+    await waitFor(() => {
+      expect(worker.posted).toContainEqual({ type: "load" });
+    });
   });
 
   it("accumulates per-file model progress", () => {

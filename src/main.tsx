@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { registerSW } from "virtual:pwa-register";
 import { Analytics } from "@vercel/analytics/react";
+import { requestPersistentStorage } from "@/lib/serviceWorker";
 import "@fontsource/rajdhani/500.css";
 import "@fontsource/rajdhani/600.css";
 import "@fontsource/rajdhani/700.css";
@@ -9,6 +10,7 @@ import "./globals.css";
 import App from "./App";
 
 registerSW();
+requestPersistentStorage();
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {

@@ -10,12 +10,17 @@ import {
 import type { ReactNode } from "react";
 import type { HudModel } from "@/lib/detection";
 import { buildHudModel, toRoadDetections } from "@/lib/detection";
+import { waitForServiceWorkerControl } from "@/lib/serviceWorker";
 import type {
   DetectionBackend,
   DetectionErrorCode,
 } from "@/workers/detection/types";
 import { isWorkerResponse } from "@/workers/detection/types";
-import { FPS_SAMPLE_SIZE, FRAME_RETRY_MS } from "./consts";
+import {
+  FPS_SAMPLE_SIZE,
+  FRAME_RETRY_MS,
+  SW_CONTROL_TIMEOUT_MS,
+} from "./consts";
 import type {
   DetectionContextValue,
   DetectionStatus,
@@ -211,8 +216,22 @@ export const DetectionProvider = ({
       inFlightRef.current = 0;
       window.clearTimeout(retryTimerRef.current);
     };
-    worker.postMessage({ type: "load" });
+    // Defer the model download until a service worker controls the page so its
+    // fetch flows through Workbox's runtime cache on a first visit. In dev
+    // there is no service worker, so load immediately. `cancelled` guards
+    // against React StrictMode tearing the effect down before control arrives.
+    let cancelled = false;
+    const startLoad = import.meta.env.PROD
+      ? waitForServiceWorkerControl(SW_CONTROL_TIMEOUT_MS)
+      : Promise.resolve();
+    void startLoad.then(() => {
+      if (cancelled) {
+        return;
+      }
+      worker.postMessage({ type: "load" });
+    });
     return () => {
+      cancelled = true;
       window.clearTimeout(retryTimerRef.current);
       worker.terminate();
     };
