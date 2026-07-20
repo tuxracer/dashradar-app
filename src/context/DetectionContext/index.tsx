@@ -10,6 +10,12 @@ import {
 import type { ReactNode } from "react";
 import type { HudModel } from "@/lib/detection";
 import { buildHudModel, toRoadDetections } from "@/lib/detection";
+import { createMotionSensorManager } from "@/lib/motionSensor";
+import type {
+  MotionPermission,
+  MotionSensorManager,
+  YawPitch,
+} from "@/lib/motionSensor";
 import { waitForServiceWorkerControl } from "@/lib/serviceWorker";
 import type {
   BackendProbe,
@@ -58,11 +64,14 @@ type DetectionProviderProps = {
   children: ReactNode;
   /** Test seam: defaults to the real detection worker. */
   createWorker?: () => DetectionWorkerLike;
+  /** Test seam: defaults to the real motion-sensor manager. */
+  createMotionManager?: () => MotionSensorManager;
 };
 
 export const DetectionProvider = ({
   children,
   createWorker = createDetectionWorker,
+  createMotionManager = createMotionSensorManager,
 }: DetectionProviderProps) => {
   const [status, setStatus] = useState<DetectionStatus>("loading-model");
   const [backend, setBackend] = useState<DetectionBackend>();
@@ -77,9 +86,19 @@ export const DetectionProvider = ({
   const [fps, setFps] = useState(0);
   const [debug, setDebug] = useState<DebugSnapshot>(INITIAL_DEBUG);
   const [error, setError] = useState<DetectionErrorCode>();
+  const [motionPermission, setMotionPermission] =
+    useState<MotionPermission>("unsupported");
 
   // React 19 useRef requires an initial value; undefined unions cover "not yet set".
   const workerRef = useRef<DetectionWorkerLike | undefined>(undefined);
+  // The motion manager is created once. A ref (not useMemo) keeps it stable
+  // across renders and reachable from the sendFrame/result handlers.
+  const motionRef = useRef<MotionSensorManager | undefined>(undefined);
+  // Orientation snapshot taken at the moment a frame is captured, and the
+  // reference orientation for the currently displayed detection. Only one
+  // frame is ever in flight, so a single capture ref suffices.
+  const captureOrientationRef = useRef<YawPitch>({ yaw: 0, pitch: 0 });
+  const referenceOrientationRef = useRef<YawPitch>({ yaw: 0, pitch: 0 });
   const videoRef = useRef<HTMLVideoElement | undefined>(undefined);
   const runningRef = useRef(false);
   // Mirrors `status` so event handlers can branch on the current status
@@ -136,6 +155,14 @@ export const DetectionProvider = ({
       }
       lastCaptureMsRef.current = performance.now() - captureStart;
       postTimeRef.current = performance.now();
+      const capturedOrientation = motionRef.current?.getYawPitch() ?? {
+        yaw: 0,
+        pitch: 0,
+      };
+      captureOrientationRef.current = {
+        yaw: capturedOrientation.yaw,
+        pitch: capturedOrientation.pitch,
+      };
       inFlightRef.current += 1;
       worker.postMessage({ type: "detect", frame }, [frame]);
     } catch {
@@ -195,6 +222,23 @@ export const DetectionProvider = ({
     };
   }, []);
 
+  // Own the motion-sensor lifecycle. Integration runs whether or not permission
+  // is granted; on iOS no devicemotion events fire until the user grants it, so
+  // the orientation simply stays at zero (no compensation).
+  useEffect(() => {
+    const manager = createMotionManager();
+    motionRef.current = manager;
+    manager.start();
+    const applyPermission = async () => {
+      setMotionPermission(manager.getPermission());
+    };
+    void applyPermission();
+    return () => {
+      manager.stop();
+      motionRef.current = undefined;
+    };
+  }, [createMotionManager]);
+
   useEffect(() => {
     const worker = createWorker();
     workerRef.current = worker;
@@ -240,6 +284,9 @@ export const DetectionProvider = ({
         }
         case "detections": {
           inFlightRef.current = Math.max(0, inFlightRef.current - 1);
+          // The returned boxes correspond to the pose the frame was captured at,
+          // not the pose now. Anchor compensation to that capture pose.
+          referenceOrientationRef.current = captureOrientationRef.current;
           const roadDetections = toRoadDetections(message.detections);
           setHud(buildHudModel(roadDetections));
           const { preprocessMs, inferenceMs, decodeMs } = message.timing;
@@ -337,6 +384,26 @@ export const DetectionProvider = ({
     }
   }, []);
 
+  /** Angular delta (radians) between the live orientation and the pose the
+   * currently displayed detection was captured at. */
+  const getMotionDelta = useCallback((): YawPitch => {
+    const current = motionRef.current?.getYawPitch() ?? { yaw: 0, pitch: 0 };
+    const reference = referenceOrientationRef.current;
+    return {
+      yaw: current.yaw - reference.yaw,
+      pitch: current.pitch - reference.pitch,
+    };
+  }, []);
+
+  /** Requests iOS motion permission from a user gesture; no-op elsewhere. */
+  const requestMotionPermission = useCallback(async () => {
+    const manager = motionRef.current;
+    if (!manager) {
+      return;
+    }
+    setMotionPermission(await manager.requestPermission());
+  }, []);
+
   const value = useMemo(
     () => ({
       status,
@@ -351,6 +418,9 @@ export const DetectionProvider = ({
       error,
       start,
       stop,
+      getMotionDelta,
+      motionPermission,
+      requestMotionPermission,
     }),
     [
       status,
@@ -365,6 +435,9 @@ export const DetectionProvider = ({
       error,
       start,
       stop,
+      getMotionDelta,
+      motionPermission,
+      requestMotionPermission,
     ],
   );
 
