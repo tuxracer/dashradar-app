@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
+import { ShareCard } from "@/components/ShareCard";
 import { useSettings } from "@/context/SettingsContext";
 import type { DetectionBackend } from "@/workers/detection/types";
 import { MODEL_REVISION } from "@/workers/detection/consts";
@@ -242,6 +243,8 @@ export const SettingsScreen = ({ backend, getFps }: SettingsScreenProps) => {
               {versionLabel} ↗
             </span>
           </a>
+
+          <ShareCard />
         </div>
       </div>
     </div>
