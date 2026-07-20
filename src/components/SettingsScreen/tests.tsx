@@ -116,28 +116,21 @@ describe("SettingsScreen", () => {
     expect(screen.getByText(/starting/i)).toBeInTheDocument();
   });
 
-  it("shows the model slug with its revision and the app version", async () => {
+  it("shows the model slug with its revision", async () => {
     const user = userEvent.setup();
     renderScreen();
     await open(user);
     const modelRow = screen.getByText(/las-vegas-metro-rfdetr-small-t1/);
     expect(modelRow).toBeInTheDocument();
     expect(modelRow).toHaveTextContent(MODEL_REVISION);
-    expect(screen.getByText(/v\d+\.\d+\.\d+/)).toBeInTheDocument();
   });
 
-  it("appends the short commit hash to the version when one is available", async () => {
+  it("shows the commit sha as the build label", async () => {
     const user = userEvent.setup();
     renderScreen();
     await open(user);
-    if (__COMMIT_SHA__ === "unknown") {
-      expect(screen.getByText(/v\d+\.\d+\.\d+ ↗/)).toBeInTheDocument();
-    } else {
-      expect(
-        screen.getByText(
-          new RegExp(`v\\d+\\.\\d+\\.\\d+ · ${__COMMIT_SHA__} ↗`),
-        ),
-      ).toBeInTheDocument();
-    }
+    expect(
+      screen.getByText(new RegExp(`^${__COMMIT_SHA__} ↗$`)),
+    ).toBeInTheDocument();
   });
 });

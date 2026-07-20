@@ -57,10 +57,7 @@ export const SettingsScreen = ({ backend, fps }: SettingsScreenProps) => {
     ? `${backend === "webgpu" ? "GPU" : "CPU"} · ${fps} FPS`
     : "Starting…";
 
-  const versionLabel =
-    __COMMIT_SHA__ === "unknown"
-      ? `v${__APP_VERSION__}`
-      : `v${__APP_VERSION__} · ${__COMMIT_SHA__}`;
+  const versionLabel = __COMMIT_SHA__;
 
   return (
     <div className="fixed inset-0 z-30 flex flex-col bg-surface/95 backdrop-blur-md">
