@@ -41,7 +41,7 @@ describe("hudSignal", () => {
   });
 
   it("returns 0 for a score at the floor", () => {
-    expect(hudSignal(hudOf(det(0.5)))).toBe(0);
+    expect(hudSignal(hudOf(det(0.7)))).toBe(0);
   });
 
   it("maps a full-confidence score to 1", () => {
@@ -49,11 +49,11 @@ describe("hudSignal", () => {
   });
 
   it("remaps the midpoint of the [floor, 1] band to 0.5", () => {
-    expect(hudSignal(hudOf(det(0.75)))).toBeCloseTo(0.5, 5);
+    expect(hudSignal(hudOf(det(0.85)))).toBeCloseTo(0.5, 5);
   });
 
   it("takes the max score across nearest and others", () => {
-    expect(hudSignal(hudOf(det(0.6), [det(0.9), det(0.55)]))).toBeCloseTo(
+    expect(hudSignal(hudOf(det(0.6), [det(0.94), det(0.55)]))).toBeCloseTo(
       0.8,
       5,
     );

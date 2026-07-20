@@ -48,6 +48,13 @@ describe("toRoadDetections", () => {
     expect(result).toHaveLength(0);
   });
 
+  it("drops detections below the raised confidence threshold", () => {
+    const result = toRoadDetections([
+      { label: "car", score: 0.6, box: box(0.1, 0.1, 0.3, 0.3) },
+    ]);
+    expect(result).toHaveLength(0);
+  });
+
   it("maps traffic light to the SIGNAL display label", () => {
     const result = toRoadDetections([
       { label: "traffic light", score: 0.8, box: box(0.5, 0.1, 0.6, 0.3) },

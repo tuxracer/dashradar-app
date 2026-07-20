@@ -12,7 +12,7 @@ export const DECAY_PER_SEC = 0.6;
  * confidence threshold: anything the road filter keeps is already above it, so
  * the ladder maps its full range onto the meaningful [floor, 1] score band.
  */
-export const SIGNAL_FLOOR = 0.5;
+export const SIGNAL_FLOOR = 0.7;
 
 /** Ladder color at low signal (green), as an [r, g, b] triple. */
 export const SIGNAL_LOW_COLOR: readonly [number, number, number] = [

@@ -1,7 +1,7 @@
 import type { RoadCategory } from "@/types";
 
 /** Detections below this score are discarded. */
-export const CONFIDENCE_THRESHOLD = 0.5;
+export const CONFIDENCE_THRESHOLD = 0.7;
 
 /**
  * The nearest object gets the amber NEAR treatment once its box covers this
