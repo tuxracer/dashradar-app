@@ -105,6 +105,13 @@ const RadarScreen = () => {
     return <ErrorScreen code={error} />;
   }
 
+  // While the model is still loading, keep the radar-mode UI unmounted and the
+  // camera feed invisible (it stays mounted so getUserMedia fires right after
+  // the intro's START tap). Otherwise the radar meter flashes for a beat before
+  // the model-download screen covers it; showing only the backdrop grid until
+  // the model is ready avoids that flash on both the download and cache paths.
+  const modelLoading = status === "loading-model";
+
   return (
     <main className="fixed inset-0 bg-surface">
       <RadarBackdrop />
@@ -112,25 +119,26 @@ const RadarScreen = () => {
         onStream={handleStream}
         onError={setCameraError}
         onVideoResize={updateVideoSize}
-        visible={showVideo}
+        visible={showVideo && !modelLoading}
       />
-      {radarDetectorMode ? (
-        <RadarDetectorScreen confidence={hudSignal(hud)} />
-      ) : (
-        <>
-          {hud && videoSize && (
-            <HudOverlay
-              hud={hud}
-              videoSize={videoSize}
-              viewportSize={viewportSize}
-              getMotionDelta={getMotionDelta}
-              stabilize={stabilizeMotion}
-              debug={showDebug}
-            />
-          )}
-          {hud && <RadarStrip blips={hud.blips} />}
-        </>
-      )}
+      {!modelLoading &&
+        (radarDetectorMode ? (
+          <RadarDetectorScreen confidence={hudSignal(hud)} />
+        ) : (
+          <>
+            {hud && videoSize && (
+              <HudOverlay
+                hud={hud}
+                videoSize={videoSize}
+                viewportSize={viewportSize}
+                getMotionDelta={getMotionDelta}
+                stabilize={stabilizeMotion}
+                debug={showDebug}
+              />
+            )}
+            {hud && <RadarStrip blips={hud.blips} />}
+          </>
+        ))}
       <StatusBar />
       <DebugOverlay
         backend={backend}
