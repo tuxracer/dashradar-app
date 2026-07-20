@@ -46,7 +46,13 @@ const ortRuntime = (): Plugin => ({
   name: "ort-runtime",
   configureServer(server) {
     server.middlewares.use((req, res, next) => {
-      const file = ORT_RUNTIME_FILES.find((name) => req.url === `/ort/${name}`);
+      // Match on the pathname alone: Vite's import analysis appends ?import to
+      // dynamic imports of the .mjs, which must not fall through to the SPA
+      // index.html fallback.
+      const [pathname] = (req.url ?? "").split("?");
+      const file = ORT_RUNTIME_FILES.find(
+        (name) => pathname === `/ort/${name}`,
+      );
       if (!file) {
         next();
         return;
