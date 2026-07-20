@@ -225,8 +225,8 @@ describe("HudOverlay motion compensation", () => {
     );
   });
 
-  it("does not apply the offset when stabilization is disabled", () => {
-    runOneFrame();
+  it("does not schedule an animation loop when stabilization is disabled", () => {
+    const rafSpy = vi.spyOn(window, "requestAnimationFrame").mockReturnValue(0);
     const { getByTestId } = render(
       <HudOverlay
         hud={emptyHud}
@@ -236,8 +236,27 @@ describe("HudOverlay motion compensation", () => {
         stabilize={false}
       />,
     );
-    // A nonzero delta would translate the overlay, but with stabilization off
-    // the transform is held at zero.
+    expect(rafSpy).not.toHaveBeenCalled();
+    expect(getByTestId("hud-overlay").style.transform).toBe(
+      "translate(0px, 0px)",
+    );
+  });
+
+  it("resets the transform and stops the loop when stabilization turns off", () => {
+    runOneFrame();
+    const props = {
+      hud: emptyHud,
+      videoSize: { width: 1280, height: 720 },
+      viewportSize: { width: 800, height: 600 },
+      getMotionDelta: () => ({ yaw: 0.1, pitch: 0 }),
+    };
+    const { getByTestId, rerender } = render(
+      <HudOverlay {...props} stabilize={true} />,
+    );
+    expect(getByTestId("hud-overlay").style.transform).toMatch(
+      /translate\(-\d/,
+    );
+    rerender(<HudOverlay {...props} stabilize={false} />);
     expect(getByTestId("hud-overlay").style.transform).toBe(
       "translate(0px, 0px)",
     );

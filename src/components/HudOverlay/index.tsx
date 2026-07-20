@@ -58,7 +58,6 @@ export const HudOverlay = ({
   const videoSizeRef = useRef(videoSize);
   const viewportSizeRef = useRef(viewportSize);
   const getMotionDeltaRef = useRef(getMotionDelta);
-  const stabilizeRef = useRef(stabilize);
 
   // Refs may not be written during render (react-hooks/refs), so the latest
   // props are copied in via an effect instead, mirroring the sendFrameRef
@@ -68,30 +67,35 @@ export const HudOverlay = ({
     videoSizeRef.current = videoSize;
     viewportSizeRef.current = viewportSize;
     getMotionDeltaRef.current = getMotionDelta;
-    stabilizeRef.current = stabilize;
-  }, [videoSize, viewportSize, getMotionDelta, stabilize]);
+  }, [videoSize, viewportSize, getMotionDelta]);
 
+  // The compensation loop is scheduled only while stabilization is on:
+  // stabilizeMotion defaults off, so most users would otherwise pay for a
+  // display-refresh-rate style-write loop that always writes zero. Turning
+  // the setting off resets the transform once and stops the loop.
   useEffect(() => {
+    const container = containerRef.current;
+    if (!stabilize) {
+      if (container) {
+        container.style.transform = "translate(0px, 0px)";
+      }
+      return;
+    }
     let frame = 0;
     const tick = () => {
-      const container = containerRef.current;
-      if (container) {
-        // With stabilization off, hold the overlay at zero rather than applying
-        // the motion offset.
-        const { dx, dy } = stabilizeRef.current
-          ? orientationDeltaToPixels(
-              getMotionDeltaRef.current(),
-              videoSizeRef.current,
-              viewportSizeRef.current,
-            )
-          : { dx: 0, dy: 0 };
-        container.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px)`;
+      if (containerRef.current) {
+        const { dx, dy } = orientationDeltaToPixels(
+          getMotionDeltaRef.current(),
+          videoSizeRef.current,
+          viewportSizeRef.current,
+        );
+        containerRef.current.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px)`;
       }
       frame = window.requestAnimationFrame(tick);
     };
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
-  }, []);
+  }, [stabilize]);
 
   const nearestBox = hud.nearest
     ? mapBoxToViewport(hud.nearest.box, videoSize, viewportSize)
