@@ -9,12 +9,30 @@ export type DetectionStatus = "loading-model" | "ready" | "running" | "error";
 
 export type ModelProgress = { loadedBytes: number; totalBytes: number };
 
+/** Per-frame diagnostics surfaced when the debug overlay is enabled. */
+export type DebugSnapshot = {
+  /** Time to capture the video frame into an ImageBitmap (context-side). */
+  captureMs: number;
+  preprocessMs: number;
+  inferenceMs: number;
+  decodeMs: number;
+  /** Wall time from posting a frame to receiving its result (context-side). */
+  roundTripMs: number;
+  /** Detections decoded by the worker before the road-class/threshold filter. */
+  rawCount: number;
+  /** Detections remaining after toRoadDetections filtering. */
+  filteredCount: number;
+  /** Frames in flight to the worker that this result cleared (0 or 1). */
+  inFlight: number;
+};
+
 export type DetectionContextValue = {
   status: DetectionStatus;
   backend: DetectionBackend | undefined;
   modelProgress: ModelProgress;
   hud: HudModel | undefined;
   fps: number;
+  debug: DebugSnapshot;
   error: DetectionErrorCode | undefined;
   start: (video: HTMLVideoElement) => void;
   stop: () => void;

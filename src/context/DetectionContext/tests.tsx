@@ -40,6 +40,17 @@ const Probe = () => {
   );
 };
 
+const DebugProbe = () => {
+  const { debug } = useDetection();
+  return (
+    <div>
+      <span data-testid="raw">{debug.rawCount}</span>
+      <span data-testid="filtered">{debug.filteredCount}</span>
+      <span data-testid="inference">{debug.inferenceMs}</span>
+    </div>
+  );
+};
+
 const StartOnReady = () => {
   const { status, start } = useDetection();
   return (
@@ -395,6 +406,29 @@ describe("DetectionProvider", () => {
     const fps = Number(screen.getByTestId("fps").textContent);
     expect(Number.isFinite(fps)).toBe(true);
     expect(fps).toBeGreaterThanOrEqual(0);
+  });
+
+  it("exposes a debug snapshot from detection results", () => {
+    const worker = renderWithProvider(<DebugProbe />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [
+          {
+            label: "car",
+            score: 0.9,
+            box: { xmin: 0.4, ymin: 0.5, xmax: 0.6, ymax: 0.8 },
+          },
+        ],
+        timing: { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 },
+      });
+    });
+    expect(screen.getByTestId("raw").textContent).toBe("1");
+    expect(screen.getByTestId("filtered").textContent).toBe("1");
+    expect(screen.getByTestId("inference").textContent).toBe("2");
   });
 
   it("auto-starts detection when ready arrives after start", async () => {

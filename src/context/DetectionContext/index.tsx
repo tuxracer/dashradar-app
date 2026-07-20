@@ -19,9 +19,11 @@ import { isWorkerResponse } from "@/workers/detection/types";
 import {
   FPS_SAMPLE_SIZE,
   FRAME_RETRY_MS,
+  INITIAL_DEBUG,
   SW_CONTROL_TIMEOUT_MS,
 } from "./consts";
 import type {
+  DebugSnapshot,
   DetectionContextValue,
   DetectionStatus,
   DetectionWorkerLike,
@@ -68,6 +70,7 @@ export const DetectionProvider = ({
   });
   const [hud, setHud] = useState<HudModel>();
   const [fps, setFps] = useState(0);
+  const [debug, setDebug] = useState<DebugSnapshot>(INITIAL_DEBUG);
   const [error, setError] = useState<DetectionErrorCode>();
 
   // React 19 useRef requires an initial value; undefined unions cover "not yet set".
@@ -93,6 +96,10 @@ export const DetectionProvider = ({
   const retryTimerRef = useRef<number | undefined>(undefined);
   const fileProgressRef = useRef(new Map<string, ModelProgress>());
   const resultTimesRef = useRef<number[]>([]);
+  // Capture duration of the most recently posted frame and the timestamp it was
+  // posted, paired with the next detections result for the debug snapshot.
+  const lastCaptureMsRef = useRef(0);
+  const postTimeRef = useRef(0);
   // Holds the latest `sendFrame` so the retry timeout can call it without
   // closing over the `const` before its own initializer finishes (which
   // `react-hooks/immutability` flags as a before-declaration access).
@@ -110,6 +117,7 @@ export const DetectionProvider = ({
     }
     const generation = pumpGenerationRef.current;
     try {
+      const captureStart = performance.now();
       const frame = await createImageBitmap(video);
       if (
         generation !== pumpGenerationRef.current ||
@@ -121,6 +129,8 @@ export const DetectionProvider = ({
         frame.close();
         return;
       }
+      lastCaptureMsRef.current = performance.now() - captureStart;
+      postTimeRef.current = performance.now();
       inFlightRef.current += 1;
       worker.postMessage({ type: "detect", frame }, [frame]);
     } catch {
@@ -189,8 +199,20 @@ export const DetectionProvider = ({
           break;
         }
         case "detections": {
+          const inFlightCleared = inFlightRef.current;
           inFlightRef.current = Math.max(0, inFlightRef.current - 1);
-          setHud(buildHudModel(toRoadDetections(message.detections)));
+          const roadDetections = toRoadDetections(message.detections);
+          setHud(buildHudModel(roadDetections));
+          setDebug({
+            captureMs: lastCaptureMsRef.current,
+            preprocessMs: message.timing.preprocessMs,
+            inferenceMs: message.timing.inferenceMs,
+            decodeMs: message.timing.decodeMs,
+            roundTripMs: performance.now() - postTimeRef.current,
+            rawCount: message.detections.length,
+            filteredCount: roadDetections.length,
+            inFlight: inFlightCleared,
+          });
           recordResultTime();
           void sendFrame();
           break;
@@ -275,11 +297,12 @@ export const DetectionProvider = ({
       modelProgress,
       hud,
       fps,
+      debug,
       error,
       start,
       stop,
     }),
-    [status, backend, modelProgress, hud, fps, error, start, stop],
+    [status, backend, modelProgress, hud, fps, debug, error, start, stop],
   );
 
   return (
