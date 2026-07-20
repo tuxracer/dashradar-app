@@ -3,6 +3,11 @@ import { CameraView } from "@/components/CameraView";
 import { DebugOverlay } from "@/components/DebugOverlay";
 import { ErrorScreen } from "@/components/ErrorScreen";
 import { HudOverlay } from "@/components/HudOverlay";
+import {
+  IntroScreen,
+  markIntroSeen,
+  shouldShowIntro,
+} from "@/components/IntroScreen";
 import { ModelLoadScreen } from "@/components/ModelLoadScreen";
 import { RadarBackdrop } from "@/components/RadarBackdrop";
 import { RadarDetectorScreen } from "@/components/RadarDetectorScreen";
@@ -56,6 +61,7 @@ const RadarScreen = () => {
     radarDetectorMode,
     settingsOpen,
   } = useSettings();
+  const [showIntro, setShowIntro] = useState(shouldShowIntro);
   const [cameraError, setCameraError] = useState<CameraError>();
   const [videoSize, setVideoSize] = useState<Size>();
   const viewportSize = useViewportSize();
@@ -82,6 +88,16 @@ const RadarScreen = () => {
     [start, updateVideoSize],
   );
 
+  if (showIntro) {
+    return (
+      <IntroScreen
+        onStart={() => {
+          markIntroSeen();
+          setShowIntro(false);
+        }}
+      />
+    );
+  }
   if (cameraError) {
     return <ErrorScreen code={cameraError.code} />;
   }
