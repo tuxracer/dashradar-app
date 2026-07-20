@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import type { ReactNode } from "react";
+import { waitForNextVideoFrame } from "@/lib/camera";
 import type { HudModel } from "@/lib/detection";
 import { buildHudModel, toRoadDetections } from "@/lib/detection";
 import { createDetectionTracker } from "@/lib/detectionTracker";
@@ -158,6 +159,18 @@ export const DetectionProvider = ({
     }
     const generation = pumpGenerationRef.current;
     try {
+      // Hold the capture until the camera presents a new frame, so inference
+      // never runs twice on the same frame when detection outpaces the camera.
+      // The wait can outlive the pump (rVFC does not fire while hidden), so
+      // re-check the guards before committing to a capture.
+      await waitForNextVideoFrame(video);
+      if (
+        generation !== pumpGenerationRef.current ||
+        !runningRef.current ||
+        inFlightRef.current > 0
+      ) {
+        return;
+      }
       const captureStart = performance.now();
       const frame = await createImageBitmap(video);
       if (

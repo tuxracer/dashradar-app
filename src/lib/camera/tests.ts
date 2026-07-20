@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getCameraStream, isCameraError } from "@/lib/camera";
+import {
+  getCameraStream,
+  isCameraError,
+  waitForNextVideoFrame,
+} from "@/lib/camera";
 
 const stubGetUserMedia = (impl: () => Promise<MediaStream>) => {
   vi.stubGlobal("navigator", {
@@ -46,5 +50,40 @@ describe("getCameraStream", () => {
     vi.stubGlobal("navigator", {});
     const error = await getCameraStream().catch((caught: unknown) => caught);
     expect(isCameraError(error) && error.code).toBe("UNSUPPORTED");
+  });
+});
+
+const FRAME_METADATA: VideoFrameCallbackMetadata = {
+  presentationTime: 0,
+  expectedDisplayTime: 0,
+  width: 512,
+  height: 512,
+  mediaTime: 0,
+  presentedFrames: 1,
+};
+
+describe("waitForNextVideoFrame", () => {
+  it("resolves only once the video presents a new frame", async () => {
+    const callbacks: VideoFrameRequestCallback[] = [];
+    const video = document.createElement("video");
+    video.requestVideoFrameCallback = (callback) => {
+      callbacks.push(callback);
+      return callbacks.length;
+    };
+    let resolved = false;
+    const wait = waitForNextVideoFrame(video).then(() => {
+      resolved = true;
+    });
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+    callbacks[0](performance.now(), FRAME_METADATA);
+    await wait;
+    expect(resolved).toBe(true);
+  });
+
+  it("resolves immediately when rVFC is unsupported", async () => {
+    // jsdom's video element has no requestVideoFrameCallback.
+    const video = document.createElement("video");
+    await expect(waitForNextVideoFrame(video)).resolves.toBeUndefined();
   });
 });

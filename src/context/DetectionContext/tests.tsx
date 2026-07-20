@@ -86,6 +86,20 @@ const StartStop = () => {
   );
 };
 
+const StartStopWithVideo = ({ video }: { video: HTMLVideoElement }) => {
+  const { start, stop } = useDetection();
+  return (
+    <>
+      <button onClick={() => start(video)} data-testid="start">
+        start
+      </button>
+      <button onClick={() => stop()} data-testid="stop">
+        stop
+      </button>
+    </>
+  );
+};
+
 const MotionPermissionProbe = () => {
   const { motionPermission } = useDetection();
   return <span data-testid="motion-permission">{motionPermission}</span>;
@@ -121,6 +135,34 @@ const fakeBitmap = () => {
     height: 720,
     close: () => {},
   } as unknown as ImageBitmap;
+};
+
+/**
+ * A video element whose requestVideoFrameCallback is under test control:
+ * callbacks queue up until presentFrame() fires them, simulating the camera
+ * presenting a new frame. jsdom's video element has no rVFC of its own, so
+ * assigning one exercises the pump's wait-for-new-frame path.
+ */
+const videoWithControlledFrames = () => {
+  const callbacks: VideoFrameRequestCallback[] = [];
+  const video = document.createElement("video");
+  video.requestVideoFrameCallback = (callback) => {
+    callbacks.push(callback);
+    return callbacks.length;
+  };
+  const presentFrame = () => {
+    for (const callback of callbacks.splice(0)) {
+      callback(performance.now(), {
+        presentationTime: 0,
+        expectedDisplayTime: 0,
+        width: 512,
+        height: 512,
+        mediaTime: 0,
+        presentedFrames: 1,
+      });
+    }
+  };
+  return { video, presentFrame };
 };
 
 /** Fake the page's visibility state and fire the matching event. */
@@ -363,6 +405,75 @@ describe("DetectionProvider", () => {
     ).toHaveLength(1);
   });
 
+  it("captures only when the camera presents a new frame", async () => {
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const { video, presentFrame } = videoWithControlledFrames();
+    const worker = new FakeWorker();
+    render(
+      <DetectionProvider createWorker={() => worker}>
+        <StartStopWithVideo video={video} />
+      </DetectionProvider>,
+    );
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    // No camera frame has been presented yet: the pump must hold the capture.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(0);
+    await act(async () => {
+      presentFrame();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+  });
+
+  it("discards a capture whose camera frame arrives after stop", async () => {
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const { video, presentFrame } = videoWithControlledFrames();
+    const worker = new FakeWorker();
+    render(
+      <DetectionProvider createWorker={() => worker}>
+        <StartStopWithVideo video={video} />
+      </DetectionProvider>,
+    );
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    // Stop lands while the pump is still waiting for a camera frame; the
+    // frame arriving afterwards must not trigger a capture.
+    act(() => {
+      screen.getByTestId("stop").click();
+    });
+    await act(async () => {
+      presentFrame();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(0);
+  });
+
   it("keeps one frame in flight across a fast stop-then-start", async () => {
     let closedFrames = 0;
     const pendingCaptures: Array<(bitmap: ImageBitmap) => void> = [];
@@ -391,12 +502,19 @@ describe("DetectionProvider", () => {
     act(() => {
       screen.getByTestId("start").click();
     });
-    // Capture #1 is pending; stop then quickly start again (capture #2).
+    // Flush the frame-wait microtask so capture #1 is pending, then stop and
+    // quickly start again (capture #2).
+    await act(async () => {
+      await Promise.resolve();
+    });
     act(() => {
       screen.getByTestId("stop").click();
     });
     act(() => {
       screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await Promise.resolve();
     });
     await act(async () => {
       for (const resolveCapture of pendingCaptures.splice(0)) {
