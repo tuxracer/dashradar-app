@@ -1,12 +1,12 @@
 # dashradar
 
-A computer-vision radar detector. Mount a phone on your car dash, and dashradar watches the road through the camera for one specific thing: Las Vegas Metro police vehicles. It runs a custom object detector entirely on the phone and draws a clean HUD over the live camera feed: a box on the nearest detection, small tag markers on the rest, and a lane-radar strip that shows where things are without making you read anything. Nothing is recorded, nothing leaves the device, and there's no account to sign into.
+A computer-vision radar detector. Mount a phone on your car dash, and dashradar watches the road through the camera for one specific thing: police vehicles. It runs a custom object detector entirely on the phone and draws a clean HUD over the live camera feed: a box on the nearest detection, small tag markers on the rest, and a lane-radar strip that shows where things are without making you read anything. Nothing is recorded, nothing leaves the device, and there's no account to sign into.
 
-This is not a general-purpose object detector. The model is fine-tuned to recognize marked Las Vegas Metro patrol vehicles, so think of it as a visual counterpart to a radar detector rather than a "label everything in view" camera app.
+This is not a general-purpose object detector. The model is fine-tuned to recognize police vehicles, so think of it as a visual counterpart to a radar detector rather than a "label everything in view" camera app.
 
 ## The model
 
-Detection uses a custom **RF-DETR Small** checkpoint fine-tuned on Las Vegas Metro police vehicles, published as ONNX at [`tuxracer/las-vegas-metro-rfdetr-small-t1`](https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1). The app streams the weights from Hugging Face on first launch and runs them on-device through onnxruntime-web (WebGPU, with a WASM fallback). Swapping in a checkpoint trained on a different vehicle set is the intended way to point dashradar at another jurisdiction.
+Detection uses a custom **RF-DETR Small** checkpoint fine-tuned to spot police vehicles, published as ONNX at [`tuxracer/las-vegas-metro-rfdetr-small-t1`](https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1). Las Vegas Metro patrol vehicles happen to make up most of the current training data, so that is what it recognizes best today, but the goal is broader police-vehicle detection and the training set will keep growing. The app streams the weights from Hugging Face on first launch and runs them on-device through onnxruntime-web (WebGPU, with a WASM fallback).
 
 ## Features
 
