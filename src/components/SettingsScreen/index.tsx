@@ -45,6 +45,11 @@ export const SettingsScreen = ({ backend, fps }: SettingsScreenProps) => {
     ? `${backend === "webgpu" ? "GPU" : "CPU"} · ${fps} FPS`
     : "Starting…";
 
+  const versionLabel =
+    __COMMIT_SHA__ === "unknown"
+      ? `v${__APP_VERSION__}`
+      : `v${__APP_VERSION__} · ${__COMMIT_SHA__}`;
+
   return (
     <div className="fixed inset-0 z-30 flex flex-col bg-surface/95 backdrop-blur-md">
       <div className="flex items-center justify-between px-6 pb-4 pt-[max(1.5rem,env(safe-area-inset-top))]">
@@ -122,7 +127,7 @@ export const SettingsScreen = ({ backend, fps }: SettingsScreenProps) => {
               </span>
             </span>
             <span className="text-base font-semibold tracking-[0.12em] text-white/60">
-              v{__APP_VERSION__} ↗
+              {versionLabel} ↗
             </span>
           </a>
         </div>

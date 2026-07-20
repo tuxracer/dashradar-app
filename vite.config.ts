@@ -18,17 +18,21 @@ const resolveCommitSha = (): string => {
   }
 };
 
-const commitShaMeta = (): Plugin => {
-  const sha = resolveCommitSha();
-  return {
-    name: "commit-sha-meta",
-    transformIndexHtml: (html) =>
-      html.replace(
-        "</head>",
-        `  <meta name="version" content="${sha}" />\n  </head>`,
-      ),
-  };
-};
+/** Full commit SHA for this build (Vercel env or local git), or "unknown". */
+const COMMIT_SHA: string = resolveCommitSha();
+
+/** Short (7-char) commit SHA shown alongside the app version in settings. */
+const SHORT_COMMIT_SHA: string =
+  COMMIT_SHA === "unknown" ? "unknown" : COMMIT_SHA.slice(0, 7);
+
+const commitShaMeta = (): Plugin => ({
+  name: "commit-sha-meta",
+  transformIndexHtml: (html) =>
+    html.replace(
+      "</head>",
+      `  <meta name="version" content="${COMMIT_SHA}" />\n  </head>`,
+    ),
+});
 
 // Generous ceiling for the JS/CSS bundle. The ONNX runtime .wasm that Vite
 // emits into dist/assets (~23.5 MB) is deliberately excluded from globPatterns
@@ -101,6 +105,7 @@ const APP_VERSION: string = JSON.parse(
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
+    __COMMIT_SHA__: JSON.stringify(SHORT_COMMIT_SHA),
   },
   plugins: [react(), tailwindcss(), commitShaMeta(), pwa()],
   resolve: { tsconfigPaths: true },

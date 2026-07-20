@@ -89,4 +89,19 @@ describe("SettingsScreen", () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/v\d+\.\d+\.\d+/)).toBeInTheDocument();
   });
+
+  it("appends the short commit hash to the version when one is available", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    if (__COMMIT_SHA__ === "unknown") {
+      expect(screen.getByText(/v\d+\.\d+\.\d+ ↗/)).toBeInTheDocument();
+    } else {
+      expect(
+        screen.getByText(
+          new RegExp(`v\\d+\\.\\d+\\.\\d+ · ${__COMMIT_SHA__} ↗`),
+        ),
+      ).toBeInTheDocument();
+    }
+  });
 });
