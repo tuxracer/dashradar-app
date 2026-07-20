@@ -1,7 +1,12 @@
 import { coverScale } from "@/lib/detection";
 import type { Size } from "@/lib/detection";
-import { ASSUMED_CAMERA_HFOV_DEG, MAX_INTEGRATION_DT_SECONDS } from "./consts";
-import type { RotationRate, YawPitch } from "./types";
+import {
+  ASSUMED_CAMERA_HFOV_DEG,
+  MAX_INTEGRATION_DT_SECONDS,
+  MOTION_GRANTED_KEY,
+} from "./consts";
+import { isMotionPermission } from "./types";
+import type { MotionPermission, RotationRate, YawPitch } from "./types";
 
 export * from "./consts";
 export * from "./types";
@@ -66,5 +71,105 @@ export const orientationDeltaToPixels = (
   return {
     dx: -delta.yaw * (displayedWidth / hFovRad) + 0, // + 0 normalizes -0 to 0 so a zero delta returns exactly { dx: 0, dy: 0 }
     dy: delta.pitch * (displayedHeight / vFovRad) + 0, // + 0 normalizes -0 to 0 so a zero delta returns exactly { dx: 0, dy: 0 }
+  };
+};
+
+/** Live device-orientation source plus iOS permission handling. */
+export type MotionSensorManager = {
+  start: () => void;
+  stop: () => void;
+  getYawPitch: () => YawPitch;
+  getPermission: () => MotionPermission;
+  requestPermission: () => Promise<MotionPermission>;
+};
+
+/** Narrows the DeviceMotionEvent constructor to the iOS permission-gated shape. */
+const hasRequestPermission = (
+  ctor: typeof DeviceMotionEvent,
+): ctor is typeof DeviceMotionEvent & {
+  requestPermission: () => Promise<string>;
+} =>
+  "requestPermission" in ctor && typeof ctor.requestPermission === "function";
+
+/**
+ * Integrates `devicemotion` rotationRate into a running yaw/pitch orientation
+ * and gates iOS motion permission. Pure gyro (no magnetometer), so a metal car
+ * cabin does not poison it. When motion is unsupported or denied, the
+ * orientation stays at zero and consumers see no compensation.
+ */
+export const createMotionSensorManager = (): MotionSensorManager => {
+  let orientation: YawPitch = { yaw: 0, pitch: 0 };
+  let lastTimestamp: number | undefined;
+  let started = false;
+
+  const handleMotion = (event: DeviceMotionEvent) => {
+    const now = performance.now();
+    if (lastTimestamp === undefined) {
+      lastTimestamp = now;
+      return;
+    }
+    const dtSeconds = (now - lastTimestamp) / 1000;
+    lastTimestamp = now;
+    const rate = event.rotationRate;
+    if (!rate) {
+      return;
+    }
+    const angle = screen.orientation?.angle ?? 0;
+    const screenRate = mapRotationRateToScreen(
+      { alpha: rate.alpha ?? 0, beta: rate.beta ?? 0, gamma: rate.gamma ?? 0 },
+      angle,
+    );
+    orientation = integrateYawPitch(orientation, screenRate, dtSeconds);
+  };
+
+  const getPermission = (): MotionPermission => {
+    if (typeof DeviceMotionEvent === "undefined") {
+      return "unsupported";
+    }
+    if (!hasRequestPermission(DeviceMotionEvent)) {
+      return "granted";
+    }
+    return localStorage.getItem(MOTION_GRANTED_KEY) === "true"
+      ? "granted"
+      : "prompt";
+  };
+
+  return {
+    start: () => {
+      if (started || typeof window === "undefined") {
+        return;
+      }
+      started = true;
+      window.addEventListener("devicemotion", handleMotion);
+    },
+    stop: () => {
+      started = false;
+      lastTimestamp = undefined;
+      window.removeEventListener("devicemotion", handleMotion);
+    },
+    getYawPitch: () => orientation,
+    getPermission,
+    requestPermission: async () => {
+      if (typeof DeviceMotionEvent === "undefined") {
+        return "unsupported";
+      }
+      if (!hasRequestPermission(DeviceMotionEvent)) {
+        return "granted";
+      }
+      let result: string;
+      try {
+        result = await DeviceMotionEvent.requestPermission();
+      } catch {
+        return "denied";
+      }
+      const permission: MotionPermission =
+        isMotionPermission(result) && result === "granted"
+          ? "granted"
+          : "denied";
+      if (permission === "granted") {
+        localStorage.setItem(MOTION_GRANTED_KEY, "true");
+      }
+      return permission;
+    },
   };
 };

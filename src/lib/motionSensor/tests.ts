@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  createMotionSensorManager,
   integrateYawPitch,
   mapRotationRateToScreen,
   orientationDeltaToPixels,
 } from "@/lib/motionSensor";
+import type { RotationRate } from "@/lib/motionSensor";
 
 const rate = (
   beta: number,
@@ -114,5 +116,66 @@ describe("orientationDeltaToPixels", () => {
       viewport,
     );
     expect(dy).toBeGreaterThan(0);
+  });
+});
+
+describe("createMotionSensorManager", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  const dispatchMotion = (beta: number, gamma: number) => {
+    const event = new Event("devicemotion") as DeviceMotionEvent & {
+      rotationRate: RotationRate;
+    };
+    Object.defineProperty(event, "rotationRate", {
+      value: { alpha: 0, beta, gamma },
+      configurable: true,
+    });
+    window.dispatchEvent(event);
+  };
+
+  it("integrates rotationRate across events using elapsed time", () => {
+    const now = vi.spyOn(performance, "now");
+    now.mockReturnValueOnce(1000); // first event seeds the clock, no integration
+    now.mockReturnValueOnce(1100); // +100ms
+    const manager = createMotionSensorManager();
+    manager.start();
+    dispatchMotion(0, 90); // portrait: gamma -> yaw
+    dispatchMotion(0, 90);
+    expect(manager.getYawPitch().yaw).toBeCloseTo(((90 * Math.PI) / 180) * 0.1);
+    manager.stop();
+  });
+
+  it("reports 'granted' when no permission gate exists (Android/desktop)", () => {
+    vi.stubGlobal("DeviceMotionEvent", class {});
+    expect(createMotionSensorManager().getPermission()).toBe("granted");
+  });
+
+  it("reports 'prompt' on iOS before granting and 'granted' after", async () => {
+    const requestPermission = vi.fn(() => Promise.resolve("granted"));
+    vi.stubGlobal(
+      "DeviceMotionEvent",
+      Object.assign(class {}, { requestPermission }),
+    );
+    const manager = createMotionSensorManager();
+    expect(manager.getPermission()).toBe("prompt");
+    await expect(manager.requestPermission()).resolves.toBe("granted");
+    expect(requestPermission).toHaveBeenCalled();
+    expect(localStorage.getItem("dashradar:motionGranted")).toBe("true");
+  });
+
+  it("reports 'denied' when the iOS prompt is refused", async () => {
+    vi.stubGlobal(
+      "DeviceMotionEvent",
+      Object.assign(class {}, {
+        requestPermission: () => Promise.resolve("denied"),
+      }),
+    );
+    await expect(createMotionSensorManager().requestPermission()).resolves.toBe(
+      "denied",
+    );
   });
 });
