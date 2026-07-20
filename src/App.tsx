@@ -7,6 +7,7 @@ import { ModelLoadScreen } from "@/components/ModelLoadScreen";
 import { RadarBackdrop } from "@/components/RadarBackdrop";
 import { RadarStrip } from "@/components/RadarStrip";
 import { SettingsScreen } from "@/components/SettingsScreen";
+import { StartGate, shouldShowStartGate } from "@/components/StartGate";
 import { StatusBar } from "@/components/StatusBar";
 import { DetectionProvider, useDetection } from "@/context/DetectionContext";
 import { SettingsProvider, useSettings } from "@/context/SettingsContext";
@@ -43,6 +44,8 @@ const RadarScreen = () => {
     error,
     start,
     getMotionDelta,
+    motionPermission,
+    requestMotionPermission,
   } = useDetection();
   const { showVideo, showDebug } = useSettings();
   const [cameraError, setCameraError] = useState<CameraError>();
@@ -111,6 +114,9 @@ const RadarScreen = () => {
       <SettingsScreen backend={backend} fps={fps} />
       {status === "loading-model" && downloadingModel && (
         <ModelLoadScreen progress={modelProgress} />
+      )}
+      {shouldShowStartGate(motionPermission) && (
+        <StartGate onStart={() => void requestMotionPermission()} />
       )}
     </main>
   );
