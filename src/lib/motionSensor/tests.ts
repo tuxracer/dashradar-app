@@ -178,4 +178,16 @@ describe("createMotionSensorManager", () => {
       "denied",
     );
   });
+
+  it("returns 'denied' when the iOS prompt rejects", async () => {
+    vi.stubGlobal(
+      "DeviceMotionEvent",
+      Object.assign(class {}, {
+        requestPermission: () => Promise.reject(new Error("nope")),
+      }),
+    );
+    await expect(createMotionSensorManager().requestPermission()).resolves.toBe(
+      "denied",
+    );
+  });
 });
