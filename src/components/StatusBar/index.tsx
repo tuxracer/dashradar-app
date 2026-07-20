@@ -1,4 +1,4 @@
-import { SettingsMenu } from "@/components/SettingsMenu";
+import { SettingsButton } from "@/components/SettingsButton";
 import type { DetectionBackend } from "@/workers/detection/types";
 
 type StatusBarProps = {
@@ -18,7 +18,7 @@ export const StatusBar = ({ backend, fps }: StatusBarProps) => {
             {backend === "webgpu" ? "GPU" : "CPU"} · {fps} FPS
           </span>
         )}
-        <SettingsMenu />
+        <SettingsButton />
       </div>
     </div>
   );
