@@ -1,8 +1,11 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { HudOverlay } from "@/components/HudOverlay";
 import type { HudModel } from "@/lib/detection";
 import type { Detection } from "@/types";
+
+/** No-op motion delta for tests that don't exercise gyro compensation. */
+const noMotionDelta = () => ({ yaw: 0, pitch: 0 });
 
 const car: Detection = {
   label: "car",
@@ -30,7 +33,14 @@ describe("HudOverlay", () => {
       others: [person],
       blips: [],
     };
-    render(<HudOverlay hud={hud} videoSize={size} viewportSize={size} />);
+    render(
+      <HudOverlay
+        hud={hud}
+        videoSize={size}
+        viewportSize={size}
+        getMotionDelta={noMotionDelta}
+      />,
+    );
     expect(screen.getByText("CAR · NEAR")).toBeInTheDocument();
     const box = screen.getByTestId("nearest-box");
     expect(box.style.left).toBe("400px");
@@ -46,7 +56,14 @@ describe("HudOverlay", () => {
       others: [],
       blips: [],
     };
-    render(<HudOverlay hud={hud} videoSize={size} viewportSize={size} />);
+    render(
+      <HudOverlay
+        hud={hud}
+        videoSize={size}
+        viewportSize={size}
+        getMotionDelta={noMotionDelta}
+      />,
+    );
     expect(screen.getByText("CAR")).toBeInTheDocument();
     expect(screen.queryByText("CAR · NEAR")).not.toBeInTheDocument();
   });
@@ -58,7 +75,14 @@ describe("HudOverlay", () => {
       others: [person],
       blips: [],
     };
-    render(<HudOverlay hud={hud} videoSize={size} viewportSize={size} />);
+    render(
+      <HudOverlay
+        hud={hud}
+        videoSize={size}
+        viewportSize={size}
+        getMotionDelta={noMotionDelta}
+      />,
+    );
     expect(screen.getByText("PERSON")).toBeInTheDocument();
   });
 
@@ -70,7 +94,12 @@ describe("HudOverlay", () => {
       blips: [],
     };
     const { container } = render(
-      <HudOverlay hud={hud} videoSize={size} viewportSize={size} />,
+      <HudOverlay
+        hud={hud}
+        videoSize={size}
+        viewportSize={size}
+        getMotionDelta={noMotionDelta}
+      />,
     );
     expect(container.querySelector("[data-testid=nearest-box]")).toBeNull();
   });
@@ -82,7 +111,15 @@ describe("HudOverlay", () => {
       others: [],
       blips: [],
     };
-    render(<HudOverlay hud={hud} videoSize={size} viewportSize={size} debug />);
+    render(
+      <HudOverlay
+        hud={hud}
+        videoSize={size}
+        viewportSize={size}
+        getMotionDelta={noMotionDelta}
+        debug
+      />,
+    );
     expect(screen.getByText("92%")).toBeInTheDocument();
     expect(screen.getByText("0.40,0.50 0.60,0.80")).toBeInTheDocument();
   });
@@ -94,7 +131,15 @@ describe("HudOverlay", () => {
       others: [person],
       blips: [],
     };
-    render(<HudOverlay hud={hud} videoSize={size} viewportSize={size} debug />);
+    render(
+      <HudOverlay
+        hud={hud}
+        videoSize={size}
+        viewportSize={size}
+        getMotionDelta={noMotionDelta}
+        debug
+      />,
+    );
     expect(screen.getByText("84%")).toBeInTheDocument();
     expect(screen.getByText("0.70,0.40 0.80,0.90")).toBeInTheDocument();
   });
@@ -106,7 +151,68 @@ describe("HudOverlay", () => {
       others: [],
       blips: [],
     };
-    render(<HudOverlay hud={hud} videoSize={size} viewportSize={size} />);
+    render(
+      <HudOverlay
+        hud={hud}
+        videoSize={size}
+        viewportSize={size}
+        getMotionDelta={noMotionDelta}
+      />,
+    );
     expect(screen.queryByText("92%")).not.toBeInTheDocument();
+  });
+});
+
+const emptyHud: HudModel = {
+  nearest: undefined,
+  near: false,
+  others: [],
+  blips: [],
+};
+
+describe("HudOverlay motion compensation", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  // One-shot rAF: run the tick exactly once. The tick re-schedules itself, so a
+  // mock that always calls cb would recurse infinitely.
+  const runOneFrame = () => {
+    let ran = false;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      if (!ran) {
+        ran = true;
+        cb(0);
+      }
+      return 0;
+    });
+  };
+
+  it("translates the overlay container by the pixel offset for the motion delta", () => {
+    runOneFrame();
+    const { getByTestId } = render(
+      <HudOverlay
+        hud={emptyHud}
+        videoSize={{ width: 1280, height: 720 }}
+        viewportSize={{ width: 800, height: 600 }}
+        getMotionDelta={() => ({ yaw: 0.1, pitch: 0 })}
+      />,
+    );
+    const container = getByTestId("hud-overlay");
+    // A positive yaw shifts content left, so translateX is negative.
+    expect(container.style.transform).toMatch(/translate\(-\d/);
+  });
+
+  it("leaves the transform at zero when there is no motion delta", () => {
+    runOneFrame();
+    const { getByTestId } = render(
+      <HudOverlay
+        hud={emptyHud}
+        videoSize={{ width: 1280, height: 720 }}
+        viewportSize={{ width: 800, height: 600 }}
+        getMotionDelta={() => ({ yaw: 0, pitch: 0 })}
+      />,
+    );
+    expect(getByTestId("hud-overlay").style.transform).toBe(
+      "translate(0px, 0px)",
+    );
   });
 });

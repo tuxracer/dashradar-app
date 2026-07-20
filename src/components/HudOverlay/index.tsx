@@ -1,5 +1,8 @@
-import type { HudModel, Size } from "@/lib/detection";
+import { useEffect, useRef } from "react";
 import { mapBoxToViewport } from "@/lib/detection";
+import type { HudModel, Size } from "@/lib/detection";
+import { orientationDeltaToPixels } from "@/lib/motionSensor";
+import type { YawPitch } from "@/lib/motionSensor";
 import type { Detection, NormalizedBox } from "@/types";
 import { TAG_OFFSET_PX } from "./consts";
 
@@ -9,6 +12,8 @@ type HudOverlayProps = {
   hud: HudModel;
   videoSize: Size;
   viewportSize: Size;
+  /** Live yaw/pitch delta since the displayed detection was captured. */
+  getMotionDelta: () => YawPitch;
   /** When true, annotate each detection with its confidence and box coords. */
   debug?: boolean;
 };
@@ -39,14 +44,53 @@ export const HudOverlay = ({
   hud,
   videoSize,
   viewportSize,
+  getMotionDelta,
   debug,
 }: HudOverlayProps) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const videoSizeRef = useRef(videoSize);
+  const viewportSizeRef = useRef(viewportSize);
+  const getMotionDeltaRef = useRef(getMotionDelta);
+
+  // Refs may not be written during render (react-hooks/refs), so the latest
+  // props are copied in via an effect instead, mirroring the sendFrameRef
+  // pattern in DetectionContext. The persistent rAF loop below reads these
+  // refs so it always sees the latest values without re-subscribing.
+  useEffect(() => {
+    videoSizeRef.current = videoSize;
+    viewportSizeRef.current = viewportSize;
+    getMotionDeltaRef.current = getMotionDelta;
+  }, [videoSize, viewportSize, getMotionDelta]);
+
+  useEffect(() => {
+    let frame = 0;
+    const tick = () => {
+      const container = containerRef.current;
+      if (container) {
+        const { dx, dy } = orientationDeltaToPixels(
+          getMotionDeltaRef.current(),
+          videoSizeRef.current,
+          viewportSizeRef.current,
+        );
+        container.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px)`;
+      }
+      frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
   const nearestBox = hud.nearest
     ? mapBoxToViewport(hud.nearest.box, videoSize, viewportSize)
     : undefined;
 
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+    <div
+      ref={containerRef}
+      data-testid="hud-overlay"
+      className="pointer-events-none absolute inset-0 overflow-hidden"
+      style={{ transform: "translate(0px, 0px)" }}
+    >
       {hud.nearest && nearestBox && (
         <div
           data-testid="nearest-box"

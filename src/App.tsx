@@ -42,6 +42,7 @@ const RadarScreen = () => {
     debug,
     error,
     start,
+    getMotionDelta,
   } = useDetection();
   const { showVideo, showDebug } = useSettings();
   const [cameraError, setCameraError] = useState<CameraError>();
@@ -91,6 +92,7 @@ const RadarScreen = () => {
           hud={hud}
           videoSize={videoSize}
           viewportSize={viewportSize}
+          getMotionDelta={getMotionDelta}
           debug={showDebug}
         />
       )}
