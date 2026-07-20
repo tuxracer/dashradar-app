@@ -10,11 +10,20 @@ import {
  * Convert a 512x512 RGBA frame into the model's `[1,3,512,512]` NCHW float32
  * input: per-channel ImageNet normalization laid out as all R values, then all
  * G, then all B.
+ *
+ * Pass `out` to write into a preallocated buffer instead of allocating a fresh
+ * `Float32Array` each call: the worker reuses one buffer across frames to avoid
+ * ~3 MB of per-frame garbage on the detection hot path. Callers that omit it
+ * (e.g. tests) get a freshly allocated tensor. `out` must have length
+ * `3 * INPUT_SIZE * INPUT_SIZE`.
  */
-export const preprocess = (imageData: ImageData): Float32Array => {
+export const preprocess = (
+  imageData: ImageData,
+  out?: Float32Array,
+): Float32Array => {
   const { data } = imageData;
   const pixels = INPUT_SIZE * INPUT_SIZE;
-  const tensor = new Float32Array(3 * pixels);
+  const tensor = out ?? new Float32Array(3 * pixels);
   for (let i = 0; i < pixels; i += 1) {
     const r = data[i * 4] / 255;
     const g = data[i * 4 + 1] / 255;

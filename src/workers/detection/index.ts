@@ -30,6 +30,17 @@ type ModelIo = {
 
 let model: ModelIo | undefined;
 
+// Reused across every frame to keep the detection hot path allocation-free.
+// Creating a canvas/context and a ~3 MB input tensor per frame otherwise
+// produces steady garbage that shows up as GC jank on mobile. Safe to share
+// because only one frame is ever in flight (see DetectionContext's frame pump):
+// the previous frame's inference has fully consumed the buffer before the next
+// frame overwrites it. `willReadFrequently` keeps the canvas CPU-backed so the
+// per-frame getImageData readback stays cheap.
+const inputCanvas = new OffscreenCanvas(INPUT_SIZE, INPUT_SIZE);
+const inputContext = inputCanvas.getContext("2d", { willReadFrequently: true });
+const inputBuffer = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE);
+
 const post = (message: WorkerResponse) => {
   self.postMessage(message);
 };
@@ -224,14 +235,12 @@ const detect = async (frame: ImageBitmap) => {
   }
   try {
     const preprocessStart = performance.now();
-    const canvas = new OffscreenCanvas(INPUT_SIZE, INPUT_SIZE);
-    const context = canvas.getContext("2d");
-    if (!context) {
+    if (!inputContext) {
       throw new DetectionError("INFERENCE_FAILED");
     }
-    context.drawImage(frame, 0, 0, INPUT_SIZE, INPUT_SIZE);
-    const imageData = context.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
-    const input = new Tensor("float32", preprocess(imageData), [
+    inputContext.drawImage(frame, 0, 0, INPUT_SIZE, INPUT_SIZE);
+    const imageData = inputContext.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
+    const input = new Tensor("float32", preprocess(imageData, inputBuffer), [
       1,
       3,
       INPUT_SIZE,

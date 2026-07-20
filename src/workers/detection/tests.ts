@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { decodeDetections } from "@/workers/detection/inference";
+import { decodeDetections, preprocess } from "@/workers/detection/inference";
+import {
+  IMAGENET_MEAN,
+  IMAGENET_STD,
+  INPUT_SIZE,
+} from "@/workers/detection/consts";
 import { isWorkerResponse } from "@/workers/detection/types";
 
 /** Build a `[1,queries,2]` logits buffer with per-query (class0, class1) pairs. */
@@ -48,6 +53,41 @@ describe("isWorkerResponse", () => {
     expect(isWorkerResponse({ type: "model-progress", progress: {} })).toBe(
       false,
     );
+  });
+});
+
+describe("preprocess", () => {
+  const pixels = INPUT_SIZE * INPUT_SIZE;
+
+  /** ImageNet-normalized value for a raw 0..255 channel byte. */
+  const normalized = (byte: number, channel: number): number =>
+    (byte / 255 - IMAGENET_MEAN[channel]) / IMAGENET_STD[channel];
+
+  // A full-size RGBA buffer with the first pixel opaque orange (r=255, g=128,
+  // b=0) and the rest zero. Built as a structural ImageData so the test runs
+  // without a DOM; preprocess only reads `.data`.
+  const makeImageData = (): ImageData => {
+    const data = new Uint8ClampedArray(pixels * 4);
+    data.set([255, 128, 0, 255], 0);
+    return { data, width: INPUT_SIZE, height: INPUT_SIZE, colorSpace: "srgb" };
+  };
+
+  it("normalizes RGB into planar NCHW layout", () => {
+    const tensor = preprocess(makeImageData());
+
+    expect(tensor).toHaveLength(3 * pixels);
+    expect(tensor[0]).toBeCloseTo(normalized(255, 0), 6);
+    expect(tensor[pixels]).toBeCloseTo(normalized(128, 1), 6);
+    expect(tensor[2 * pixels]).toBeCloseTo(normalized(0, 2), 6);
+  });
+
+  it("writes into the provided buffer and returns it instead of allocating", () => {
+    const out = new Float32Array(3 * pixels);
+
+    const tensor = preprocess(makeImageData(), out);
+
+    expect(tensor).toBe(out);
+    expect(out[0]).toBeCloseTo(normalized(255, 0), 6);
   });
 });
 
