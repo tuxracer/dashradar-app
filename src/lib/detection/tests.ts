@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Detection, NormalizedBox } from "@/types";
 import {
   buildHudModel,
+  coverScale,
   mapBoxToViewport,
   toRoadDetections,
   NEAR_AREA_FRACTION,
@@ -153,6 +154,21 @@ describe("mapBoxToViewport", () => {
     expect(result.width).toBeCloseTo(1600);
     expect(result.top).toBeCloseTo(-300 + 600);
     expect(result.height).toBeCloseTo(600);
+  });
+});
+
+describe("coverScale", () => {
+  it("returns the larger of the width and height ratios (fill, then crop)", () => {
+    // 800/1280 = 0.625, 600/720 = 0.833 -> height ratio wins
+    expect(
+      coverScale({ width: 1280, height: 720 }, { width: 800, height: 600 }),
+    ).toBeCloseTo(600 / 720);
+  });
+
+  it("scales up when the viewport is larger than the video", () => {
+    expect(
+      coverScale({ width: 640, height: 480 }, { width: 1280, height: 960 }),
+    ).toBeCloseTo(2);
   });
 });
 

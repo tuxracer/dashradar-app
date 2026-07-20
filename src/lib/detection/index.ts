@@ -75,6 +75,10 @@ export const buildHudModel = (detections: Detection[]): HudModel => {
   return { nearest, near, others, blips };
 };
 
+/** Scale factor for a video rendered `object-fit: cover` in the viewport. */
+export const coverScale = (video: Size, viewport: Size): number =>
+  Math.max(viewport.width / video.width, viewport.height / video.height);
+
 /**
  * Map a normalized box onto the viewport for a video rendered with
  * `object-fit: cover` (the video is scaled up and center-cropped).
@@ -84,10 +88,7 @@ export const mapBoxToViewport = (
   video: Size,
   viewport: Size,
 ): PixelBox => {
-  const scale = Math.max(
-    viewport.width / video.width,
-    viewport.height / video.height,
-  );
+  const scale = coverScale(video, viewport);
   const displayedWidth = video.width * scale;
   const displayedHeight = video.height * scale;
   const offsetX = (viewport.width - displayedWidth) / 2;
