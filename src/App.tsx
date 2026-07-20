@@ -155,7 +155,7 @@ const RadarScreen = () => {
         viewportSize={viewportSize}
         getMotionDelta={getMotionDelta}
       />
-      <SettingsScreen backend={backend} getFps={getFps} />
+      <SettingsScreen backend={backend} />
       {status === "loading-model" && downloadingModel && (
         <ModelLoadScreen progress={modelProgress} />
       )}

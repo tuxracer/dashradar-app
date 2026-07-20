@@ -11,13 +11,11 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-const renderScreen = (
-  props: { backend?: DetectionBackend; fps?: number } = {},
-) =>
+const renderScreen = (props: { backend?: DetectionBackend } = {}) =>
   render(
     <SettingsProvider>
       <SettingsButton />
-      <SettingsScreen backend={props.backend} getFps={() => props.fps ?? 0} />
+      <SettingsScreen backend={props.backend} />
     </SettingsProvider>,
   );
 
@@ -142,23 +140,24 @@ describe("SettingsScreen", () => {
     expect(screen.queryByText("Radar detector mode")).not.toBeInTheDocument();
   });
 
-  it("shows the GPU engine readout with live fps", async () => {
+  it("shows the GPU engine readout without an fps figure", async () => {
     const user = userEvent.setup();
-    renderScreen({ backend: "webgpu", fps: 11 });
+    renderScreen({ backend: "webgpu" });
     await open(user);
-    expect(screen.getByText("GPU · 11 FPS")).toBeInTheDocument();
+    expect(screen.getByText("GPU")).toBeInTheDocument();
+    expect(screen.queryByText(/FPS/)).not.toBeInTheDocument();
   });
 
   it("shows the CPU engine readout on the wasm fallback", async () => {
     const user = userEvent.setup();
-    renderScreen({ backend: "wasm", fps: 4 });
+    renderScreen({ backend: "wasm" });
     await open(user);
-    expect(screen.getByText("CPU · 4 FPS")).toBeInTheDocument();
+    expect(screen.getByText("CPU")).toBeInTheDocument();
   });
 
   it("shows a starting placeholder before a backend is known", async () => {
     const user = userEvent.setup();
-    renderScreen({ backend: undefined, fps: 0 });
+    renderScreen({ backend: undefined });
     await open(user);
     expect(screen.getByText(/starting/i)).toBeInTheDocument();
   });

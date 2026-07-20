@@ -1,18 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { X } from "lucide-react";
 import { ShareCard } from "@/components/ShareCard";
 import { useSettings } from "@/context/SettingsContext";
 import type { DetectionBackend } from "@/workers/detection/types";
 import { MODEL_REVISION } from "@/workers/detection/consts";
-import { FPS_POLL_MS, MODEL_SLUG, MODEL_URL, REPO_URL } from "./consts";
+import { MODEL_SLUG, MODEL_URL, REPO_URL } from "./consts";
 
 export * from "./consts";
 
 /** Props for SettingsScreen. */
 type SettingsScreenProps = {
   backend: DetectionBackend | undefined;
-  /** Rolling detection-result rate; polled while the panel is open. */
-  getFps: () => number;
 };
 
 /**
@@ -20,11 +18,11 @@ type SettingsScreenProps = {
  * landscape. Renders nothing until the panel is opened. Large, full-width rows
  * with big tap targets: Video feed and Debug overlay toggles plus read-only
  * Detection engine, Model, and About rows. Closes on the large close button or
- * Escape. Detection keeps running underneath while this is open. Reads
- * backend/fps as props (the same way StatusBar used to) so it stays testable
+ * Escape. Detection keeps running underneath while this is open. Reads the
+ * backend as a prop (the same way StatusBar used to) so it stays testable
  * without the worker.
  */
-export const SettingsScreen = ({ backend, getFps }: SettingsScreenProps) => {
+export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
   const {
     settingsOpen,
     closeSettings,
@@ -39,23 +37,6 @@ export const SettingsScreen = ({ backend, getFps }: SettingsScreenProps) => {
     radarAudio,
     toggleRadarAudio,
   } = useSettings();
-
-  // fps lives in a ref on the detection side; poll it while the panel is open.
-  const [fps, setFps] = useState(0);
-  useEffect(() => {
-    if (!settingsOpen) {
-      return;
-    }
-    // Seed on open so the row doesn't show a stale value for the first poll
-    // interval; this effect only runs on the open/close transition, so the
-    // direct set is a one-shot, not a render-loop hazard.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setFps(getFps());
-    const timer = window.setInterval(() => {
-      setFps(getFps());
-    }, FPS_POLL_MS);
-    return () => window.clearInterval(timer);
-  }, [settingsOpen, getFps]);
 
   useEffect(() => {
     if (!settingsOpen) {
@@ -75,7 +56,9 @@ export const SettingsScreen = ({ backend, getFps }: SettingsScreenProps) => {
   }
 
   const engineLabel = backend
-    ? `${backend === "webgpu" ? "GPU" : "CPU"} · ${fps} FPS`
+    ? backend === "webgpu"
+      ? "GPU"
+      : "CPU"
     : "Starting…";
 
   const versionLabel = __COMMIT_SHA__;
