@@ -1,5 +1,6 @@
 import type { HudModel } from "@/lib/detection";
 import type {
+  BackendProbe,
   DetectionBackend,
   DetectionErrorCode,
   WorkerRequest,
@@ -33,6 +34,12 @@ export type DebugSnapshot = {
 export type DetectionContextValue = {
   status: DetectionStatus;
   backend: DetectionBackend | undefined;
+  /**
+   * WebGPU backend probe result, reported once at load. Undefined until the
+   * worker finishes probing. Surfaced in the debug overlay to explain a CPU
+   * fallback on a device whose main thread reports WebGPU support.
+   */
+  backendProbe: BackendProbe | undefined;
   /**
    * True only while the model weights are being downloaded over the network.
    * False when the weights load from cache, so the UI can suppress the

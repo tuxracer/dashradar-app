@@ -89,9 +89,46 @@ const isFrameTiming = (value: unknown): value is FrameTiming => {
   );
 };
 
+/**
+ * Outcome of the WebGPU backend probe, reported once at load so the debug
+ * overlay can explain why the CPU (wasm) fallback was chosen on a device whose
+ * main thread reports WebGPU support. Each flag records how far the probe got
+ * inside the worker scope (where onnxruntime-web actually runs), and
+ * `sessionError` carries the InferenceSession.create failure message when the
+ * probe succeeded but the WebGPU session still would not build (e.g. the fp16
+ * build needs the `shader-f16` GPU feature the adapter lacks).
+ */
+export type BackendProbe = {
+  /** `navigator.gpu` is present in the worker's own global scope. */
+  workerGpu: boolean;
+  /** `requestAdapter()` returned a usable adapter. */
+  adapter: boolean;
+  /** `requestDevice()` succeeded. */
+  device: boolean;
+  /** The adapter advertises the `shader-f16` feature (needed for the fp16 build). */
+  shaderF16: boolean;
+  /** InferenceSession.create failure message for the WebGPU attempt, if any. */
+  sessionError?: string;
+  /** Backend actually selected after probing and any fallback. */
+  chosen: DetectionBackend;
+};
+
+const isBackendProbe = (value: unknown): value is BackendProbe => {
+  return (
+    isPlainObject(value) &&
+    isBoolean(value.workerGpu) &&
+    isBoolean(value.adapter) &&
+    isBoolean(value.device) &&
+    isBoolean(value.shaderF16) &&
+    (value.sessionError === undefined || isString(value.sessionError)) &&
+    isDetectionBackend(value.chosen)
+  );
+};
+
 export type WorkerResponse =
   | { type: "model-load-start"; fromCache: boolean }
   | { type: "model-progress"; progress: ModelFileProgress }
+  | { type: "backend-probe"; probe: BackendProbe }
   | { type: "ready"; backend: DetectionBackend }
   | { type: "detections"; detections: RawDetection[]; timing: FrameTiming }
   | { type: "worker-error"; code: DetectionErrorCode };
@@ -105,6 +142,8 @@ export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
       return isBoolean(value.fromCache);
     case "model-progress":
       return isModelFileProgress(value.progress);
+    case "backend-probe":
+      return isBackendProbe(value.probe);
     case "ready":
       return isDetectionBackend(value.backend);
     case "detections":

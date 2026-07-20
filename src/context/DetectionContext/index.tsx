@@ -12,6 +12,7 @@ import type { HudModel } from "@/lib/detection";
 import { buildHudModel, toRoadDetections } from "@/lib/detection";
 import { waitForServiceWorkerControl } from "@/lib/serviceWorker";
 import type {
+  BackendProbe,
   DetectionBackend,
   DetectionErrorCode,
 } from "@/workers/detection/types";
@@ -64,6 +65,7 @@ export const DetectionProvider = ({
 }: DetectionProviderProps) => {
   const [status, setStatus] = useState<DetectionStatus>("loading-model");
   const [backend, setBackend] = useState<DetectionBackend>();
+  const [backendProbe, setBackendProbe] = useState<BackendProbe>();
   const [downloadingModel, setDownloadingModel] = useState(false);
   const [modelProgress, setModelProgress] = useState<ModelProgress>({
     loadedBytes: 0,
@@ -191,6 +193,10 @@ export const DetectionProvider = ({
           setModelProgress({ loadedBytes, totalBytes });
           break;
         }
+        case "backend-probe": {
+          setBackendProbe(message.probe);
+          break;
+        }
         case "ready": {
           setBackend(message.backend);
           if (runningRef.current) {
@@ -306,6 +312,7 @@ export const DetectionProvider = ({
     () => ({
       status,
       backend,
+      backendProbe,
       downloadingModel,
       modelProgress,
       hud,
@@ -318,6 +325,7 @@ export const DetectionProvider = ({
     [
       status,
       backend,
+      backendProbe,
       downloadingModel,
       modelProgress,
       hud,

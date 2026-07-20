@@ -3,7 +3,7 @@ import { InferenceSession, Tensor } from "onnxruntime-web";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 import { INPUT_SIZE, MODEL_URL_BY_BACKEND } from "./consts";
 import { decodeDetections, preprocess } from "./inference";
-import type { DetectionBackend, WorkerResponse } from "./types";
+import type { BackendProbe, DetectionBackend, WorkerResponse } from "./types";
 import { DetectionError, isWorkerRequest } from "./types";
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -22,6 +22,12 @@ const post = (message: WorkerResponse) => {
   self.postMessage(message);
 };
 
+/** Backend choice plus the per-stage evidence gathered while deciding. */
+type BackendChoice = {
+  backend: DetectionBackend;
+  probe: Omit<BackendProbe, "chosen" | "sessionError">;
+};
+
 /**
  * Pick the execution backend, probing for a usable WebGPU device rather than
  * only checking that the API exists. On some devices `navigator.gpu` is present
@@ -31,23 +37,46 @@ const post = (message: WorkerResponse) => {
  * successful adapter + device probe here proves WebGPU works before we commit
  * to that larger download, so an unusable GPU goes straight to wasm and only
  * one set of weights is fetched.
+ *
+ * Runs in the worker scope, which is where onnxruntime-web needs WebGPU: some
+ * browsers expose `navigator.gpu` on the main thread but not inside a worker.
+ * The returned `probe` records how far each stage got so the debug overlay can
+ * report why an apparently WebGPU-capable device fell back to wasm.
  */
-const resolveBackend = async (): Promise<DetectionBackend> => {
+const resolveBackend = async (): Promise<BackendChoice> => {
+  const probe = {
+    workerGpu: false,
+    adapter: false,
+    device: false,
+    shaderF16: false,
+  };
   if (!("gpu" in navigator) || !navigator.gpu) {
-    return "wasm";
+    return { backend: "wasm", probe };
   }
+  probe.workerGpu = true;
   try {
     const adapter = await navigator.gpu.requestAdapter();
     if (!adapter) {
-      return "wasm";
+      return { backend: "wasm", probe };
     }
+    probe.adapter = true;
+    probe.shaderF16 = adapter.features.has("shader-f16");
     const device = await adapter.requestDevice();
+    probe.device = true;
     // Release the probe device; onnxruntime-web acquires its own.
     device.destroy();
-    return "webgpu";
+    return { backend: "webgpu", probe };
   } catch {
-    return "wasm";
+    return { backend: "wasm", probe };
   }
+};
+
+/** Best-effort human-readable message for an unknown thrown value. */
+const describeError = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message || error.name;
+  }
+  return String(error);
 };
 
 /** Expected output names; used when the graph does not expose them literally. */
@@ -132,25 +161,44 @@ const loadForBackend = async (backend: DetectionBackend): Promise<ModelIo> => {
 };
 
 const loadModel = async () => {
-  const preferredBackend = await resolveBackend();
+  const { backend: preferredBackend, probe } = await resolveBackend();
+  let sessionError: string | undefined;
   try {
     model = await loadForBackend(preferredBackend);
+    post({
+      type: "backend-probe",
+      probe: { ...probe, chosen: preferredBackend },
+    });
     post({ type: "ready", backend: preferredBackend });
     return;
-  } catch {
+  } catch (error) {
+    // The WebGPU probe passed but the session still failed to build (e.g. a
+    // blocklisted adapter, or the fp16 build needing a `shader-f16` feature the
+    // GPU lacks). Record why so the debug overlay can show it.
+    sessionError = describeError(error);
     if (preferredBackend !== "webgpu") {
+      post({
+        type: "backend-probe",
+        probe: { ...probe, chosen: "wasm", sessionError },
+      });
       post({ type: "worker-error", code: "MODEL_LOAD_FAILED" });
       return;
     }
   }
 
-  // The WebGPU API was present but the session still failed to load (e.g. a
-  // blocklisted or otherwise unusable adapter). That isn't fatal on its own,
-  // so fall back to wasm once before giving up.
+  // Fall back to wasm once before giving up on a failed WebGPU session.
   try {
     model = await loadForBackend("wasm");
+    post({
+      type: "backend-probe",
+      probe: { ...probe, chosen: "wasm", sessionError },
+    });
     post({ type: "ready", backend: "wasm" });
   } catch {
+    post({
+      type: "backend-probe",
+      probe: { ...probe, chosen: "wasm", sessionError },
+    });
     post({ type: "worker-error", code: "MODEL_LOAD_FAILED" });
   }
 };

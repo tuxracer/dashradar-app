@@ -1,16 +1,29 @@
 import { useSettings } from "@/context/SettingsContext";
 import type { DebugSnapshot, ModelProgress } from "@/context/DetectionContext";
 import type { Size } from "@/lib/detection";
-import type { DetectionBackend } from "@/workers/detection/types";
+import type { BackendProbe, DetectionBackend } from "@/workers/detection/types";
 
 /** Props for DebugOverlay. Data is passed in so it renders without the worker. */
 type DebugOverlayProps = {
   backend: DetectionBackend | undefined;
+  backendProbe: BackendProbe | undefined;
   fps: number;
   modelProgress: ModelProgress;
   debug: DebugSnapshot;
   videoSize: Size | undefined;
   viewportSize: Size;
+};
+
+/** Compact per-stage summary of the WebGPU probe, e.g. "gpu·adp·dev·f16". */
+const probeStages = (probe: BackendProbe): string => {
+  const stage = (ok: boolean, label: string): string =>
+    ok ? label : `no-${label}`;
+  return [
+    stage(probe.workerGpu, "gpu"),
+    stage(probe.adapter, "adp"),
+    stage(probe.device, "dev"),
+    stage(probe.shaderF16, "f16"),
+  ].join(" ");
 };
 
 /** Milliseconds to one decimal place, e.g. "5.6 ms". */
@@ -33,6 +46,7 @@ const Row = ({ label, value }: { label: string; value: string }) => (
  */
 export const DebugOverlay = ({
   backend,
+  backendProbe,
   fps,
   modelProgress,
   debug,
@@ -63,6 +77,17 @@ export const DebugOverlay = ({
         DEBUG
       </div>
       <Row label="engine" value={`${backendLabel} · ${fps} FPS`} />
+      {backendProbe && (
+        <Row label="wgpu probe" value={probeStages(backendProbe)} />
+      )}
+      {backendProbe?.sessionError && (
+        <div className="mt-1 border-t border-white/10 pt-1">
+          <div className="text-white/50">wgpu session error</div>
+          <div className="break-words text-hud-amber">
+            {backendProbe.sessionError}
+          </div>
+        </div>
+      )}
       <Row label="round-trip" value={ms(debug.roundTripMs)} />
       <Row label="capture" value={ms(debug.captureMs)} />
       <Row label="preprocess" value={ms(debug.preprocessMs)} />
