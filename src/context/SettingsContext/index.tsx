@@ -30,7 +30,10 @@ export const useSettings = (): SettingsContextValue => {
 
 /**
  * Reads and validates settings from localStorage, falling back to defaults when
- * storage is empty, corrupt, or unavailable (private mode / quota).
+ * storage is empty, corrupt, or unavailable (private mode / quota). A valid but
+ * partial blob (for example one stored before showDebug existed) is merged over
+ * DEFAULT_SETTINGS, so missing fields take their default instead of resetting
+ * everything.
  */
 const loadSettings = (): Settings => {
   try {
