@@ -79,76 +79,6 @@ export const SettingsScreen = ({ backend, fps }: SettingsScreenProps) => {
         <div className="mx-auto flex w-full max-w-2xl flex-col divide-y divide-white/10">
           <button
             type="button"
-            onClick={toggleShowVideo}
-            className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
-          >
-            <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-              Video feed
-            </span>
-            <span
-              className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors ${
-                showVideo ? "bg-hud-amber" : "bg-white/25"
-              }`}
-            >
-              <span
-                className={`inline-block h-6 w-6 rounded-full bg-surface transition-transform ${
-                  showVideo ? "translate-x-[1.75rem]" : "translate-x-[0.25rem]"
-                }`}
-              />
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={toggleShowDebug}
-            className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
-          >
-            <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-              Debug overlay
-            </span>
-            <span
-              className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors ${
-                showDebug ? "bg-hud-amber" : "bg-white/25"
-              }`}
-            >
-              <span
-                className={`inline-block h-6 w-6 rounded-full bg-surface transition-transform ${
-                  showDebug ? "translate-x-[1.75rem]" : "translate-x-[0.25rem]"
-                }`}
-              />
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={toggleStabilizeMotion}
-            className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
-          >
-            <span className="flex flex-col gap-1">
-              <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-                Motion stabilization
-              </span>
-              <span className="text-sm font-medium text-white/45">
-                Keep boxes locked on as you turn.
-              </span>
-            </span>
-            <span
-              className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors ${
-                stabilizeMotion ? "bg-hud-amber" : "bg-white/25"
-              }`}
-            >
-              <span
-                className={`inline-block h-6 w-6 rounded-full bg-surface transition-transform ${
-                  stabilizeMotion
-                    ? "translate-x-[1.75rem]"
-                    : "translate-x-[0.25rem]"
-                }`}
-              />
-            </span>
-          </button>
-
-          <button
-            type="button"
             onClick={toggleRadarDetectorMode}
             className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
           >
@@ -170,6 +100,84 @@ export const SettingsScreen = ({ backend, fps }: SettingsScreenProps) => {
                   radarDetectorMode
                     ? "translate-x-[1.75rem]"
                     : "translate-x-[0.25rem]"
+                }`}
+              />
+            </span>
+          </button>
+
+          {/* Video feed and motion stabilization only matter for the
+              box-drawing HUD, so hide them while radar detector mode is on. */}
+          {!radarDetectorMode && (
+            <>
+              <button
+                type="button"
+                onClick={toggleShowVideo}
+                className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
+              >
+                <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                  Video feed
+                </span>
+                <span
+                  className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors ${
+                    showVideo ? "bg-hud-amber" : "bg-white/25"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-6 w-6 rounded-full bg-surface transition-transform ${
+                      showVideo
+                        ? "translate-x-[1.75rem]"
+                        : "translate-x-[0.25rem]"
+                    }`}
+                  />
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleStabilizeMotion}
+                className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
+              >
+                <span className="flex flex-col gap-1">
+                  <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                    Motion stabilization
+                  </span>
+                  <span className="text-sm font-medium text-white/45">
+                    Keep boxes locked on as you turn.
+                  </span>
+                </span>
+                <span
+                  className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors ${
+                    stabilizeMotion ? "bg-hud-amber" : "bg-white/25"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-6 w-6 rounded-full bg-surface transition-transform ${
+                      stabilizeMotion
+                        ? "translate-x-[1.75rem]"
+                        : "translate-x-[0.25rem]"
+                    }`}
+                  />
+                </span>
+              </button>
+            </>
+          )}
+
+          <button
+            type="button"
+            onClick={toggleShowDebug}
+            className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
+          >
+            <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+              Debug overlay
+            </span>
+            <span
+              className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors ${
+                showDebug ? "bg-hud-amber" : "bg-white/25"
+              }`}
+            >
+              <span
+                className={`inline-block h-6 w-6 rounded-full bg-surface transition-transform ${
+                  showDebug ? "translate-x-[1.75rem]" : "translate-x-[0.25rem]"
                 }`}
               />
             </span>

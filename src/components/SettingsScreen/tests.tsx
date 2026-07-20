@@ -29,13 +29,28 @@ describe("SettingsScreen", () => {
   it("renders nothing until the panel is opened", async () => {
     const user = userEvent.setup();
     renderScreen();
-    expect(screen.queryByText("Video feed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Radar detector mode")).not.toBeInTheDocument();
     await open(user);
+    expect(screen.getByText("Radar detector mode")).toBeInTheDocument();
+  });
+
+  it("hides the video and motion rows while radar detector mode is on", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    expect(screen.queryByText("Video feed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Motion stabilization")).not.toBeInTheDocument();
+    await user.click(screen.getByText("Radar detector mode"));
     expect(screen.getByText("Video feed")).toBeInTheDocument();
+    expect(screen.getByText("Motion stabilization")).toBeInTheDocument();
   });
 
   it("toggles and persists the video setting from the Video feed row", async () => {
     const user = userEvent.setup();
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ radarDetectorMode: false }),
+    );
     renderScreen();
     await open(user);
     await user.click(screen.getByText("Video feed"));
@@ -44,7 +59,7 @@ describe("SettingsScreen", () => {
         showVideo: false,
         showDebug: false,
         stabilizeMotion: false,
-        radarDetectorMode: true,
+        radarDetectorMode: false,
       }),
     );
   });
@@ -66,6 +81,10 @@ describe("SettingsScreen", () => {
 
   it("toggles and persists the motion setting from the Motion stabilization row", async () => {
     const user = userEvent.setup();
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ radarDetectorMode: false }),
+    );
     renderScreen();
     await open(user);
     await user.click(screen.getByText("Motion stabilization"));
@@ -74,7 +93,7 @@ describe("SettingsScreen", () => {
         showVideo: true,
         showDebug: false,
         stabilizeMotion: true,
-        radarDetectorMode: true,
+        radarDetectorMode: false,
       }),
     );
   });
@@ -84,7 +103,7 @@ describe("SettingsScreen", () => {
     renderScreen();
     await open(user);
     await user.click(screen.getByRole("button", { name: /close settings/i }));
-    expect(screen.queryByText("Video feed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Radar detector mode")).not.toBeInTheDocument();
   });
 
   it("closes on Escape", async () => {
@@ -92,7 +111,7 @@ describe("SettingsScreen", () => {
     renderScreen();
     await open(user);
     await user.keyboard("{Escape}");
-    expect(screen.queryByText("Video feed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Radar detector mode")).not.toBeInTheDocument();
   });
 
   it("shows the GPU engine readout with live fps", async () => {
