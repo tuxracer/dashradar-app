@@ -2,6 +2,7 @@
   "name": "dashradar",
   "version": "0.1.0",
   "private": true,
+  "description": "A privacy-first dashcam app that turns your phone into an on-device computer-vision police detector, spotting patrol vehicles on the road in real time.",
   "packageManager": "pnpm@11.6.0",
   "scripts": {
     "dev": "vite",
