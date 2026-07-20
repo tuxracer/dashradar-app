@@ -66,10 +66,11 @@ pnpm format      # Auto-fix formatting (prettier --write)
 ## Tech Stack
 
 - **Vite 8** (Rolldown) + **React 19** + **TypeScript** (ESM) · **vite-plugin-pwa** (Workbox service worker precaches the build for offline cold-loads; installable PWA manifest + icons in `public/`)
-- **Tailwind CSS v4**. shadcn/Radix tooling (`radix-ui`, `class-variance-authority`, `tailwind-merge`, `lucide-react`, `tw-animate-css`) is kept from the starter but unused so far: v1's whole HUD is a handful of bespoke Tailwind-styled elements, and no `src/components/ui/` primitives exist yet
+- **Tailwind CSS v4**, styling a handful of bespoke HUD elements. There are no shadcn/Radix `src/components/ui/` primitives: the starter's `radix-ui`, `class-variance-authority`, `tailwind-merge`, and `tw-animate-css` were pruned. `lucide-react` is the one starter dep still in use (the `Settings` and `X` icons in `SettingsButton`/`SettingsScreen`)
 - **`onnxruntime-web`**: runs the RF-DETR ONNX model entirely on-device, inside a Web Worker; WebGPU when available, WASM fallback. Preprocessing, decode, and thresholding are done by hand in `src/workers/detection/inference.ts` (no Transformers.js pipeline)
 - **remeda** (array/object utilities, and type guards like `isString`/`isNumber`/`isPlainObject` that validate worker messages crossing the `postMessage` boundary)
 - **`@vercel/analytics`** (page-view analytics; `inject()` in `src/main.tsx`)
+- **Build-time version stamps**: `vite.config.ts` `define`s `__APP_VERSION__` (from `package.json`) and `__COMMIT_SHA__` (short git SHA, or `VERCEL_GIT_COMMIT_SHA` on Vercel; `"unknown"` when neither resolves), declared in `src/vite-env.d.ts` and shown in `SettingsScreen`'s About row. It also injects a `<meta name="version">` tag into `index.html`. These are compile-time constants, not runtime env reads
 - **Rajdhani** self-hosted via `@fontsource/rajdhani` (weights 500/600/700): the only font. The Autopilot HUD direction doesn't use a second display or mono face
 - Tests: **vitest** + **@testing-library/react**. jsdom can't run the worker, onnxruntime-web inference, or the camera, so those are stubbed/injected in tests (see Gotchas). The pure `preprocess`/`decodeDetections` helpers in `src/workers/detection/inference.ts` are unit-tested directly (`src/workers/detection/tests.ts`)
 
