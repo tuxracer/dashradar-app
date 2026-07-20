@@ -47,7 +47,7 @@ const RadarScreen = () => {
     motionPermission,
     requestMotionPermission,
   } = useDetection();
-  const { showVideo, showDebug } = useSettings();
+  const { showVideo, showDebug, stabilizeMotion, settingsOpen } = useSettings();
   const [cameraError, setCameraError] = useState<CameraError>();
   const [videoSize, setVideoSize] = useState<Size>();
   const viewportSize = useViewportSize();
@@ -96,6 +96,7 @@ const RadarScreen = () => {
           videoSize={videoSize}
           viewportSize={viewportSize}
           getMotionDelta={getMotionDelta}
+          stabilize={stabilizeMotion}
           debug={showDebug}
         />
       )}
@@ -116,9 +117,11 @@ const RadarScreen = () => {
       {status === "loading-model" && downloadingModel && (
         <ModelLoadScreen progress={modelProgress} />
       )}
-      {shouldShowStartGate(motionPermission) && (
-        <StartGate onStart={() => void requestMotionPermission()} />
-      )}
+      {stabilizeMotion &&
+        !settingsOpen &&
+        shouldShowStartGate(motionPermission) && (
+          <StartGate onStart={() => void requestMotionPermission()} />
+        )}
     </main>
   );
 };

@@ -39,6 +39,7 @@ describe("HudOverlay", () => {
         videoSize={size}
         viewportSize={size}
         getMotionDelta={noMotionDelta}
+        stabilize={false}
       />,
     );
     expect(screen.getByText("CAR · NEAR")).toBeInTheDocument();
@@ -62,6 +63,7 @@ describe("HudOverlay", () => {
         videoSize={size}
         viewportSize={size}
         getMotionDelta={noMotionDelta}
+        stabilize={false}
       />,
     );
     expect(screen.getByText("CAR")).toBeInTheDocument();
@@ -81,6 +83,7 @@ describe("HudOverlay", () => {
         videoSize={size}
         viewportSize={size}
         getMotionDelta={noMotionDelta}
+        stabilize={false}
       />,
     );
     expect(screen.getByText("PERSON")).toBeInTheDocument();
@@ -99,6 +102,7 @@ describe("HudOverlay", () => {
         videoSize={size}
         viewportSize={size}
         getMotionDelta={noMotionDelta}
+        stabilize={false}
       />,
     );
     expect(container.querySelector("[data-testid=nearest-box]")).toBeNull();
@@ -117,6 +121,7 @@ describe("HudOverlay", () => {
         videoSize={size}
         viewportSize={size}
         getMotionDelta={noMotionDelta}
+        stabilize={false}
         debug
       />,
     );
@@ -137,6 +142,7 @@ describe("HudOverlay", () => {
         videoSize={size}
         viewportSize={size}
         getMotionDelta={noMotionDelta}
+        stabilize={false}
         debug
       />,
     );
@@ -157,6 +163,7 @@ describe("HudOverlay", () => {
         videoSize={size}
         viewportSize={size}
         getMotionDelta={noMotionDelta}
+        stabilize={false}
       />,
     );
     expect(screen.queryByText("92%")).not.toBeInTheDocument();
@@ -194,6 +201,7 @@ describe("HudOverlay motion compensation", () => {
         videoSize={{ width: 1280, height: 720 }}
         viewportSize={{ width: 800, height: 600 }}
         getMotionDelta={() => ({ yaw: 0.1, pitch: 0 })}
+        stabilize={true}
       />,
     );
     const container = getByTestId("hud-overlay");
@@ -209,8 +217,27 @@ describe("HudOverlay motion compensation", () => {
         videoSize={{ width: 1280, height: 720 }}
         viewportSize={{ width: 800, height: 600 }}
         getMotionDelta={() => ({ yaw: 0, pitch: 0 })}
+        stabilize={true}
       />,
     );
+    expect(getByTestId("hud-overlay").style.transform).toBe(
+      "translate(0px, 0px)",
+    );
+  });
+
+  it("does not apply the offset when stabilization is disabled", () => {
+    runOneFrame();
+    const { getByTestId } = render(
+      <HudOverlay
+        hud={emptyHud}
+        videoSize={{ width: 1280, height: 720 }}
+        viewportSize={{ width: 800, height: 600 }}
+        getMotionDelta={() => ({ yaw: 0.1, pitch: 0 })}
+        stabilize={false}
+      />,
+    );
+    // A nonzero delta would translate the overlay, but with stabilization off
+    // the transform is held at zero.
     expect(getByTestId("hud-overlay").style.transform).toBe(
       "translate(0px, 0px)",
     );

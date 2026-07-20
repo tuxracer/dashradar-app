@@ -39,7 +39,11 @@ describe("SettingsScreen", () => {
     await open(user);
     await user.click(screen.getByText("Video feed"));
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({ showVideo: false, showDebug: false }),
+      JSON.stringify({
+        showVideo: false,
+        showDebug: false,
+        stabilizeMotion: false,
+      }),
     );
   });
 
@@ -49,7 +53,25 @@ describe("SettingsScreen", () => {
     await open(user);
     await user.click(screen.getByText("Debug overlay"));
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({ showVideo: true, showDebug: true }),
+      JSON.stringify({
+        showVideo: true,
+        showDebug: true,
+        stabilizeMotion: false,
+      }),
+    );
+  });
+
+  it("toggles and persists the motion setting from the Motion stabilization row", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    await user.click(screen.getByText("Motion stabilization"));
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({
+        showVideo: true,
+        showDebug: false,
+        stabilizeMotion: true,
+      }),
     );
   });
 

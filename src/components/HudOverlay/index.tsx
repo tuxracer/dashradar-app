@@ -14,6 +14,12 @@ type HudOverlayProps = {
   viewportSize: Size;
   /** Live yaw/pitch delta since the displayed detection was captured. */
   getMotionDelta: () => YawPitch;
+  /**
+   * When true, the motion delta is applied as a screen-space offset so boxes
+   * track their objects between results. When false, the overlay stays fixed to
+   * the screen (the offset is held at zero).
+   */
+  stabilize: boolean;
   /** When true, annotate each detection with its confidence and box coords. */
   debug?: boolean;
 };
@@ -45,12 +51,14 @@ export const HudOverlay = ({
   videoSize,
   viewportSize,
   getMotionDelta,
+  stabilize,
   debug,
 }: HudOverlayProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoSizeRef = useRef(videoSize);
   const viewportSizeRef = useRef(viewportSize);
   const getMotionDeltaRef = useRef(getMotionDelta);
+  const stabilizeRef = useRef(stabilize);
 
   // Refs may not be written during render (react-hooks/refs), so the latest
   // props are copied in via an effect instead, mirroring the sendFrameRef
@@ -60,18 +68,23 @@ export const HudOverlay = ({
     videoSizeRef.current = videoSize;
     viewportSizeRef.current = viewportSize;
     getMotionDeltaRef.current = getMotionDelta;
-  }, [videoSize, viewportSize, getMotionDelta]);
+    stabilizeRef.current = stabilize;
+  }, [videoSize, viewportSize, getMotionDelta, stabilize]);
 
   useEffect(() => {
     let frame = 0;
     const tick = () => {
       const container = containerRef.current;
       if (container) {
-        const { dx, dy } = orientationDeltaToPixels(
-          getMotionDeltaRef.current(),
-          videoSizeRef.current,
-          viewportSizeRef.current,
-        );
+        // With stabilization off, hold the overlay at zero rather than applying
+        // the motion offset.
+        const { dx, dy } = stabilizeRef.current
+          ? orientationDeltaToPixels(
+              getMotionDeltaRef.current(),
+              videoSizeRef.current,
+              viewportSizeRef.current,
+            )
+          : { dx: 0, dy: 0 };
         container.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px)`;
       }
       frame = window.requestAnimationFrame(tick);

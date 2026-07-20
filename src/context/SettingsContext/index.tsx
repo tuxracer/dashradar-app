@@ -59,15 +59,18 @@ type SettingsProviderProps = {
 export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const [showVideo, setShowVideo] = useState(() => loadSettings().showVideo);
   const [showDebug, setShowDebug] = useState(() => loadSettings().showDebug);
+  const [stabilizeMotion, setStabilizeMotion] = useState(
+    () => loadSettings().stabilizeMotion,
+  );
 
   useEffect(() => {
-    const next: Settings = { showVideo, showDebug };
+    const next: Settings = { showVideo, showDebug, stabilizeMotion };
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     } catch {
       // Storage unavailable (private mode / quota); keep the in-memory value.
     }
-  }, [showVideo, showDebug]);
+  }, [showVideo, showDebug, stabilizeMotion]);
 
   const toggleShowVideo = useCallback(() => {
     setShowVideo((prev) => !prev);
@@ -75,6 +78,10 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
 
   const toggleShowDebug = useCallback(() => {
     setShowDebug((prev) => !prev);
+  }, []);
+
+  const toggleStabilizeMotion = useCallback(() => {
+    setStabilizeMotion((prev) => !prev);
   }, []);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -93,6 +100,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleShowVideo,
       showDebug,
       toggleShowDebug,
+      stabilizeMotion,
+      toggleStabilizeMotion,
       settingsOpen,
       openSettings,
       closeSettings,
@@ -102,6 +111,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleShowVideo,
       showDebug,
       toggleShowDebug,
+      stabilizeMotion,
+      toggleStabilizeMotion,
       settingsOpen,
       openSettings,
       closeSettings,

@@ -12,6 +12,13 @@ export type Settings = {
    * diagnostics (timing, detection counts, system info). Off by default.
    */
   showDebug: boolean;
+  /**
+   * When true, HUD boxes are gyro-stabilized: a device-orientation offset keeps
+   * a detection aligned with its object as the phone turns between inference
+   * results. Off by default. On iOS this needs motion permission, requested via
+   * the tap-to-start gate once enabled.
+   */
+  stabilizeMotion: boolean;
 };
 
 /** Value exposed by the settings context via useSettings(). */
@@ -20,6 +27,8 @@ export type SettingsContextValue = {
   toggleShowVideo: () => void;
   showDebug: boolean;
   toggleShowDebug: () => void;
+  stabilizeMotion: boolean;
+  toggleStabilizeMotion: () => void;
   /** Whether the full-screen settings panel is open. Ephemeral, not persisted. */
   settingsOpen: boolean;
   /** Opens the full-screen settings panel. */
@@ -41,6 +50,7 @@ export const isPersistedSettings = (
   return (
     isPlainObject(value) &&
     (value.showVideo === undefined || isBoolean(value.showVideo)) &&
-    (value.showDebug === undefined || isBoolean(value.showDebug))
+    (value.showDebug === undefined || isBoolean(value.showDebug)) &&
+    (value.stabilizeMotion === undefined || isBoolean(value.stabilizeMotion))
   );
 };

@@ -26,7 +26,11 @@ describe("SettingsContext", () => {
     act(() => result.current.toggleShowVideo());
     expect(result.current.showVideo).toBe(false);
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({ showVideo: false, showDebug: false }),
+      JSON.stringify({
+        showVideo: false,
+        showDebug: false,
+        stabilizeMotion: false,
+      }),
     );
   });
 
@@ -74,7 +78,11 @@ describe("SettingsContext", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     act(() => result.current.openSettings());
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({ showVideo: true, showDebug: false }),
+      JSON.stringify({
+        showVideo: true,
+        showDebug: false,
+        stabilizeMotion: false,
+      }),
     );
   });
 
@@ -88,7 +96,29 @@ describe("SettingsContext", () => {
     act(() => result.current.toggleShowDebug());
     expect(result.current.showDebug).toBe(true);
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({ showVideo: true, showDebug: true }),
+      JSON.stringify({
+        showVideo: true,
+        showDebug: true,
+        stabilizeMotion: false,
+      }),
+    );
+  });
+
+  it("defaults stabilizeMotion to false when storage is empty", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.stabilizeMotion).toBe(false);
+  });
+
+  it("toggling flips stabilizeMotion and persists it to localStorage", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleStabilizeMotion());
+    expect(result.current.stabilizeMotion).toBe(true);
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({
+        showVideo: true,
+        showDebug: false,
+        stabilizeMotion: true,
+      }),
     );
   });
 
