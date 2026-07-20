@@ -67,9 +67,25 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     setShowVideo((prev) => !prev);
   }, []);
 
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const openSettings = useCallback(() => {
+    setSettingsOpen(true);
+  }, []);
+
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+  }, []);
+
   const value = useMemo(
-    () => ({ showVideo, toggleShowVideo }),
-    [showVideo, toggleShowVideo],
+    () => ({
+      showVideo,
+      toggleShowVideo,
+      settingsOpen,
+      openSettings,
+      closeSettings,
+    }),
+    [showVideo, toggleShowVideo, settingsOpen, openSettings, closeSettings],
   );
 
   return (

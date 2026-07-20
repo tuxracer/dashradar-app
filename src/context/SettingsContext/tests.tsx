@@ -60,4 +60,21 @@ describe("SettingsContext", () => {
       "useSettings must be used within a SettingsProvider",
     );
   });
+
+  it("defaults settingsOpen to false and toggles via open/close", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.settingsOpen).toBe(false);
+    act(() => result.current.openSettings());
+    expect(result.current.settingsOpen).toBe(true);
+    act(() => result.current.closeSettings());
+    expect(result.current.settingsOpen).toBe(false);
+  });
+
+  it("does not persist the open state to localStorage", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.openSettings());
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({ showVideo: true }),
+    );
+  });
 });

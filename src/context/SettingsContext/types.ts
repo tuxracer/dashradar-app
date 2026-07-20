@@ -13,6 +13,12 @@ export type Settings = {
 export type SettingsContextValue = {
   showVideo: boolean;
   toggleShowVideo: () => void;
+  /** Whether the full-screen settings panel is open. Ephemeral, not persisted. */
+  settingsOpen: boolean;
+  /** Opens the full-screen settings panel. */
+  openSettings: () => void;
+  /** Closes the full-screen settings panel. */
+  closeSettings: () => void;
 };
 
 /**
