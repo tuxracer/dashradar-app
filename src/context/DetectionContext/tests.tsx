@@ -27,11 +27,13 @@ class FakeWorker implements DetectionWorkerLike {
 }
 
 const Probe = () => {
-  const { status, backend, modelProgress, hud, fps, error } = useDetection();
+  const { status, backend, downloadingModel, modelProgress, hud, fps, error } =
+    useDetection();
   return (
     <div>
       <span data-testid="status">{status}</span>
       <span data-testid="backend">{backend ?? "none"}</span>
+      <span data-testid="downloading">{String(downloadingModel)}</span>
       <span data-testid="loaded">{modelProgress.loadedBytes}</span>
       <span data-testid="objects">{hud ? hud.blips.length : "none"}</span>
       <span data-testid="fps">{fps}</span>
@@ -111,6 +113,23 @@ describe("DetectionProvider", () => {
     await waitFor(() => {
       expect(worker.posted).toContainEqual({ type: "load" });
     });
+  });
+
+  it("flags a network download when the model is not cached", () => {
+    const worker = renderWithProvider(<Probe />);
+    expect(screen.getByTestId("downloading").textContent).toBe("false");
+    act(() => {
+      worker.emit({ type: "model-load-start", fromCache: false });
+    });
+    expect(screen.getByTestId("downloading").textContent).toBe("true");
+  });
+
+  it("does not flag a download when the model loads from cache", () => {
+    const worker = renderWithProvider(<Probe />);
+    act(() => {
+      worker.emit({ type: "model-load-start", fromCache: true });
+    });
+    expect(screen.getByTestId("downloading").textContent).toBe("false");
   });
 
   it("accumulates per-file model progress", () => {

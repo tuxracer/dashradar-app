@@ -29,6 +29,12 @@ export type DebugSnapshot = {
 export type DetectionContextValue = {
   status: DetectionStatus;
   backend: DetectionBackend | undefined;
+  /**
+   * True only while the model weights are being downloaded over the network.
+   * False when the weights load from cache, so the UI can suppress the
+   * download-progress screen for the fast cache path.
+   */
+  downloadingModel: boolean;
   modelProgress: ModelProgress;
   hud: HudModel | undefined;
   fps: number;

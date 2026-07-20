@@ -1,4 +1,4 @@
-import { isNumber, isPlainObject, isString } from "remeda";
+import { isBoolean, isNumber, isPlainObject, isString } from "remeda";
 import type { RawDetection } from "@/types";
 import { isRawDetection } from "@/types";
 
@@ -90,6 +90,7 @@ const isFrameTiming = (value: unknown): value is FrameTiming => {
 };
 
 export type WorkerResponse =
+  | { type: "model-load-start"; fromCache: boolean }
   | { type: "model-progress"; progress: ModelFileProgress }
   | { type: "ready"; backend: DetectionBackend }
   | { type: "detections"; detections: RawDetection[]; timing: FrameTiming }
@@ -100,6 +101,8 @@ export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
     return false;
   }
   switch (value.type) {
+    case "model-load-start":
+      return isBoolean(value.fromCache);
     case "model-progress":
       return isModelFileProgress(value.progress);
     case "ready":

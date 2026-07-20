@@ -55,6 +55,26 @@ const EXPECTED_DETS_NAME = "dets";
 const EXPECTED_LABELS_NAME = "labels";
 
 /**
+ * Look up an already-cached copy of the model weights in CacheStorage. The
+ * Workbox "model-cache" route (see vite.config.ts) stores the weights the first
+ * time they are fetched, keyed on the stable request URL, and CacheStorage is
+ * shared between the service worker and this worker. A hit here means the bytes
+ * are already local: the load is not a network download, so the UI should skip
+ * the download-progress screen entirely. Returns undefined in dev (no service
+ * worker, so nothing is cached) and on any CacheStorage error.
+ */
+const matchCachedModel = async (url: string): Promise<Response | undefined> => {
+  if (!("caches" in self)) {
+    return undefined;
+  }
+  try {
+    return await caches.match(url);
+  } catch {
+    return undefined;
+  }
+};
+
+/**
  * Stream the model over the network, reporting byte progress, and return the
  * downloaded weights. Progress mirrors the old Transformers.js load UX.
  */
@@ -88,7 +108,16 @@ const fetchModel = async (url: string): Promise<Uint8Array> => {
 
 /** Download and instantiate the session for one backend. */
 const loadForBackend = async (backend: DetectionBackend): Promise<ModelIo> => {
-  const weights = await fetchModel(MODEL_URL_BY_BACKEND[backend]);
+  const url = MODEL_URL_BY_BACKEND[backend];
+  const cached = await matchCachedModel(url);
+  // Tell the context whether this is a network download so it can show the
+  // download-progress screen only when we are actually downloading, not when
+  // reading already-cached weights (a cache read still takes a beat to compile
+  // the ONNX session, which otherwise flashes a misleading "downloading" UI).
+  post({ type: "model-load-start", fromCache: cached !== undefined });
+  const weights = cached
+    ? new Uint8Array(await cached.arrayBuffer())
+    : await fetchModel(url);
   const session = await InferenceSession.create(weights, {
     executionProviders: [backend === "webgpu" ? "webgpu" : "wasm"],
   });

@@ -64,6 +64,7 @@ export const DetectionProvider = ({
 }: DetectionProviderProps) => {
   const [status, setStatus] = useState<DetectionStatus>("loading-model");
   const [backend, setBackend] = useState<DetectionBackend>();
+  const [downloadingModel, setDownloadingModel] = useState(false);
   const [modelProgress, setModelProgress] = useState<ModelProgress>({
     loadedBytes: 0,
     totalBytes: 0,
@@ -172,6 +173,10 @@ export const DetectionProvider = ({
         return;
       }
       switch (message.type) {
+        case "model-load-start": {
+          setDownloadingModel(!message.fromCache);
+          break;
+        }
         case "model-progress": {
           fileProgressRef.current.set(message.progress.file, {
             loadedBytes: message.progress.loaded,
@@ -294,6 +299,7 @@ export const DetectionProvider = ({
     () => ({
       status,
       backend,
+      downloadingModel,
       modelProgress,
       hud,
       fps,
@@ -302,7 +308,18 @@ export const DetectionProvider = ({
       start,
       stop,
     }),
-    [status, backend, modelProgress, hud, fps, debug, error, start, stop],
+    [
+      status,
+      backend,
+      downloadingModel,
+      modelProgress,
+      hud,
+      fps,
+      debug,
+      error,
+      start,
+      stop,
+    ],
   );
 
   return (

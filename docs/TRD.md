@@ -90,7 +90,7 @@ src/
     SettingsButton/             # enlarged gear that opens the full-screen settings panel
     SettingsScreen/             # full-screen settings panel: video + debug overlay toggles + engine/model/about
     DebugOverlay/               # top-left diagnostics panel (timing, detection counts, system info); shown only when showDebug is on
-    ModelLoadScreen/            # download-progress screen (percent + MB), delayed to avoid a flash
+    ModelLoadScreen/            # download-progress screen (percent + MB), delayed to avoid a flash, shown only for a real network download (not a cache load)
     ErrorScreen/                # full-screen camera/detection error copy + reload action
   context/
     DetectionContext/           # worker lifecycle, frame pump, status machine; consume via useDetection()
@@ -120,6 +120,7 @@ type DetectionStatus = "loading-model" | "ready" | "running" | "error";
 type DetectionContextValue = {
   status: DetectionStatus;
   backend: DetectionBackend | undefined;   // "webgpu" | "wasm", set once the model is ready
+  downloadingModel: boolean;                // true only while weights stream over the network, not on a cache load
   modelProgress: ModelProgress;             // { loadedBytes, totalBytes }, summed across files
   hud: HudModel | undefined;                // latest shaped detections for the UI to render
   fps: number;                              // rolling detection-result rate
@@ -160,7 +161,8 @@ These invariants (one frame in flight, the generation guard, and keeping frame-s
 
 | Message | Payload | Purpose |
 | --- | --- | --- |
-| `model-progress` | `progress: { file, loaded, total }` | One tick per streamed chunk while `fetchModel` downloads the weights (byte counts from the `Content-Length` header); `DetectionContext` sums into a single `ModelProgress` |
+| `model-load-start` | `fromCache: boolean` | Sent once per backend attempt before the weights are read, `fromCache: true` when `caches.match` finds them in the `"model-cache"` route. `DetectionContext` sets `downloadingModel` to `!fromCache` so the download-progress screen shows only for an actual network download, not the fast cache read (which still spends a beat compiling the ONNX session) |
+| `model-progress` | `progress: { file, loaded, total }` | One tick per streamed chunk while `fetchModel` downloads the weights (byte counts from the `Content-Length` header); `DetectionContext` sums into a single `ModelProgress`. Not sent on a cache hit, since the bytes are read from CacheStorage in one shot with no download to report |
 | `ready` | `backend: "webgpu" \| "wasm"` | Session finished loading; starts the frame pump immediately if `start()` already ran, otherwise moves to `"ready"` |
 | `detections` | `detections: RawDetection[]`, `timing: { preprocessMs, inferenceMs, decodeMs }` | Decoded output for one frame, boxes normalized 0-1 (xyxy), plus the worker's own per-stage timing for the debug overlay |
 | `worker-error` | `code: DetectionErrorCode` | `MODEL_LOAD_FAILED` from the download or session creation failing, or `INFERENCE_FAILED` from a per-frame inference failure |
@@ -291,7 +293,7 @@ Automotive-minimal HUD over a full-bleed video feed. Design principle: the road 
 
 1. **App shell precache** (Workbox `globPatterns: ["**/*.{js,css,html,svg,png,woff,woff2}"]`, `maximumFileSizeToCacheInBytes: 40_000_000`): every built JS/CSS/HTML/font/icon file, including the detection worker's own chunk. It's built via `new Worker(new URL(...), { type: "module" })`, so Vite emits it as a separate chunk, but that chunk is still matched by the `js` glob and precached like any other script. This is what makes a cold load work with zero connectivity.
 2. **Model weights + the ONNX runtime itself**, cached by two Workbox `CacheFirst` runtime-caching routes (`vite.config.ts`):
-   - The `"model-cache"` route caches the RF-DETR ONNX weights the worker `fetch()`es from `huggingface.co`. The worker streams the download itself (reading the response body chunk by chunk) to report byte progress, so the weights are not part of the precache glob; the runtime route is what keeps them offline after the first run. The `huggingface.co` `resolve` URL responds with a 302 to a signed, per-request CDN URL, but Workbox keys the cache on the stable `huggingface.co` request URL, so later visits still hit the cache even though the redirect target changes each time.
+   - The `"model-cache"` route caches the RF-DETR ONNX weights the worker `fetch()`es from `huggingface.co`. The worker streams the download itself (reading the response body chunk by chunk) to report byte progress, so the weights are not part of the precache glob; the runtime route is what keeps them offline after the first run. The `huggingface.co` `resolve` URL responds with a 302 to a signed, per-request CDN URL, but Workbox keys the cache on the stable `huggingface.co` request URL, so later visits still hit the cache even though the redirect target changes each time. Before fetching, the worker probes this cache with `caches.match(url)` (CacheStorage is shared with the service worker) to tell whether this load is a cache hit or a network download, and reports that as `model-load-start`'s `fromCache`. The match succeeds even though the cached response carries `Vary: origin, access-control-request-method, access-control-request-headers`, because the worker's simple GET and the probe request both omit those headers, so Vary matching treats them as equal.
    - onnxruntime-web points its `wasmPaths` at `cdn.jsdelivr.net` unless the app sets `wasmPaths` itself (it doesn't), so it fetches its `.wasm`/`.mjs` runtime from jsdelivr rather than from the local bundle. The `"ort-runtime"` route caches those `cdn.jsdelivr.net` requests.
 
 **First-visit caching depends on the worker being controlled.** The model is `fetch()`ed from inside the detection Web Worker. On a genuine first visit the worker can be created and start fetching before the service worker takes control of the page (the `clientsClaim` race), so that first fetch bypasses the `"model-cache"` route entirely and nothing is stored until a later visit. `DetectionContext` therefore defers the worker's `load` message until `navigator.serviceWorker.controller` is set (`waitForServiceWorkerControl`, `src/lib/serviceWorker`), bounded by `SW_CONTROL_TIMEOUT_MS` (3 s) so startup never stalls, and only in production (dev has no service worker). `src/main.tsx` also calls `requestPersistentStorage()` (a best-effort `navigator.storage.persist()`) so the browser is less likely to evict the cached weights between visits, which matters most on storage-constrained mobile browsers.

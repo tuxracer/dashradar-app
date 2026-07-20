@@ -30,8 +30,17 @@ const useViewportSize = (): Size => {
 };
 
 const RadarScreen = () => {
-  const { status, backend, modelProgress, hud, fps, debug, error, start } =
-    useDetection();
+  const {
+    status,
+    backend,
+    downloadingModel,
+    modelProgress,
+    hud,
+    fps,
+    debug,
+    error,
+    start,
+  } = useDetection();
   const { showVideo, showDebug } = useSettings();
   const [cameraError, setCameraError] = useState<CameraError>();
   const [videoSize, setVideoSize] = useState<Size>();
@@ -94,7 +103,7 @@ const RadarScreen = () => {
         viewportSize={viewportSize}
       />
       <SettingsScreen backend={backend} fps={fps} />
-      {status === "loading-model" && (
+      {status === "loading-model" && downloadingModel && (
         <ModelLoadScreen progress={modelProgress} />
       )}
     </main>
