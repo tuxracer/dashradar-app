@@ -124,6 +124,113 @@ describe("stepTracker", () => {
     expect(updated.visible[0].score).toBe(0.95);
     expect(updated.visible[0].box.xmin).toBeCloseTo(0.41);
   });
+
+  it("matches two detections to two separate tracks greedily without double-claiming", () => {
+    let state = initialTrackerState();
+
+    // Create and confirm first track at top-left box.
+    state = stepTracker(
+      state,
+      [detection({ box: box(0.1, 0.1, 0.3, 0.3) })],
+      0,
+      config,
+    ).state;
+    state = stepTracker(
+      state,
+      [detection({ box: box(0.1, 0.1, 0.3, 0.3) })],
+      500,
+      config,
+    ).state;
+
+    // Create and confirm second track at bottom-right box.
+    state = stepTracker(
+      state,
+      [
+        detection({ box: box(0.1, 0.1, 0.3, 0.3) }),
+        detection({ box: box(0.6, 0.6, 0.8, 0.8) }),
+      ],
+      500,
+      config,
+    ).state;
+    state = stepTracker(
+      state,
+      [
+        detection({ box: box(0.1, 0.1, 0.3, 0.3) }),
+        detection({ box: box(0.6, 0.6, 0.8, 0.8) }),
+      ],
+      1000,
+      config,
+    ).state;
+
+    // Both tracks are now confirmed. Step with two new detections
+    // that overlap each track slightly.
+    const stepped = stepTracker(
+      state,
+      [
+        detection({ box: box(0.12, 0.12, 0.32, 0.32) }),
+        detection({ box: box(0.62, 0.62, 0.82, 0.82) }),
+      ],
+      1100,
+      config,
+    );
+
+    // Both tracks matched and visible, not one, not three.
+    expect(stepped.state.tracks).toHaveLength(2);
+    expect(stepped.visible).toHaveLength(2);
+
+    // Each track should have adopted the correct detection's box.
+    const track1 = stepped.visible.find(
+      (t) => t.box.xmin > 0.1 && t.box.xmin < 0.15,
+    );
+    const track2 = stepped.visible.find(
+      (t) => t.box.xmin > 0.6 && t.box.xmin < 0.65,
+    );
+    expect(track1).toBeDefined();
+    expect(track2).toBeDefined();
+    expect(track1?.box.xmin).toBeCloseTo(0.12);
+    expect(track2?.box.xmin).toBeCloseTo(0.62);
+  });
+
+  it("does not force-match a detection when IoU falls below threshold", () => {
+    let state = initialTrackerState();
+
+    // Create and confirm a track at box(0.4, 0.5, 0.6, 0.8).
+    state = stepTracker(
+      state,
+      [detection({ box: box(0.4, 0.5, 0.6, 0.8) })],
+      0,
+      config,
+    ).state;
+    state = stepTracker(
+      state,
+      [detection({ box: box(0.4, 0.5, 0.6, 0.8) })],
+      500,
+      config,
+    ).state;
+
+    // Step with a non-overlapping detection at box(0.0, 0.0, 0.1, 0.1).
+    // IoU is 0, well below the threshold (0.3).
+    const stepped = stepTracker(
+      state,
+      [detection({ box: box(0.0, 0.0, 0.1, 0.1) })],
+      600,
+      config,
+    );
+
+    // The confirmed track was not matched so it coasts (still visible, misses +1).
+    // The non-overlapping detection spawns a new pending track.
+    expect(stepped.state.tracks).toHaveLength(2);
+    expect(stepped.visible).toHaveLength(1);
+
+    // The visible track is the confirmed one that coasted.
+    expect(stepped.visible[0].box.xmin).toBeCloseTo(0.4);
+    expect(stepped.visible[0].box.ymin).toBeCloseTo(0.5);
+
+    // The second track in state is the new pending one at the non-overlapping box.
+    const pendingTrack = stepped.state.tracks.find((t) => !t.confirmed);
+    expect(pendingTrack).toBeDefined();
+    expect(pendingTrack?.box.xmin).toBeCloseTo(0.0);
+  });
 });
 
 describe("createDetectionTracker", () => {
