@@ -84,16 +84,17 @@ src/
   components/
     CameraView/                 # the <video> element; owns getUserMedia lifecycle, reports the element + errors
     RadarBackdrop/              # static radar-grid layer shown behind the feed; the visible background when the video is toggled off
-    HudOverlay/                 # nearest-object box (amber when NEAR, white otherwise) + floating tag markers
+    HudOverlay/                 # nearest-object box (amber when NEAR, white otherwise) + floating tag markers; annotates both with confidence + coords when debug is on
     RadarStrip/                 # lane-radar strip: one blip per detection, amber + larger for the nearest-when-NEAR
     StatusBar/                  # wordmark + settings gear
     SettingsButton/             # enlarged gear that opens the full-screen settings panel
-    SettingsScreen/             # full-screen settings panel: video toggle + engine/model/about
+    SettingsScreen/             # full-screen settings panel: video + debug overlay toggles + engine/model/about
+    DebugOverlay/               # top-left diagnostics panel (timing, detection counts, system info); shown only when showDebug is on
     ModelLoadScreen/            # download-progress screen (percent + MB), delayed to avoid a flash
     ErrorScreen/                # full-screen camera/detection error copy + reload action
   context/
     DetectionContext/           # worker lifecycle, frame pump, status machine; consume via useDetection()
-    SettingsContext/            # display options (showVideo) + ephemeral settings-open state; consume via useSettings()
+    SettingsContext/            # display options (showVideo, showDebug) + ephemeral settings-open state; consume via useSettings()
   lib/
     camera/                     # getUserMedia wrapper; typed CameraError; rear-camera constraints
     detection/                  # road-class filter, NEAR heuristic, HUD shaping, coordinate mapping (pure)
@@ -122,11 +123,14 @@ type DetectionContextValue = {
   modelProgress: ModelProgress;             // { loadedBytes, totalBytes }, summed across files
   hud: HudModel | undefined;                // latest shaped detections for the UI to render
   fps: number;                              // rolling detection-result rate
+  debug: DebugSnapshot;                     // per-frame timing + detection counts for the debug overlay
   error: DetectionErrorCode | undefined;
   start: (video: HTMLVideoElement) => void;
   stop: () => void;
 };
 ```
+
+`DebugSnapshot` (`src/context/DetectionContext/types.ts`) combines the worker's per-frame `FrameTiming` (`preprocessMs`, `inferenceMs`, `decodeMs`) with timing the context measures itself (`captureMs`, the time to capture the video frame into an `ImageBitmap`; `roundTripMs`, wall time from posting a frame to receiving its result) plus `rawCount`/`filteredCount` (detections before and after `toRoadDetections`) and `inFlight` (0 or 1). It updates on every `detections` reply regardless of whether `showDebug` is on, so toggling the overlay shows current numbers immediately rather than stale ones.
 
 Status transitions: the provider posts `{ type: "load" }` to the worker once, regardless of whether `start()` has been called yet. In production the load message is deferred until a service worker controls the page (`waitForServiceWorkerControl`, `src/lib/serviceWorker`, bounded by `SW_CONTROL_TIMEOUT_MS`) so the first-visit model download flows through Workbox's runtime cache instead of racing ahead of it (see §7); in dev, which has no service worker, it posts immediately. `loading-model → ready` happens when the worker replies `ready` and `start()` hasn't run; `loading-model → running` (skipping `ready`) happens when the worker replies `ready` and `start()` already ran. `ready → running` happens on `start()`. `running → ready` happens on `stop()`. Any worker error or worker crash moves to `error` from any state; there is no in-app path back out of `error`. `ErrorScreen`'s "TRY AGAIN" button does a full `window.location.reload()`.
 
@@ -158,7 +162,7 @@ These invariants (one frame in flight, the generation guard, and keeping frame-s
 | --- | --- | --- |
 | `model-progress` | `progress: { file, loaded, total }` | One tick per streamed chunk while `fetchModel` downloads the weights (byte counts from the `Content-Length` header); `DetectionContext` sums into a single `ModelProgress` |
 | `ready` | `backend: "webgpu" \| "wasm"` | Session finished loading; starts the frame pump immediately if `start()` already ran, otherwise moves to `"ready"` |
-| `detections` | `detections: RawDetection[]` | Decoded output for one frame, boxes normalized 0-1 (xyxy) |
+| `detections` | `detections: RawDetection[]`, `timing: { preprocessMs, inferenceMs, decodeMs }` | Decoded output for one frame, boxes normalized 0-1 (xyxy), plus the worker's own per-stage timing for the debug overlay |
 | `worker-error` | `code: DetectionErrorCode` | `MODEL_LOAD_FAILED` from the download or session creation failing, or `INFERENCE_FAILED` from a per-frame inference failure |
 
 `WORKER_CRASHED` is a third `DetectionErrorCode` value, but the worker never posts it as a `worker-error` message: it's set directly by `DetectionContext`'s `worker.onerror` handler on the main thread, for an uncaught exception in the worker that its own try/catch didn't handle.
@@ -178,23 +182,35 @@ Why raw onnxruntime-web and not the Transformers.js `pipeline("object-detection"
 ### `SettingsContext` / `useSettings()`
 
 App-wide display options, persisted to `localStorage` under `dashradar:settings`
-and validated on read with `isPersistedSettings` (a corrupt or outdated shape
-falls back to `DEFAULT_SETTINGS`). v1 exposes one option:
+and validated on read with `isPersistedSettings`. Two options:
 
 ```ts
 type SettingsContextValue = {
   showVideo: boolean;
-  settingsOpen: boolean; // ephemeral, not persisted
   toggleShowVideo: () => void;
+  showDebug: boolean;
+  toggleShowDebug: () => void;
+  settingsOpen: boolean; // ephemeral, not persisted
 };
 ```
 
 `showVideo` controls only presentation. When it is false the camera `<video>`
 stays mounted and playing (so the detection pump keeps reading frames) but is
 hidden with `opacity-0`, revealing the `RadarBackdrop` grid behind it. The
-detection pipeline is never touched by the toggle. `SettingsProvider` wraps the
-app outside `DetectionProvider`; `SettingsButton` (a gear in `StatusBar`) opens
-the full-screen `SettingsScreen`, which is the only UI that writes the option.
+detection pipeline is never touched by the toggle. `showDebug` (default false)
+gates the `DebugOverlay` panel and the confidence/coords annotations
+`HudOverlay` draws on each detection; it doesn't change what detection does
+either. `SettingsProvider` wraps the app outside `DetectionProvider`;
+`SettingsButton` (a gear in `StatusBar`) opens the full-screen
+`SettingsScreen`, which is the only UI that writes either option.
+
+`isPersistedSettings` validates a `Partial<Settings>` shape: each known field
+is optional-but-typed, so a stored blob is accepted even if it predates a
+newer field (or a future build removes one) and `loadSettings` fills any
+missing field from `DEFAULT_SETTINGS`. A corrupt value (not JSON, not an
+object, or a field with the wrong type) falls back to `DEFAULT_SETTINGS`
+entirely. This is what keeps loading a pre-`showDebug` stored blob from
+wiping out the also-stored `showVideo` value.
 
 ---
 
@@ -260,6 +276,7 @@ Automotive-minimal HUD over a full-bleed video feed. Design principle: the road 
 - **Other detections**: no box. A floating tag above the object: a rounded pill (translucent black, thin white border, uppercase tracked Rajdhani, no confidence numbers) with a short fading vertical tick pointing down toward the object (offset `TAG_OFFSET_PX` = 30px above the box, clamped so it never goes negative).
 - **Lane-radar strip** (`RadarStrip`, the signature glance element): a pill-shaped translucent bar bottom-center (46% of viewport width, minimum 16rem), divided into three lane segments by two faint vertical dividers. One blip per filtered detection, positioned by the object's horizontal box-center fraction. The nearest object's blip is larger (12px) and amber with a glow, but only when the NEAR flag is true; every other blip is a small (8px) white dot. Tells the driver where things are, left/center/right, without reading anything.
 - **Status bar** (`StatusBar`, safe-area aware): `DASHRADAR` wordmark top-left; the `SettingsButton` gear top-right. The `GPU · N FPS` / `CPU · N FPS` engine readout now lives in the full-screen `SettingsScreen`, not the bar. No object count is ever shown.
+- **Debug overlay** (`DebugOverlay`, gated on the `showDebug` setting, off by default): a small monospace panel pinned top-left, below the wordmark. Shows engine + FPS, round-trip/capture/preprocess/inference/decode timing, in-flight frame count, filtered/raw detection counts, viewport and video pixel sizes, device pixel ratio, WebGPU availability, and model download percent. `pointer-events-none` so it never intercepts taps. When on, `HudOverlay` also annotates the nearest box and every floating tag with a confidence percentage and normalized box coords, overriding the "no confidence numbers" rule above.
 - **Model load screen** (`ModelLoadScreen`): same visual language, amber progress bar, byte counters formatted with `Intl.NumberFormat` (one decimal place, decimal megabytes). Delayed `LOADING_INDICATOR_DELAY_MS` (1 second) before appearing, so a fast (already-cached) load never flashes it.
 - **Error screen** (`ErrorScreen`): wordmark, centered error copy keyed by error code (§8), and a "TRY AGAIN" button that does a full page reload.
 - No nav and no dialogs. The only settings surface is the full-screen `SettingsScreen`, opened from the top-bar gear.
@@ -335,8 +352,8 @@ Vitest + Testing Library, **behavior-focused** (verify behavior, not implementat
 - **`src/lib/serviceWorker`**: `waitForServiceWorkerControl` resolves immediately when the Service Worker API is absent or a controller already exists, resolves on a `controllerchange` event when initially uncontrolled, and resolves via the timeout when control never arrives (fake timers), via `vi.stubGlobal("navigator", …)`.
 - **`src/workers/detection`**: `isWorkerResponse` accepts every valid message variant and rejects malformed ones (unknown backend, missing fields, unknown error code); the pure `preprocess` (ImageNet normalization, NCHW layout) and `decodeDetections` (sigmoid thresholding, cxcywh-to-xyxy, class-index-1 selection) helpers in `inference.ts` are tested directly against known inputs.
 - **`src/context/DetectionContext`**: the full status machine against an injected fake worker (the `createWorker` test seam), including the one-frame-in-flight invariant across a fast `stop()`-then-`start()` (a regression test for a real race that was fixed), retrying after a `createImageBitmap` failure, and the FPS calculation staying finite. Because the `load` message is now deferred to a microtask (`import.meta.env.PROD` is false in tests, so it resolves immediately), the "starts loading on mount" test awaits it with `waitFor` rather than asserting synchronously.
-- **`src/context/SettingsContext`**: defaults `showVideo` to true, toggling flips and persists it to `localStorage`, a fresh mount restores the persisted value, and corrupt or wrong-shaped stored JSON falls back to defaults.
-- **Components** (RTL): `CameraView` attaches the stream and reports a typed error on failure (stubbing `getUserMedia`); `HudOverlay` renders the nearest box with/without the NEAR pill and positions floating tags, using exact pixel assertions against known inputs; `RadarStrip` positions one blip per detection by fraction and styles the near blip amber; `StatusBar` renders the wordmark and the settings gear and shows no FPS readout; `ModelLoadScreen` stays hidden during the anti-flash delay and then shows byte/percent progress; `ErrorScreen` covers every error code with non-empty copy; `SettingsButton` opens the panel; `SettingsScreen` renders nothing until opened, toggles and persists the video setting, shows the live engine readout (or a starting placeholder), and closes on the close button or Escape; `RadarBackdrop` renders a non-interactive full-bleed grid; `CameraView` keeps the video mounted but `opacity-0` when `visible` is false; `App` shows the camera-unavailable error screen end-to-end with a stubbed `Worker` and `navigator`.
+- **`src/context/SettingsContext`**: defaults `showVideo` and `showDebug` to their defaults (true and false), toggling either flips it and persists both to `localStorage`, a fresh mount restores the persisted values, corrupt or wrong-shaped stored JSON falls back to defaults, and loading a pre-`showDebug` stored blob (missing that field) keeps the stored `showVideo` value while `showDebug` falls back to its default.
+- **Components** (RTL): `CameraView` attaches the stream and reports a typed error on failure (stubbing `getUserMedia`); `HudOverlay` renders the nearest box with/without the NEAR pill, positions floating tags using exact pixel assertions against known inputs, and shows/omits the confidence-and-coords annotation on both the nearest box and floating tags based on the `debug` prop; `RadarStrip` positions one blip per detection by fraction and styles the near blip amber; `StatusBar` renders the wordmark and the settings gear and shows no FPS readout; `DebugOverlay` renders nothing when `showDebug` is off and shows the diagnostics panel with the expected FPS/size/count text when it's on; `ModelLoadScreen` stays hidden during the anti-flash delay and then shows byte/percent progress; `ErrorScreen` covers every error code with non-empty copy; `SettingsButton` opens the panel; `SettingsScreen` renders nothing until opened, toggles and persists both the video and debug settings, shows the live engine readout (or a starting placeholder), and closes on the close button or Escape; `RadarBackdrop` renders a non-interactive full-bleed grid; `CameraView` keeps the video mounted but `opacity-0` when `visible` is false; `App` shows the camera-unavailable error screen end-to-end with a stubbed `Worker` and `navigator`.
 
 Real camera video, real onnxruntime-web inference (both backends), and real layout/visual rendering are verified manually: chrome-devtools MCP against a built preview (`pnpm build && pnpm start`) for the model-load screen, backend detection, first-visit model caching, offline cold-load, and Cache Storage contents; genuine on-device phone testing (sustained FPS against real traffic, both orientations, thermal/battery behavior) is the user's job post-merge, since neither jsdom nor a desktop headless browser has a real dash-mounted camera.
 
