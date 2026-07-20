@@ -34,6 +34,7 @@ const RadarScreen = () => {
     status,
     backend,
     backendProbe,
+    mainThreadWebGpu,
     downloadingModel,
     modelProgress,
     hud,
@@ -98,6 +99,7 @@ const RadarScreen = () => {
       <DebugOverlay
         backend={backend}
         backendProbe={backendProbe}
+        mainThreadWebGpu={mainThreadWebGpu}
         fps={fps}
         modelProgress={modelProgress}
         debug={debug}

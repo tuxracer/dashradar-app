@@ -1,5 +1,9 @@
 import { useSettings } from "@/context/SettingsContext";
-import type { DebugSnapshot, ModelProgress } from "@/context/DetectionContext";
+import type {
+  DebugSnapshot,
+  MainThreadWebGpu,
+  ModelProgress,
+} from "@/context/DetectionContext";
 import type { Size } from "@/lib/detection";
 import type { BackendProbe, DetectionBackend } from "@/workers/detection/types";
 
@@ -7,6 +11,7 @@ import type { BackendProbe, DetectionBackend } from "@/workers/detection/types";
 type DebugOverlayProps = {
   backend: DetectionBackend | undefined;
   backendProbe: BackendProbe | undefined;
+  mainThreadWebGpu: MainThreadWebGpu | undefined;
   fps: number;
   modelProgress: ModelProgress;
   debug: DebugSnapshot;
@@ -47,6 +52,7 @@ const Row = ({ label, value }: { label: string; value: string }) => (
 export const DebugOverlay = ({
   backend,
   backendProbe,
+  mainThreadWebGpu,
   fps,
   modelProgress,
   debug,
@@ -80,6 +86,7 @@ export const DebugOverlay = ({
       {backendProbe && (
         <Row label="wgpu probe" value={probeStages(backendProbe)} />
       )}
+      <Row label="wgpu main" value={mainThreadWebGpu ?? "probing"} />
       {backendProbe?.sessionError && (
         <div className="mt-1 border-t border-white/10 pt-1">
           <div className="text-white/50">wgpu session error</div>

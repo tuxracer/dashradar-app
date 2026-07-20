@@ -32,6 +32,7 @@ const renderOverlay = (backendProbe?: BackendProbe) =>
       <DebugOverlay
         backend="webgpu"
         backendProbe={backendProbe}
+        mainThreadWebGpu="no-adapter"
         fps={12}
         modelProgress={{ loadedBytes: 0, totalBytes: 0 }}
         debug={debug}

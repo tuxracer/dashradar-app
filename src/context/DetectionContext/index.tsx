@@ -28,6 +28,7 @@ import type {
   DetectionContextValue,
   DetectionStatus,
   DetectionWorkerLike,
+  MainThreadWebGpu,
   ModelProgress,
 } from "./types";
 
@@ -66,6 +67,7 @@ export const DetectionProvider = ({
   const [status, setStatus] = useState<DetectionStatus>("loading-model");
   const [backend, setBackend] = useState<DetectionBackend>();
   const [backendProbe, setBackendProbe] = useState<BackendProbe>();
+  const [mainThreadWebGpu, setMainThreadWebGpu] = useState<MainThreadWebGpu>();
   const [downloadingModel, setDownloadingModel] = useState(false);
   const [modelProgress, setModelProgress] = useState<ModelProgress>({
     loadedBytes: 0,
@@ -164,6 +166,33 @@ export const DetectionProvider = ({
         setFps(Math.round(((times.length - 1) * 1000) / elapsed));
       }
     }
+  }, []);
+
+  // Probe WebGPU adapter availability on the main thread once at startup. Read
+  // against the worker's BackendProbe in the debug overlay, this separates a
+  // device with no usable WebGPU anywhere from a worker-only limitation.
+  useEffect(() => {
+    let cancelled = false;
+    const probe = async () => {
+      if (!("gpu" in navigator) || !navigator.gpu) {
+        setMainThreadWebGpu("unsupported");
+        return;
+      }
+      try {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!cancelled) {
+          setMainThreadWebGpu(adapter ? "adapter" : "no-adapter");
+        }
+      } catch {
+        if (!cancelled) {
+          setMainThreadWebGpu("error");
+        }
+      }
+    };
+    void probe();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -313,6 +342,7 @@ export const DetectionProvider = ({
       status,
       backend,
       backendProbe,
+      mainThreadWebGpu,
       downloadingModel,
       modelProgress,
       hud,
@@ -326,6 +356,7 @@ export const DetectionProvider = ({
       status,
       backend,
       backendProbe,
+      mainThreadWebGpu,
       downloadingModel,
       modelProgress,
       hud,
