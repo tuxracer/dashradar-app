@@ -5,6 +5,7 @@ import { HudOverlay } from "@/components/HudOverlay";
 import { ModelLoadScreen } from "@/components/ModelLoadScreen";
 import { RadarBackdrop } from "@/components/RadarBackdrop";
 import { RadarStrip } from "@/components/RadarStrip";
+import { SettingsScreen } from "@/components/SettingsScreen";
 import { StatusBar } from "@/components/StatusBar";
 import { DetectionProvider, useDetection } from "@/context/DetectionContext";
 import { SettingsProvider, useSettings } from "@/context/SettingsContext";
@@ -81,7 +82,8 @@ const RadarScreen = () => {
         />
       )}
       {hud && <RadarStrip blips={hud.blips} />}
-      <StatusBar backend={backend} fps={fps} />
+      <StatusBar />
+      <SettingsScreen backend={backend} fps={fps} />
       {status === "loading-model" && (
         <ModelLoadScreen progress={modelProgress} />
       )}
