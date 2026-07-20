@@ -125,6 +125,7 @@ const fakeBitmap = () => {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("DetectionProvider", () => {
@@ -545,7 +546,6 @@ describe("DetectionProvider", () => {
       worker.emit({ type: "detections", detections: [detection], timing });
     });
     expect(screen.getByTestId("objects").textContent).toBe("1");
-    nowSpy.mockRestore();
   });
 });
 

@@ -231,6 +231,43 @@ describe("stepTracker", () => {
     expect(pendingTrack).toBeDefined();
     expect(pendingTrack?.box.xmin).toBeCloseTo(0.0);
   });
+
+  it("lets only one of two overlapping detections claim the same confirmed track", () => {
+    let state = initialTrackerState();
+
+    // Create and confirm a single track at box(0.4, 0.4, 0.6, 0.6).
+    state = stepTracker(
+      state,
+      [detection({ box: box(0.4, 0.4, 0.6, 0.6) })],
+      0,
+      config,
+    ).state;
+    state = stepTracker(
+      state,
+      [detection({ box: box(0.4, 0.4, 0.6, 0.6) })],
+      500,
+      config,
+    ).state;
+
+    // Step with two detections that both overlap the same existing track
+    // above the IoU threshold. Without the greedy matcher's claimed[] guard,
+    // both would match the same track instead of only one.
+    const stepped = stepTracker(
+      state,
+      [
+        detection({ box: box(0.42, 0.42, 0.62, 0.62) }),
+        detection({ box: box(0.38, 0.38, 0.58, 0.58) }),
+      ],
+      1000,
+      config,
+    );
+
+    // One detection matched the existing track; the other spawned a new
+    // pending track instead of also claiming it.
+    expect(stepped.state.tracks).toHaveLength(2);
+    // Only the original confirmed track is visible; the new one is pending.
+    expect(stepped.visible).toHaveLength(1);
+  });
 });
 
 describe("createDetectionTracker", () => {

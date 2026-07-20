@@ -96,6 +96,9 @@ export const stepTracker = (
     } else if (track.confirmed) {
       const misses = track.misses + 1;
       if (misses <= config.maxMisses) {
+        // Coasting: keep the stale box AND stale score as-is (anti-flicker).
+        // Do not refresh the score from anywhere here, there is no new
+        // detection this frame to refresh it from.
         nextTracks.push({ ...track, misses });
       }
       // Beyond maxMisses: dropped.

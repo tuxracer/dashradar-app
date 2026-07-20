@@ -391,6 +391,10 @@ export const DetectionProvider = ({
     runningRef.current = false;
     pumpGenerationRef.current += 1;
     window.clearTimeout(retryTimerRef.current);
+    // Confirmation is wall-clock-age based, so a track left pending across a
+    // long stop() would otherwise confirm on the first matched frame after
+    // restart. A resumed session must re-earn confirmation from scratch.
+    trackerRef.current = createDetectionTracker();
     if (statusRef.current === "running") {
       statusRef.current = "ready";
       setStatus("ready");
