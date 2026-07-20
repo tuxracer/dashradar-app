@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { X } from "lucide-react";
 import { useSettings } from "@/context/SettingsContext";
 import type { DetectionBackend } from "@/workers/detection/types";
+import { MODEL_REVISION } from "@/workers/detection/consts";
 import { MODEL_SLUG, MODEL_URL, REPO_URL } from "./consts";
 
 export * from "./consts";
@@ -196,7 +197,7 @@ export const SettingsScreen = ({ backend, fps }: SettingsScreenProps) => {
               Model
             </span>
             <span className="text-base font-semibold tracking-[0.04em] text-white/60">
-              {MODEL_SLUG} ↗
+              {MODEL_SLUG} · {MODEL_REVISION} ↗
             </span>
           </a>
 

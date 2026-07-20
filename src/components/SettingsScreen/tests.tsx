@@ -5,6 +5,7 @@ import { SettingsButton } from "@/components/SettingsButton";
 import { SettingsScreen } from "@/components/SettingsScreen";
 import { SettingsProvider, STORAGE_KEY } from "@/context/SettingsContext";
 import type { DetectionBackend } from "@/workers/detection/types";
+import { MODEL_REVISION } from "@/workers/detection/consts";
 
 afterEach(() => {
   window.localStorage.clear();
@@ -115,13 +116,13 @@ describe("SettingsScreen", () => {
     expect(screen.getByText(/starting/i)).toBeInTheDocument();
   });
 
-  it("shows the model slug and the app version", async () => {
+  it("shows the model slug with its revision and the app version", async () => {
     const user = userEvent.setup();
     renderScreen();
     await open(user);
-    expect(
-      screen.getByText(/las-vegas-metro-rfdetr-small-t1/),
-    ).toBeInTheDocument();
+    const modelRow = screen.getByText(/las-vegas-metro-rfdetr-small-t1/);
+    expect(modelRow).toBeInTheDocument();
+    expect(modelRow).toHaveTextContent(MODEL_REVISION);
     expect(screen.getByText(/v\d+\.\d+\.\d+/)).toBeInTheDocument();
   });
 
