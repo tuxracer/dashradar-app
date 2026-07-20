@@ -9,7 +9,6 @@ import {
   INTERVAL_MIN_MS,
   MASTER_GAIN,
   RELEASE_SEC,
-  SOLID_THRESHOLD,
 } from "./consts";
 
 export * from "./consts";
@@ -23,16 +22,13 @@ const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 /** Whether a signal level produces any sound at all. */
 export const isAudible = (level: number): boolean => level > AUDIO_FLOOR;
 
-/** Whether a signal level holds a continuous tone instead of discrete beeps. */
-export const isSolidTone = (level: number): boolean => level >= SOLID_THRESHOLD;
-
 /**
  * Gap between beep starts for a signal level, in ms. The audible band
- * [AUDIO_FLOOR, SOLID_THRESHOLD] maps onto [INTERVAL_MAX_MS, INTERVAL_MIN_MS],
- * so the cadence reaches its fastest right as the solid alert tone takes over.
+ * [AUDIO_FLOOR, 1] maps onto [INTERVAL_MAX_MS, INTERVAL_MIN_MS]: the beeps
+ * pulse faster as confidence climbs but never merge into a continuous tone.
  */
 export const beepIntervalMs = (level: number): number => {
-  const t = clamp01((level - AUDIO_FLOOR) / (SOLID_THRESHOLD - AUDIO_FLOOR));
+  const t = clamp01((level - AUDIO_FLOOR) / (1 - AUDIO_FLOOR));
   return lerp(INTERVAL_MAX_MS, INTERVAL_MIN_MS, t);
 };
 
@@ -62,7 +58,8 @@ const UNLOCK_EVENTS = ["pointerdown", "touchend", "keydown"] as const;
 
 /**
  * Creates the radar-detector beeper: discrete beeps whose cadence and pitch
- * rise with the signal level, becoming one continuous tone at SOLID_THRESHOLD.
+ * rise with the signal level, and silence when there is no signal. Each beep is
+ * a short self-terminating envelope, so there is never a sustained tone.
  *
  * The AudioContext and a single persistent oscillator are created lazily on the
  * first audible update, so a muted or signal-free session never touches Web
@@ -74,7 +71,6 @@ const UNLOCK_EVENTS = ["pointerdown", "touchend", "keydown"] as const;
 export const createRadarBeeper = (): RadarBeeper => {
   let nodes: BeeperNodes | undefined;
   let disposed = false;
-  let solid = false;
   // Monotonic-clock time the next beep may start. 0 means "beep immediately",
   // so the first contact after silence sounds without waiting out an interval.
   let nextBeepAtMs = 0;
@@ -92,28 +88,6 @@ export const createRadarBeeper = (): RadarBeeper => {
       window.removeEventListener(eventName, handleUnlock);
     }
   };
-
-  /** Ramp the gain to zero, ending a beep or solid tone without a click. */
-  const silence = () => {
-    if (!nodes) {
-      return;
-    }
-    const { context, gain } = nodes;
-    const now = context.currentTime;
-    gain.gain.cancelScheduledValues(now);
-    gain.gain.setValueAtTime(gain.gain.value, now);
-    gain.gain.linearRampToValueAtTime(0, now + RELEASE_SEC);
-    solid = false;
-  };
-
-  // A hidden page stops the rAF loop that drives update(), which would leave a
-  // solid alert tone sounding forever in the background. Cut it on hide.
-  const handleVisibilityChange = () => {
-    if (document.visibilityState === "hidden") {
-      silence();
-    }
-  };
-  document.addEventListener("visibilitychange", handleVisibilityChange);
 
   const ensureNodes = (): BeeperNodes | undefined => {
     if (nodes || disposed || typeof AudioContext === "undefined") {
@@ -144,9 +118,6 @@ export const createRadarBeeper = (): RadarBeeper => {
       return;
     }
     if (!isAudible(level)) {
-      if (solid) {
-        silence();
-      }
       nextBeepAtMs = 0;
       return;
     }
@@ -154,25 +125,12 @@ export const createRadarBeeper = (): RadarBeeper => {
     if (!active || active.context.state !== "running") {
       return;
     }
-    const { context, oscillator, gain } = active;
-    const now = context.currentTime;
-    if (isSolidTone(level)) {
-      oscillator.frequency.setValueAtTime(beepFrequencyHz(level), now);
-      if (!solid) {
-        gain.gain.cancelScheduledValues(now);
-        gain.gain.setValueAtTime(gain.gain.value, now);
-        gain.gain.linearRampToValueAtTime(MASTER_GAIN, now + ATTACK_SEC);
-        solid = true;
-      }
-      return;
-    }
-    if (solid) {
-      silence();
-    }
     if (nowMs < nextBeepAtMs) {
       return;
     }
     nextBeepAtMs = nowMs + beepIntervalMs(level);
+    const { context, oscillator, gain } = active;
+    const now = context.currentTime;
     oscillator.frequency.setValueAtTime(beepFrequencyHz(level), now);
     const beepEnd = now + BEEP_DURATION_MS / 1000;
     gain.gain.cancelScheduledValues(now);
@@ -187,7 +145,6 @@ export const createRadarBeeper = (): RadarBeeper => {
       return;
     }
     disposed = true;
-    document.removeEventListener("visibilitychange", handleVisibilityChange);
     removeUnlockListeners();
     if (nodes) {
       try {

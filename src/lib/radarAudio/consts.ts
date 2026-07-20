@@ -22,17 +22,10 @@ export const RELEASE_SEC = 0.03;
  */
 export const AUDIO_FLOOR = 0.02;
 
-/**
- * Signal level at or above which the beeper holds one continuous tone instead
- * of discrete beeps. Matches RadarDetectorScreen's ALERT_THRESHOLD so the solid
- * tone coincides with the on-screen pulsing alert ring.
- */
-export const SOLID_THRESHOLD = 0.85;
-
 /** Gap between beeps at the weakest audible signal, in ms (slowest cadence). */
 export const INTERVAL_MAX_MS = 900;
 
-/** Gap between beeps just below the solid threshold, in ms (fastest cadence). */
+/** Gap between beeps at full signal, in ms (fastest cadence, still pulsing). */
 export const INTERVAL_MIN_MS = 130;
 
 /** Beep pitch at zero signal, in Hz. Rises toward FREQ_HIGH_HZ as signal climbs. */

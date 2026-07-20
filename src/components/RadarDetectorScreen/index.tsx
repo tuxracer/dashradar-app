@@ -89,7 +89,7 @@ export const RadarDetectorScreen = ({
       peakRef.current = level;
 
       // Feed the audio the same peak-held level the meter shows; a disabled
-      // toggle feeds silence, which also ends any tone already sounding.
+      // toggle feeds silence instead.
       beeperRef.current?.update(audioEnabledRef.current ? level : 0, now);
 
       const color = signalColor(level);

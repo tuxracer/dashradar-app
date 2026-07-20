@@ -4,14 +4,13 @@ import {
   beepIntervalMs,
   createRadarBeeper,
   isAudible,
-  isSolidTone,
   AUDIO_FLOOR,
+  BEEP_DURATION_MS,
   FREQ_HIGH_HZ,
   FREQ_LOW_HZ,
   INTERVAL_MAX_MS,
   INTERVAL_MIN_MS,
   MASTER_GAIN,
-  SOLID_THRESHOLD,
 } from "@/lib/radarAudio";
 
 class FakeAudioParam {
@@ -85,8 +84,9 @@ describe("beepIntervalMs", () => {
     expect(beepIntervalMs(AUDIO_FLOOR)).toBe(INTERVAL_MAX_MS);
   });
 
-  it("beeps fastest at the solid-tone threshold", () => {
-    expect(beepIntervalMs(SOLID_THRESHOLD)).toBe(INTERVAL_MIN_MS);
+  it("beeps fastest at full signal, still leaving a gap between beeps", () => {
+    expect(beepIntervalMs(1)).toBe(INTERVAL_MIN_MS);
+    expect(INTERVAL_MIN_MS).toBeGreaterThan(BEEP_DURATION_MS);
   });
 
   it("speeds up as the signal climbs", () => {
@@ -105,15 +105,10 @@ describe("beepFrequencyHz", () => {
   });
 });
 
-describe("isAudible / isSolidTone", () => {
+describe("isAudible", () => {
   it("is silent at or below the audio floor", () => {
     expect(isAudible(AUDIO_FLOOR)).toBe(false);
     expect(isAudible(AUDIO_FLOOR + 0.001)).toBe(true);
-  });
-
-  it("goes solid only at the solid threshold", () => {
-    expect(isSolidTone(SOLID_THRESHOLD - 0.001)).toBe(false);
-    expect(isSolidTone(SOLID_THRESHOLD)).toBe(true);
   });
 });
 
@@ -142,6 +137,22 @@ describe("createRadarBeeper", () => {
     beeper.dispose();
   });
 
+  it("schedules every beep as a self-terminating envelope, never a held tone", () => {
+    const beeper = createRadarBeeper();
+    beeper.update(1, 1_000);
+    const gain = audioContext().gainNode.gain;
+    // Even at full signal the beep ramps up and back to zero.
+    expect(gain.linearRampToValueAtTime).toHaveBeenCalledWith(
+      MASTER_GAIN,
+      expect.any(Number),
+    );
+    expect(gain.linearRampToValueAtTime).toHaveBeenLastCalledWith(
+      0,
+      expect.any(Number),
+    );
+    beeper.dispose();
+  });
+
   it("waits out the beep interval before beeping again", () => {
     const beeper = createRadarBeeper();
     beeper.update(0.5, 1_000);
@@ -155,51 +166,17 @@ describe("createRadarBeeper", () => {
     beeper.dispose();
   });
 
-  it("holds one continuous tone at the solid threshold", () => {
+  it("beeps immediately when a fresh contact follows silence", () => {
     const beeper = createRadarBeeper();
-    beeper.update(0.9, 1_000);
-    const gain = audioContext().gainNode.gain;
-    // Solid engage ramps up once and schedules no release back to zero.
-    expect(gain.linearRampToValueAtTime).toHaveBeenCalledTimes(1);
-    expect(gain.linearRampToValueAtTime).toHaveBeenCalledWith(
-      MASTER_GAIN,
-      expect.any(Number),
-    );
-    // Staying solid re-tunes the pitch but does not re-trigger the envelope.
-    beeper.update(0.95, 1_016);
-    expect(gain.linearRampToValueAtTime).toHaveBeenCalledTimes(1);
-    beeper.dispose();
-  });
-
-  it("silences when the signal drops away after a solid tone", () => {
-    const beeper = createRadarBeeper();
-    beeper.update(0.9, 1_000);
+    beeper.update(0.5, 1_000);
+    const beepCalls = () =>
+      audioContext().gainNode.gain.linearRampToValueAtTime.mock.calls.length;
+    const afterFirst = beepCalls();
+    // The signal clears, then a new contact appears one frame later: no
+    // leftover interval should delay the first beep of the new contact.
     beeper.update(0, 1_016);
-    const gain = audioContext().gainNode.gain;
-    expect(gain.linearRampToValueAtTime).toHaveBeenLastCalledWith(
-      0,
-      expect.any(Number),
-    );
-    beeper.dispose();
-  });
-
-  it("silences a solid tone when the page is hidden", () => {
-    const beeper = createRadarBeeper();
-    beeper.update(0.9, 1_000);
-    const gain = audioContext().gainNode.gain;
-    const rampCallsBefore = gain.linearRampToValueAtTime.mock.calls.length;
-    const visibility = vi
-      .spyOn(document, "visibilityState", "get")
-      .mockReturnValue("hidden");
-    document.dispatchEvent(new Event("visibilitychange"));
-    expect(gain.linearRampToValueAtTime.mock.calls.length).toBeGreaterThan(
-      rampCallsBefore,
-    );
-    expect(gain.linearRampToValueAtTime).toHaveBeenLastCalledWith(
-      0,
-      expect.any(Number),
-    );
-    visibility.mockRestore();
+    beeper.update(0.5, 1_032);
+    expect(beepCalls()).toBeGreaterThan(afterFirst);
     beeper.dispose();
   });
 

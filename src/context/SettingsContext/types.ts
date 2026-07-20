@@ -27,8 +27,9 @@ export type Settings = {
   radarDetectorMode: boolean;
   /**
    * When true, radar detector mode beeps as a police vehicle is detected:
-   * cadence and pitch rise with signal strength, going to a continuous tone at
-   * the alert level. On by default; only applies in radar detector mode.
+   * the beeps pulse faster (and higher-pitched) the stronger the signal, and
+   * stop entirely when nothing is detected. On by default; only applies in
+   * radar detector mode.
    */
   radarAudio: boolean;
 };
