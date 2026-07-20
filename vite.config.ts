@@ -61,6 +61,16 @@ const ortRuntime = (): Plugin => ({
         "Content-Type",
         file.endsWith(".wasm") ? "application/wasm" : "text/javascript",
       );
+      // Vite's server.headers don't apply to custom middleware responses, and
+      // onnxruntime-web's pthread workers load the .mjs as their own script:
+      // in a cross-origin-isolated page that response is blocked
+      // (ERR_BLOCKED_BY_RESPONSE) unless it carries COEP itself. Blocked
+      // thread workers leave InferenceSession.create waiting forever.
+      for (const [name, value] of Object.entries(
+        CROSS_ORIGIN_ISOLATION_HEADERS,
+      )) {
+        res.setHeader(name, value);
+      }
       res.end(readFileSync(ortRuntimePath(file)));
     });
   },
