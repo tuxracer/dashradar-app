@@ -1,3 +1,4 @@
+import { track } from "@vercel/analytics";
 import { Share } from "lucide-react";
 import {
   QR_MODULE_PATH,
@@ -21,6 +22,7 @@ export const ShareCard = () => {
   const supportsShare = typeof navigator.share === "function";
 
   const handleShare = () => {
+    track("share_click");
     // Dismissing the native share sheet rejects with AbortError; there is
     // nothing to recover from, so swallow the rejection.
     navigator.share({ url: SHARE_URL }).catch(() => undefined);

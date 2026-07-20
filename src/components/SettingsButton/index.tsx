@@ -1,3 +1,4 @@
+import { track } from "@vercel/analytics";
 import { Settings } from "lucide-react";
 import { useSettings } from "@/context/SettingsContext";
 
@@ -10,10 +11,15 @@ import { useSettings } from "@/context/SettingsContext";
 export const SettingsButton = () => {
   const { openSettings } = useSettings();
 
+  const handleOpen = () => {
+    track("settings_open");
+    openSettings();
+  };
+
   return (
     <button
       type="button"
-      onClick={openSettings}
+      onClick={handleOpen}
       className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full text-white/70 transition-colors hover:text-white/90"
     >
       <Settings className="h-7 w-7" strokeWidth={2} />

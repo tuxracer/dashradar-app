@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { track } from "@vercel/analytics";
 import { CameraView } from "@/components/CameraView";
 import { DebugOverlay } from "@/components/DebugOverlay";
 import { ErrorScreen } from "@/components/ErrorScreen";
@@ -93,6 +94,7 @@ const RadarScreen = () => {
     return (
       <IntroScreen
         onStart={() => {
+          track("intro_start");
           markIntroSeen();
           setShowIntro(false);
         }}
