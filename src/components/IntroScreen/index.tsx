@@ -90,7 +90,7 @@ export const IntroScreen = ({ onStart }: IntroScreenProps) => (
         </h1>
         <p className="text-base font-medium leading-snug text-white/70">
           Mount it on the dash, camera facing the road. The signal meter climbs
-          when a Las Vegas Metro police vehicle comes into view.
+          when a police vehicle comes into view.
         </p>
         <div className="flex flex-col gap-2">
           <IntroPoint
