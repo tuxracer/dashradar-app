@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import type { Plugin } from "vite";
 
 const resolveCommitSha = (): string => {
@@ -92,7 +93,15 @@ const pwa = () =>
     },
   });
 
+/** App version read from package.json, injected into the bundle as __APP_VERSION__. */
+const APP_VERSION: string = JSON.parse(
+  readFileSync(new URL("./package.json", import.meta.url), "utf-8"),
+).version;
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+  },
   plugins: [react(), tailwindcss(), commitShaMeta(), pwa()],
   resolve: { tsconfigPaths: true },
   test: {
