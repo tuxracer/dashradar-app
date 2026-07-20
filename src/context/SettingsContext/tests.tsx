@@ -26,7 +26,7 @@ describe("SettingsContext", () => {
     act(() => result.current.toggleShowVideo());
     expect(result.current.showVideo).toBe(false);
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({ showVideo: false }),
+      JSON.stringify({ showVideo: false, showDebug: false }),
     );
   });
 
@@ -74,7 +74,31 @@ describe("SettingsContext", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     act(() => result.current.openSettings());
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({ showVideo: true }),
+      JSON.stringify({ showVideo: true, showDebug: false }),
     );
+  });
+
+  it("defaults showDebug to false when storage is empty", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.showDebug).toBe(false);
+  });
+
+  it("toggling flips showDebug and persists it to localStorage", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleShowDebug());
+    expect(result.current.showDebug).toBe(true);
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({ showVideo: true, showDebug: true }),
+    );
+  });
+
+  it("keeps showVideo when loading a pre-showDebug stored blob", () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ showVideo: false }),
+    );
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.showVideo).toBe(false);
+    expect(result.current.showDebug).toBe(false);
   });
 });

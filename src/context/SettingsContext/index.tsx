@@ -39,7 +39,9 @@ const loadSettings = (): Settings => {
       return DEFAULT_SETTINGS;
     }
     const parsed: unknown = JSON.parse(raw);
-    return isPersistedSettings(parsed) ? parsed : DEFAULT_SETTINGS;
+    return isPersistedSettings(parsed)
+      ? { ...DEFAULT_SETTINGS, ...parsed }
+      : DEFAULT_SETTINGS;
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -53,18 +55,23 @@ type SettingsProviderProps = {
 /** Provider component for settings state management and persistence. */
 export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const [showVideo, setShowVideo] = useState(() => loadSettings().showVideo);
+  const [showDebug, setShowDebug] = useState(() => loadSettings().showDebug);
 
   useEffect(() => {
-    const next: Settings = { showVideo };
+    const next: Settings = { showVideo, showDebug };
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     } catch {
       // Storage unavailable (private mode / quota); keep the in-memory value.
     }
-  }, [showVideo]);
+  }, [showVideo, showDebug]);
 
   const toggleShowVideo = useCallback(() => {
     setShowVideo((prev) => !prev);
+  }, []);
+
+  const toggleShowDebug = useCallback(() => {
+    setShowDebug((prev) => !prev);
   }, []);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -81,11 +88,21 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     () => ({
       showVideo,
       toggleShowVideo,
+      showDebug,
+      toggleShowDebug,
       settingsOpen,
       openSettings,
       closeSettings,
     }),
-    [showVideo, toggleShowVideo, settingsOpen, openSettings, closeSettings],
+    [
+      showVideo,
+      toggleShowVideo,
+      showDebug,
+      toggleShowDebug,
+      settingsOpen,
+      openSettings,
+      closeSettings,
+    ],
   );
 
   return (

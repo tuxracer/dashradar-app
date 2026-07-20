@@ -4,4 +4,4 @@ import type { Settings } from "./types";
 export const STORAGE_KEY = "dashradar:settings";
 
 /** Settings applied on first run or when stored settings are unavailable. */
-export const DEFAULT_SETTINGS: Settings = { showVideo: true };
+export const DEFAULT_SETTINGS: Settings = { showVideo: true, showDebug: false };
