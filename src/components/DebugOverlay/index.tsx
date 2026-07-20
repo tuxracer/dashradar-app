@@ -87,6 +87,14 @@ export const DebugOverlay = ({
         <Row label="wgpu probe" value={probeStages(backendProbe)} />
       )}
       <Row label="wgpu main" value={mainThreadWebGpu ?? "probing"} />
+      {backendProbe && (
+        <Row
+          label="wasm"
+          value={`${backendProbe.threads}T · ${
+            backendProbe.crossOriginIsolated ? "isolated" : "not isolated"
+          }`}
+        />
+      )}
       {backendProbe?.sessionError && (
         <div className="mt-1 border-t border-white/10 pt-1">
           <div className="text-white/50">wgpu session error</div>

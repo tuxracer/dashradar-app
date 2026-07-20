@@ -37,3 +37,13 @@ export const IMAGENET_STD: readonly [number, number, number] = [
 
 /** Label emitted for every detection this single-class model produces. */
 export const POLICE_LABEL = "police";
+
+/**
+ * Ceiling on WASM inference threads. Mobile SoCs are big.LITTLE: past the few
+ * performance cores, adding threads onto efficiency cores yields little and can
+ * make the fast cores wait. Four is a safe default across phones; raise it if
+ * on-device measurement shows headroom. Only takes effect when the page is
+ * cross-origin isolated (SharedArrayBuffer available); otherwise onnxruntime-web
+ * clamps to one thread on its own.
+ */
+export const WASM_THREAD_CAP = 4;

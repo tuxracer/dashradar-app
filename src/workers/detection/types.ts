@@ -111,6 +111,14 @@ export type BackendProbe = {
   sessionError?: string;
   /** Backend actually selected after probing and any fallback. */
   chosen: DetectionBackend;
+  /**
+   * `self.crossOriginIsolated` in the worker. False here means SharedArrayBuffer
+   * is unavailable, so the WASM backend is stuck at one thread regardless of
+   * `threads` below.
+   */
+  crossOriginIsolated: boolean;
+  /** WASM thread count configured for onnxruntime-web (`env.wasm.numThreads`). */
+  threads: number;
 };
 
 const isBackendProbe = (value: unknown): value is BackendProbe => {
@@ -121,7 +129,9 @@ const isBackendProbe = (value: unknown): value is BackendProbe => {
     isBoolean(value.device) &&
     isBoolean(value.shaderF16) &&
     (value.sessionError === undefined || isString(value.sessionError)) &&
-    isDetectionBackend(value.chosen)
+    isDetectionBackend(value.chosen) &&
+    isBoolean(value.crossOriginIsolated) &&
+    isNumber(value.threads)
   );
 };
 

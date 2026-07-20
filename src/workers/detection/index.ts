@@ -1,12 +1,24 @@
 /// <reference lib="webworker" />
-import { InferenceSession, Tensor } from "onnxruntime-web";
+import { env, InferenceSession, Tensor } from "onnxruntime-web";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
-import { INPUT_SIZE, MODEL_URL_BY_BACKEND } from "./consts";
+import { INPUT_SIZE, MODEL_URL_BY_BACKEND, WASM_THREAD_CAP } from "./consts";
 import { decodeDetections, preprocess } from "./inference";
 import type { BackendProbe, DetectionBackend, WorkerResponse } from "./types";
 import { DetectionError, isWorkerRequest } from "./types";
 
 declare const self: DedicatedWorkerGlobalScope;
+
+// Load onnxruntime-web's wasm runtime from our own origin (served at /ort/ by
+// the ortRuntime Vite plugin) instead of cdn.jsdelivr.net, so cross-origin
+// isolation does not block it and there is no live CDN dependency.
+env.wasm.wasmPaths = `${import.meta.env.BASE_URL}ort/`;
+
+/** WASM thread count for this device, capped for big.LITTLE efficiency. */
+const wasmThreads = Math.min(
+  navigator.hardwareConcurrency || WASM_THREAD_CAP,
+  WASM_THREAD_CAP,
+);
+env.wasm.numThreads = wasmThreads;
 
 /** Names discovered from the session graph, resolved at load time. */
 type ModelIo = {
@@ -49,6 +61,8 @@ const resolveBackend = async (): Promise<BackendChoice> => {
     adapter: false,
     device: false,
     shaderF16: false,
+    crossOriginIsolated: self.crossOriginIsolated,
+    threads: wasmThreads,
   };
   if (!("gpu" in navigator) || !navigator.gpu) {
     return { backend: "wasm", probe };

@@ -6,6 +6,81 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import type { Plugin } from "vite";
 
+// Headers that make the page cross-origin isolated. Without these,
+// SharedArrayBuffer is unavailable and onnxruntime-web runs its WASM backend
+// single-threaded, which is the difference between ~1 and several inference
+// threads on the many mobile devices that have no usable WebGPU. Applied to dev,
+// preview, and (via vercel.json) production. `require-corp` works on every
+// browser including Safari; the only cross-origin runtime fetch is the Hugging
+// Face model, which is a CORS request and so passes the check. The ONNX runtime
+// wasm is served same-origin from /ort/ (see ortRuntime below) rather than the
+// jsdelivr CDN precisely so it does not need cross-origin exemption.
+const CROSS_ORIGIN_ISOLATION_HEADERS = {
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Cross-Origin-Embedder-Policy": "require-corp",
+};
+
+/**
+ * onnxruntime-web's bundle build fetches these two files at runtime (the wasm
+ * binary and its ES-module glue, including the code its thread workers load).
+ * We serve them same-origin from /ort/ instead of letting the runtime pull them
+ * from cdn.jsdelivr.net, so cross-origin isolation does not block them and the
+ * app keeps no live CDN dependency.
+ */
+const ORT_RUNTIME_FILES = [
+  "ort-wasm-simd-threaded.jsep.wasm",
+  "ort-wasm-simd-threaded.jsep.mjs",
+] as const;
+
+/** Absolute path to one of onnxruntime-web's shipped runtime files. */
+const ortRuntimePath = (file: string): URL =>
+  new URL(`./node_modules/onnxruntime-web/dist/${file}`, import.meta.url);
+
+/**
+ * Serve onnxruntime-web's wasm/mjs runtime from /ort/ in both dev and the build
+ * output, copied straight from the installed package (never committed to the
+ * repo). The worker points env.wasm.wasmPaths at /ort/ so the runtime and its
+ * thread workers load same-origin.
+ */
+const ortRuntime = (): Plugin => ({
+  name: "ort-runtime",
+  configureServer(server) {
+    server.middlewares.use((req, res, next) => {
+      const file = ORT_RUNTIME_FILES.find((name) => req.url === `/ort/${name}`);
+      if (!file) {
+        next();
+        return;
+      }
+      res.setHeader(
+        "Content-Type",
+        file.endsWith(".wasm") ? "application/wasm" : "text/javascript",
+      );
+      res.end(readFileSync(ortRuntimePath(file)));
+    });
+  },
+  generateBundle(_options, bundle) {
+    // onnxruntime-web's bundle references the wasm via `new URL(..., import.meta
+    // .url)`, so Vite also emits a hashed copy into assets/. wasmPaths points at
+    // our /ort/ copy instead, leaving that one unfetched, so drop it rather than
+    // ship ~27 MB of dead weight.
+    for (const fileName of Object.keys(bundle)) {
+      if (
+        fileName.includes("ort-wasm-simd-threaded") &&
+        !fileName.startsWith("ort/")
+      ) {
+        delete bundle[fileName];
+      }
+    }
+    for (const file of ORT_RUNTIME_FILES) {
+      this.emitFile({
+        type: "asset",
+        fileName: `ort/${file}`,
+        source: readFileSync(ortRuntimePath(file)),
+      });
+    }
+  },
+});
+
 const resolveCommitSha = (): string => {
   // Vercel injects this at build time; prefer it so the SHA matches the deployed commit.
   if (process.env.VERCEL_GIT_COMMIT_SHA) {
@@ -34,13 +109,12 @@ const commitShaMeta = (): Plugin => ({
     ),
 });
 
-// Generous ceiling for the JS/CSS bundle. The ONNX runtime .wasm that Vite
-// emits into dist/assets (~23.5 MB) is deliberately excluded from globPatterns
-// below: onnxruntime-web always fetches its wasm/mjs from cdn.jsdelivr.net
-// unless env.backends.onnx.wasm.wasmPaths is set (it isn't, here), so the
-// bundled copy is dead weight. The jsdelivr fetch is covered by the
-// "ort-runtime" CacheFirst route instead, which is what makes offline
-// cold-loads work after the first run.
+// Generous ceiling for the JS/CSS bundle. The onnxruntime-web .wasm runtime is
+// excluded from globPatterns below (the glob omits wasm/mjs): it is served from
+// /ort/ by the ortRuntime plugin and cached on demand by the "ort-runtime"
+// CacheFirst route instead of precached, matching how the model weights load
+// (fetched on first use, then available offline) rather than front-loading
+// ~27 MB into the service-worker install.
 const PRECACHE_MAX_FILE_SIZE = 40_000_000;
 
 const pwa = () =>
@@ -71,10 +145,11 @@ const pwa = () =>
       maximumFileSizeToCacheInBytes: PRECACHE_MAX_FILE_SIZE,
       runtimeCaching: [
         {
-          // onnxruntime-web may fetch its .wasm/.mjs from jsdelivr instead of
-          // the bundle depending on how the build resolves it; cache-first so
-          // the app still cold-loads offline after the first run.
-          urlPattern: ({ url }) => url.hostname === "cdn.jsdelivr.net",
+          // The onnxruntime-web wasm/mjs runtime, served same-origin from /ort/
+          // by the ortRuntime plugin; cache-first so the app cold-loads offline
+          // after the first run without precaching ~27 MB up front.
+          urlPattern: ({ url, sameOrigin }) =>
+            sameOrigin && url.pathname.startsWith("/ort/"),
           handler: "CacheFirst",
           options: {
             cacheName: "ort-runtime",
@@ -107,8 +182,10 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(APP_VERSION),
     __COMMIT_SHA__: JSON.stringify(SHORT_COMMIT_SHA),
   },
-  plugins: [react(), tailwindcss(), commitShaMeta(), pwa()],
+  plugins: [react(), tailwindcss(), commitShaMeta(), ortRuntime(), pwa()],
   resolve: { tsconfigPaths: true },
+  server: { headers: CROSS_ORIGIN_ISOLATION_HEADERS },
+  preview: { headers: CROSS_ORIGIN_ISOLATION_HEADERS },
   test: {
     environment: "jsdom",
     globals: true,

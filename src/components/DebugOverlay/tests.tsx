@@ -66,6 +66,8 @@ describe("DebugOverlay", () => {
       device: true,
       shaderF16: false,
       chosen: "wasm",
+      crossOriginIsolated: true,
+      threads: 4,
     });
     expect(screen.getByText(/no-f16/)).toBeInTheDocument();
     expect(screen.getByText(/\bgpu\b/)).toBeInTheDocument();
@@ -80,7 +82,23 @@ describe("DebugOverlay", () => {
       shaderF16: false,
       sessionError: "shader-f16 not supported",
       chosen: "wasm",
+      crossOriginIsolated: true,
+      threads: 4,
     });
     expect(screen.getByText("shader-f16 not supported")).toBeInTheDocument();
+  });
+
+  it("shows the WASM thread count and cross-origin isolation state", () => {
+    enableDebug();
+    renderOverlay({
+      workerGpu: true,
+      adapter: false,
+      device: false,
+      shaderF16: false,
+      chosen: "wasm",
+      crossOriginIsolated: true,
+      threads: 4,
+    });
+    expect(screen.getByText(/4T · isolated/)).toBeInTheDocument();
   });
 });
