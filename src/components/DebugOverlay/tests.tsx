@@ -1,8 +1,9 @@
 import { render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { DebugOverlay } from "@/components/DebugOverlay";
 import { SettingsProvider, STORAGE_KEY } from "@/context/SettingsContext";
 import type { DebugSnapshot } from "@/context/DetectionContext";
+import type { YawPitch } from "@/lib/motionSensor";
 import type { BackendProbe } from "@/workers/detection/types";
 
 afterEach(() => {
@@ -26,7 +27,12 @@ const debug: DebugSnapshot = {
   overheadMs: 2.5,
 };
 
-const renderOverlay = (backendProbe?: BackendProbe) =>
+const noMotion = (): YawPitch => ({ yaw: 0, pitch: 0 });
+
+const renderOverlay = (
+  backendProbe?: BackendProbe,
+  getMotionDelta: () => YawPitch = noMotion,
+) =>
   render(
     <SettingsProvider>
       <DebugOverlay
@@ -38,6 +44,7 @@ const renderOverlay = (backendProbe?: BackendProbe) =>
         debug={debug}
         videoSize={{ width: 1280, height: 720 }}
         viewportSize={{ width: 800, height: 400 }}
+        getMotionDelta={getMotionDelta}
       />
     </SettingsProvider>,
   );
@@ -100,5 +107,25 @@ describe("DebugOverlay", () => {
       threads: 4,
     });
     expect(screen.getByText(/4T · isolated/)).toBeInTheDocument();
+  });
+});
+
+describe("DebugOverlay motion readout", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("renders the motion delta once an animation frame runs", () => {
+    // One-shot rAF: the readout tick re-schedules itself, so a mock that always
+    // calls cb would recurse infinitely.
+    let ran = false;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      if (!ran) {
+        ran = true;
+        cb(200);
+      }
+      return 0;
+    });
+    enableDebug();
+    renderOverlay(undefined, () => ({ yaw: 0.1, pitch: 0 }));
+    expect(screen.getByText("motion")).toBeInTheDocument();
   });
 });

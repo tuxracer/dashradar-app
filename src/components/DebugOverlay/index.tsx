@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useSettings } from "@/context/SettingsContext";
 import type {
   DebugSnapshot,
@@ -5,6 +6,8 @@ import type {
   ModelProgress,
 } from "@/context/DetectionContext";
 import type { Size } from "@/lib/detection";
+import { orientationDeltaToPixels } from "@/lib/motionSensor";
+import type { YawPitch } from "@/lib/motionSensor";
 import type { BackendProbe, DetectionBackend } from "@/workers/detection/types";
 
 /** Props for DebugOverlay. Data is passed in so it renders without the worker. */
@@ -17,6 +20,8 @@ type DebugOverlayProps = {
   debug: DebugSnapshot;
   videoSize: Size | undefined;
   viewportSize: Size;
+  /** Live yaw/pitch delta since the displayed detection was captured. */
+  getMotionDelta: () => YawPitch;
 };
 
 /** Compact per-stage summary of the WebGPU probe, e.g. "gpu·adp·dev·f16". */
@@ -58,8 +63,26 @@ export const DebugOverlay = ({
   debug,
   videoSize,
   viewportSize,
+  getMotionDelta,
 }: DebugOverlayProps) => {
   const { showDebug } = useSettings();
+
+  const [motion, setMotion] = useState<YawPitch>({ yaw: 0, pitch: 0 });
+  useEffect(() => {
+    let frame = 0;
+    let last = 0;
+    const tick = (time: number) => {
+      // Throttle to ~8 Hz; the readout is for eyeballing, not smoothness.
+      if (time - last > 120) {
+        last = time;
+        setMotion(getMotionDelta());
+      }
+      frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [getMotionDelta]);
+
   if (!showDebug) {
     return null;
   }
@@ -76,6 +99,11 @@ export const DebugOverlay = ({
   const videoLabel = videoSize
     ? `${videoSize.width}x${videoSize.height}`
     : "unknown";
+  const toDeg = (rad: number): number => (rad * 180) / Math.PI;
+  const offset =
+    videoSize !== undefined
+      ? orientationDeltaToPixels(motion, videoSize, viewportSize)
+      : { dx: 0, dy: 0 };
 
   return (
     <div className="pointer-events-none absolute left-4 top-[max(3.5rem,calc(env(safe-area-inset-top)+2.75rem))] z-20 min-w-40 rounded-lg border border-white/15 bg-black/70 px-3 py-2 font-mono text-[11px] leading-relaxed text-white/85 backdrop-blur-sm">
@@ -112,6 +140,14 @@ export const DebugOverlay = ({
       <Row
         label="detections"
         value={`${debug.filteredCount} / ${debug.rawCount}`}
+      />
+      <Row
+        label="motion"
+        value={`${toDeg(motion.yaw).toFixed(1)}° / ${toDeg(motion.pitch).toFixed(1)}°`}
+      />
+      <Row
+        label="offset"
+        value={`${Math.round(offset.dx)} / ${Math.round(offset.dy)} px`}
       />
       <Row
         label="viewport"

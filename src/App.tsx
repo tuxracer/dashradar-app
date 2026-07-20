@@ -110,6 +110,7 @@ const RadarScreen = () => {
         debug={debug}
         videoSize={videoSize}
         viewportSize={viewportSize}
+        getMotionDelta={getMotionDelta}
       />
       <SettingsScreen backend={backend} fps={fps} />
       {status === "loading-model" && downloadingModel && (
