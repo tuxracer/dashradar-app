@@ -229,10 +229,11 @@ export const DetectionProvider = ({
     const manager = createMotionManager();
     motionRef.current = manager;
     manager.start();
-    const applyPermission = async () => {
-      setMotionPermission(manager.getPermission());
-    };
-    void applyPermission();
+    // Seed the permission state from the freshly created manager. This effect
+    // is the only place the manager's initial permission can be read, so
+    // setting state directly here is intended, not a render-loop hazard.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMotionPermission(manager.getPermission());
     return () => {
       manager.stop();
       motionRef.current = undefined;

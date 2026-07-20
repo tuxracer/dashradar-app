@@ -7,10 +7,7 @@ import {
 } from "@/lib/motionSensor";
 import type { RotationRate } from "@/lib/motionSensor";
 
-const rate = (
-  beta: number,
-  gamma: number,
-): { alpha: number; beta: number; gamma: number } => ({
+const rate = (beta: number, gamma: number): RotationRate => ({
   alpha: 0,
   beta,
   gamma,
@@ -152,6 +149,11 @@ describe("createMotionSensorManager", () => {
   it("reports 'granted' when no permission gate exists (Android/desktop)", () => {
     vi.stubGlobal("DeviceMotionEvent", class {});
     expect(createMotionSensorManager().getPermission()).toBe("granted");
+  });
+
+  it("reports 'unsupported' when DeviceMotion is absent", () => {
+    vi.stubGlobal("DeviceMotionEvent", undefined);
+    expect(createMotionSensorManager().getPermission()).toBe("unsupported");
   });
 
   it("reports 'prompt' on iOS before granting and 'granted' after", async () => {

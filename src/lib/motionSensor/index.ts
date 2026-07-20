@@ -5,7 +5,6 @@ import {
   MAX_INTEGRATION_DT_SECONDS,
   MOTION_GRANTED_KEY,
 } from "./consts";
-import { isMotionPermission } from "./types";
 import type { MotionPermission, RotationRate, YawPitch } from "./types";
 
 export * from "./consts";
@@ -163,9 +162,7 @@ export const createMotionSensorManager = (): MotionSensorManager => {
         return "denied";
       }
       const permission: MotionPermission =
-        isMotionPermission(result) && result === "granted"
-          ? "granted"
-          : "denied";
+        result === "granted" ? "granted" : "denied";
       if (permission === "granted") {
         localStorage.setItem(MOTION_GRANTED_KEY, "true");
       }

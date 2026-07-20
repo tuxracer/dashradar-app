@@ -6,8 +6,7 @@ import type {
   ModelProgress,
 } from "@/context/DetectionContext";
 import type { Size } from "@/lib/detection";
-import { orientationDeltaToPixels } from "@/lib/motionSensor";
-import type { YawPitch } from "@/lib/motionSensor";
+import { orientationDeltaToPixels, type YawPitch } from "@/lib/motionSensor";
 import type { BackendProbe, DetectionBackend } from "@/workers/detection/types";
 
 /** Props for DebugOverlay. Data is passed in so it renders without the worker. */
