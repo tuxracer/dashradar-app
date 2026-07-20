@@ -18,6 +18,7 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     "public/sw.js",
     "public/workbox-*.js",
+    ".remember/**",
   ]),
   js.configs.recommended,
   tseslint.configs.recommended,

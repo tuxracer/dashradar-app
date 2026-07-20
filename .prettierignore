@@ -6,6 +6,9 @@ coverage
 pnpm-lock.yaml
 *.tsbuildinfo
 
+# Session scratch (gitignored via its own nested .gitignore; Prettier ignores it here)
+.remember/
+
 # Hand-maintained prose (not subject to Prettier prose-wrap)
 CLAUDE.md
 README.md
