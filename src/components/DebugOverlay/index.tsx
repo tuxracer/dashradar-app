@@ -81,6 +81,14 @@ export const DebugOverlay = ({
     fps: getFps(),
   }));
   useEffect(() => {
+    // The panel renders nothing while showDebug is off, so don't run the
+    // readout loop (and its state updates) for a hidden overlay. On enable,
+    // the first tick fires within a frame (rAF timestamps exceed the throttle
+    // window on any page older than it), so the readout is current
+    // immediately rather than stale from the last time it was shown.
+    if (!showDebug) {
+      return;
+    }
     let frame = 0;
     let last = 0;
     const tick = (time: number) => {
@@ -97,7 +105,7 @@ export const DebugOverlay = ({
     };
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
-  }, [getMotionDelta, getDebug, getFps]);
+  }, [getMotionDelta, getDebug, getFps, showDebug]);
   const { motion, debug, fps } = readout;
 
   if (!showDebug) {

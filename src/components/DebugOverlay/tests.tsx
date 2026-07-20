@@ -114,6 +114,12 @@ describe("DebugOverlay", () => {
 describe("DebugOverlay motion readout", () => {
   afterEach(() => vi.restoreAllMocks());
 
+  it("does not schedule the readout loop while showDebug is off", () => {
+    const rafSpy = vi.spyOn(window, "requestAnimationFrame").mockReturnValue(0);
+    renderOverlay();
+    expect(rafSpy).not.toHaveBeenCalled();
+  });
+
   it("renders the motion delta once an animation frame runs", () => {
     // One-shot rAF: the readout tick re-schedules itself, so a mock that always
     // calls cb would recurse infinitely.
