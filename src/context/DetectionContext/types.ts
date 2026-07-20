@@ -22,8 +22,12 @@ export type DebugSnapshot = {
   rawCount: number;
   /** Detections remaining after toRoadDetections filtering. */
   filteredCount: number;
-  /** Frames in flight to the worker that this result cleared (0 or 1). */
-  inFlight: number;
+  /**
+   * Time inside the round trip not spent in the worker's three stages:
+   * postMessage delivery each way plus scheduling. Isolates worker-boundary
+   * cost from model compute.
+   */
+  overheadMs: number;
 };
 
 export type DetectionContextValue = {

@@ -204,19 +204,26 @@ export const DetectionProvider = ({
           break;
         }
         case "detections": {
-          const inFlightCleared = inFlightRef.current;
           inFlightRef.current = Math.max(0, inFlightRef.current - 1);
           const roadDetections = toRoadDetections(message.detections);
           setHud(buildHudModel(roadDetections));
+          const { preprocessMs, inferenceMs, decodeMs } = message.timing;
+          const roundTripMs = performance.now() - postTimeRef.current;
           setDebug({
             captureMs: lastCaptureMsRef.current,
-            preprocessMs: message.timing.preprocessMs,
-            inferenceMs: message.timing.inferenceMs,
-            decodeMs: message.timing.decodeMs,
-            roundTripMs: performance.now() - postTimeRef.current,
+            preprocessMs,
+            inferenceMs,
+            decodeMs,
+            roundTripMs,
+            // Round-trip time not accounted for by the worker's three stages:
+            // postMessage delivery each way plus scheduling. Clamped at 0 to
+            // absorb sub-millisecond cross-thread clock noise.
+            overheadMs: Math.max(
+              0,
+              roundTripMs - (preprocessMs + inferenceMs + decodeMs),
+            ),
             rawCount: message.detections.length,
             filteredCount: roadDetections.length,
-            inFlight: inFlightCleared,
           });
           recordResultTime();
           void sendFrame();

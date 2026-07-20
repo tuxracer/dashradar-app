@@ -15,7 +15,7 @@ export const INITIAL_DEBUG: DebugSnapshot = {
   roundTripMs: 0,
   rawCount: 0,
   filteredCount: 0,
-  inFlight: 0,
+  overheadMs: 0,
 };
 
 /**

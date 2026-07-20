@@ -16,7 +16,7 @@ const debug: DebugSnapshot = {
   roundTripMs: 9.1,
   rawCount: 4,
   filteredCount: 2,
-  inFlight: 1,
+  overheadMs: 2.5,
 };
 
 const renderOverlay = () =>
@@ -48,5 +48,7 @@ describe("DebugOverlay", () => {
     expect(screen.getByText(/12 FPS/)).toBeInTheDocument();
     expect(screen.getByText(/1280.*720/)).toBeInTheDocument();
     expect(screen.getByText(/2\s*\/\s*4/)).toBeInTheDocument();
+    expect(screen.getByText("overhead")).toBeInTheDocument();
+    expect(screen.getByText("2.5 ms")).toBeInTheDocument();
   });
 });

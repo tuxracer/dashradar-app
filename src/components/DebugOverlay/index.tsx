@@ -68,7 +68,7 @@ export const DebugOverlay = ({
       <Row label="preprocess" value={ms(debug.preprocessMs)} />
       <Row label="inference" value={ms(debug.inferenceMs)} />
       <Row label="decode" value={ms(debug.decodeMs)} />
-      <Row label="in-flight" value={`${debug.inFlight}`} />
+      <Row label="overhead" value={ms(debug.overheadMs)} />
       <Row
         label="detections"
         value={`${debug.filteredCount} / ${debug.rawCount}`}

@@ -49,6 +49,7 @@ const DebugProbe = () => {
       <span data-testid="raw">{debug.rawCount}</span>
       <span data-testid="filtered">{debug.filteredCount}</span>
       <span data-testid="inference">{debug.inferenceMs}</span>
+      <span data-testid="overhead">{debug.overheadMs}</span>
     </div>
   );
 };
@@ -448,6 +449,9 @@ describe("DetectionProvider", () => {
     expect(screen.getByTestId("raw").textContent).toBe("1");
     expect(screen.getByTestId("filtered").textContent).toBe("1");
     expect(screen.getByTestId("inference").textContent).toBe("2");
+    const overhead = Number(screen.getByTestId("overhead").textContent);
+    expect(Number.isFinite(overhead)).toBe(true);
+    expect(overhead).toBeGreaterThanOrEqual(0);
   });
 
   it("auto-starts detection when ready arrives after start", async () => {
