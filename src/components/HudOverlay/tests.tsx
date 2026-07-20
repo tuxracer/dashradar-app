@@ -87,6 +87,18 @@ describe("HudOverlay", () => {
     expect(screen.getByText("0.40,0.50 0.60,0.80")).toBeInTheDocument();
   });
 
+  it("shows confidence and coords on floating tags when debug is on", () => {
+    const hud: HudModel = {
+      nearest: car,
+      near: true,
+      others: [person],
+      blips: [],
+    };
+    render(<HudOverlay hud={hud} videoSize={size} viewportSize={size} debug />);
+    expect(screen.getByText("84%")).toBeInTheDocument();
+    expect(screen.getByText("0.70,0.40 0.80,0.90")).toBeInTheDocument();
+  });
+
   it("omits confidence and coords when debug is off", () => {
     const hud: HudModel = {
       nearest: car,

@@ -26,6 +26,7 @@ const formatConfidence = (score: number): string =>
 const formatBox = (box: NormalizedBox): string =>
   `${box.xmin.toFixed(2)},${box.ymin.toFixed(2)} ${box.xmax.toFixed(2)},${box.ymax.toFixed(2)}`;
 
+/** Confidence and normalized box coords for a detection, shown as the debug annotation. */
 const debugAnnotation = (detection: Detection) => (
   <span className="mt-0.5 flex items-center justify-center gap-1 whitespace-nowrap rounded bg-black/70 px-1.5 py-px text-center font-mono text-[10px] leading-tight tracking-tight text-hud-amber">
     <span>{formatConfidence(detection.score)}</span>
