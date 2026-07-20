@@ -129,8 +129,8 @@ type DetectionContextValue = {
   downloadingModel: boolean;                // true only while weights stream over the network, not on a cache load
   modelProgress: ModelProgress;             // { loadedBytes, totalBytes }, summed across files
   hud: HudModel | undefined;                // latest shaped detections for the UI to render
-  fps: number;                              // rolling detection-result rate
-  debug: DebugSnapshot;                     // per-frame timing + detection counts for the debug overlay
+  getFps: () => number;                     // rolling detection-result rate, read from a ref on demand
+  getDebugSnapshot: () => DebugSnapshot;    // per-frame timing + detection counts, read from a ref on demand
   error: DetectionErrorCode | undefined;
   start: (video: HTMLVideoElement) => void;
   stop: () => void;
@@ -140,7 +140,7 @@ type DetectionContextValue = {
 };
 ```
 
-`DebugSnapshot` (`src/context/DetectionContext/types.ts`) combines the worker's per-frame `FrameTiming` (`preprocessMs`, `inferenceMs`, `decodeMs`) with timing the context measures itself (`captureMs`, the time to capture the video frame into an `ImageBitmap`; `roundTripMs`, wall time from posting a frame to receiving its result) plus `rawCount`/`filteredCount`/`shownCount` (detections as decoded by the worker, after `toRoadDetections`, and after the `detectionTracker` coasting smoother, in that order; see §5) and `overheadMs` (round-trip time not spent in the worker's three stages: postMessage delivery each way plus scheduling, clamped at 0). It updates on every `detections` reply regardless of whether `showDebug` is on, so toggling the overlay shows current numbers immediately rather than stale ones.
+`DebugSnapshot` (`src/context/DetectionContext/types.ts`) combines the worker's per-frame `FrameTiming` (`preprocessMs`, `inferenceMs`, `decodeMs`) with timing the context measures itself (`captureMs`, the time to capture the video frame into an `ImageBitmap`; `roundTripMs`, wall time from posting a frame to receiving its result) plus `rawCount`/`filteredCount`/`shownCount` (detections as decoded by the worker, after `toRoadDetections`, and after the `detectionTracker` coasting smoother, in that order; see §5) and `overheadMs` (round-trip time not spent in the worker's three stages: postMessage delivery each way plus scheduling, clamped at 0). It updates on every `detections` reply regardless of whether `showDebug` is on, so toggling the overlay shows current numbers immediately rather than stale ones. Both the snapshot and the fps reading live in refs read through `getFps()`/`getDebugSnapshot()`, not React state: nothing renders them by default (the debug overlay and settings panel are hidden), so per-result state updates would re-render every context consumer for values nobody is showing. `DebugOverlay` polls both on its ~8 Hz readout tick and `SettingsScreen` polls `getFps()` once a second while open (`FPS_POLL_MS`).
 
 `getMotionDelta()` reports the live camera rotation since the pose the currently displayed detection was captured at. `sendFrame` (see the frame-pump steps below) snapshots the motion sensor's yaw/pitch, a copy taken at the instant a frame is captured, into `captureOrientationRef`. When that frame's `detections` reply arrives, the snapshot is promoted to `referenceOrientationRef`, the pose the displayed boxes were computed from. `getMotionDelta()` subtracts that reference pose from the sensor's live yaw/pitch and returns the difference in radians. `HudOverlay` polls it every animation frame; `DebugOverlay` polls it on the same loop but throttled to about 8 Hz, since its readout is only for eyeballing. Because only one frame is ever in flight (the frame-pump invariant below), a single capture ref is enough: there is never a second in-flight frame whose pose would need tracking separately.
 

@@ -14,13 +14,22 @@ type DebugOverlayProps = {
   backend: DetectionBackend | undefined;
   backendProbe: BackendProbe | undefined;
   mainThreadWebGpu: MainThreadWebGpu | undefined;
-  fps: number;
+  /** Rolling detection-result rate; polled on the readout tick. */
+  getFps: () => number;
   modelProgress: ModelProgress;
-  debug: DebugSnapshot;
+  /** Latest per-frame diagnostics; polled on the readout tick. */
+  getDebug: () => DebugSnapshot;
   videoSize: Size | undefined;
   viewportSize: Size;
   /** Live yaw/pitch delta since the displayed detection was captured. */
   getMotionDelta: () => YawPitch;
+};
+
+/** Values the readout tick polls together, rendered as one state update. */
+type DebugReadout = {
+  motion: YawPitch;
+  debug: DebugSnapshot;
+  fps: number;
 };
 
 /** Compact per-stage summary of the WebGPU probe, e.g. "gpu·adp·dev·f16". */
@@ -57,16 +66,20 @@ export const DebugOverlay = ({
   backend,
   backendProbe,
   mainThreadWebGpu,
-  fps,
+  getFps,
   modelProgress,
-  debug,
+  getDebug,
   videoSize,
   viewportSize,
   getMotionDelta,
 }: DebugOverlayProps) => {
   const { showDebug } = useSettings();
 
-  const [motion, setMotion] = useState<YawPitch>({ yaw: 0, pitch: 0 });
+  const [readout, setReadout] = useState<DebugReadout>(() => ({
+    motion: { yaw: 0, pitch: 0 },
+    debug: getDebug(),
+    fps: getFps(),
+  }));
   useEffect(() => {
     let frame = 0;
     let last = 0;
@@ -74,13 +87,18 @@ export const DebugOverlay = ({
       // Throttle to ~8 Hz; the readout is for eyeballing, not smoothness.
       if (time - last > 120) {
         last = time;
-        setMotion(getMotionDelta());
+        setReadout({
+          motion: getMotionDelta(),
+          debug: getDebug(),
+          fps: getFps(),
+        });
       }
       frame = window.requestAnimationFrame(tick);
     };
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
-  }, [getMotionDelta]);
+  }, [getMotionDelta, getDebug, getFps]);
+  const { motion, debug, fps } = readout;
 
   if (!showDebug) {
     return null;

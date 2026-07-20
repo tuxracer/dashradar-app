@@ -46,8 +46,8 @@ const RadarScreen = () => {
     downloadingModel,
     modelProgress,
     hud,
-    fps,
-    debug,
+    getFps,
+    getDebugSnapshot,
     error,
     start,
     getMotionDelta,
@@ -144,14 +144,14 @@ const RadarScreen = () => {
         backend={backend}
         backendProbe={backendProbe}
         mainThreadWebGpu={mainThreadWebGpu}
-        fps={fps}
+        getFps={getFps}
         modelProgress={modelProgress}
-        debug={debug}
+        getDebug={getDebugSnapshot}
         videoSize={videoSize}
         viewportSize={viewportSize}
         getMotionDelta={getMotionDelta}
       />
-      <SettingsScreen backend={backend} fps={fps} />
+      <SettingsScreen backend={backend} getFps={getFps} />
       {status === "loading-model" && downloadingModel && (
         <ModelLoadScreen progress={modelProgress} />
       )}

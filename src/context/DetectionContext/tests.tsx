@@ -8,7 +8,10 @@ import {
   MIN_FRAME_INTERVAL_MS,
   useDetection,
 } from "@/context/DetectionContext";
-import type { DetectionWorkerLike } from "@/context/DetectionContext";
+import type {
+  DebugSnapshot,
+  DetectionWorkerLike,
+} from "@/context/DetectionContext";
 import type { MotionSensorManager } from "@/lib/motionSensor";
 import type { WorkerRequest, WorkerResponse } from "@/workers/detection/types";
 
@@ -29,7 +32,7 @@ class FakeWorker implements DetectionWorkerLike {
 }
 
 const Probe = () => {
-  const { status, backend, downloadingModel, modelProgress, hud, fps, error } =
+  const { status, backend, downloadingModel, modelProgress, hud, error } =
     useDetection();
   return (
     <div>
@@ -38,20 +41,42 @@ const Probe = () => {
       <span data-testid="downloading">{String(downloadingModel)}</span>
       <span data-testid="loaded">{modelProgress.loadedBytes}</span>
       <span data-testid="objects">{hud ? hud.blips.length : "none"}</span>
-      <span data-testid="fps">{fps}</span>
       <span data-testid="error">{error ?? "none"}</span>
     </div>
   );
 };
 
-const DebugProbe = () => {
-  const { debug } = useDetection();
+// fps and the debug snapshot live in refs read through getFps()/
+// getDebugSnapshot() (results must not re-render the app), so these probes
+// read them on demand instead of rendering live state.
+const FpsProbe = () => {
+  const { getFps } = useDetection();
+  const [fps, setFps] = useState<number>();
   return (
     <div>
-      <span data-testid="raw">{debug.rawCount}</span>
-      <span data-testid="filtered">{debug.filteredCount}</span>
-      <span data-testid="inference">{debug.inferenceMs}</span>
-      <span data-testid="overhead">{debug.overheadMs}</span>
+      <button data-testid="read-fps" onClick={() => setFps(getFps())}>
+        read fps
+      </button>
+      <span data-testid="fps">{fps ?? "none"}</span>
+    </div>
+  );
+};
+
+const DebugProbe = () => {
+  const { getDebugSnapshot } = useDetection();
+  const [debug, setDebug] = useState<DebugSnapshot>();
+  return (
+    <div>
+      <button
+        data-testid="read-debug"
+        onClick={() => setDebug(getDebugSnapshot())}
+      >
+        read debug
+      </button>
+      <span data-testid="raw">{debug?.rawCount ?? "none"}</span>
+      <span data-testid="filtered">{debug?.filteredCount ?? "none"}</span>
+      <span data-testid="inference">{debug?.inferenceMs ?? "none"}</span>
+      <span data-testid="overhead">{debug?.overheadMs ?? "none"}</span>
     </div>
   );
 };
@@ -634,7 +659,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(
       <>
-        <Probe />
+        <FpsProbe />
         <StartOnReady />
       </>,
     );
@@ -658,6 +683,9 @@ describe("DetectionProvider", () => {
         });
       });
     }
+    act(() => {
+      screen.getByTestId("read-fps").click();
+    });
     const fps = Number(screen.getByTestId("fps").textContent);
     expect(Number.isFinite(fps)).toBe(true);
     expect(fps).toBeGreaterThanOrEqual(0);
@@ -680,6 +708,9 @@ describe("DetectionProvider", () => {
         ],
         timing: { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 },
       });
+    });
+    act(() => {
+      screen.getByTestId("read-debug").click();
     });
     expect(screen.getByTestId("raw").textContent).toBe("1");
     expect(screen.getByTestId("filtered").textContent).toBe("1");

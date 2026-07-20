@@ -40,9 +40,9 @@ const renderOverlay = (
         backend="webgpu"
         backendProbe={backendProbe}
         mainThreadWebGpu="no-adapter"
-        fps={12}
+        getFps={() => 12}
         modelProgress={{ loadedBytes: 0, totalBytes: 0 }}
-        debug={debug}
+        getDebug={() => debug}
         videoSize={{ width: 1280, height: 720 }}
         viewportSize={{ width: 800, height: 400 }}
         getMotionDelta={getMotionDelta}

@@ -86,9 +86,13 @@ export const DetectionProvider = ({
     totalBytes: 0,
   });
   const [hud, setHud] = useState<HudModel>();
-  const [fps, setFps] = useState(0);
-  const [debug, setDebug] = useState<DebugSnapshot>(INITIAL_DEBUG);
   const [error, setError] = useState<DetectionErrorCode>();
+  // fps and the per-frame debug snapshot update on every result, but nothing
+  // renders them by default (the debug overlay and settings panel are hidden),
+  // so they live in refs read via getFps()/getDebugSnapshot() instead of state
+  // that would re-render every consumer per frame.
+  const fpsRef = useRef(0);
+  const debugRef = useRef<DebugSnapshot>(INITIAL_DEBUG);
   const [motionPermission, setMotionPermission] =
     useState<MotionPermission>("unsupported");
 
@@ -237,7 +241,7 @@ export const DetectionProvider = ({
       // Two results inside the same millisecond would divide by zero; keep
       // the previous reading until a measurable interval accumulates.
       if (elapsed > 0) {
-        setFps(Math.round(((times.length - 1) * 1000) / elapsed));
+        fpsRef.current = Math.round(((times.length - 1) * 1000) / elapsed);
       }
     }
   }, []);
@@ -340,7 +344,7 @@ export const DetectionProvider = ({
           setHud(buildHudModel(tracked));
           const { preprocessMs, inferenceMs, decodeMs } = message.timing;
           const roundTripMs = performance.now() - postTimeRef.current;
-          setDebug({
+          debugRef.current = {
             captureMs: lastCaptureMsRef.current,
             preprocessMs,
             inferenceMs,
@@ -356,7 +360,7 @@ export const DetectionProvider = ({
             rawCount: message.detections.length,
             filteredCount: roadDetections.length,
             shownCount: tracked.length,
-          });
+          };
           recordResultTime();
           schedulePacedFrame(roundTripMs);
           break;
@@ -471,6 +475,10 @@ export const DetectionProvider = ({
     };
   }, [start, stop]);
 
+  const getFps = useCallback(() => fpsRef.current, []);
+
+  const getDebugSnapshot = useCallback(() => debugRef.current, []);
+
   /** Angular delta (radians) between the live orientation and the pose the
    * currently displayed detection was captured at. */
   const getMotionDelta = useCallback((): YawPitch => {
@@ -500,8 +508,8 @@ export const DetectionProvider = ({
       downloadingModel,
       modelProgress,
       hud,
-      fps,
-      debug,
+      getFps,
+      getDebugSnapshot,
       error,
       start,
       stop,
@@ -517,8 +525,8 @@ export const DetectionProvider = ({
       downloadingModel,
       modelProgress,
       hud,
-      fps,
-      debug,
+      getFps,
+      getDebugSnapshot,
       error,
       start,
       stop,

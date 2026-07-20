@@ -17,7 +17,7 @@ const renderScreen = (
   render(
     <SettingsProvider>
       <SettingsButton />
-      <SettingsScreen backend={props.backend} fps={props.fps ?? 0} />
+      <SettingsScreen backend={props.backend} getFps={() => props.fps ?? 0} />
     </SettingsProvider>,
   );
 
