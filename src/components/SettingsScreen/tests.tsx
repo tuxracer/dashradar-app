@@ -39,7 +39,7 @@ describe("SettingsScreen", () => {
     await open(user);
     await user.click(screen.getByText("Video feed"));
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({ showVideo: false }),
+      JSON.stringify({ showVideo: false, showDebug: false }),
     );
   });
 
