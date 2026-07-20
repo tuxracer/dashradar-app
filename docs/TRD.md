@@ -23,7 +23,7 @@ dashradar turns a phone mounted on a car dash into a live "radar" view: a full-s
 
 - No video recording, no logging of detection events, no audible alerts.
 - No accounts, sync, or server component of any kind. The only state that persists across reloads is the browser's model-weight cache and a small `localStorage`-backed display-settings object (`dashradar:settings`, e.g. the video-feed toggle). There is no IndexedDB and no history.
-- No manual model/backend picker, no in-app settings UI, no nav, no dialogs.
+- No manual model/backend picker and no nav. Settings are a single full-screen panel (video toggle plus read-only engine/model/about), opened from the top-bar gear.
 - No object count in the HUD, no confidence scores shown to the user (used internally for thresholding only).
 
 Success criteria: on a phone with WebGPU, smooth video with boxes updating at several detections per second; on the WASM fallback, box updates slow down but the video itself never stutters; the app works offline after the first launch.
@@ -54,7 +54,7 @@ Real camera video, sustained frame rates against real-world objects, and on-devi
 | Detection | **`onnxruntime-web`** | Runs the RF-DETR ONNX model directly via an `InferenceSession`; WebGPU or WASM execution provider. Preprocess and decode are hand-rolled in `src/workers/detection/inference.ts` (no Transformers.js pipeline). See §4 (Model). |
 | PWA / offline | **vite-plugin-pwa** (Workbox) | Precaches the app shell; runtime-caches the model weights from Hugging Face and the ONNX runtime's CDN fetch. See §7. |
 | Styling | **Tailwind CSS v4** | Utility classes directly on HUD elements; one CSS custom property (`--color-hud-amber`) plus the surface color in `src/globals.css`. |
-| UI kit | Bespoke Tailwind-styled elements; `lucide-react` for the settings gear icon | No `src/components/ui/` primitives or shadcn/Radix components; the only icon-library use is the `Settings` glyph in `SettingsMenu` (named import, tree-shaken). |
+| UI kit | Bespoke Tailwind-styled elements; `lucide-react` for the settings gear icon | No `src/components/ui/` primitives or shadcn/Radix components; the only icon-library use is the `Settings` and `X` glyphs in `SettingsButton` / `SettingsScreen` (named import, tree-shaken). |
 | Fonts | **Rajdhani** | Self-hosted via `@fontsource/rajdhani` (weights 500/600/700), imported in `src/main.tsx`. Only font in the app. |
 | Utilities | **remeda** | Type guards (`isString`, `isNumber`, `isPlainObject`) validating worker messages crossing the `postMessage` boundary. |
 | Analytics | **`@vercel/analytics`** | `inject()` in `src/main.tsx`; page-view analytics only, no camera/detection data. |
@@ -84,13 +84,14 @@ src/
     RadarBackdrop/              # static radar-grid layer shown behind the feed; the visible background when the video is toggled off
     HudOverlay/                 # nearest-object box (amber when NEAR, white otherwise) + floating tag markers
     RadarStrip/                 # lane-radar strip: one blip per detection, amber + larger for the nearest-when-NEAR
-    StatusBar/                  # wordmark + backend/FPS readout
-    SettingsMenu/               # gear button + options panel; first option toggles the camera feed
+    StatusBar/                  # wordmark + settings gear
+    SettingsButton/             # enlarged gear that opens the full-screen settings panel
+    SettingsScreen/             # full-screen settings panel: video toggle + engine/model/about
     ModelLoadScreen/            # download-progress screen (percent + MB), delayed to avoid a flash
     ErrorScreen/                # full-screen camera/detection error copy + reload action
   context/
     DetectionContext/           # worker lifecycle, frame pump, status machine; consume via useDetection()
-    SettingsContext/            # localStorage-backed display options (showVideo); consume via useSettings()
+    SettingsContext/            # display options (showVideo) + ephemeral settings-open state; consume via useSettings()
   lib/
     camera/                     # getUserMedia wrapper; typed CameraError; rear-camera constraints
     detection/                  # road-class filter, NEAR heuristic, HUD shaping, coordinate mapping (pure)
@@ -180,6 +181,7 @@ falls back to `DEFAULT_SETTINGS`). v1 exposes one option:
 ```ts
 type SettingsContextValue = {
   showVideo: boolean;
+  settingsOpen: boolean; // ephemeral, not persisted
   toggleShowVideo: () => void;
 };
 ```
@@ -188,8 +190,8 @@ type SettingsContextValue = {
 stays mounted and playing (so the detection pump keeps reading frames) but is
 hidden with `opacity-0`, revealing the `RadarBackdrop` grid behind it. The
 detection pipeline is never touched by the toggle. `SettingsProvider` wraps the
-app outside `DetectionProvider`; `SettingsMenu` (a gear in `StatusBar`) is the
-only UI that writes the option.
+app outside `DetectionProvider`; `SettingsButton` (a gear in `StatusBar`) opens
+the full-screen `SettingsScreen`, which is the only UI that writes the option.
 
 ---
 
@@ -254,10 +256,10 @@ Automotive-minimal HUD over a full-bleed video feed. Design principle: the road 
 - **Nearest object** (`HudOverlay`): the only full bounding box, rounded corners (10px). When flagged NEAR: a 2px amber border with a soft amber glow (`shadow-[0_0_18px_-6px_var(--color-hud-amber)]`) and an amber pill label (`<LABEL> · NEAR`, black text). When nearest but not NEAR (largest box, but under the area threshold): a plain white/85 border and a white-on-black pill label with no "· NEAR" suffix.
 - **Other detections**: no box. A floating tag above the object: a rounded pill (translucent black, thin white border, uppercase tracked Rajdhani, no confidence numbers) with a short fading vertical tick pointing down toward the object (offset `TAG_OFFSET_PX` = 30px above the box, clamped so it never goes negative).
 - **Lane-radar strip** (`RadarStrip`, the signature glance element): a pill-shaped translucent bar bottom-center (46% of viewport width, minimum 16rem), divided into three lane segments by two faint vertical dividers. One blip per filtered detection, positioned by the object's horizontal box-center fraction. The nearest object's blip is larger (12px) and amber with a glow, but only when the NEAR flag is true; every other blip is a small (8px) white dot. Tells the driver where things are, left/center/right, without reading anything.
-- **Status bar** (`StatusBar`, safe-area aware): `DASHRADAR` wordmark top-left; top-right a minimal `GPU · N FPS` / `CPU · N FPS` readout (once the backend is known, hidden before then) followed by the `SettingsMenu` gear. No object count is ever shown.
+- **Status bar** (`StatusBar`, safe-area aware): `DASHRADAR` wordmark top-left; the `SettingsButton` gear top-right. The `GPU · N FPS` / `CPU · N FPS` engine readout now lives in the full-screen `SettingsScreen`, not the bar. No object count is ever shown.
 - **Model load screen** (`ModelLoadScreen`): same visual language, amber progress bar, byte counters formatted with `Intl.NumberFormat` (one decimal place, decimal megabytes). Delayed `LOADING_INDICATOR_DELAY_MS` (1 second) before appearing, so a fast (already-cached) load never flashes it.
 - **Error screen** (`ErrorScreen`): wordmark, centered error copy keyed by error code (§8), and a "TRY AGAIN" button that does a full page reload.
-- No nav, no dialogs, no settings UI.
+- No nav and no dialogs. The only settings surface is the full-screen `SettingsScreen`, opened from the top-bar gear.
 
 ---
 
@@ -328,7 +330,7 @@ Vitest + Testing Library, **behavior-focused** (verify behavior, not implementat
 - **`src/workers/detection`**: `isWorkerResponse` accepts every valid message variant and rejects malformed ones (unknown backend, missing fields, unknown error code); the pure `preprocess` (ImageNet normalization, NCHW layout) and `decodeDetections` (sigmoid thresholding, cxcywh-to-xyxy, class-index-1 selection) helpers in `inference.ts` are tested directly against known inputs.
 - **`src/context/DetectionContext`**: the full status machine against an injected fake worker (the `createWorker` test seam), including the one-frame-in-flight invariant across a fast `stop()`-then-`start()` (a regression test for a real race that was fixed), retrying after a `createImageBitmap` failure, and the FPS calculation staying finite.
 - **`src/context/SettingsContext`**: defaults `showVideo` to true, toggling flips and persists it to `localStorage`, a fresh mount restores the persisted value, and corrupt or wrong-shaped stored JSON falls back to defaults.
-- **Components** (RTL): `CameraView` attaches the stream and reports a typed error on failure (stubbing `getUserMedia`); `HudOverlay` renders the nearest box with/without the NEAR pill and positions floating tags, using exact pixel assertions against known inputs; `RadarStrip` positions one blip per detection by fraction and styles the near blip amber; `StatusBar` shows the right backend label and hides the FPS readout until a backend is known; `ModelLoadScreen` stays hidden during the anti-flash delay and then shows byte/percent progress; `ErrorScreen` covers every error code with non-empty copy; `SettingsMenu` hides its panel until the gear is clicked, toggles and persists the video setting, and closes on Escape or an outside click; `RadarBackdrop` renders a non-interactive full-bleed grid; `CameraView` keeps the video mounted but `opacity-0` when `visible` is false; `App` shows the camera-unavailable error screen end-to-end with a stubbed `Worker` and `navigator`.
+- **Components** (RTL): `CameraView` attaches the stream and reports a typed error on failure (stubbing `getUserMedia`); `HudOverlay` renders the nearest box with/without the NEAR pill and positions floating tags, using exact pixel assertions against known inputs; `RadarStrip` positions one blip per detection by fraction and styles the near blip amber; `StatusBar` renders the wordmark and the settings gear and shows no FPS readout; `ModelLoadScreen` stays hidden during the anti-flash delay and then shows byte/percent progress; `ErrorScreen` covers every error code with non-empty copy; `SettingsButton` opens the panel; `SettingsScreen` renders nothing until opened, toggles and persists the video setting, shows the live engine readout (or a starting placeholder), and closes on the close button or Escape; `RadarBackdrop` renders a non-interactive full-bleed grid; `CameraView` keeps the video mounted but `opacity-0` when `visible` is false; `App` shows the camera-unavailable error screen end-to-end with a stubbed `Worker` and `navigator`.
 
 Real camera video, real onnxruntime-web inference (both backends), and real layout/visual rendering are verified manually: chrome-devtools MCP against a built preview (`pnpm build && pnpm start`) for the model-load screen, backend detection, offline cold-load, and Cache Storage contents; genuine on-device phone testing (sustained FPS against real traffic, both orientations, thermal/battery behavior) is the user's job post-merge, since neither jsdom nor a desktop headless browser has a real dash-mounted camera.
 
