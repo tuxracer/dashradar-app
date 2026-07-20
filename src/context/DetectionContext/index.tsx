@@ -10,6 +10,7 @@ import {
 import type { ReactNode } from "react";
 import type { HudModel } from "@/lib/detection";
 import { buildHudModel, toRoadDetections } from "@/lib/detection";
+import { createDetectionTracker } from "@/lib/detectionTracker";
 import { createMotionSensorManager } from "@/lib/motionSensor";
 import type {
   MotionPermission,
@@ -128,6 +129,14 @@ export const DetectionProvider = ({
   // closing over the `const` before its own initializer finishes (which
   // `react-hooks/immutability` flags as a before-declaration access).
   const sendFrameRef = useRef<() => Promise<void>>(async () => {});
+  // Persistence gate: only detections seen consistently for PERSIST_MS reach
+  // the HUD. Held in a ref so state survives across frames and re-renders.
+  const trackerRef = useRef<
+    ReturnType<typeof createDetectionTracker> | undefined
+  >(undefined);
+  if (trackerRef.current == null) {
+    trackerRef.current = createDetectionTracker();
+  }
 
   const sendFrame = useCallback(async () => {
     const video = videoRef.current;
@@ -289,7 +298,9 @@ export const DetectionProvider = ({
           // not the pose now. Anchor compensation to that capture pose.
           referenceOrientationRef.current = captureOrientationRef.current;
           const roadDetections = toRoadDetections(message.detections);
-          setHud(buildHudModel(roadDetections));
+          const confirmed =
+            trackerRef.current?.update(roadDetections, performance.now()) ?? [];
+          setHud(buildHudModel(confirmed));
           const { preprocessMs, inferenceMs, decodeMs } = message.timing;
           const roundTripMs = performance.now() - postTimeRef.current;
           setDebug({
@@ -307,6 +318,7 @@ export const DetectionProvider = ({
             ),
             rawCount: message.detections.length,
             filteredCount: roadDetections.length,
+            confirmedCount: confirmed.length,
           });
           recordResultTime();
           void sendFrame();

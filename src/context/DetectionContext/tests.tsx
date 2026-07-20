@@ -228,7 +228,9 @@ describe("DetectionProvider", () => {
       });
     });
     expect(screen.getByTestId("status").textContent).toBe("running");
-    expect(screen.getByTestId("objects").textContent).toBe("1");
+    // The detection is on its first frame, so the persistence gate holds it
+    // back: no blip reaches the HUD yet.
+    expect(screen.getByTestId("objects").textContent).toBe("0");
     await waitFor(() => {
       expect(
         worker.posted.filter((message) => message.type === "detect"),
@@ -496,6 +498,54 @@ describe("DetectionProvider", () => {
         worker.posted.filter((message) => message.type === "detect"),
       ).toHaveLength(1);
     });
+  });
+
+  it("does not surface a detection on its first frame", () => {
+    const worker = renderWithProvider(<Probe />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [
+          {
+            label: "police",
+            score: 0.9,
+            box: { xmin: 0.4, ymin: 0.5, xmax: 0.6, ymax: 0.8 },
+          },
+        ],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+      });
+    });
+    expect(screen.getByTestId("objects").textContent).toBe("0");
+  });
+
+  it("surfaces a detection once it persists past the gate", () => {
+    const nowSpy = vi.spyOn(performance, "now");
+    const worker = renderWithProvider(<Probe />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    const detection = {
+      label: "police",
+      score: 0.9,
+      box: { xmin: 0.4, ymin: 0.5, xmax: 0.6, ymax: 0.8 },
+    };
+    const timing = { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 };
+    // First sighting at t=0: pending, not shown.
+    nowSpy.mockReturnValue(0);
+    act(() => {
+      worker.emit({ type: "detections", detections: [detection], timing });
+    });
+    expect(screen.getByTestId("objects").textContent).toBe("0");
+    // Same detection 600ms later: old enough to confirm and be shown.
+    nowSpy.mockReturnValue(600);
+    act(() => {
+      worker.emit({ type: "detections", detections: [detection], timing });
+    });
+    expect(screen.getByTestId("objects").textContent).toBe("1");
+    nowSpy.mockRestore();
   });
 });
 

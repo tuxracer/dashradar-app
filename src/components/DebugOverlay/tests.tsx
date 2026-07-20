@@ -24,6 +24,7 @@ const debug: DebugSnapshot = {
   roundTripMs: 9.1,
   rawCount: 4,
   filteredCount: 2,
+  confirmedCount: 1,
   overheadMs: 2.5,
 };
 

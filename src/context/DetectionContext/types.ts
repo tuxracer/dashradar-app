@@ -36,6 +36,8 @@ export type DebugSnapshot = {
   rawCount: number;
   /** Detections remaining after toRoadDetections filtering. */
   filteredCount: number;
+  /** Confirmed detections after the persistence gate (what the HUD renders). */
+  confirmedCount: number;
   /**
    * Time inside the round trip not spent in the worker's three stages:
    * postMessage delivery each way plus scheduling. Isolates worker-boundary
