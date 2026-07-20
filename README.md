@@ -1,6 +1,6 @@
-# dashradar
+# 🚔 dashradar.app
 
-🚔 A privacy-first dashcam app that turns your phone into an on-device computer-vision police detector, spotting patrol vehicles on the road in real time.
+A privacy-first dashcam app that turns your phone into an on-device computer-vision police detector, spotting patrol vehicles on the road in real time.
 
 Mount a phone on your car dash, and dashradar watches the road through the camera for one specific thing: police vehicles. It runs a custom object detector entirely on the phone and draws a clean HUD over the live camera feed: a box on the nearest detection, small tag markers on the rest, and a lane-radar strip that shows where things are without making you read anything. Nothing is recorded, nothing leaves the device, and there's no account to sign into.
 
