@@ -4,7 +4,11 @@ import {
   litSegments,
   signalColor,
   SEGMENT_COUNT,
+  SIGNAL_HIGH_COLOR,
 } from "@/lib/radarSignal";
+import { ALERT_THRESHOLD, ARC_SWEEP_DEG, CONTACT_THRESHOLD } from "./consts";
+
+export * from "./consts";
 
 /** Props for RadarDetectorScreen. */
 type RadarDetectorScreenProps = {
@@ -12,14 +16,23 @@ type RadarDetectorScreenProps = {
   confidence: number;
 };
 
+/** Arc angle for a segment, in degrees, 0 pointing straight up. */
+const segmentAngleDeg = (index: number): number =>
+  -ARC_SWEEP_DEG / 2 + (ARC_SWEEP_DEG / (SEGMENT_COUNT - 1)) * index;
+
+const ALERT_RING_COLOR = `rgb(${SIGNAL_HIGH_COLOR.join(", ")})`;
+
 /**
- * Fullscreen radar-detector meter. Renders an opaque panel with a POLICE SIGNAL
- * label, a large percentage readout, and a segmented ladder colored green
- * through amber to red as the signal climbs. A requestAnimationFrame loop
- * applies peak-hold + decay to the incoming confidence and writes the lit
- * segments, their color, and the readout straight to the DOM, off React's
- * render path, so smoothness does not depend on the detector's frame rate.
- * The camera feed and bounding boxes are intentionally not shown in this mode.
+ * Fullscreen radar-detector instrument. The ladder segments are radial ticks
+ * on a tachometer-style arc around a large percentage readout, over a faint
+ * radar grid with a slow scanning sweep inside the dial. As the signal climbs
+ * the ticks, readout, and a central glow flood green through amber to red; at
+ * ALERT_THRESHOLD a red ring around the dial pulses. A requestAnimationFrame
+ * loop applies peak-hold + decay to the incoming confidence and writes the lit
+ * segments, colors, readout, status word, and glow straight to the DOM, off
+ * React's render path, so smoothness does not depend on the detector's frame
+ * rate. The camera feed and bounding boxes are intentionally not shown in this
+ * mode.
  */
 export const RadarDetectorScreen = ({
   confidence,
@@ -29,6 +42,9 @@ export const RadarDetectorScreen = ({
   const lastTimeRef = useRef<number | undefined>(undefined);
   const segmentRefs = useRef<(HTMLDivElement | null)[]>([]);
   const readoutRef = useRef<HTMLSpanElement>(null);
+  const statusRef = useRef<HTMLSpanElement>(null);
+  const glowRef = useRef<HTMLDivElement>(null);
+  const screenRef = useRef<HTMLDivElement>(null);
 
   // Refs may not be written during render; mirror the latest prop in via an
   // effect so the persistent rAF loop reads the current value without
@@ -56,17 +72,41 @@ export const RadarDetectorScreen = ({
         }
         if (index < lit) {
           segment.style.backgroundColor = color;
-          segment.style.boxShadow = `0 0 10px ${color}`;
+          segment.style.boxShadow = `0 0 12px ${color}`;
         } else {
           segment.style.backgroundColor = "";
           segment.style.boxShadow = "";
         }
       });
 
+      const contact = level >= CONTACT_THRESHOLD;
       const readout = readoutRef.current;
       if (readout) {
         readout.textContent = `${Math.round(level * 100)}%`;
-        readout.style.color = color;
+        readout.style.color = contact ? color : "";
+      }
+
+      const status = statusRef.current;
+      if (status) {
+        status.textContent = contact
+          ? level >= ALERT_THRESHOLD
+            ? "ALERT"
+            : "CONTACT"
+          : "SCANNING";
+        status.style.color = contact ? color : "";
+      }
+
+      const glow = glowRef.current;
+      if (glow) {
+        glow.style.background = `radial-gradient(closest-side, ${color} 0%, transparent 70%)`;
+        glow.style.opacity = String(0.04 + 0.26 * level);
+      }
+
+      // The pulsing alert ring is CSS-driven off this data attribute (see the
+      // group-data-[alert=true] classes below).
+      const screen = screenRef.current;
+      if (screen) {
+        screen.dataset.alert = String(level >= ALERT_THRESHOLD);
       }
 
       frame = window.requestAnimationFrame(tick);
@@ -76,17 +116,37 @@ export const RadarDetectorScreen = ({
   }, []);
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center gap-8 bg-surface px-[6%]">
-      <span className="text-sm font-semibold tracking-[0.34em] text-white/55">
-        POLICE SIGNAL
-      </span>
-      <span
-        ref={readoutRef}
-        className="text-[20vw] font-bold leading-none tabular-nums text-white/90 landscape:text-[14vw]"
-      >
-        0%
-      </span>
-      <div className="flex w-full max-w-4xl gap-[1.2%]">
+    <div
+      ref={screenRef}
+      data-alert="false"
+      className="group absolute inset-0 flex items-center justify-center bg-surface"
+      style={{
+        backgroundImage:
+          "linear-gradient(rgba(255,179,64,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,179,64,0.06) 1px, transparent 1px)",
+        backgroundSize: "40px 40px",
+      }}
+    >
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.6) 100%)",
+        }}
+      />
+      <div className="relative aspect-square w-[min(84vmin,28rem)] translate-y-[3%]">
+        <div ref={glowRef} className="absolute inset-[6%] rounded-full" />
+        <div className="absolute inset-[24%] rounded-full border border-hud-amber/15" />
+        <div
+          className="absolute inset-[24%] animate-spin rounded-full [animation-duration:5s] motion-reduce:animate-none"
+          style={{
+            background:
+              "conic-gradient(from 0deg, rgba(255,179,64,0.28) 0deg, rgba(255,179,64,0.04) 60deg, transparent 70deg)",
+          }}
+        />
+        <div
+          className="absolute inset-[21%] rounded-full border-2 opacity-0 group-data-[alert=true]:animate-pulse group-data-[alert=true]:opacity-100 motion-reduce:animate-none"
+          style={{ borderColor: ALERT_RING_COLOR }}
+        />
         {Array.from({ length: SEGMENT_COUNT }, (_, index) => (
           <div
             key={index}
@@ -94,9 +154,32 @@ export const RadarDetectorScreen = ({
             ref={(element) => {
               segmentRefs.current[index] = element;
             }}
-            className="h-6 flex-1 rounded-[3px] bg-white/10"
+            className="absolute left-1/2 top-1/2 rounded-full bg-white/10"
+            style={{
+              width: "5%",
+              height: "14%",
+              transform: `translate(-50%, -50%) rotate(${segmentAngleDeg(index)}deg) translateY(-290%)`,
+            }}
           />
         ))}
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-[11px] font-semibold tracking-[0.34em] text-white/50">
+            POLICE SIGNAL
+          </span>
+          <span
+            ref={readoutRef}
+            className="text-[min(17vmin,6.5rem)] font-bold leading-none tabular-nums text-white/90"
+          >
+            0%
+          </span>
+          <span
+            ref={statusRef}
+            data-testid="signal-status"
+            className="text-[13px] font-semibold tracking-[0.3em] text-white/40"
+          >
+            SCANNING
+          </span>
+        </div>
       </div>
     </div>
   );

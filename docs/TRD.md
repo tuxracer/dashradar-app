@@ -86,7 +86,7 @@ src/
     RadarBackdrop/              # static radar-grid layer shown behind the feed; the visible background when the video is toggled off
     HudOverlay/                 # nearest-object box (amber when NEAR, white otherwise) + floating tag markers; annotates both with confidence + coords when debug is on; rAF loop applies the motion-compensation transform
     RadarStrip/                 # lane-radar strip: one blip per detection, amber + larger for the nearest-when-NEAR
-    RadarDetectorScreen/        # opaque fullscreen radar-detector meter (segmented ladder + percentage readout, no camera or boxes), driven by a requestAnimationFrame peak-hold/decay loop writing to the DOM; rendered by RadarScreen in place of HudOverlay + RadarStrip when the radarDetectorMode setting is on
+    RadarDetectorScreen/        # opaque fullscreen radar-detector instrument (the ladder segments as radial ticks on a tachometer-style arc around a percentage readout and SCANNING/CONTACT/ALERT status word, with a scanning sweep, signal-colored glow, and pulsing alert ring; no camera or boxes), driven by a requestAnimationFrame peak-hold/decay loop writing to the DOM; rendered by RadarScreen in place of HudOverlay + RadarStrip when the radarDetectorMode setting is on
     StatusBar/                  # wordmark + settings gear
     SettingsButton/             # enlarged gear that opens the full-screen settings panel
     SettingsScreen/             # full-screen settings panel: video + debug overlay toggles + engine/model/about

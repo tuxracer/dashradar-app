@@ -13,4 +13,10 @@ describe("RadarDetectorScreen", () => {
     render(<RadarDetectorScreen confidence={0.5} />);
     expect(screen.getAllByTestId("signal-segment")).toHaveLength(SEGMENT_COUNT);
   });
+
+  it("starts idle: zero readout and a SCANNING status", () => {
+    render(<RadarDetectorScreen confidence={0} />);
+    expect(screen.getByText("0%")).toBeInTheDocument();
+    expect(screen.getByTestId("signal-status")).toHaveTextContent("SCANNING");
+  });
 });
