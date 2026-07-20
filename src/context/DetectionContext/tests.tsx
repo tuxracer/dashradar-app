@@ -171,6 +171,7 @@ describe("DetectionProvider", () => {
             box: { xmin: 0.4, ymin: 0.5, xmax: 0.6, ymax: 0.8 },
           },
         ],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
       });
     });
     expect(screen.getByTestId("status").textContent).toBe("running");
@@ -331,7 +332,11 @@ describe("DetectionProvider", () => {
     ).toHaveLength(1);
     // The stale result re-primes the pump: exactly one more post.
     act(() => {
-      worker.emit({ type: "detections", detections: [] });
+      worker.emit({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+      });
     });
     await waitFor(() => {
       expect(
@@ -340,7 +345,11 @@ describe("DetectionProvider", () => {
     });
     // Pipeline continues at depth one: the next result posts exactly one more.
     act(() => {
-      worker.emit({ type: "detections", detections: [] });
+      worker.emit({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+      });
     });
     await waitFor(() => {
       expect(
@@ -376,7 +385,11 @@ describe("DetectionProvider", () => {
         ).toHaveLength(result + 1);
       });
       act(() => {
-        worker.emit({ type: "detections", detections: [] });
+        worker.emit({
+          type: "detections",
+          detections: [],
+          timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+        });
       });
     }
     const fps = Number(screen.getByTestId("fps").textContent);

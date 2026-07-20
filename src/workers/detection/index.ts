@@ -132,6 +132,7 @@ const detect = async (frame: ImageBitmap) => {
     return;
   }
   try {
+    const preprocessStart = performance.now();
     const canvas = new OffscreenCanvas(INPUT_SIZE, INPUT_SIZE);
     const context = canvas.getContext("2d");
     if (!context) {
@@ -145,11 +146,23 @@ const detect = async (frame: ImageBitmap) => {
       INPUT_SIZE,
       INPUT_SIZE,
     ]);
+    const preprocessMs = performance.now() - preprocessStart;
+
+    const inferenceStart = performance.now();
     const outputs = await model.session.run({ [model.inputName]: input });
+    const inferenceMs = performance.now() - inferenceStart;
+
+    const decodeStart = performance.now();
     const dets = outputs[model.detsName].data as Float32Array;
     const labels = outputs[model.labelsName].data as Float32Array;
     const detections = decodeDetections(dets, labels, CONFIDENCE_THRESHOLD);
-    post({ type: "detections", detections });
+    const decodeMs = performance.now() - decodeStart;
+
+    post({
+      type: "detections",
+      detections,
+      timing: { preprocessMs, inferenceMs, decodeMs },
+    });
   } catch {
     post({ type: "worker-error", code: "INFERENCE_FAILED" });
   } finally {

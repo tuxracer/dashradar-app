@@ -23,7 +23,13 @@ describe("isWorkerResponse", () => {
     ).toBe(true);
     expect(isWorkerResponse({ type: "ready", backend: "webgpu" })).toBe(true);
     expect(isWorkerResponse({ type: "ready", backend: "wasm" })).toBe(true);
-    expect(isWorkerResponse({ type: "detections", detections: [] })).toBe(true);
+    expect(
+      isWorkerResponse({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 },
+      }),
+    ).toBe(true);
     expect(
       isWorkerResponse({ type: "worker-error", code: "MODEL_LOAD_FAILED" }),
     ).toBe(true);
@@ -33,6 +39,9 @@ describe("isWorkerResponse", () => {
     expect(isWorkerResponse(null)).toBe(false);
     expect(isWorkerResponse({ type: "ready", backend: "cuda" })).toBe(false);
     expect(isWorkerResponse({ type: "detections" })).toBe(false);
+    expect(isWorkerResponse({ type: "detections", detections: [] })).toBe(
+      false,
+    );
     expect(isWorkerResponse({ type: "worker-error", code: "NOPE" })).toBe(
       false,
     );

@@ -73,10 +73,26 @@ const isModelFileProgress = (value: unknown): value is ModelFileProgress => {
   );
 };
 
+/** Per-frame timing (milliseconds) reported alongside detections for debug. */
+export type FrameTiming = {
+  preprocessMs: number;
+  inferenceMs: number;
+  decodeMs: number;
+};
+
+const isFrameTiming = (value: unknown): value is FrameTiming => {
+  return (
+    isPlainObject(value) &&
+    isNumber(value.preprocessMs) &&
+    isNumber(value.inferenceMs) &&
+    isNumber(value.decodeMs)
+  );
+};
+
 export type WorkerResponse =
   | { type: "model-progress"; progress: ModelFileProgress }
   | { type: "ready"; backend: DetectionBackend }
-  | { type: "detections"; detections: RawDetection[] }
+  | { type: "detections"; detections: RawDetection[]; timing: FrameTiming }
   | { type: "worker-error"; code: DetectionErrorCode };
 
 export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
@@ -91,7 +107,8 @@ export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
     case "detections":
       return (
         Array.isArray(value.detections) &&
-        value.detections.every(isRawDetection)
+        value.detections.every(isRawDetection) &&
+        isFrameTiming(value.timing)
       );
     case "worker-error":
       return isDetectionErrorCode(value.code);
