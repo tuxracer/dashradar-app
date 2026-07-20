@@ -63,6 +63,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.0.2
         version: 6.0.2(vite@8.0.16(@types/node@20.19.41)(jiti@2.7.0)(terser@5.48.0))
+      '@webgpu/types':
+        specifier: ^0.1.71
+        version: 0.1.71
       eslint:
         specifier: ^9
         version: 9.39.4(jiti@2.7.0)
@@ -1448,6 +1451,9 @@ packages:
 
   '@vitest/utils@4.1.7':
     resolution: {integrity: sha512-T532WBu791cBxJlCl6SO+J14l81DQx6uQHm1bQbmCDY7nqlEIgkza/UFnSBNaUtSf41unldDFjdOBYEQC4b5Hw==}
+
+  '@webgpu/types@0.1.71':
+    resolution: {integrity: sha512-mMy8/ODcKhab808co15eW+yN+HgXoQxRQHTiBV9Mrvl1r0ufnid7YOcI+gi4eUWSWl9ezD6TW2KXccrL8HCh2A==}
 
   acorn-jsx@5.3.2:
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
@@ -4616,6 +4622,8 @@ snapshots:
       '@vitest/pretty-format': 4.1.7
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
+
+  '@webgpu/types@0.1.71': {}
 
   acorn-jsx@5.3.2(acorn@8.16.0):
     dependencies:
