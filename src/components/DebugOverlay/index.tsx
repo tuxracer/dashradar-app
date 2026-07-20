@@ -138,7 +138,7 @@ export const DebugOverlay = ({
       <Row label="overhead" value={ms(debug.overheadMs)} />
       <Row
         label="detections"
-        value={`${debug.confirmedCount} / ${debug.filteredCount} / ${debug.rawCount}`}
+        value={`${debug.shownCount} / ${debug.filteredCount} / ${debug.rawCount}`}
       />
       <Row
         label="motion"

@@ -129,8 +129,9 @@ export const DetectionProvider = ({
   // closing over the `const` before its own initializer finishes (which
   // `react-hooks/immutability` flags as a before-declaration access).
   const sendFrameRef = useRef<() => Promise<void>>(async () => {});
-  // Persistence gate: only detections seen consistently for PERSIST_MS reach
-  // the HUD. Held in a ref so state survives across frames and re-renders.
+  // Coasting tracker: shows each detection immediately and holds a stale box
+  // for a few frames when the model briefly loses it, smoothing flicker. Held
+  // in a ref so state survives across frames and re-renders.
   const trackerRef = useRef<
     ReturnType<typeof createDetectionTracker> | undefined
   >(undefined);
@@ -298,9 +299,8 @@ export const DetectionProvider = ({
           // not the pose now. Anchor compensation to that capture pose.
           referenceOrientationRef.current = captureOrientationRef.current;
           const roadDetections = toRoadDetections(message.detections);
-          const confirmed =
-            trackerRef.current?.update(roadDetections, performance.now()) ?? [];
-          setHud(buildHudModel(confirmed));
+          const tracked = trackerRef.current?.update(roadDetections) ?? [];
+          setHud(buildHudModel(tracked));
           const { preprocessMs, inferenceMs, decodeMs } = message.timing;
           const roundTripMs = performance.now() - postTimeRef.current;
           setDebug({
@@ -318,7 +318,7 @@ export const DetectionProvider = ({
             ),
             rawCount: message.detections.length,
             filteredCount: roadDetections.length,
-            confirmedCount: confirmed.length,
+            shownCount: tracked.length,
           });
           recordResultTime();
           void sendFrame();

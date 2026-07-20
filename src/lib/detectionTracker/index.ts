@@ -38,15 +38,15 @@ const toDetection = (track: Track): Detection => ({
 });
 
 /**
- * One frame of the persistence gate. Greedily matches this frame's detections
- * to existing tracks by IoU, ages the matches toward confirmation, coasts
- * confirmed misses, drops pending misses, and returns the confirmed (visible)
- * detections. Pure: all time comes in via `nowMs`, all tuning via `config`.
+ * One frame of the coasting tracker. Greedily matches this frame's detections
+ * to existing tracks by IoU, shows every detection immediately (whether it
+ * matched an existing track or is brand new), and coasts an unmatched track
+ * for up to `maxMisses` frames so its box does not flicker off when the model
+ * briefly loses the object. Pure: all tuning comes in via `config`.
  */
 export const stepTracker = (
   state: TrackerState,
   detections: Detection[],
-  nowMs: number,
   config: TrackerConfig,
 ): { state: TrackerState; visible: Detection[] } => {
   const { tracks } = state;
@@ -81,8 +81,6 @@ export const stepTracker = (
     const track = tracks[i];
     const detection = matchedDetByTrack.get(i);
     if (detection) {
-      const confirmed =
-        track.confirmed || nowMs - track.firstSeenMs >= config.persistMs;
       nextTracks.push({
         ...track,
         label: detection.label,
@@ -91,9 +89,8 @@ export const stepTracker = (
         score: detection.score,
         box: detection.box,
         misses: 0,
-        confirmed,
       });
-    } else if (track.confirmed) {
+    } else {
       const misses = track.misses + 1;
       if (misses <= config.maxMisses) {
         // Coasting: keep the stale box AND stale score as-is (anti-flicker).
@@ -103,8 +100,6 @@ export const stepTracker = (
       }
       // Beyond maxMisses: dropped.
     }
-    // Unmatched pending track: dropped. A pending track must be matched every
-    // frame to reach confirmation, which is what suppresses single-frame blips.
   }
 
   let nextId = state.nextId;
@@ -116,31 +111,27 @@ export const stepTracker = (
       category: detection.category,
       score: detection.score,
       box: detection.box,
-      firstSeenMs: nowMs,
-      confirmed: false,
       misses: 0,
     });
     nextId += 1;
   }
 
-  const visible = nextTracks
-    .filter((track) => track.confirmed)
-    .map(toDetection);
+  const visible = nextTracks.map(toDetection);
   return { state: { tracks: nextTracks, nextId }, visible };
 };
 
 /**
  * Stateful wrapper that holds tracker state across frames. The context keeps
- * one instance in a ref and calls `update` with each frame's detections and the
- * current `performance.now()`; it returns the confirmed detections to render.
+ * one instance in a ref and calls `update` with each frame's detections; it
+ * returns the detections to render (this frame's, plus any coasting).
  */
 export const createDetectionTracker = (
   config: TrackerConfig = DEFAULT_TRACKER_CONFIG,
 ) => {
   let state = initialTrackerState();
   return {
-    update: (detections: Detection[], nowMs: number): Detection[] => {
-      const result = stepTracker(state, detections, nowMs, config);
+    update: (detections: Detection[]): Detection[] => {
+      const result = stepTracker(state, detections, config);
       state = result.state;
       return result.visible;
     },

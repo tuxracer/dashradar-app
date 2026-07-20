@@ -15,7 +15,7 @@ export const INITIAL_DEBUG: DebugSnapshot = {
   roundTripMs: 0,
   rawCount: 0,
   filteredCount: 0,
-  confirmedCount: 0,
+  shownCount: 0,
   overheadMs: 0,
 };
 

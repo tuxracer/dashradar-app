@@ -25,7 +25,6 @@ const detection = (overrides: Partial<Detection> = {}): Detection => ({
 });
 
 const config: TrackerConfig = {
-  persistMs: 500,
   iouMatchThreshold: 0.3,
   maxMisses: 2,
 };
@@ -47,49 +46,29 @@ describe("iou", () => {
 });
 
 describe("stepTracker", () => {
-  it("does not show a detection on its first sighting", () => {
+  it("shows a detection immediately on its first sighting", () => {
     const { visible } = stepTracker(
       initialTrackerState(),
       [detection()],
-      0,
       config,
     );
-    expect(visible).toHaveLength(0);
+    expect(visible).toHaveLength(1);
+    expect(visible[0].label).toBe("police");
   });
 
-  it("confirms and shows a detection once it persists past persistMs", () => {
-    const first = stepTracker(initialTrackerState(), [detection()], 0, config);
-    expect(first.visible).toHaveLength(0);
-    const second = stepTracker(first.state, [detection()], 500, config);
-    expect(second.visible).toHaveLength(1);
-    expect(second.visible[0].label).toBe("police");
-  });
-
-  it("drops a single-frame blip instead of confirming it", () => {
-    const first = stepTracker(initialTrackerState(), [detection()], 0, config);
-    // Next frame has no detection at all: the pending track is dropped.
-    const second = stepTracker(first.state, [], 500, config);
-    expect(second.visible).toHaveLength(0);
-    expect(second.state.tracks).toHaveLength(0);
-    // The same box reappearing later starts a brand-new pending track.
-    const third = stepTracker(second.state, [detection()], 600, config);
-    expect(third.visible).toHaveLength(0);
-  });
-
-  it("coasts a confirmed track through maxMisses frames, then drops it", () => {
+  it("coasts a track through maxMisses frames, then drops it", () => {
     let state = initialTrackerState();
-    state = stepTracker(state, [detection()], 0, config).state;
-    const confirmed = stepTracker(state, [detection()], 500, config);
-    expect(confirmed.visible).toHaveLength(1);
-    state = confirmed.state;
+    const shown = stepTracker(state, [detection()], config);
+    expect(shown.visible).toHaveLength(1);
+    state = shown.state;
     // Miss 1: still visible (coasting).
-    const miss1 = stepTracker(state, [], 600, config);
+    const miss1 = stepTracker(state, [], config);
     expect(miss1.visible).toHaveLength(1);
     // Miss 2: still visible (coasting).
-    const miss2 = stepTracker(miss1.state, [], 700, config);
+    const miss2 = stepTracker(miss1.state, [], config);
     expect(miss2.visible).toHaveLength(1);
     // Miss 3: exceeds maxMisses, dropped.
-    const miss3 = stepTracker(miss2.state, [], 800, config);
+    const miss3 = stepTracker(miss2.state, [], config);
     expect(miss3.visible).toHaveLength(0);
     expect(miss3.state.tracks).toHaveLength(0);
   });
@@ -99,13 +78,11 @@ describe("stepTracker", () => {
     state = stepTracker(
       state,
       [detection({ box: box(0.4, 0.5, 0.6, 0.8) })],
-      0,
       config,
     ).state;
     const drifted = stepTracker(
       state,
       [detection({ box: box(0.42, 0.52, 0.62, 0.82) })],
-      500,
       config,
     );
     expect(drifted.state.tracks).toHaveLength(1);
@@ -114,11 +91,10 @@ describe("stepTracker", () => {
 
   it("adopts the newest matched detection's box and score", () => {
     let state = initialTrackerState();
-    state = stepTracker(state, [detection({ score: 0.8 })], 0, config).state;
+    state = stepTracker(state, [detection({ score: 0.8 })], config).state;
     const updated = stepTracker(
       state,
       [detection({ score: 0.95, box: box(0.41, 0.51, 0.61, 0.81) })],
-      500,
       config,
     );
     expect(updated.visible[0].score).toBe(0.95);
@@ -128,49 +104,23 @@ describe("stepTracker", () => {
   it("matches two detections to two separate tracks greedily without double-claiming", () => {
     let state = initialTrackerState();
 
-    // Create and confirm first track at top-left box.
-    state = stepTracker(
-      state,
-      [detection({ box: box(0.1, 0.1, 0.3, 0.3) })],
-      0,
-      config,
-    ).state;
-    state = stepTracker(
-      state,
-      [detection({ box: box(0.1, 0.1, 0.3, 0.3) })],
-      500,
-      config,
-    ).state;
-
-    // Create and confirm second track at bottom-right box.
+    // Establish two tracks at distinct boxes.
     state = stepTracker(
       state,
       [
         detection({ box: box(0.1, 0.1, 0.3, 0.3) }),
         detection({ box: box(0.6, 0.6, 0.8, 0.8) }),
       ],
-      500,
-      config,
-    ).state;
-    state = stepTracker(
-      state,
-      [
-        detection({ box: box(0.1, 0.1, 0.3, 0.3) }),
-        detection({ box: box(0.6, 0.6, 0.8, 0.8) }),
-      ],
-      1000,
       config,
     ).state;
 
-    // Both tracks are now confirmed. Step with two new detections
-    // that overlap each track slightly.
+    // Step with two new detections that overlap each track slightly.
     const stepped = stepTracker(
       state,
       [
         detection({ box: box(0.12, 0.12, 0.32, 0.32) }),
         detection({ box: box(0.62, 0.62, 0.82, 0.82) }),
       ],
-      1100,
       config,
     );
 
@@ -194,17 +144,10 @@ describe("stepTracker", () => {
   it("does not force-match a detection when IoU falls below threshold", () => {
     let state = initialTrackerState();
 
-    // Create and confirm a track at box(0.4, 0.5, 0.6, 0.8).
+    // Establish a track at box(0.4, 0.5, 0.6, 0.8).
     state = stepTracker(
       state,
       [detection({ box: box(0.4, 0.5, 0.6, 0.8) })],
-      0,
-      config,
-    ).state;
-    state = stepTracker(
-      state,
-      [detection({ box: box(0.4, 0.5, 0.6, 0.8) })],
-      500,
       config,
     ).state;
 
@@ -213,39 +156,28 @@ describe("stepTracker", () => {
     const stepped = stepTracker(
       state,
       [detection({ box: box(0.0, 0.0, 0.1, 0.1) })],
-      600,
       config,
     );
 
-    // The confirmed track was not matched so it coasts (still visible, misses +1).
-    // The non-overlapping detection spawns a new pending track.
+    // The existing track was not matched so it coasts; the non-overlapping
+    // detection spawns its own new track instead of stealing the old one.
+    // Both are visible (each detection registers immediately).
     expect(stepped.state.tracks).toHaveLength(2);
-    expect(stepped.visible).toHaveLength(1);
+    expect(stepped.visible).toHaveLength(2);
 
-    // The visible track is the confirmed one that coasted.
-    expect(stepped.visible[0].box.xmin).toBeCloseTo(0.4);
-    expect(stepped.visible[0].box.ymin).toBeCloseTo(0.5);
-
-    // The second track in state is the new pending one at the non-overlapping box.
-    const pendingTrack = stepped.state.tracks.find((t) => !t.confirmed);
-    expect(pendingTrack).toBeDefined();
-    expect(pendingTrack?.box.xmin).toBeCloseTo(0.0);
+    const coasted = stepped.visible.find((t) => t.box.xmin > 0.35);
+    const fresh = stepped.visible.find((t) => t.box.xmin < 0.05);
+    expect(coasted?.box.xmin).toBeCloseTo(0.4);
+    expect(fresh?.box.xmin).toBeCloseTo(0.0);
   });
 
-  it("lets only one of two overlapping detections claim the same confirmed track", () => {
+  it("lets only one of two overlapping detections claim the same track", () => {
     let state = initialTrackerState();
 
-    // Create and confirm a single track at box(0.4, 0.4, 0.6, 0.6).
+    // Establish a single track at box(0.4, 0.4, 0.6, 0.6).
     state = stepTracker(
       state,
       [detection({ box: box(0.4, 0.4, 0.6, 0.6) })],
-      0,
-      config,
-    ).state;
-    state = stepTracker(
-      state,
-      [detection({ box: box(0.4, 0.4, 0.6, 0.6) })],
-      500,
       config,
     ).state;
 
@@ -258,22 +190,22 @@ describe("stepTracker", () => {
         detection({ box: box(0.42, 0.42, 0.62, 0.62) }),
         detection({ box: box(0.38, 0.38, 0.58, 0.58) }),
       ],
-      1000,
       config,
     );
 
-    // One detection matched the existing track; the other spawned a new
-    // pending track instead of also claiming it.
+    // One detection matched the existing track; the other spawned a new track
+    // instead of also claiming it. Two tracks total, not one merged.
     expect(stepped.state.tracks).toHaveLength(2);
-    // Only the original confirmed track is visible; the new one is pending.
-    expect(stepped.visible).toHaveLength(1);
+    expect(stepped.visible).toHaveLength(2);
   });
 });
 
 describe("createDetectionTracker", () => {
   it("holds state across update calls", () => {
     const tracker = createDetectionTracker(config);
-    expect(tracker.update([detection()], 0)).toHaveLength(0);
-    expect(tracker.update([detection()], 500)).toHaveLength(1);
+    // First sighting is shown immediately.
+    expect(tracker.update([detection()])).toHaveLength(1);
+    // A frame with no detection still coasts the track (anti-flicker).
+    expect(tracker.update([])).toHaveLength(1);
   });
 });

@@ -229,9 +229,9 @@ describe("DetectionProvider", () => {
       });
     });
     expect(screen.getByTestId("status").textContent).toBe("running");
-    // The detection is on its first frame, so the persistence gate holds it
-    // back: no blip reaches the HUD yet.
-    expect(screen.getByTestId("objects").textContent).toBe("0");
+    // The tracker registers a detection on its first frame, so its blip
+    // reaches the HUD immediately.
+    expect(screen.getByTestId("objects").textContent).toBe("1");
     await waitFor(() => {
       expect(
         worker.posted.filter((message) => message.type === "detect"),
@@ -501,7 +501,7 @@ describe("DetectionProvider", () => {
     });
   });
 
-  it("does not surface a detection on its first frame", () => {
+  it("surfaces a detection immediately on its first frame", () => {
     const worker = renderWithProvider(<Probe />);
     act(() => {
       worker.emit({ type: "ready", backend: "wasm" });
@@ -519,11 +519,10 @@ describe("DetectionProvider", () => {
         timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
       });
     });
-    expect(screen.getByTestId("objects").textContent).toBe("0");
+    expect(screen.getByTestId("objects").textContent).toBe("1");
   });
 
-  it("surfaces a detection once it persists past the gate", () => {
-    const nowSpy = vi.spyOn(performance, "now");
+  it("coasts a detection's box through a frame the model misses it", () => {
     const worker = renderWithProvider(<Probe />);
     act(() => {
       worker.emit({ type: "ready", backend: "wasm" });
@@ -534,16 +533,14 @@ describe("DetectionProvider", () => {
       box: { xmin: 0.4, ymin: 0.5, xmax: 0.6, ymax: 0.8 },
     };
     const timing = { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 };
-    // First sighting at t=0: pending, not shown.
-    nowSpy.mockReturnValue(0);
+    // First sighting: shown immediately.
     act(() => {
       worker.emit({ type: "detections", detections: [detection], timing });
     });
-    expect(screen.getByTestId("objects").textContent).toBe("0");
-    // Same detection 600ms later: old enough to confirm and be shown.
-    nowSpy.mockReturnValue(600);
+    expect(screen.getByTestId("objects").textContent).toBe("1");
+    // Next frame has no detections: the track coasts, so the box stays shown.
     act(() => {
-      worker.emit({ type: "detections", detections: [detection], timing });
+      worker.emit({ type: "detections", detections: [], timing });
     });
     expect(screen.getByTestId("objects").textContent).toBe("1");
   });
