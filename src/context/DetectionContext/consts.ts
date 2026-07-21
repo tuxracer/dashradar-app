@@ -14,6 +14,20 @@ export const FRAME_RETRY_MS = 100;
  */
 export const MIN_FRAME_INTERVAL_MS = 125;
 
+/**
+ * Fraction of a result's round-trip time the pump idles before starting the
+ * next capture. The absolute floor above only paces devices faster than it;
+ * a device whose inference takes longer than the floor (over a second on some
+ * phones) would otherwise run the GPU back-to-back with zero idle, the worst
+ * case for heat and battery on a dash-mounted phone, and sustained thermal
+ * throttling then makes inference slower still. Resting half of each round
+ * trip caps the inference duty cycle at roughly two thirds, trading a lower
+ * detection rate (which was already low on such devices) for guaranteed
+ * cool-down time. On fast devices the absolute floor dominates and this ratio
+ * has no effect.
+ */
+export const PACING_REST_RATIO = 0.5;
+
 /** Rolling window of result timestamps used for the FPS readout. */
 export const FPS_SAMPLE_SIZE = 10;
 

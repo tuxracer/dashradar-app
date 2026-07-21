@@ -30,6 +30,7 @@ import {
   FRAME_RETRY_MS,
   INITIAL_DEBUG,
   MIN_FRAME_INTERVAL_MS,
+  PACING_REST_RATIO,
   SW_CONTROL_TIMEOUT_MS,
 } from "./consts";
 import type {
@@ -215,16 +216,19 @@ export const DetectionProvider = ({
 
   /**
    * Re-prime the pump after a result, delaying so captures never start less
-   * than MIN_FRAME_INTERVAL_MS apart. On devices whose round trip already
-   * exceeds the floor this sends immediately (unchanged behavior); on fast
-   * devices it idles the GPU between frames instead of running back-to-back.
+   * than MIN_FRAME_INTERVAL_MS apart and the pump always rests at least
+   * PACING_REST_RATIO of the last round trip. On fast devices the absolute
+   * floor dominates, idling the GPU between frames instead of running
+   * back-to-back; on devices slower than the floor the rest ratio takes over,
+   * guaranteeing idle time proportional to how long inference takes so the
+   * GPU never runs at a 100% duty cycle on a dash-mounted phone.
    */
   const schedulePacedFrame = useCallback((elapsedSincePostMs: number) => {
-    const delay = Math.max(0, MIN_FRAME_INTERVAL_MS - elapsedSincePostMs);
-    if (delay === 0) {
-      void sendFrameRef.current();
-      return;
-    }
+    const delay = Math.max(
+      0,
+      MIN_FRAME_INTERVAL_MS - elapsedSincePostMs,
+      PACING_REST_RATIO * elapsedSincePostMs,
+    );
     paceTimerRef.current = window.setTimeout(() => {
       void sendFrameRef.current();
     }, delay);

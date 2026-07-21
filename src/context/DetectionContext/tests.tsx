@@ -395,6 +395,54 @@ describe("DetectionProvider", () => {
     ).toHaveLength(2);
   });
 
+  it("rests a fraction of the round trip after a slow result", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "webgpu" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(1);
+    // Simulate a slow device: the result lands 1000 ms after the frame was
+    // posted, well past the pacing floor.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 5, inferenceMs: 990, decodeMs: 5 },
+      });
+    });
+    // The pump must not re-prime immediately: it rests PACING_REST_RATIO of
+    // the round trip (500 ms here), so 400 ms in nothing new is posted.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(1);
+    // Once the rest elapses, exactly one more frame goes out.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(2);
+  });
+
   it("does not pump a paced frame scheduled before stop()", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(
