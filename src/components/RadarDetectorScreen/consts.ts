@@ -8,7 +8,7 @@ export const ARC_SWEEP_DEG = 240;
  * Signal level at or above which the meter enters its ALERT state: the status
  * word flips to ALERT and the red ring around the readout pulses.
  */
-export const ALERT_THRESHOLD = 0.85;
+export const ALERT_THRESHOLD = 0.8;
 
 /**
  * Signal level at or above which the readout and status word take the signal
