@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { registerSW } from "virtual:pwa-register";
 import { Analytics } from "@vercel/analytics/react";
+import { isDoNotTrackEnabled } from "@/lib/doNotTrack";
 import { trackPwaInstall } from "@/lib/pwaInstall";
 import { requestPersistentStorage } from "@/lib/serviceWorker";
 import "@fontsource/rajdhani/500.css";
@@ -22,6 +23,9 @@ if (!rootElement) {
 createRoot(rootElement).render(
   <StrictMode>
     <App />
-    <Analytics />
+    {/* Honor Do Not Track / Global Privacy Control: beforeSend gates both page
+        views and every custom track() call, so returning null when the user has
+        opted out suppresses all analytics from one place. */}
+    <Analytics beforeSend={(event) => (isDoNotTrackEnabled() ? null : event)} />
   </StrictMode>,
 );
