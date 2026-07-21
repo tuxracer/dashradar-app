@@ -319,7 +319,7 @@ The module is React-free and stateful, split into a pure step function and a sta
 Each frame, `stepTracker` greedily matches this frame's detections to existing tracks by IoU (`IOU_MATCH_THRESHOLD`, `0.3`), picking each track's best available match above the threshold, then applies these rules:
 
 - A **matched** track adopts the new detection's box and score and resets its miss count. It stays visible.
-- An **unmatched** track coasts through up to `MAX_MISSES` (`1`) consecutive frames with no match before it is dropped, keeping its stale box and score, so the box doesn't flicker off when the model briefly loses the object. One frame is the ceiling because detection is paced to at most ~1 Hz: every coasted frame holds a stale box for a second or more of wall time.
+- An **unmatched** track coasts through up to `MAX_MISSES` (`2`) consecutive frames with no match before it is dropped, keeping its stale box and score, so the box doesn't flicker off when the model briefly loses the object for a frame or two.
 - An unmatched detection in the current frame starts a brand-new track that is shown immediately.
 
 Every track is returned as a `visible` detection for `buildHudModel` to shape (there is no confirmation delay). The debug overlay's `detections` row reflects all three pipeline stages, read left to right as `shown / filtered / raw` (`DebugSnapshot.shownCount` / `.filteredCount` / `.rawCount`, §4).
