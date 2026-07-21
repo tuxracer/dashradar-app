@@ -116,11 +116,7 @@ export const RadarDetectorScreen = ({
 
       const status = statusRef.current;
       if (status) {
-        status.textContent = contact
-          ? level >= ALERT_THRESHOLD
-            ? "ALERT"
-            : "CONTACT"
-          : "SCANNING";
+        status.textContent = level >= ALERT_THRESHOLD ? "ALERT" : "SCANNING";
         status.style.color = contact ? color : "";
       }
 
