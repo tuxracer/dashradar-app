@@ -2,7 +2,7 @@
 
 Turn your phone into an on-device, computer-vision police detector, spotting patrol vehicles on the road in real time. Mount it on the dash and it watches the road through the camera. Everything runs on the phone.
 
-dashradar is not a general-purpose object detector. A custom model, fine-tuned to recognize patrol vehicles, drives a glanceable instrument: a signal meter climbs as a police vehicle comes into view, with an optional beep, so you read it at a glance without ever taking your eyes off the road. Nothing is recorded, and there's no account.
+A custom model, fine-tuned to recognize patrol vehicles, drives a glanceable instrument: a signal meter climbs as a police vehicle comes into view, with an optional beep, so you read it at a glance without ever taking your eyes off the road. Nothing is recorded, and there's no account.
 
 ## The model
 
