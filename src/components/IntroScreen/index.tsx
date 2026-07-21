@@ -1,7 +1,10 @@
 import { RadarBackdrop } from "@/components/RadarBackdrop";
 import { ShareQr } from "@/components/ShareCard";
 import { isDesktopDevice } from "@/lib/deviceType";
-import { INTRO_SEEN_STORAGE_KEY } from "./consts";
+import {
+  DESKTOP_CONTINUE_CONFIRM_MESSAGE,
+  INTRO_SEEN_STORAGE_KEY,
+} from "./consts";
 
 export * from "./consts";
 
@@ -84,6 +87,15 @@ type IntroScreenProps = {
 export const IntroScreen = ({ onStart }: IntroScreenProps) => {
   const desktop = isDesktopDevice();
 
+  // The desktop continue link double-checks intent: the app is built for a
+  // phone on a dash, so falling through to the camera flow on a desktop
+  // should be a deliberate choice, not a stray click.
+  const handleContinueOnDesktop = () => {
+    if (window.confirm(DESKTOP_CONTINUE_CONFIRM_MESSAGE)) {
+      onStart();
+    }
+  };
+
   return (
     <main className="fixed inset-0 overflow-y-auto bg-surface">
       <div className="relative flex min-h-full flex-col items-center justify-center gap-6 px-8 py-6 landscape:flex-row landscape:gap-14">
@@ -122,7 +134,7 @@ export const IntroScreen = ({ onStart }: IntroScreenProps) => {
               <ShareQr />
               <button
                 type="button"
-                onClick={onStart}
+                onClick={handleContinueOnDesktop}
                 className="text-sm font-medium text-white/50 underline underline-offset-4 transition-colors hover:text-white/80"
               >
                 Continue on this device

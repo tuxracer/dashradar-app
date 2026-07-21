@@ -1,6 +1,7 @@
 import { fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  DESKTOP_CONTINUE_CONFIRM_MESSAGE,
   IntroScreen,
   markIntroSeen,
   shouldShowIntro,
@@ -17,6 +18,7 @@ const stubPointer = (desktop: boolean) => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("shouldShowIntro", () => {
@@ -57,11 +59,22 @@ describe("IntroScreen", () => {
     expect(queryByRole("button", { name: "START" })).not.toBeInTheDocument();
   });
 
-  it("calls onStart from the continue-on-this-device link on desktop", () => {
+  it("calls onStart from the continue-on-this-device link once confirmed", () => {
     stubPointer(true);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     const onStart = vi.fn();
     const { getByRole } = render(<IntroScreen onStart={onStart} />);
     fireEvent.click(getByRole("button", { name: "Continue on this device" }));
+    expect(confirm).toHaveBeenCalledWith(DESKTOP_CONTINUE_CONFIRM_MESSAGE);
     expect(onStart).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the intro up when the desktop confirm is cancelled", () => {
+    stubPointer(true);
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const onStart = vi.fn();
+    const { getByRole } = render(<IntroScreen onStart={onStart} />);
+    fireEvent.click(getByRole("button", { name: "Continue on this device" }));
+    expect(onStart).not.toHaveBeenCalled();
   });
 });
