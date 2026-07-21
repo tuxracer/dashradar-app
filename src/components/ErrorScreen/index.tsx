@@ -1,3 +1,4 @@
+import { WORDMARK } from "@/lib/branding";
 import type { AppErrorCode } from "./consts";
 import { ERROR_COPY } from "./consts";
 
@@ -11,7 +12,7 @@ export const ErrorScreen = ({ code }: ErrorScreenProps) => {
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 bg-surface px-8 text-center">
       <span className="text-sm font-semibold tracking-[0.34em] text-white/85">
-        DASHRADAR
+        {WORDMARK}
       </span>
       <p data-testid="error-message" className="max-w-sm text-lg text-white/75">
         {ERROR_COPY[code]}

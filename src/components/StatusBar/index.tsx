@@ -1,7 +1,8 @@
 import { SettingsButton } from "@/components/SettingsButton";
+import { WORDMARK } from "@/lib/branding";
 
 /**
- * Top bar over the radar: the DASHRADAR wordmark on the left and the settings
+ * Top bar over the radar: the DASHRADAR.APP wordmark on the left and the settings
  * gear on the right. The engine/FPS readout now lives in the full-screen
  * settings panel, keeping this bar minimal and glanceable for a driver.
  * pointer-events are disabled on the container so the video and HUD underneath
@@ -11,7 +12,7 @@ export const StatusBar = () => {
   return (
     <div className="pointer-events-none absolute inset-x-0 top-[max(0.75rem,env(safe-area-inset-top))] flex items-center justify-between px-4">
       <span className="text-[13px] font-semibold tracking-[0.34em] text-white/85">
-        DASHRADAR
+        {WORDMARK}
       </span>
       <SettingsButton />
     </div>

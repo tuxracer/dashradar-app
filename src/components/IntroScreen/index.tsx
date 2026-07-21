@@ -1,5 +1,6 @@
 import { RadarBackdrop } from "@/components/RadarBackdrop";
 import { ShareQr } from "@/components/ShareCard";
+import { WORDMARK } from "@/lib/branding";
 import { isDesktopDevice } from "@/lib/deviceType";
 import {
   DESKTOP_CONTINUE_CONFIRM_MESSAGE,
@@ -103,7 +104,7 @@ export const IntroScreen = ({ onStart }: IntroScreenProps) => {
         <RadarScope />
         <div className="flex max-w-md flex-col items-center gap-4 text-center landscape:items-start landscape:text-left">
           <span className="text-[13px] font-semibold tracking-[0.34em] text-white/85">
-            HTTPS://DASHRADAR.APP
+            {WORDMARK}
           </span>
           <h1 className="text-3xl font-bold leading-[1.05] tracking-wide text-white/90">
             POLICE DETECTION ON YOUR DASH

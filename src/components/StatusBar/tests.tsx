@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { StatusBar } from "@/components/StatusBar";
 import { SettingsProvider } from "@/context/SettingsContext";
+import { WORDMARK } from "@/lib/branding";
 
 const renderBar = () =>
   render(
@@ -13,7 +14,7 @@ const renderBar = () =>
 describe("StatusBar", () => {
   it("renders the wordmark", () => {
     renderBar();
-    expect(screen.getByText("DASHRADAR")).toBeInTheDocument();
+    expect(screen.getByText(WORDMARK)).toBeInTheDocument();
   });
 
   it("no longer shows an FPS readout", () => {
