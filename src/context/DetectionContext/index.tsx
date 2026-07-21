@@ -224,11 +224,16 @@ export const DetectionProvider = ({
    * GPU never runs at a 100% duty cycle on a dash-mounted phone.
    */
   const schedulePacedFrame = useCallback((elapsedSincePostMs: number) => {
-    const delay = Math.max(
-      0,
-      MIN_FRAME_INTERVAL_MS - elapsedSincePostMs,
-      PACING_REST_RATIO * elapsedSincePostMs,
-    );
+    const floorDelay = Math.max(0, MIN_FRAME_INTERVAL_MS - elapsedSincePostMs);
+    const restDelay = PACING_REST_RATIO * elapsedSincePostMs;
+    const delay = Math.max(floorDelay, restDelay);
+    // Record the decision for the debug overlay's pacing row. The result
+    // handler has already written this frame's snapshot, so merge onto it.
+    debugRef.current = {
+      ...debugRef.current,
+      pacingDelayMs: delay,
+      pacingRule: floorDelay >= restDelay ? "floor" : "rest",
+    };
     paceTimerRef.current = window.setTimeout(() => {
       void sendFrameRef.current();
     }, delay);
@@ -364,6 +369,10 @@ export const DetectionProvider = ({
             rawCount: message.detections.length,
             filteredCount: roadDetections.length,
             shownCount: tracked.length,
+            // Carried forward for one line; schedulePacedFrame below writes
+            // this frame's actual pacing decision.
+            pacingDelayMs: debugRef.current.pacingDelayMs,
+            pacingRule: debugRef.current.pacingRule,
           };
           recordResultTime();
           schedulePacedFrame(roundTripMs);

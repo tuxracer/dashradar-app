@@ -26,6 +26,8 @@ const debug: DebugSnapshot = {
   filteredCount: 2,
   shownCount: 1,
   overheadMs: 2.5,
+  pacingDelayMs: 600,
+  pacingRule: "rest",
 };
 
 const noMotion = (): YawPitch => ({ yaw: 0, pitch: 0 });
@@ -64,6 +66,8 @@ describe("DebugOverlay", () => {
     expect(screen.getByText(/2\s*\/\s*4/)).toBeInTheDocument();
     expect(screen.getByText("overhead")).toBeInTheDocument();
     expect(screen.getByText("2.5 ms")).toBeInTheDocument();
+    expect(screen.getByText("pacing")).toBeInTheDocument();
+    expect(screen.getByText("600.0 ms · rest")).toBeInTheDocument();
   });
 
   it("shows the WebGPU probe stages when a probe is present", () => {

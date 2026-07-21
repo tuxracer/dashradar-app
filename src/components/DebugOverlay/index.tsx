@@ -157,6 +157,10 @@ export const DebugOverlay = ({
         </div>
       )}
       <Row label="round-trip" value={ms(debug.roundTripMs)} />
+      <Row
+        label="pacing"
+        value={`${ms(debug.pacingDelayMs)} · ${debug.pacingRule}`}
+      />
       <Row label="capture" value={ms(debug.captureMs)} />
       <Row label="preprocess" value={ms(debug.preprocessMs)} />
       <Row label="inference" value={ms(debug.inferenceMs)} />

@@ -77,6 +77,8 @@ const DebugProbe = () => {
       <span data-testid="filtered">{debug?.filteredCount ?? "none"}</span>
       <span data-testid="inference">{debug?.inferenceMs ?? "none"}</span>
       <span data-testid="overhead">{debug?.overheadMs ?? "none"}</span>
+      <span data-testid="pacing-delay">{debug?.pacingDelayMs ?? "none"}</span>
+      <span data-testid="pacing-rule">{debug?.pacingRule ?? "none"}</span>
     </div>
   );
 };
@@ -750,10 +752,28 @@ describe("DetectionProvider", () => {
     expect(fps).toBeGreaterThanOrEqual(0);
   });
 
-  it("exposes a debug snapshot from detection results", () => {
-    const worker = renderWithProvider(<DebugProbe />);
+  it("exposes a debug snapshot from detection results", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(
+      <>
+        <DebugProbe />
+        <StartOnReady />
+      </>,
+    );
     act(() => {
       worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    // Post a real frame so the round trip (and the pacing derived from it)
+    // measures from an actual send, not the ref's initial zero.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
     });
     act(() => {
       worker.emit({
@@ -777,6 +797,11 @@ describe("DetectionProvider", () => {
     const overhead = Number(screen.getByTestId("overhead").textContent);
     expect(Number.isFinite(overhead)).toBe(true);
     expect(overhead).toBeGreaterThanOrEqual(0);
+    // The result came back near-instantly, so the pacing floor set the delay.
+    expect(screen.getByTestId("pacing-rule").textContent).toBe("floor");
+    const pacingDelay = Number(screen.getByTestId("pacing-delay").textContent);
+    expect(pacingDelay).toBeGreaterThan(0);
+    expect(pacingDelay).toBeLessThanOrEqual(MIN_FRAME_INTERVAL_MS);
   });
 
   it("auto-starts detection when ready arrives after start", async () => {

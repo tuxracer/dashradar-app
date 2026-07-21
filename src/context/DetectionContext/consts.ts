@@ -45,6 +45,8 @@ export const INITIAL_DEBUG: DebugSnapshot = {
   filteredCount: 0,
   shownCount: 0,
   overheadMs: 0,
+  pacingDelayMs: 0,
+  pacingRule: "floor",
 };
 
 /**
