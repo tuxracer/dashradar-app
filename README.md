@@ -4,10 +4,6 @@ Turn your phone into an on-device, computer-vision police detector, spotting pat
 
 A custom model, fine-tuned to recognize patrol vehicles, drives a glanceable instrument: a signal meter climbs as a police vehicle comes into view, with an optional beep, so you read it at a glance without ever taking your eyes off the road. Nothing is recorded, and there's no account.
 
-## The model
-
-Detection uses a custom **RF-DETR Small** checkpoint published as ONNX at [`tuxracer/las-vegas-metro-rfdetr-small-t1`](https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1). It recognizes Las Vegas Metro patrol vehicles best today, since they make up most of the training data, but the training set keeps growing toward broader police-vehicle detection. The app streams the weights from Hugging Face on first launch and runs them on-device through onnxruntime-web.
-
 ## Why on-device
 
 Crowd-sourced apps like Waze depend on a large, active userbase reporting sightings in real time. They are only as good as the crowd nearby, they need a live network connection, and a single user on a quiet road sees nothing. dashradar takes the opposite approach: it looks at the road itself. Detection runs entirely on the phone, so it needs no network, no crowd, and no other users. It works on the first drive, for the first user, anywhere the camera can see the road.
@@ -37,6 +33,10 @@ pnpm test:watch  # Run tests in watch mode
 pnpm check       # Verify formatting + lint + typecheck
 pnpm format      # Auto-fix formatting (prettier --write)
 ```
+
+## The model
+
+Detection uses a custom **RF-DETR Small** checkpoint published as ONNX at [`tuxracer/las-vegas-metro-rfdetr-small-t1`](https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1). It recognizes Las Vegas Metro patrol vehicles best today, since they make up most of the training data, but the training set keeps growing toward broader police-vehicle detection. The app streams the weights from Hugging Face on first launch and runs them on-device through onnxruntime-web.
 
 ## Privacy
 
