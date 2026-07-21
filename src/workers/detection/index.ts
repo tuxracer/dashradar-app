@@ -2,8 +2,18 @@
 import { env, InferenceSession, Tensor } from "onnxruntime-web";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 import { INPUT_SIZE, MODEL_URL_BY_BACKEND, WASM_THREAD_CAP } from "./consts";
-import { decodeDetections, preprocess } from "./inference";
-import type { BackendProbe, DetectionBackend, WorkerResponse } from "./types";
+import {
+  cropRect,
+  decodeDetections,
+  preprocess,
+  topDetectionIndex,
+} from "./inference";
+import type {
+  BackendProbe,
+  DetectionBackend,
+  DetectionCrop,
+  WorkerResponse,
+} from "./types";
 import { DetectionError, isWorkerRequest } from "./types";
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -41,8 +51,8 @@ const inputCanvas = new OffscreenCanvas(INPUT_SIZE, INPUT_SIZE);
 const inputContext = inputCanvas.getContext("2d", { willReadFrequently: true });
 const inputBuffer = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE);
 
-const post = (message: WorkerResponse) => {
-  self.postMessage(message);
+const post = (message: WorkerResponse, transfer: Transferable[] = []) => {
+  self.postMessage(message, transfer);
 };
 
 /** Backend choice plus the per-stage evidence gathered while deciding. */
@@ -258,11 +268,43 @@ const detect = async (frame: ImageBitmap) => {
     const detections = decodeDetections(dets, labels, CONFIDENCE_THRESHOLD);
     const decodeMs = performance.now() - decodeStart;
 
-    post({
-      type: "detections",
-      detections,
-      timing: { preprocessMs, inferenceMs, decodeMs },
-    });
+    // Cut the highest-scoring detection out of the full-resolution frame so
+    // the UI can show what was detected. Best-effort: a failed cutout never
+    // blocks the detection result.
+    let crop: DetectionCrop | undefined;
+    const topIndex = topDetectionIndex(detections);
+    if (topIndex !== undefined) {
+      const rect = cropRect(
+        detections[topIndex].box,
+        frame.width,
+        frame.height,
+      );
+      if (rect) {
+        try {
+          const image = await createImageBitmap(
+            frame,
+            rect.sx,
+            rect.sy,
+            rect.sw,
+            rect.sh,
+            { resizeWidth: rect.resizeWidth, resizeHeight: rect.resizeHeight },
+          );
+          crop = { image, detectionIndex: topIndex };
+        } catch {
+          // Degenerate rect or platform limitation; send the result without it.
+        }
+      }
+    }
+
+    post(
+      {
+        type: "detections",
+        detections,
+        timing: { preprocessMs, inferenceMs, decodeMs },
+        crop,
+      },
+      crop ? [crop.image] : [],
+    );
   } catch {
     post({ type: "worker-error", code: "INFERENCE_FAILED" });
   } finally {
