@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import type { Contact } from "@/context/DetectionContext";
 import { createRadarBeeper } from "@/lib/radarAudio";
 import type { RadarBeeper } from "@/lib/radarAudio";
 import {
@@ -8,7 +9,12 @@ import {
   SEGMENT_COUNT,
   SIGNAL_HIGH_COLOR,
 } from "@/lib/radarSignal";
-import { ALERT_THRESHOLD, ARC_SWEEP_DEG, CONTACT_THRESHOLD } from "./consts";
+import {
+  ALERT_THRESHOLD,
+  ARC_SWEEP_DEG,
+  CONTACT_THRESHOLD,
+  DIRECTION_DISPLAY,
+} from "./consts";
 
 export * from "./consts";
 
@@ -18,6 +24,8 @@ type RadarDetectorScreenProps = {
   confidence: number;
   /** Whether the beeping audio indicator is on (the radarAudio setting). */
   audioEnabled: boolean;
+  /** Latest detection cutout to render as the contact card, if any. */
+  contact?: Contact;
 };
 
 /** Arc angle for a segment, in degrees, 0 pointing straight up. */
@@ -43,9 +51,11 @@ const ALERT_RING_COLOR = `rgb(${SIGNAL_HIGH_COLOR.join(", ")})`;
 export const RadarDetectorScreen = ({
   confidence,
   audioEnabled,
+  contact,
 }: RadarDetectorScreenProps) => {
   const confidenceRef = useRef(confidence);
   const audioEnabledRef = useRef(audioEnabled);
+  const contactRef = useRef(contact);
   const beeperRef = useRef<RadarBeeper | undefined>(undefined);
   const peakRef = useRef(0);
   const lastTimeRef = useRef<number | undefined>(undefined);
@@ -54,6 +64,7 @@ export const RadarDetectorScreen = ({
   const statusRef = useRef<HTMLSpanElement>(null);
   const glowRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef<HTMLDivElement>(null);
+  const cropCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Refs may not be written during render; mirror the latest prop in via an
   // effect so the persistent rAF loop reads the current value without
@@ -65,6 +76,26 @@ export const RadarDetectorScreen = ({
   useEffect(() => {
     audioEnabledRef.current = audioEnabled;
   }, [audioEnabled]);
+
+  useEffect(() => {
+    contactRef.current = contact;
+  }, [contact]);
+
+  // Draw the cutout into the card's canvas whenever it changes. The canvas
+  // takes the bitmap's intrinsic size; CSS scales it to fit the card.
+  useEffect(() => {
+    const canvas = cropCanvasRef.current;
+    if (!canvas || !contact) {
+      return;
+    }
+    canvas.width = contact.image.width;
+    canvas.height = contact.image.height;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return;
+    }
+    context.drawImage(contact.image, 0, 0);
+  }, [contact]);
 
   // The beeper lives exactly as long as this screen: leaving radar detector
   // mode (or unmounting for any reason) tears the audio graph down.
@@ -131,6 +162,9 @@ export const RadarDetectorScreen = ({
       const screen = screenRef.current;
       if (screen) {
         screen.dataset.alert = String(level >= ALERT_THRESHOLD);
+        screen.dataset.contact = String(
+          level > 0 && contactRef.current !== undefined,
+        );
       }
 
       frame = window.requestAnimationFrame(tick);
@@ -143,6 +177,7 @@ export const RadarDetectorScreen = ({
     <div
       ref={screenRef}
       data-alert="false"
+      data-contact="false"
       className="group absolute inset-0 flex items-center justify-center bg-surface"
       style={{
         backgroundImage:
@@ -205,6 +240,31 @@ export const RadarDetectorScreen = ({
           </span>
         </div>
       </div>
+      {contact && (
+        <div
+          data-testid="contact-card"
+          className="absolute right-[4%] top-1/2 flex max-h-[72%] w-[24%] -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-hud-amber/40 bg-surface/90 opacity-0 transition-opacity duration-500 group-data-[contact=true]:opacity-100 portrait:bottom-[4%] portrait:left-1/2 portrait:right-auto portrait:top-auto portrait:w-[56%] portrait:-translate-x-1/2 portrait:translate-y-0"
+        >
+          <span className="px-3 pt-2 text-[10px] font-semibold tracking-[0.34em] text-white/45">
+            CONTACT
+          </span>
+          <canvas
+            ref={cropCanvasRef}
+            className="min-h-0 w-full flex-1 object-contain px-3 py-2"
+          />
+          <div className="flex items-center justify-between px-3 pb-2 text-sm font-semibold">
+            <span className="tabular-nums text-hud-amber">
+              {Math.round(contact.signal * 100)}%
+            </span>
+            <span
+              data-testid="contact-direction"
+              className="tracking-[0.2em] text-white/75"
+            >
+              {DIRECTION_DISPLAY[contact.direction]}
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

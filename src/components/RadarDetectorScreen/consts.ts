@@ -1,3 +1,5 @@
+import type { ContactDirection } from "@/lib/radarSignal";
+
 /**
  * Total angular sweep of the segment arc in degrees, opening at the bottom
  * like a tachometer. Tuned visually against a landscape phone frame.
@@ -16,3 +18,10 @@ export const ALERT_THRESHOLD = 0.8;
  * stays quiet while any real signal registers immediately.
  */
 export const CONTACT_THRESHOLD = 0.01;
+
+/** Display strings for the contact card's direction row. */
+export const DIRECTION_DISPLAY: Readonly<Record<ContactDirection, string>> = {
+  left: "◀ LEFT",
+  ahead: "▲ AHEAD",
+  right: "RIGHT ▶",
+};

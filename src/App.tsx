@@ -47,6 +47,7 @@ const RadarScreen = () => {
     downloadingModel,
     modelProgress,
     hud,
+    contact,
     getFps,
     getDebugSnapshot,
     error,
@@ -140,6 +141,7 @@ const RadarScreen = () => {
           <RadarDetectorScreen
             confidence={hudSignal(hud)}
             audioEnabled={radarAudio}
+            contact={contact}
           />
         ) : (
           <>
