@@ -1,5 +1,7 @@
-import type { RawDetection } from "@/types";
+import type { NormalizedBox, RawDetection } from "@/types";
 import {
+  CROP_MAX_EDGE,
+  CROP_PADDING,
   IMAGENET_MEAN,
   IMAGENET_STD,
   INPUT_SIZE,
@@ -75,4 +77,61 @@ export const decodeDetections = (
     });
   }
   return detections;
+};
+
+/**
+ * Pixel-space crop rect plus resize target for the contact cutout, ready to
+ * hand to `createImageBitmap(frame, sx, sy, sw, sh, { resizeWidth, resizeHeight })`.
+ */
+export type CropRect = {
+  sx: number;
+  sy: number;
+  sw: number;
+  sh: number;
+  resizeWidth: number;
+  resizeHeight: number;
+};
+
+/**
+ * Crop rect for a detection's cutout: the normalized box padded by
+ * CROP_PADDING per side, clamped to the frame, mapped to pixels, and
+ * downscaled (never upscaled) so the long edge is at most CROP_MAX_EDGE.
+ * Returns undefined when the resulting rect is under a pixel on either axis.
+ */
+export const cropRect = (
+  box: NormalizedBox,
+  frameWidth: number,
+  frameHeight: number,
+): CropRect | undefined => {
+  const padX = (box.xmax - box.xmin) * CROP_PADDING;
+  const padY = (box.ymax - box.ymin) * CROP_PADDING;
+  const sx = Math.floor(Math.max(0, box.xmin - padX) * frameWidth);
+  const sy = Math.floor(Math.max(0, box.ymin - padY) * frameHeight);
+  const sw = Math.ceil(Math.min(1, box.xmax + padX) * frameWidth) - sx;
+  const sh = Math.ceil(Math.min(1, box.ymax + padY) * frameHeight) - sy;
+  if (sw < 1 || sh < 1) {
+    return undefined;
+  }
+  const scale = Math.min(1, CROP_MAX_EDGE / Math.max(sw, sh));
+  return {
+    sx,
+    sy,
+    sw,
+    sh,
+    resizeWidth: Math.max(1, Math.round(sw * scale)),
+    resizeHeight: Math.max(1, Math.round(sh * scale)),
+  };
+};
+
+/** Index of the highest-scoring detection, or undefined when there are none. */
+export const topDetectionIndex = (
+  detections: RawDetection[],
+): number | undefined => {
+  let top: number | undefined;
+  detections.forEach((candidate, index) => {
+    if (top === undefined || candidate.score > detections[top].score) {
+      top = index;
+    }
+  });
+  return top;
 };

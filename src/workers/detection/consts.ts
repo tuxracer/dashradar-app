@@ -69,3 +69,17 @@ export const POLICE_LABEL = "police";
  * clamps to one thread on its own.
  */
 export const WASM_THREAD_CAP = 4;
+
+/**
+ * Fraction of the detection box's own width/height added as context on each
+ * side of the contact cutout, so the crop shows a little road around the
+ * vehicle instead of a tight box.
+ */
+export const CROP_PADDING = 0.15;
+
+/**
+ * Longest edge, in pixels, of the cutout ImageBitmap transferred back with a
+ * detections result. Bounds transfer size and retained memory; crops smaller
+ * than this are never upscaled.
+ */
+export const CROP_MAX_EDGE = 320;

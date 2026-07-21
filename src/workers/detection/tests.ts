@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { decodeDetections, preprocess } from "@/workers/detection/inference";
 import {
+  cropRect,
+  decodeDetections,
+  preprocess,
+  topDetectionIndex,
+} from "@/workers/detection/inference";
+import {
+  CROP_MAX_EDGE,
   IMAGENET_MEAN,
   IMAGENET_STD,
   INPUT_SIZE,
 } from "@/workers/detection/consts";
 import { isWorkerResponse } from "@/workers/detection/types";
+import type { RawDetection } from "@/types";
 
 /** Build a `[1,queries,2]` logits buffer with per-query (class0, class1) pairs. */
 const makeLabels = (pairs: readonly [number, number][]): Float32Array =>
@@ -156,5 +163,73 @@ describe("decodeDetections", () => {
       sigmoid(4),
       sigmoid(5),
     ]);
+  });
+});
+
+describe("cropRect", () => {
+  it("pads the box and maps it to pixel coordinates", () => {
+    // Box 0.4..0.6 in a 1000x500 frame; 15% of the 0.2-wide box = 0.03 pad.
+    const rect = cropRect(
+      { xmin: 0.4, ymin: 0.4, xmax: 0.6, ymax: 0.6 },
+      1000,
+      500,
+    );
+    expect(rect).toBeDefined();
+    expect(rect?.sx).toBe(370); // (0.4 - 0.03) * 1000
+    expect(rect?.sy).toBe(185); // (0.4 - 0.03) * 500
+    expect(rect?.sw).toBe(260); // (0.63 - 0.37) * 1000
+    expect(rect?.sh).toBe(130); // (0.63 - 0.37) * 500
+  });
+
+  it("clamps the padded rect to the frame edges", () => {
+    const rect = cropRect(
+      { xmin: 0, ymin: 0, xmax: 0.1, ymax: 0.1 },
+      1000,
+      1000,
+    );
+    expect(rect?.sx).toBe(0);
+    expect(rect?.sy).toBe(0);
+  });
+
+  it("downscales so the long edge never exceeds CROP_MAX_EDGE", () => {
+    const rect = cropRect({ xmin: 0, ymin: 0, xmax: 1, ymax: 0.5 }, 2000, 2000);
+    expect(rect).toBeDefined();
+    expect(Math.max(rect!.resizeWidth, rect!.resizeHeight)).toBe(CROP_MAX_EDGE);
+    // Aspect ratio preserved: source is 2000x~1150, wider than tall.
+    expect(rect!.resizeWidth).toBeGreaterThan(rect!.resizeHeight);
+  });
+
+  it("never upscales a crop smaller than CROP_MAX_EDGE", () => {
+    const rect = cropRect(
+      { xmin: 0.4, ymin: 0.4, xmax: 0.5, ymax: 0.5 },
+      640,
+      480,
+    );
+    expect(rect!.resizeWidth).toBe(rect!.sw);
+    expect(rect!.resizeHeight).toBe(rect!.sh);
+  });
+
+  it("returns undefined for a degenerate box", () => {
+    expect(
+      cropRect({ xmin: 0.5, ymin: 0.5, xmax: 0.5, ymax: 0.5 }, 0, 0),
+    ).toBeUndefined();
+  });
+});
+
+describe("topDetectionIndex", () => {
+  const detection = (score: number): RawDetection => ({
+    label: "police",
+    score,
+    box: { xmin: 0.1, ymin: 0.1, xmax: 0.2, ymax: 0.2 },
+  });
+
+  it("returns the index of the highest-scoring detection", () => {
+    expect(
+      topDetectionIndex([detection(0.7), detection(0.9), detection(0.8)]),
+    ).toBe(1);
+  });
+
+  it("returns undefined for an empty array", () => {
+    expect(topDetectionIndex([])).toBeUndefined();
   });
 });
