@@ -1,5 +1,7 @@
 import type { HudModel } from "@/lib/detection";
 import type { MotionPermission, YawPitch } from "@/lib/motionSensor";
+import type { ContactDirection } from "@/lib/radarSignal";
+import type { NormalizedBox } from "@/types";
 import type {
   BackendProbe,
   DetectionBackend,
@@ -22,6 +24,21 @@ export type MainThreadWebGpu =
   | "error";
 
 export type ModelProgress = { loadedBytes: number; totalBytes: number };
+
+/** Latest detection cutout: the evidence radar detector mode renders. */
+export type Contact = {
+  /** Cutout ImageBitmap of the detection, from the exact inference frame. */
+  image: ImageBitmap;
+  /** Raw model score of the cropped detection. */
+  score: number;
+  /** Score remapped onto the meter's signal band (signalFromScore); the same
+   * semantic as the dial readout so the two can never disagree. */
+  signal: number;
+  box: NormalizedBox;
+  direction: ContactDirection;
+  /** performance.now() when the result carrying this crop arrived. */
+  at: number;
+};
 
 /**
  * Which pacing rule set the delay before the next capture: the absolute
@@ -94,6 +111,13 @@ export type DetectionContextValue = {
    */
   getDebugSnapshot: () => DebugSnapshot;
   error: DetectionErrorCode | undefined;
+  /**
+   * Latest detection cutout with its score, remapped signal, and direction.
+   * Replaced when a new crop arrives; left untouched by detection-free frames
+   * so radar detector mode's contact card lingers through the meter's decay
+   * tail. Cleared on worker errors and teardown.
+   */
+  contact: Contact | undefined;
   start: (video: HTMLVideoElement) => void;
   stop: () => void;
   /** Cumulative yaw/pitch (radians) the camera has rotated since the currently

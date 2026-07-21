@@ -19,6 +19,7 @@ import type {
   MotionSensorManager,
   YawPitch,
 } from "@/lib/motionSensor";
+import { contactDirection, signalFromScore } from "@/lib/radarSignal";
 import { waitForServiceWorkerControl } from "@/lib/serviceWorker";
 import { POLICE_LABEL } from "@/workers/detection/consts";
 import type {
@@ -37,6 +38,7 @@ import {
   SW_CONTROL_TIMEOUT_MS,
 } from "./consts";
 import type {
+  Contact,
   DebugSnapshot,
   DetectionContextValue,
   DetectionStatus,
@@ -99,6 +101,18 @@ export const DetectionProvider = ({
   const debugRef = useRef<DebugSnapshot>(INITIAL_DEBUG);
   const [motionPermission, setMotionPermission] =
     useState<MotionPermission>("unsupported");
+  const [contact, setContact] = useState<Contact>();
+  // Mirrors `contact` so the previous bitmap can be closed from event
+  // handlers without a side effect inside a setState updater (StrictMode
+  // double-invokes updaters; see statusRef above).
+  const contactRef = useRef<Contact | undefined>(undefined);
+
+  /** Swap in the next contact (or none), closing the previous crop bitmap. */
+  const replaceContact = useCallback((next: Contact | undefined) => {
+    contactRef.current?.image.close();
+    contactRef.current = next;
+    setContact(next);
+  }, []);
 
   // React 19 useRef requires an initial value; undefined unions cover "not yet set".
   const workerRef = useRef<DetectionWorkerLike | undefined>(undefined);
@@ -376,6 +390,26 @@ export const DetectionProvider = ({
           const roadDetections = toRoadDetections(message.detections);
           const tracked = trackerRef.current?.update(roadDetections) ?? [];
           setHud(buildHudModel(tracked));
+          // Pair the crop with its detection. Validation mirrors the road
+          // filter; a crop whose detection is dropped is discarded so the
+          // card never shows evidence the HUD pipeline would not count.
+          if (message.crop) {
+            const [cropDetection] = toRoadDetections([
+              message.detections[message.crop.detectionIndex],
+            ]);
+            if (cropDetection) {
+              replaceContact({
+                image: message.crop.image,
+                score: cropDetection.score,
+                signal: signalFromScore(cropDetection.score),
+                box: cropDetection.box,
+                direction: contactDirection(cropDetection.box),
+                at: performance.now(),
+              });
+            } else {
+              message.crop.image.close();
+            }
+          }
           // Report an anonymous police sighting to analytics on the leading
           // edge only: fire when police appear, then stay quiet until they have
           // been absent for POLICE_EVENT_DEBOUNCE_MS, so following a car
@@ -429,6 +463,7 @@ export const DetectionProvider = ({
           inFlightRef.current = 0;
           window.clearTimeout(retryTimerRef.current);
           window.clearTimeout(paceTimerRef.current);
+          replaceContact(undefined);
           break;
         }
       }
@@ -443,6 +478,7 @@ export const DetectionProvider = ({
       inFlightRef.current = 0;
       window.clearTimeout(retryTimerRef.current);
       window.clearTimeout(paceTimerRef.current);
+      replaceContact(undefined);
     };
     // Defer the model download until a service worker controls the page so its
     // fetch flows through Workbox's runtime cache on a first visit. In dev
@@ -462,9 +498,16 @@ export const DetectionProvider = ({
       cancelled = true;
       window.clearTimeout(retryTimerRef.current);
       window.clearTimeout(paceTimerRef.current);
+      replaceContact(undefined);
       worker.terminate();
     };
-  }, [createWorker, recordResultTime, schedulePacedFrame, sendFrame]);
+  }, [
+    createWorker,
+    recordResultTime,
+    replaceContact,
+    schedulePacedFrame,
+    sendFrame,
+  ]);
 
   const start = useCallback(
     (video: HTMLVideoElement) => {
@@ -567,6 +610,7 @@ export const DetectionProvider = ({
       getFps,
       getDebugSnapshot,
       error,
+      contact,
       start,
       stop,
       getMotionDelta,
@@ -584,6 +628,7 @@ export const DetectionProvider = ({
       getFps,
       getDebugSnapshot,
       error,
+      contact,
       start,
       stop,
       getMotionDelta,

@@ -1163,3 +1163,154 @@ describe("useDetection", () => {
     expect(orphan).toThrow(/DetectionProvider/);
   });
 });
+
+/** Minimal stand-in for ImageBitmap, which jsdom does not provide. */
+class FakeImageBitmap {
+  width = 320;
+  height = 240;
+  close = vi.fn();
+}
+
+const ContactProbe = () => {
+  const { contact } = useDetection();
+  return (
+    <div>
+      <span data-testid="contact-direction">
+        {contact?.direction ?? "none"}
+      </span>
+      <span data-testid="contact-signal">{contact?.signal ?? "none"}</span>
+      <span data-testid="contact-score">{contact?.score ?? "none"}</span>
+    </div>
+  );
+};
+
+describe("DetectionProvider contact", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const timing = { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 };
+  const policeDetection = (score: number, xmin: number, xmax: number) => ({
+    label: "police",
+    score,
+    box: { xmin, ymin: 0.4, xmax, ymax: 0.6 },
+  });
+
+  it("exposes a contact built from the cropped detection", async () => {
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const worker = new FakeWorker();
+    render(
+      <DetectionProvider createWorker={() => worker}>
+        <ContactProbe />
+      </DetectionProvider>,
+    );
+    // score 0.85 with SIGNAL_FLOOR 0.7 remaps to 0.5; center-x 0.2 is left.
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [policeDetection(0.85, 0.15, 0.25)],
+        timing,
+        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
+      });
+    });
+    expect(screen.getByTestId("contact-direction")).toHaveTextContent("left");
+    expect(screen.getByTestId("contact-signal")).toHaveTextContent("0.5");
+    expect(screen.getByTestId("contact-score")).toHaveTextContent("0.85");
+  });
+
+  it("closes the previous contact's bitmap when a new crop arrives", () => {
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const worker = new FakeWorker();
+    const first = new FakeImageBitmap();
+    render(
+      <DetectionProvider createWorker={() => worker}>
+        <ContactProbe />
+      </DetectionProvider>,
+    );
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [policeDetection(0.85, 0.15, 0.25)],
+        timing,
+        crop: { image: first, detectionIndex: 0 },
+      });
+    });
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [policeDetection(0.9, 0.45, 0.55)],
+        timing,
+        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
+      });
+    });
+    expect(first.close).toHaveBeenCalled();
+    expect(screen.getByTestId("contact-direction")).toHaveTextContent("ahead");
+  });
+
+  it("keeps the last contact through detection-free frames", () => {
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const worker = new FakeWorker();
+    render(
+      <DetectionProvider createWorker={() => worker}>
+        <ContactProbe />
+      </DetectionProvider>,
+    );
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [policeDetection(0.85, 0.15, 0.25)],
+        timing,
+        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
+      });
+    });
+    act(() => {
+      worker.emit({ type: "detections", detections: [], timing });
+    });
+    expect(screen.getByTestId("contact-direction")).toHaveTextContent("left");
+  });
+
+  it("discards a crop whose indexed detection fails validation", () => {
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const worker = new FakeWorker();
+    const orphan = new FakeImageBitmap();
+    render(
+      <DetectionProvider createWorker={() => worker}>
+        <ContactProbe />
+      </DetectionProvider>,
+    );
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [policeDetection(0.85, 0.15, 0.25)],
+        timing,
+        crop: { image: orphan, detectionIndex: 5 },
+      });
+    });
+    expect(orphan.close).toHaveBeenCalled();
+    expect(screen.getByTestId("contact-direction")).toHaveTextContent("none");
+  });
+
+  it("clears the contact on a worker error", () => {
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const worker = new FakeWorker();
+    const image = new FakeImageBitmap();
+    render(
+      <DetectionProvider createWorker={() => worker}>
+        <ContactProbe />
+      </DetectionProvider>,
+    );
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [policeDetection(0.85, 0.15, 0.25)],
+        timing,
+        crop: { image, detectionIndex: 0 },
+      });
+    });
+    act(() => {
+      worker.emit({ type: "worker-error", code: "INFERENCE_FAILED" });
+    });
+    expect(image.close).toHaveBeenCalled();
+    expect(screen.getByTestId("contact-direction")).toHaveTextContent("none");
+  });
+});
