@@ -2,9 +2,9 @@
 
 A privacy-first dashcam app that turns your phone into an on-device computer-vision police detector, spotting patrol vehicles on the road in real time.
 
-Mount a phone on your car dash, and dashradar watches the road through the camera for one specific thing: police vehicles. It runs a custom object detector entirely on the phone and draws a clean HUD over the live camera feed: a box on the nearest detection, small tag markers on the rest, and a lane-radar strip that shows where things are without making you read anything. Nothing is recorded, nothing leaves the device, and there's no account to sign into.
+Mount a phone on your car dash, and dashradar watches the road through the camera for one specific thing: police vehicles. It runs a custom object detector entirely on the phone. By default it shows a radar-detector-style instrument: a signal meter that climbs as a patrol vehicle comes into view, with an optional beep, so you can read it at a glance without parsing the scene. A camera HUD mode is also available, drawing a box on the nearest detection with tag markers on the rest.
 
-This is not a general-purpose object detector. The model is fine-tuned to recognize police vehicles, so think of it as a visual counterpart to a radar detector rather than a "label everything in view" camera app.
+This is not a general-purpose object detector. The model is fine-tuned to recognize police vehicles, so think of it as a visual counterpart to a radar detector rather than a "label everything in view" camera app. Nothing is recorded and there's no account to sign into.
 
 ## The model
 
@@ -12,8 +12,8 @@ Detection uses a custom **RF-DETR Small** checkpoint fine-tuned to spot police v
 
 ## Features
 
-- **Purpose-built detection HUD**: a confirmed detection gets a highlighted box and label; additional detections get small floating tags. A lane-radar strip at the bottom shows left/center/right position at a glance.
-- **On-device only**: detection runs in the browser through onnxruntime-web. No frames, detections, or video are ever sent anywhere.
+- **Radar-detector view (default)**: a signal meter that climbs as a patrol vehicle appears, with an optional beep. A camera HUD mode with a box on the nearest detection and floating tags for the rest is also available.
+- **On-device detection**: inference runs in the browser through onnxruntime-web. Camera frames, images, and detection boxes never leave the device. (See [Privacy](#privacy) for the anonymous analytics that are sent.)
 - **Offline PWA**: install it to the home screen; after the first launch (which downloads the model), it works with no connection.
 - **WebGPU with WASM fallback**: uses the GPU when the browser supports it, and falls back to WebAssembly automatically. No setup needed either way.
 - **Screen wake lock**: keeps the screen on while running, so the phone doesn't sleep mid-drive.
@@ -38,7 +38,9 @@ pnpm format      # Auto-fix formatting (prettier --write)
 
 ## Privacy
 
-Camera frames and detection results never leave the device: they stay in the browser tab and are never uploaded, and there's no account to sign into. Network traffic is limited to the app's static files (including the same-origin ONNX runtime), the one-time detection model download (huggingface.co), and anonymous page-view analytics (Vercel).
+Camera frames, images, and detection boxes never leave the device. There's no account, no login, and no per-user tracking. Network traffic is limited to the app's static files (including the same-origin ONNX runtime), the one-time detection model download (huggingface.co), and anonymous analytics (Vercel).
+
+To understand roughly how the app is used, it does send a small set of anonymous, aggregate Vercel Analytics events that are not tied to any account or identity: page views, a few usage milestones (which inference backend was selected, model ready, PWA installed, errors), and a coarse `police_detected` counter. That last event is a plain increment with no payload attached: no image, no location, nothing about the sighting itself. Like any analytics event, Vercel records when it arrives on its end, but we attach nothing beyond the fact that it happened. It tells us that a detection happened somewhere, not where, what, or by whom.
 
 ## Contact
 
