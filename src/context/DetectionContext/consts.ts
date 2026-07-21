@@ -4,15 +4,18 @@ import type { DebugSnapshot } from "./types";
 export const FRAME_RETRY_MS = 100;
 
 /**
- * Minimum interval between frame captures (~8 Hz). Without a floor the pump
- * sends the next frame the instant a result returns, so detection runs at
- * whatever rate the device manages: fast WebGPU phones end up running
- * inference back-to-back, pegging the GPU continuously and thermal-throttling
- * a dash-mounted phone. ~8 Hz is plenty for spotting vehicles, and the
- * coasting tracker plus motion stabilization cover the gaps between results.
- * Devices whose inference already takes longer than this are unaffected.
+ * Minimum interval between frame captures: detection runs at most once per
+ * second. Without a floor the pump sends the next frame the instant a result
+ * returns, so detection runs at whatever rate the device manages: fast WebGPU
+ * phones end up running inference back-to-back, pegging the GPU continuously
+ * and thermal-throttling a dash-mounted phone. A once-per-second sweep is
+ * enough for spotting police vehicles ahead, and the coasting tracker plus
+ * motion stabilization keep the HUD steady between results; anything faster
+ * mostly spends battery and heat. Devices whose adaptive rest (see
+ * PACING_REST_RATIO below) already spaces captures wider than this are
+ * unaffected.
  */
-export const MIN_FRAME_INTERVAL_MS = 125;
+export const MIN_FRAME_INTERVAL_MS = 1_000;
 
 /**
  * Fraction of a result's round-trip time the pump idles before starting the

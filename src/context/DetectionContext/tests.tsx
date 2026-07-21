@@ -274,6 +274,7 @@ describe("DetectionProvider", () => {
   });
 
   it("pumps a frame after start and another after each result", async () => {
+    vi.useFakeTimers();
     vi.stubGlobal(
       "createImageBitmap",
       vi.fn(() => Promise.resolve(fakeBitmap())),
@@ -290,11 +291,12 @@ describe("DetectionProvider", () => {
     act(() => {
       screen.getByTestId("start").click();
     });
-    await waitFor(() => {
-      expect(
-        worker.posted.filter((message) => message.type === "detect"),
-      ).toHaveLength(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
     });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(1);
     act(() => {
       worker.emit({
         type: "detections",
@@ -312,11 +314,13 @@ describe("DetectionProvider", () => {
     // The tracker registers a detection on its first frame, so its blip
     // reaches the HUD immediately.
     expect(screen.getByTestId("objects").textContent).toBe("1");
-    await waitFor(() => {
-      expect(
-        worker.posted.filter((message) => message.type === "detect"),
-      ).toHaveLength(2);
+    // The next frame goes out once the pacing interval elapses.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
     });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(2);
   });
 
   it("retries frame capture after createImageBitmap fails once", async () => {
@@ -638,6 +642,7 @@ describe("DetectionProvider", () => {
   });
 
   it("re-primes at depth one when a stale result lands after stop/start", async () => {
+    vi.useFakeTimers();
     vi.stubGlobal(
       "createImageBitmap",
       vi.fn(() => Promise.resolve(fakeBitmap())),
@@ -650,11 +655,12 @@ describe("DetectionProvider", () => {
       screen.getByTestId("start").click();
     });
     // Frame #1 reaches the worker; its result is still pending.
-    await waitFor(() => {
-      expect(
-        worker.posted.filter((message) => message.type === "detect"),
-      ).toHaveLength(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
     });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(1);
     // Stop, then restart before the stale result comes back.
     act(() => {
       screen.getByTestId("stop").click();
@@ -664,12 +670,13 @@ describe("DetectionProvider", () => {
     });
     // The restarted pump must not post while frame #1's result is pending.
     await act(async () => {
-      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(0);
     });
     expect(
       worker.posted.filter((message) => message.type === "detect"),
     ).toHaveLength(1);
-    // The stale result re-primes the pump: exactly one more post.
+    // The stale result re-primes the pump: exactly one more post once the
+    // pacing interval elapses.
     act(() => {
       worker.emit({
         type: "detections",
@@ -677,11 +684,12 @@ describe("DetectionProvider", () => {
         timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
       });
     });
-    await waitFor(() => {
-      expect(
-        worker.posted.filter((message) => message.type === "detect"),
-      ).toHaveLength(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
     });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(2);
     // Pipeline continues at depth one: the next result posts exactly one more.
     act(() => {
       worker.emit({
@@ -690,10 +698,8 @@ describe("DetectionProvider", () => {
         timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
       });
     });
-    await waitFor(() => {
-      expect(
-        worker.posted.filter((message) => message.type === "detect"),
-      ).toHaveLength(3);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
     });
     expect(
       worker.posted.filter((message) => message.type === "detect"),
@@ -701,6 +707,7 @@ describe("DetectionProvider", () => {
   });
 
   it("exposes a finite fps after multiple detection results", async () => {
+    vi.useFakeTimers();
     vi.stubGlobal(
       "createImageBitmap",
       vi.fn(() => Promise.resolve(fakeBitmap())),
@@ -718,11 +725,15 @@ describe("DetectionProvider", () => {
       screen.getByTestId("start").click();
     });
     for (let result = 0; result < 2; result += 1) {
-      await waitFor(() => {
-        expect(
-          worker.posted.filter((message) => message.type === "detect"),
-        ).toHaveLength(result + 1);
+      // The first frame posts on a microtask; later frames wait out pacing.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(
+          result === 0 ? 0 : MIN_FRAME_INTERVAL_MS,
+        );
       });
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(result + 1);
       act(() => {
         worker.emit({
           type: "detections",
