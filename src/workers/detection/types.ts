@@ -90,6 +90,26 @@ const isFrameTiming = (value: unknown): value is FrameTiming => {
 };
 
 /**
+ * Cutout of the highest-scoring detection, cropped by the worker from the
+ * exact frame inference ran on (the main thread never sees that frame; it is
+ * transferred into the worker and closed after inference).
+ */
+export type DetectionCrop = {
+  image: ImageBitmap;
+  /** Index into the message's detections array of the cropped detection. */
+  detectionIndex: number;
+};
+
+const isDetectionCrop = (value: unknown): value is DetectionCrop => {
+  return (
+    isPlainObject(value) &&
+    typeof ImageBitmap !== "undefined" &&
+    value.image instanceof ImageBitmap &&
+    isNumber(value.detectionIndex)
+  );
+};
+
+/**
  * Outcome of the WebGPU backend probe, reported once at load so the debug
  * overlay can explain why the CPU (wasm) fallback was chosen on a device whose
  * main thread reports WebGPU support. Each flag records how far the probe got
@@ -144,7 +164,12 @@ export type WorkerResponse =
   | { type: "model-progress"; progress: ModelFileProgress }
   | { type: "backend-probe"; probe: BackendProbe }
   | { type: "ready"; backend: DetectionBackend }
-  | { type: "detections"; detections: RawDetection[]; timing: FrameTiming }
+  | {
+      type: "detections";
+      detections: RawDetection[];
+      timing: FrameTiming;
+      crop?: DetectionCrop;
+    }
   | { type: "worker-error"; code: DetectionErrorCode };
 
 export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
@@ -164,7 +189,8 @@ export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
       return (
         Array.isArray(value.detections) &&
         value.detections.every(isRawDetection) &&
-        isFrameTiming(value.timing)
+        isFrameTiming(value.timing) &&
+        (value.crop === undefined || isDetectionCrop(value.crop))
       );
     case "worker-error":
       return isDetectionErrorCode(value.code);

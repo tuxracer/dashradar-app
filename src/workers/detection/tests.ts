@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   cropRect,
   decodeDetections,
@@ -231,5 +231,56 @@ describe("topDetectionIndex", () => {
 
   it("returns undefined for an empty array", () => {
     expect(topDetectionIndex([])).toBeUndefined();
+  });
+});
+
+/** Minimal stand-in for ImageBitmap, which jsdom does not provide. */
+class FakeImageBitmap {
+  width = 320;
+  height = 240;
+  close = vi.fn();
+}
+
+describe("isWorkerResponse detections crop", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const detections = [
+    {
+      label: "police",
+      score: 0.9,
+      box: { xmin: 0.1, ymin: 0.1, xmax: 0.3, ymax: 0.3 },
+    },
+  ];
+  const timing = { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 };
+
+  it("accepts a detections message without a crop", () => {
+    expect(isWorkerResponse({ type: "detections", detections, timing })).toBe(
+      true,
+    );
+  });
+
+  it("accepts a detections message with a valid crop", () => {
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const crop = { image: new FakeImageBitmap(), detectionIndex: 0 };
+    expect(
+      isWorkerResponse({ type: "detections", detections, timing, crop }),
+    ).toBe(true);
+  });
+
+  it("rejects a crop whose image is not an ImageBitmap", () => {
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const crop = { image: {}, detectionIndex: 0 };
+    expect(
+      isWorkerResponse({ type: "detections", detections, timing, crop }),
+    ).toBe(false);
+  });
+
+  it("does not throw where ImageBitmap is undefined", () => {
+    const crop = { image: new FakeImageBitmap(), detectionIndex: 0 };
+    expect(
+      isWorkerResponse({ type: "detections", detections, timing, crop }),
+    ).toBe(false);
   });
 });
