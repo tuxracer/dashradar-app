@@ -2,6 +2,8 @@
 
 A single-screen web app that turns a phone mounted on a car dash into a live object-detection HUD (a "radar view"). A full-screen rear-camera feed runs through an on-device object detector, drawn as a clean, automotive-minimal overlay: one full bounding box on the nearest object, floating tag markers on the rest, and a lane-radar strip showing where things are at a glance. Client-only **Vite React SPA**, **offline-first PWA**, **no backend, no accounts, no data leaves the device**.
 
+**This is a computer-vision detector, NOT a radar detector.** It detects police vehicles by looking at the camera feed. It does not, and cannot, detect radar signals, LIDAR, or any RF emission. "Radar" appears only as a visual metaphor for the UI (the "radar view", the lane-radar strip). When writing or revising any user-facing copy (README, marketing text, in-app strings), never describe the app as a "radar detector" or say it detects radar. The correct framing is an on-device, computer-vision police detector that spots patrol vehicles on the road in real time.
+
 See [docs/TRD.md](docs/TRD.md) for the full technical reference.
 
 **Repository URL**: https://github.com/tuxracer/dashradar-app
