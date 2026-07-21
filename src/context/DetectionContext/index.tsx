@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import type { ReactNode } from "react";
+import { track } from "@vercel/analytics";
 import { waitForNextVideoFrame } from "@/lib/camera";
 import type { HudModel } from "@/lib/detection";
 import { buildHudModel, toRoadDetections } from "@/lib/detection";
@@ -19,6 +20,7 @@ import type {
   YawPitch,
 } from "@/lib/motionSensor";
 import { waitForServiceWorkerControl } from "@/lib/serviceWorker";
+import { POLICE_LABEL } from "@/workers/detection/consts";
 import type {
   BackendProbe,
   DetectionBackend,
@@ -31,6 +33,7 @@ import {
   INITIAL_DEBUG,
   MIN_FRAME_INTERVAL_MS,
   PACING_REST_RATIO,
+  POLICE_EVENT_DEBOUNCE_MS,
   SW_CONTROL_TIMEOUT_MS,
 } from "./consts";
 import type {
@@ -138,6 +141,12 @@ export const DetectionProvider = ({
   // posted, paired with the next detections result for the debug snapshot.
   const lastCaptureMsRef = useRef(0);
   const postTimeRef = useRef(0);
+  // performance.now() of the last frame police were detected in, for the
+  // debounced `police_detected` analytics event. Negative infinity (not 0,
+  // which is only ~page-load and would swallow a sighting in the first 30 s)
+  // means never seen this session, so the first sighting always reads as a
+  // fresh encounter and fires the event.
+  const lastPoliceSeenAtRef = useRef(Number.NEGATIVE_INFINITY);
   // Holds the latest `sendFrame` so the retry timeout can call it without
   // closing over the `const` before its own initializer finishes (which
   // `react-hooks/immutability` flags as a before-declaration access).
@@ -351,6 +360,22 @@ export const DetectionProvider = ({
           const roadDetections = toRoadDetections(message.detections);
           const tracked = trackerRef.current?.update(roadDetections) ?? [];
           setHud(buildHudModel(tracked));
+          // Report an anonymous police sighting to analytics on the leading
+          // edge only: fire when police appear, then stay quiet until they have
+          // been absent for POLICE_EVENT_DEBOUNCE_MS, so following a car
+          // continuously collapses into one event. Nothing identifying the
+          // sighting leaves the device, only the event count. Read the fresh
+          // per-frame detections (not the coasting `tracked` set) so a briefly
+          // held stale box does not keep the debounce alive. Kept out of the
+          // setHud updater above: StrictMode double-invokes updaters, which
+          // would double-count the sighting.
+          if (roadDetections.some((d) => d.label === POLICE_LABEL)) {
+            const now = performance.now();
+            if (now - lastPoliceSeenAtRef.current >= POLICE_EVENT_DEBOUNCE_MS) {
+              track("police_detected");
+            }
+            lastPoliceSeenAtRef.current = now;
+          }
           const { preprocessMs, inferenceMs, decodeMs } = message.timing;
           const roundTripMs = performance.now() - postTimeRef.current;
           debugRef.current = {

@@ -21,7 +21,7 @@ dashradar turns a phone mounted on a car dash into a live "radar" view: a full-s
 
 ### Non-Goals (v1)
 
-- No video recording, no logging of detection events, no audible alerts.
+- No video recording, no on-device history of detections, no audible alerts. (Analytics does receive a single anonymous `police_detected` count per sighting, debounced; it carries nothing that identifies the sighting. See §3 and §4.3.)
 - No accounts, sync, or server component of any kind. The only state that persists across reloads is the browser's model-weight cache and a small `localStorage`-backed display-settings object (`dashradar:settings`, e.g. the video-feed toggle). There is no IndexedDB and no history.
 - No manual model/backend picker and no nav. Settings are a single full-screen panel (video toggle plus read-only engine/model/about), opened from the top-bar gear.
 - No object count in the HUD, no confidence scores shown to the user (used internally for thresholding only).
@@ -59,7 +59,7 @@ Real camera video, sustained frame rates against real-world objects, and on-devi
 | UI kit | Bespoke Tailwind-styled elements; `lucide-react` for the settings gear icon | No `src/components/ui/` primitives or shadcn/Radix components; the only icon-library use is the `Settings` and `X` glyphs in `SettingsButton` / `SettingsScreen` (named import, tree-shaken). |
 | Fonts | **Rajdhani** | Self-hosted via `@fontsource/rajdhani` (weights 500/600/700), imported in `src/main.tsx`. Only font in the app. |
 | Utilities | **remeda** | Type guards (`isString`, `isNumber`, `isPlainObject`) validating worker messages crossing the `postMessage` boundary. |
-| Analytics | **`@vercel/analytics`** | `inject()` in `src/main.tsx`; page-view analytics only, no camera/detection data. |
+| Analytics | **`@vercel/analytics`** | `inject()` in `src/main.tsx`. Anonymous events only, never camera frames, detection boxes, or location: page views, a few UI events (`intro_start`, `settings_open`, `share_click`), and a debounced `police_detected` sighting count (§4.3). |
 | Testing | **vitest** + **@testing-library/react** | jsdom environment; the worker, onnxruntime-web inference, and camera are stubbed or injected (see §9). The pure preprocess/decode helpers are unit-tested directly. |
 
 > **Build note:** `package.json` scripts: `pnpm dev` → `vite`, `pnpm build` → `vite build`, `pnpm start` → `vite preview`. `pnpm test` runs vitest. `pnpm check` runs format + lint + typecheck and must pass before commits.
@@ -215,6 +215,12 @@ iOS gates `devicemotion` behind `DeviceMotionEvent.requestPermission()`, which m
 `HudOverlay` applies the compensation outside React's render path: a persistent `requestAnimationFrame` loop, independent of the detection-result rate, reads `getMotionDelta()` every animation frame and converts the yaw/pitch delta to a pixel offset (`orientationDeltaToPixels`, which uses the same cover-scaled displayed-video dimensions as `mapBoxToViewport`, via the shared `coverScale` helper), then writes `transform: translate(dx,dy)` directly onto the overlay container's DOM node. The `stabilizeMotion` setting (off by default) gates this through `HudOverlay`'s `stabilize` prop: the loop is only scheduled while it is on; turning it off resets the transform to zero once and stops the loop, so the default configuration runs no per-frame style writes and boxes stay fixed to the screen. Compensation is rotation-only (yaw and pitch, i.e. pan and tilt), not translation. Boxes are never dropped early: the overlay container is `overflow-hidden`, so a pan large enough to carry a box past the viewport edge just slides it out of view rather than the code hiding it preemptively; the next detection result re-centers everything.
 
 The pixel conversion needs a camera field of view the Web platform does not expose, so `ASSUMED_CAMERA_HFOV_DEG` (`src/lib/motionSensor/consts.ts`, ~65°) is the one tuning constant standing in for it; vertical FOV is derived from the displayed aspect ratio. That constant, and the axis signs in `mapRotationRateToScreen`, were tuned on-device by panning the phone and watching the debug overlay's `motion` row (delta yaw/pitch in degrees) and `offset` row (dx/dy in pixels), not derived analytically. Re-tune `ASSUMED_CAMERA_HFOV_DEG` if a different camera or model changes the effective field of view, and fix the signs in `mapRotationRateToScreen` or `orientationDeltaToPixels` if a pan ever moves the box the wrong direction.
+
+### 4.3 Police sighting analytics event
+
+The `detections` result handler in `DetectionContext` reports an anonymous `police_detected` event to Vercel Analytics (§3) when police come into view. It fires on the **leading edge only**: the event is sent the frame police first appear, then stays quiet until police have been absent for `POLICE_EVENT_DEBOUNCE_MS` (`DetectionContext/consts.ts`, 30 s), so following a car continuously (a detection roughly once a second, §4 pump) collapses into one event rather than a flood. A sighting after that much absence counts as a fresh encounter and fires again.
+
+The handler keys off the frame's fresh road-filtered detections (any carrying `POLICE_LABEL`), not the coasting tracker's `visible` set (§5), so a briefly held stale box does not keep the debounce alive. `lastPoliceSeenAtRef` holds the `performance.now()` of the last sighting; it starts at `Number.NEGATIVE_INFINITY` (not `0`, which is only ~page-load time and would swallow a sighting in the first 30 s) so the first sighting always reads as fresh. The `track()` call sits in the message handler body, deliberately not inside the `setHud` updater: React double-invokes state updaters under StrictMode, which would double-count the sighting. The event carries no payload: no location, no box, no image, no score, only the count.
 
 ### `SettingsContext` / `useSettings()`
 

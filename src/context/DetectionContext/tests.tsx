@@ -1,3 +1,4 @@
+import { track } from "@vercel/analytics";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode, useState } from "react";
 import type { ReactNode } from "react";
@@ -6,8 +7,11 @@ import {
   DetectionProvider,
   FRAME_RETRY_MS,
   MIN_FRAME_INTERVAL_MS,
+  POLICE_EVENT_DEBOUNCE_MS,
   useDetection,
 } from "@/context/DetectionContext";
+
+vi.mock("@vercel/analytics", () => ({ track: vi.fn() }));
 import type {
   DebugSnapshot,
   DetectionWorkerLike,
@@ -205,6 +209,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
   vi.restoreAllMocks();
+  // restoreAllMocks does not reset a vi.fn() created by a module mock factory.
+  vi.mocked(track).mockClear();
   // Restore the prototype visibilityState getter shadowed by
   // setDocumentVisibility, so later tests see jsdom's real value.
   Reflect.deleteProperty(document, "visibilityState");
@@ -447,6 +453,82 @@ describe("DetectionProvider", () => {
     expect(
       worker.posted.filter((message) => message.type === "detect"),
     ).toHaveLength(2);
+  });
+
+  it("reports a police sighting once per encounter", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    const police = {
+      label: "police",
+      score: 0.9,
+      box: { xmin: 0.4, ymin: 0.5, xmax: 0.6, ymax: 0.8 },
+    };
+    const timing = { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 };
+
+    // First sighting fires the event.
+    act(() => {
+      worker.emit({ type: "detections", detections: [police], timing });
+    });
+    expect(track).toHaveBeenCalledTimes(1);
+    expect(track).toHaveBeenCalledWith("police_detected");
+
+    // A second sighting within the debounce window is the same encounter.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    act(() => {
+      worker.emit({ type: "detections", detections: [police], timing });
+    });
+    expect(track).toHaveBeenCalledTimes(1);
+
+    // After police are absent past the debounce window, a sighting re-fires.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLICE_EVENT_DEBOUNCE_MS);
+    });
+    act(() => {
+      worker.emit({ type: "detections", detections: [police], timing });
+    });
+    expect(track).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not report an event when no police are detected", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+      });
+    });
+    expect(track).not.toHaveBeenCalled();
   });
 
   it("does not pump a paced frame scheduled before stop()", async () => {
