@@ -78,6 +78,17 @@ const RadarScreen = () => {
     }
   }, [status, wakeLock]);
 
+  // Report a camera failure to analytics once when it occurs. Detection-side
+  // failures (model load, worker crash) are tracked at their source in
+  // DetectionContext; camera errors only surface here, where getUserMedia's
+  // result reaches the UI. Camera permission-denied rate is the app's most
+  // valuable funnel signal, and with no backend this is the only view into it.
+  useEffect(() => {
+    if (cameraError) {
+      track("error", { code: cameraError.code });
+    }
+  }, [cameraError]);
+
   const updateVideoSize = useCallback((video: HTMLVideoElement) => {
     setVideoSize({ width: video.videoWidth, height: video.videoHeight });
   }, []);

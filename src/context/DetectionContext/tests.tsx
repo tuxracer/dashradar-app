@@ -281,6 +281,49 @@ describe("DetectionProvider", () => {
     expect(screen.getByTestId("error").textContent).toBe("MODEL_LOAD_FAILED");
   });
 
+  it("reports the resolved backend and model load on ready", () => {
+    const worker = renderWithProvider(<Probe />);
+    act(() => {
+      worker.emit({ type: "model-load-start", fromCache: false });
+      worker.emit({ type: "ready", backend: "webgpu" });
+    });
+    expect(track).toHaveBeenCalledWith("backend_resolved", {
+      backend: "webgpu",
+    });
+    expect(track).toHaveBeenCalledWith("model_ready", {
+      backend: "webgpu",
+      fromCache: false,
+    });
+  });
+
+  it("reports a cache hit in the model_ready event", () => {
+    const worker = renderWithProvider(<Probe />);
+    act(() => {
+      worker.emit({ type: "model-load-start", fromCache: true });
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    expect(track).toHaveBeenCalledWith("model_ready", {
+      backend: "wasm",
+      fromCache: true,
+    });
+  });
+
+  it("reports worker errors to analytics", () => {
+    const worker = renderWithProvider(<Probe />);
+    act(() => {
+      worker.emit({ type: "worker-error", code: "MODEL_LOAD_FAILED" });
+    });
+    expect(track).toHaveBeenCalledWith("error", { code: "MODEL_LOAD_FAILED" });
+  });
+
+  it("reports a worker crash to analytics", () => {
+    const worker = renderWithProvider(<Probe />);
+    act(() => {
+      worker.onerror?.(new ErrorEvent("error"));
+    });
+    expect(track).toHaveBeenCalledWith("error", { code: "WORKER_CRASHED" });
+  });
+
   it("pumps a frame after start and another after each result", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(
@@ -471,6 +514,9 @@ describe("DetectionProvider", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
+    // Ready emits backend_resolved/model_ready; drop those so the assertions
+    // below count only the police event.
+    vi.mocked(track).mockClear();
 
     const police = {
       label: "police",
@@ -521,6 +567,9 @@ describe("DetectionProvider", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
+    // Ready emits backend_resolved/model_ready; only the police event is under
+    // test here, so drop those before emitting the empty detections frame.
+    vi.mocked(track).mockClear();
     act(() => {
       worker.emit({
         type: "detections",

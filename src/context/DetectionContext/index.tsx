@@ -136,6 +136,10 @@ export const DetectionProvider = ({
   // visibility handler knows to restart it (and only it) on return.
   const pausedByVisibilityRef = useRef(false);
   const fileProgressRef = useRef(new Map<string, ModelProgress>());
+  // Whether the model loaded from the runtime cache, captured from
+  // `model-load-start` so the `model_ready` analytics event fired on `ready`
+  // can report cache hits against fresh downloads.
+  const modelFromCacheRef = useRef(false);
   const resultTimesRef = useRef<number[]>([]);
   // Capture duration of the most recently posted frame and the timestamp it was
   // posted, paired with the next detections result for the debug snapshot.
@@ -320,6 +324,7 @@ export const DetectionProvider = ({
       switch (message.type) {
         case "model-load-start": {
           setDownloadingModel(!message.fromCache);
+          modelFromCacheRef.current = message.fromCache;
           break;
         }
         case "model-progress": {
@@ -342,6 +347,17 @@ export const DetectionProvider = ({
         }
         case "ready": {
           setBackend(message.backend);
+          // Report which execution provider this device resolved to and how
+          // the weights loaded. The two are the app's core health signals: with
+          // no backend there is no other view into the GPU/CPU split or how
+          // often the runtime cache is actually hit. Emitted from the message
+          // handler body, not a setState updater, so StrictMode's double-invoke
+          // of updaters can't double-count them.
+          track("backend_resolved", { backend: message.backend });
+          track("model_ready", {
+            backend: message.backend,
+            fromCache: modelFromCacheRef.current,
+          });
           if (runningRef.current) {
             statusRef.current = "running";
             setStatus("running");
@@ -404,6 +420,7 @@ export const DetectionProvider = ({
           break;
         }
         case "worker-error": {
+          track("error", { code: message.code });
           setError(message.code);
           statusRef.current = "error";
           setStatus("error");
@@ -417,6 +434,7 @@ export const DetectionProvider = ({
       }
     };
     worker.onerror = () => {
+      track("error", { code: "WORKER_CRASHED" });
       setError("WORKER_CRASHED");
       statusRef.current = "error";
       setStatus("error");
