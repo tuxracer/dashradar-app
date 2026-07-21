@@ -10,13 +10,32 @@ import {
 export * from "./consts";
 
 /**
+ * The scannable QR card: {@link SHARE_URL} as a pre-rendered inline SVG (see
+ * consts, no runtime dependency, works fully offline) with the bare host label
+ * beneath, near-black modules on a white card so it scans reliably against
+ * dark backdrops. Shared by the settings ShareCard row and the desktop intro
+ * screen.
+ */
+export const ShareQr = () => (
+  <div className="flex shrink-0 flex-col items-center gap-2 rounded-2xl bg-white p-3">
+    <svg
+      viewBox={`0 0 ${QR_VIEW_BOX_SIZE} ${QR_VIEW_BOX_SIZE}`}
+      shapeRendering="crispEdges"
+      className="h-32 w-32"
+    >
+      <path stroke="#0b0a10" strokeWidth={1} d={QR_MODULE_PATH} />
+    </svg>
+    <span className="text-xs font-semibold tracking-[0.08em] text-surface/70">
+      {SHARE_URL_LABEL}
+    </span>
+  </div>
+);
+
+/**
  * Share row for handing the app to someone else. Two paths: a static QR code
  * (they point a camera at the phone and {@link SHARE_URL} opens) and, where the
  * Web Share API exists (iOS/Android and desktop Safari), a large SHARE button
- * that opens the native share sheet with the same URL. The QR is a
- * pre-rendered inline SVG (see consts), so it adds no runtime dependency and
- * works fully offline; near-black modules on a white card so it scans reliably
- * against the dark settings panel.
+ * that opens the native share sheet with the same URL.
  */
 export const ShareCard = () => {
   const supportsShare = typeof navigator.share === "function";
@@ -48,18 +67,7 @@ export const ShareCard = () => {
           </button>
         )}
       </span>
-      <div className="flex shrink-0 flex-col items-center gap-2 rounded-2xl bg-white p-3">
-        <svg
-          viewBox={`0 0 ${QR_VIEW_BOX_SIZE} ${QR_VIEW_BOX_SIZE}`}
-          shapeRendering="crispEdges"
-          className="h-32 w-32"
-        >
-          <path stroke="#0b0a10" strokeWidth={1} d={QR_MODULE_PATH} />
-        </svg>
-        <span className="text-xs font-semibold tracking-[0.08em] text-surface/70">
-          {SHARE_URL_LABEL}
-        </span>
-      </div>
+      <ShareQr />
     </div>
   );
 };

@@ -1,4 +1,6 @@
 import { RadarBackdrop } from "@/components/RadarBackdrop";
+import { ShareQr } from "@/components/ShareCard";
+import { isDesktopDevice } from "@/lib/deviceType";
 import { INTRO_SEEN_STORAGE_KEY } from "./consts";
 
 export * from "./consts";
@@ -74,46 +76,69 @@ type IntroScreenProps = {
  * Full-screen first-open intro. Rendered instead of the radar screen until
  * dismissed, so the camera permission prompt fires right after the START tap
  * instead of cold on page load. The model download proceeds underneath in
- * DetectionProvider while the user reads.
+ * DetectionProvider while the user reads. On a desktop the START button is
+ * replaced by the share QR code, since the app is built for a phone on a dash:
+ * scanning it moves the user to mobile, and a small link below still lets them
+ * continue on the desktop.
  */
-export const IntroScreen = ({ onStart }: IntroScreenProps) => (
-  <main className="fixed inset-0 overflow-y-auto bg-surface">
-    <div className="relative flex min-h-full flex-col items-center justify-center gap-6 px-8 py-6 landscape:flex-row landscape:gap-14">
-      <RadarBackdrop />
-      <RadarScope />
-      <div className="flex max-w-md flex-col items-center gap-4 text-center landscape:items-start landscape:text-left">
-        <span className="text-[13px] font-semibold tracking-[0.34em] text-white/85">
-          HTTPS://DASHRADAR.APP
-        </span>
-        <h1 className="text-3xl font-bold leading-[1.05] tracking-wide text-white/90">
-          POLICE DETECTION ON YOUR DASH
-        </h1>
-        <p className="text-base font-medium leading-snug text-white/70">
-          Mount it on the dash, camera facing the road. The signal meter climbs
-          when a police vehicle comes into view.
-        </p>
-        <div className="flex flex-col gap-2">
-          <IntroPoint
-            label="ON-DEVICE"
-            text="Runs entirely on your phone. Nothing leaves the device."
-          />
-          <IntroPoint
-            label="OFFLINE"
-            text="Cached after the first load. Works with no signal."
-          />
-          <IntroPoint
-            label="CAMERA"
-            text="Access is requested next. The feed stays on your phone."
-          />
+export const IntroScreen = ({ onStart }: IntroScreenProps) => {
+  const desktop = isDesktopDevice();
+
+  return (
+    <main className="fixed inset-0 overflow-y-auto bg-surface">
+      <div className="relative flex min-h-full flex-col items-center justify-center gap-6 px-8 py-6 landscape:flex-row landscape:gap-14">
+        <RadarBackdrop />
+        <RadarScope />
+        <div className="flex max-w-md flex-col items-center gap-4 text-center landscape:items-start landscape:text-left">
+          <span className="text-[13px] font-semibold tracking-[0.34em] text-white/85">
+            HTTPS://DASHRADAR.APP
+          </span>
+          <h1 className="text-3xl font-bold leading-[1.05] tracking-wide text-white/90">
+            POLICE DETECTION ON YOUR DASH
+          </h1>
+          <p className="text-base font-medium leading-snug text-white/70">
+            Mount it on the dash, camera facing the road. The signal meter
+            climbs when a police vehicle comes into view.
+          </p>
+          <div className="flex flex-col gap-2">
+            <IntroPoint
+              label="ON-DEVICE"
+              text="Runs entirely on your phone. Nothing leaves the device."
+            />
+            <IntroPoint
+              label="OFFLINE"
+              text="Cached after the first load. Works with no signal."
+            />
+            <IntroPoint
+              label="CAMERA"
+              text="Access is requested next. The feed stays on your phone."
+            />
+          </div>
+          {desktop ? (
+            <div className="mt-1 flex flex-col items-center gap-3 landscape:items-start">
+              <p className="text-sm font-semibold tracking-[0.06em] text-white/80">
+                Scan with your phone to continue on mobile.
+              </p>
+              <ShareQr />
+              <button
+                type="button"
+                onClick={onStart}
+                className="text-sm font-medium text-white/50 underline underline-offset-4 transition-colors hover:text-white/80"
+              >
+                Continue on this device
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={onStart}
+              className="mt-1 rounded-full bg-hud-amber px-14 py-3.5 text-lg font-bold tracking-[0.24em] text-surface active:scale-95"
+            >
+              START
+            </button>
+          )}
         </div>
-        <button
-          type="button"
-          onClick={onStart}
-          className="mt-1 rounded-full bg-hud-amber px-14 py-3.5 text-lg font-bold tracking-[0.24em] text-surface active:scale-95"
-        >
-          START
-        </button>
       </div>
-    </div>
-  </main>
-);
+    </main>
+  );
+};

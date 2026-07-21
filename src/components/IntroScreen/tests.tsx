@@ -1,10 +1,23 @@
 import { fireEvent, render } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   IntroScreen,
   markIntroSeen,
   shouldShowIntro,
 } from "@/components/IntroScreen";
+import { SHARE_URL_LABEL } from "@/components/ShareCard";
+
+/** Makes isDesktopDevice see a desktop (fine pointer) or mobile (coarse). */
+const stubPointer = (desktop: boolean) => {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({ matches: desktop })),
+  );
+};
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("shouldShowIntro", () => {
   beforeEach(() => {
@@ -23,6 +36,32 @@ describe("IntroScreen", () => {
     const onStart = vi.fn();
     const { getByRole } = render(<IntroScreen onStart={onStart} />);
     fireEvent.click(getByRole("button", { name: "START" }));
+    expect(onStart).toHaveBeenCalledOnce();
+  });
+
+  it("shows the start button and no QR code on mobile", () => {
+    stubPointer(false);
+    const { getByRole, queryByText } = render(
+      <IntroScreen onStart={vi.fn()} />,
+    );
+    expect(getByRole("button", { name: "START" })).toBeInTheDocument();
+    expect(queryByText(SHARE_URL_LABEL)).not.toBeInTheDocument();
+  });
+
+  it("replaces the start button with the QR code on desktop", () => {
+    stubPointer(true);
+    const { getByText, queryByRole } = render(
+      <IntroScreen onStart={vi.fn()} />,
+    );
+    expect(getByText(SHARE_URL_LABEL)).toBeInTheDocument();
+    expect(queryByRole("button", { name: "START" })).not.toBeInTheDocument();
+  });
+
+  it("calls onStart from the continue-on-this-device link on desktop", () => {
+    stubPointer(true);
+    const onStart = vi.fn();
+    const { getByRole } = render(<IntroScreen onStart={onStart} />);
+    fireEvent.click(getByRole("button", { name: "Continue on this device" }));
     expect(onStart).toHaveBeenCalledOnce();
   });
 });
