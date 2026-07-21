@@ -8,6 +8,10 @@ A custom model, fine-tuned to recognize patrol vehicles, drives a glanceable ins
 
 Detection uses a custom **RF-DETR Small** checkpoint published as ONNX at [`tuxracer/las-vegas-metro-rfdetr-small-t1`](https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1). It recognizes Las Vegas Metro patrol vehicles best today, since they make up most of the training data, but the training set keeps growing toward broader police-vehicle detection. The app streams the weights from Hugging Face on first launch and runs them on-device through onnxruntime-web.
 
+## Why on-device
+
+Crowd-sourced apps like Waze depend on a large, active userbase reporting sightings in real time. They are only as good as the crowd nearby, they need a live network connection, and a single user on a quiet road sees nothing. dashradar takes the opposite approach: it looks at the road itself. Detection runs entirely on the phone, so it needs no network, no crowd, and no other users. It works on the first drive, for the first user, anywhere the camera can see the road.
+
 ## Features
 
 - **Radar-detector view**: a signal meter that climbs as a patrol vehicle appears, with an optional beep. Glanceable, no scene to parse.
