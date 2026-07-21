@@ -1,12 +1,17 @@
 import type { HudModel } from "@/lib/detection";
+import type { NormalizedBox } from "@/types";
+import type { ContactDirection } from "./types";
 import {
   DECAY_PER_SEC,
+  DIRECTION_LEFT_MAX,
+  DIRECTION_RIGHT_MIN,
   SIGNAL_FLOOR,
   SIGNAL_HIGH_COLOR,
   SIGNAL_LOW_COLOR,
   SIGNAL_MID_COLOR,
 } from "./consts";
 
+export * from "./types";
 export * from "./consts";
 
 /** Clamp a number into the inclusive [0, 1] range. */
@@ -28,6 +33,31 @@ const mixColor = (
 };
 
 /**
+ * Remap a raw detection score onto the meter's [0, 1] signal band. Scores at
+ * or below SIGNAL_FLOOR read as zero; the [floor, 1] band stretches over the
+ * full range. Shared by the dial (via hudSignal) and the contact card so the
+ * two readouts always agree on what a percent means.
+ */
+export const signalFromScore = (score: number): number => {
+  if (score <= SIGNAL_FLOOR) {
+    return 0;
+  }
+  return clamp01((score - SIGNAL_FLOOR) / (1 - SIGNAL_FLOOR));
+};
+
+/** Which third of the frame a contact's box center falls in. */
+export const contactDirection = (box: NormalizedBox): ContactDirection => {
+  const centerX = (box.xmin + box.xmax) / 2;
+  if (centerX <= DIRECTION_LEFT_MAX) {
+    return "left";
+  }
+  if (centerX >= DIRECTION_RIGHT_MIN) {
+    return "right";
+  }
+  return "ahead";
+};
+
+/**
  * Current police-signal strength for a HUD frame, in [0, 1]. Takes the highest
  * detection score across the HUD (nearest plus the others) and remaps the
  * [SIGNAL_FLOOR, 1] score band onto [0, 1] so the ladder uses its full range.
@@ -42,10 +72,7 @@ export const hudSignal = (hud: HudModel | undefined): number => {
     return 0;
   }
   const max = Math.max(...detections.map((detection) => detection.score));
-  if (max <= SIGNAL_FLOOR) {
-    return 0;
-  }
-  return clamp01((max - SIGNAL_FLOOR) / (1 - SIGNAL_FLOOR));
+  return signalFromScore(max);
 };
 
 /**

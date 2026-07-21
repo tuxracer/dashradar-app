@@ -28,3 +28,9 @@ export const SIGNAL_MID_COLOR: readonly [number, number, number] = [
 export const SIGNAL_HIGH_COLOR: readonly [number, number, number] = [
   255, 90, 60,
 ];
+
+/** Box center-x at or below this fraction reads as a left contact. */
+export const DIRECTION_LEFT_MAX = 1 / 3;
+
+/** Box center-x at or above this fraction reads as a right contact. */
+export const DIRECTION_RIGHT_MIN = 2 / 3;

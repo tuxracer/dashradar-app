@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 import type { HudModel } from "@/lib/detection";
 import type { Detection } from "@/types";
 import {
+  contactDirection,
   decayPeak,
   hudSignal,
   litSegments,
   signalColor,
+  signalFromScore,
   DECAY_PER_SEC,
   SEGMENT_COUNT,
+  SIGNAL_FLOOR,
 } from "@/lib/radarSignal";
 
 const det = (score: number): Detection => ({
@@ -103,5 +106,39 @@ describe("signalColor", () => {
     expect(
       new Set([signalColor(0), signalColor(0.5), signalColor(1)]).size,
     ).toBe(3);
+  });
+});
+
+describe("signalFromScore", () => {
+  it("maps scores at or below the floor to zero", () => {
+    expect(signalFromScore(SIGNAL_FLOOR)).toBe(0);
+    expect(signalFromScore(0)).toBe(0);
+  });
+
+  it("remaps the floor-to-one band onto zero-to-one", () => {
+    const mid = SIGNAL_FLOOR + (1 - SIGNAL_FLOOR) / 2;
+    expect(signalFromScore(mid)).toBeCloseTo(0.5);
+    expect(signalFromScore(1)).toBe(1);
+  });
+});
+
+describe("contactDirection", () => {
+  const boxAtCenterX = (centerX: number) => ({
+    xmin: centerX - 0.05,
+    ymin: 0.4,
+    xmax: centerX + 0.05,
+    ymax: 0.6,
+  });
+
+  it("reads a left-third contact as left", () => {
+    expect(contactDirection(boxAtCenterX(0.2))).toBe("left");
+  });
+
+  it("reads a middle-third contact as ahead", () => {
+    expect(contactDirection(boxAtCenterX(0.5))).toBe("ahead");
+  });
+
+  it("reads a right-third contact as right", () => {
+    expect(contactDirection(boxAtCenterX(0.8))).toBe("right");
   });
 });
