@@ -44,9 +44,11 @@ const ALERT_RING_COLOR = `rgb(${SIGNAL_HIGH_COLOR.join(", ")})`;
  * segments, colors, readout, status word, and glow straight to the DOM, off
  * React's render path, so smoothness does not depend on the detector's frame
  * rate. The camera feed and bounding boxes are intentionally not shown in this
- * mode. The same loop feeds the level to a radar-detector beeper (see
- * lib/radarAudio), so the sound tracks the meter exactly and exists only while
- * this mode is mounted; audioEnabled false feeds it silence instead.
+ * mode. The same loop feeds a radar-detector beeper (see lib/radarAudio) the
+ * raw signal rather than the peak-held level, so the beeps cut off as soon as
+ * the detection is gone while the dial decays smoothly behind them; the beeper
+ * exists only while this mode is mounted, and audioEnabled false feeds it
+ * silence instead.
  */
 export const RadarDetectorScreen = ({
   confidence,
@@ -123,9 +125,13 @@ export const RadarDetectorScreen = ({
       const level = decayPeak(peakRef.current, confidenceRef.current, dtSec);
       peakRef.current = level;
 
-      // Feed the audio the same peak-held level the meter shows; a disabled
-      // toggle feeds silence instead.
-      beeperRef.current?.update(audioEnabledRef.current ? level : 0, now);
+      // Feed the audio the raw signal, not the peak-held meter level: the
+      // beeps stop the instant the detection is gone instead of winding down
+      // with the dial's decay tail. A disabled toggle feeds silence instead.
+      beeperRef.current?.update(
+        audioEnabledRef.current ? confidenceRef.current : 0,
+        now,
+      );
 
       const color = signalColor(level);
       const lit = litSegments(level, SEGMENT_COUNT);

@@ -284,9 +284,14 @@ meter: `RadarScreen` renders `RadarDetectorScreen` in place of `HudOverlay` and
 `RadarStrip` while it's on, so the radar-detector meter is what a fresh user
 sees first; toggling it off switches to the bounding-box HUD. `radarAudio`
 (default on) gates the beeping audio indicator inside radar-detector mode:
-`RadarDetectorScreen` feeds its peak-held signal level to the `lib/radarAudio`
-beeper when the setting is on and silence when it's off, so the sound tracks
-the meter exactly and never plays in the bounding-box HUD. `SettingsProvider`
+`RadarDetectorScreen` feeds the raw signal (not the peak-held meter level) to
+the `lib/radarAudio` beeper when the setting is on and silence when it's off,
+so the beeps cut off the instant a detection is gone while the dial decays
+smoothly behind them, and never play in the bounding-box HUD. Beeping while
+the dial shows nothing is impossible by construction: the peak-held dial level
+is never below the raw signal, and `AUDIO_FLOOR` sits at or above the dial's
+`CONTACT_THRESHOLD`, so any audible level has already flipped the dial to
+ALERT. `SettingsProvider`
 wraps the app outside `DetectionProvider`;
 `SettingsButton` (a gear in `StatusBar`) opens the full-screen
 `SettingsScreen`, which is the only UI that writes any of these options.

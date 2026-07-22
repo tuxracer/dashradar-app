@@ -17,8 +17,11 @@ export const ATTACK_SEC = 0.005;
 export const RELEASE_SEC = 0.03;
 
 /**
- * Signal level at or below which the beeper is silent. Just above zero so the
- * decaying tail of a cleared signal stops beeping instead of trailing forever.
+ * Signal level at or below which the beeper is silent. Just above zero so a
+ * near-zero signal reads as silence rather than sporadic beeps. Must stay at
+ * or above RadarDetectorScreen's CONTACT_THRESHOLD: the dial's level is never
+ * below the raw signal the beeper is fed, so this ordering guarantees a beep
+ * never sounds while the dial still reads SCANNING.
  */
 export const AUDIO_FLOOR = 0.02;
 
