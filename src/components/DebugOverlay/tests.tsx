@@ -85,6 +85,35 @@ describe("DebugOverlay", () => {
     expect(screen.getByText(/\bgpu\b/)).toBeInTheDocument();
   });
 
+  it("reports shader-f16 support from the probe", () => {
+    enableDebug();
+    renderOverlay({
+      workerGpu: true,
+      adapter: true,
+      device: true,
+      shaderF16: true,
+      chosen: "webgpu",
+      crossOriginIsolated: true,
+      threads: 4,
+    });
+    expect(screen.getByText("shader-f16")).toBeInTheDocument();
+    expect(screen.getByText("supported")).toBeInTheDocument();
+  });
+
+  it("reports missing WebGPU on the shader-f16 row when the worker has no gpu", () => {
+    enableDebug();
+    renderOverlay({
+      workerGpu: false,
+      adapter: false,
+      device: false,
+      shaderF16: false,
+      chosen: "wasm",
+      crossOriginIsolated: true,
+      threads: 4,
+    });
+    expect(screen.getByText("no webgpu")).toBeInTheDocument();
+  });
+
   it("shows the session error when the WebGPU session failed to build", () => {
     enableDebug();
     renderOverlay({

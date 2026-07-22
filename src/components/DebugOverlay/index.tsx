@@ -44,6 +44,27 @@ const probeStages = (probe: BackendProbe): string => {
   ].join(" ");
 };
 
+/**
+ * Plain-language verdict on whether this device could create a session for a
+ * mixed-precision fp16 model build. Any fp16 tensor in the graph makes
+ * onnxruntime-web require the `shader-f16` WebGPU feature at session creation,
+ * so the adapter feature check from the worker's backend probe is the signal:
+ * "supported" means a mixed build is an option here, "unsupported" means only
+ * the fp32 build can run on WebGPU.
+ */
+const f16Support = (probe: BackendProbe | undefined): string => {
+  if (!probe) {
+    return "probing";
+  }
+  if (!probe.workerGpu) {
+    return "no webgpu";
+  }
+  if (!probe.adapter) {
+    return "no adapter";
+  }
+  return probe.shaderF16 ? "supported" : "unsupported";
+};
+
 /** Milliseconds to one decimal place, e.g. "5.6 ms". */
 const ms = (value: number): string => `${value.toFixed(1)} ms`;
 
@@ -139,6 +160,7 @@ export const DebugOverlay = ({
       {backendProbe && (
         <Row label="wgpu probe" value={probeStages(backendProbe)} />
       )}
+      <Row label="shader-f16" value={f16Support(backendProbe)} />
       <Row label="wgpu main" value={mainThreadWebGpu ?? "probing"} />
       {backendProbe && (
         <Row
