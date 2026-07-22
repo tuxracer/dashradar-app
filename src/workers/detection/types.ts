@@ -126,9 +126,10 @@ export type BackendProbe = {
   /** `requestDevice()` succeeded. */
   device: boolean;
   /**
-   * The adapter advertises the `shader-f16` feature. Informational only now
-   * that WebGPU runs the fp32 build (which does not need it); kept because it is
-   * a useful signal when diagnosing GPU capability differences across devices.
+   * The adapter advertises the `shader-f16` feature. Load-bearing: the WebGPU
+   * backend serves the mixed-precision fp16 build, whose fp16 tensors make
+   * onnxruntime-web require this feature at session creation, so a device
+   * without it goes straight to wasm instead of failing the session.
    */
   shaderF16: boolean;
   /** InferenceSession.create failure message for the WebGPU attempt, if any. */

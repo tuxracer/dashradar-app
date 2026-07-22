@@ -19,19 +19,15 @@ import type { DetectionBackend } from "./types";
  * new weights once. When you publish a new model, push a new tag on the HF repo
  * and update `MODEL_REVISION` below to match.
  *
- * WebGPU streams the full-precision fp32 model (~114 MB) and WASM streams a
- * smaller int8-quantized model (~31 MB). WebGPU deliberately does NOT use the
- * fp16 build: the JSEP WebGPU GridSample kernel emits invalid WGSL for fp16
- * tensors (an `f32 * f16` multiply, which WGSL forbids), so its shader fails
- * to compile and GridSample silently produces garbage. RF-DETR's decoder
- * samples features through GridSample, so under JSEP the fp16 build yields
- * broken detections on every WebGPU device. fp32 makes the multiply
- * `f32 * f32`, which compiles, and needs no `shader-f16` GPU feature so it
- * runs on more GPUs. Note the worker now runs the native C++ WebGPU EP
- * ("onnxruntime-web/webgpu"), not JSEP, where the model repo verified the
- * v1.5+ mixed-precision fp16 build works; moving the webgpu URL to it is a
- * candidate follow-up pending its own verification. All three builds have
- * fp32 inputs/outputs, so one pre/post-process fits each.
+ * WebGPU streams the mixed-precision fp16 model (~57 MB: fp16 weights and
+ * compute, the three GridSample nodes kept fp32 behind boundary Casts) and
+ * WASM streams a smaller int8-quantized model (~31 MB). The fp16 build
+ * requires the `shader-f16` GPU feature, which `resolveBackend` gates on, and
+ * became usable when the worker moved to the native C++ WebGPU EP
+ * ("onnxruntime-web/webgpu"): under the old JSEP path, a pure-fp16 GridSample
+ * produced garbage from a broken WGSL shader, which is why the mixed-precision
+ * export keeps those nodes fp32 (see the GridSample gotcha in CLAUDE.md).
+ * All builds have fp32 inputs/outputs, so one pre/post-process fits each.
  */
 /**
  * Hugging Face revision tag the model URLs pin to. Bump this (and push the
@@ -43,7 +39,7 @@ export const MODEL_REVISION = "v1.6";
 
 export const MODEL_URL_BY_BACKEND: Readonly<Record<DetectionBackend, string>> =
   {
-    webgpu: `https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1/resolve/${MODEL_REVISION}/onnx/model.onnx`,
+    webgpu: `https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1/resolve/${MODEL_REVISION}/onnx/model_fp16.onnx`,
     wasm: `https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1/resolve/${MODEL_REVISION}/onnx/model_int8.onnx`,
   };
 
