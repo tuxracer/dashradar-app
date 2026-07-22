@@ -12,7 +12,7 @@ import {
   IMAGENET_STD,
   INPUT_SIZE,
 } from "@/workers/detection/consts";
-import { isWorkerResponse } from "@/workers/detection/types";
+import { isWorkerRequest, isWorkerResponse } from "@/workers/detection/types";
 import type { RawDetection } from "@/types";
 
 /** Build a `[1,queries,2]` logits buffer with per-query (class0, class1) pairs. */
@@ -25,6 +25,39 @@ const makeBoxes = (
 ): Float32Array => Float32Array.from(boxes.flat());
 
 const sigmoid = (x: number): number => 1 / (1 + Math.exp(-x));
+
+/** Minimal stand-in for ImageBitmap, which jsdom does not provide. */
+class FakeImageBitmap {
+  width = 320;
+  height = 240;
+  close = vi.fn();
+}
+
+describe("isWorkerRequest", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("accepts detect with and without the includeFrame flag", () => {
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const frame = new FakeImageBitmap();
+    expect(isWorkerRequest({ type: "detect", frame })).toBe(true);
+    expect(isWorkerRequest({ type: "detect", frame, includeFrame: true })).toBe(
+      true,
+    );
+    expect(
+      isWorkerRequest({ type: "detect", frame, includeFrame: false }),
+    ).toBe(true);
+  });
+
+  it("rejects a non-boolean includeFrame", () => {
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const frame = new FakeImageBitmap();
+    expect(
+      isWorkerRequest({ type: "detect", frame, includeFrame: "yes" }),
+    ).toBe(false);
+  });
+});
 
 describe("isWorkerResponse", () => {
   it("accepts every response variant", () => {
@@ -61,6 +94,28 @@ describe("isWorkerResponse", () => {
     expect(isWorkerResponse({ type: "model-progress", progress: {} })).toBe(
       false,
     );
+  });
+
+  it("accepts a detections message carrying a full-frame blob", () => {
+    expect(
+      isWorkerResponse({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 },
+        frame: new Blob(["jpeg"], { type: "image/jpeg" }),
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects a detections message whose frame is not a Blob", () => {
+    expect(
+      isWorkerResponse({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 },
+        frame: "not-a-blob",
+      }),
+    ).toBe(false);
   });
 });
 
@@ -272,13 +327,6 @@ describe("ensureCapacity", () => {
     expect(grown.byteLength).toBe(3);
   });
 });
-
-/** Minimal stand-in for ImageBitmap, which jsdom does not provide. */
-class FakeImageBitmap {
-  width = 320;
-  height = 240;
-  close = vi.fn();
-}
 
 describe("isWorkerResponse detections crop", () => {
   afterEach(() => {

@@ -50,7 +50,15 @@ export const isDetectionError = (error: unknown): error is DetectionError => {
 
 export type WorkerRequest =
   | { type: "load" }
-  | { type: "detect"; frame: ImageBitmap };
+  | {
+      type: "detect";
+      frame: ImageBitmap;
+      /**
+       * When true, the worker returns the full inference frame as a JPEG blob
+       * on the detections response (debug-mode frame saving).
+       */
+      includeFrame?: boolean;
+    };
 
 export const isWorkerRequest = (value: unknown): value is WorkerRequest => {
   if (!isPlainObject(value)) {
@@ -59,7 +67,12 @@ export const isWorkerRequest = (value: unknown): value is WorkerRequest => {
   if (value.type === "load") {
     return true;
   }
-  return value.type === "detect" && value.frame instanceof ImageBitmap;
+  return (
+    value.type === "detect" &&
+    typeof ImageBitmap !== "undefined" &&
+    value.frame instanceof ImageBitmap &&
+    (value.includeFrame === undefined || isBoolean(value.includeFrame))
+  );
 };
 
 export type ModelFileProgress = { file: string; loaded: number; total: number };
@@ -184,6 +197,12 @@ export type WorkerResponse =
       detections: RawDetection[];
       timing: FrameTiming;
       crop?: DetectionCrop;
+      /**
+       * Full inference frame encoded as JPEG, present only when the request
+       * asked for it (includeFrame) and the frame had a top detection. The
+       * exact image the crop was cut from, for saving as training data.
+       */
+      frame?: Blob;
     }
   | { type: "worker-error"; code: DetectionErrorCode };
 
@@ -205,7 +224,8 @@ export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
         Array.isArray(value.detections) &&
         value.detections.every(isRawDetection) &&
         isFrameTiming(value.timing) &&
-        (value.crop === undefined || isDetectionCrop(value.crop))
+        (value.crop === undefined || isDetectionCrop(value.crop)) &&
+        (value.frame === undefined || value.frame instanceof Blob)
       );
     case "worker-error":
       return isDetectionErrorCode(value.code);
