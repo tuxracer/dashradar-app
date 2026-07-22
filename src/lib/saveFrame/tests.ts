@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { downloadBlob, frameFilename } from "@/lib/saveFrame";
+import { downloadBlob, frameFilename, REVOKE_DELAY_MS } from "@/lib/saveFrame";
 
 afterEach(() => {
   vi.restoreAllMocks();
+  // Tests that opt into fake timers must restore real ones so later tests
+  // (and vitest's own teardown) aren't left running on a fake clock.
+  vi.useRealTimers();
   // jsdom has no createObjectURL/revokeObjectURL; tests assign them below.
   Reflect.deleteProperty(URL, "createObjectURL");
   Reflect.deleteProperty(URL, "revokeObjectURL");
@@ -21,22 +24,41 @@ describe("frameFilename", () => {
 });
 
 describe("downloadBlob", () => {
-  it("clicks a temporary anchor at an object URL of the blob, then revokes it", () => {
+  it("clicks a temporary anchor attached to the document, then revokes the object URL after a delay", () => {
+    vi.useFakeTimers();
     const createObjectURL = vi.fn(() => "blob:test-url");
     const revokeObjectURL = vi.fn();
     Object.assign(URL, { createObjectURL, revokeObjectURL });
-    const clicks: Array<{ href: string; download: string }> = [];
+    const clicks: Array<{
+      href: string;
+      download: string;
+      isConnected: boolean;
+    }> = [];
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
       this: HTMLAnchorElement,
     ) {
-      clicks.push({ href: this.href, download: this.download });
+      // Captured at click time, not after: the anchor is removed from the
+      // document immediately afterward, so reading isConnected later would
+      // always report false regardless of whether the fix is in place.
+      clicks.push({
+        href: this.href,
+        download: this.download,
+        isConnected: this.isConnected,
+      });
     });
 
     const blob = new Blob(["jpeg-bytes"], { type: "image/jpeg" });
     downloadBlob(blob, "test.jpg");
 
     expect(createObjectURL).toHaveBeenCalledWith(blob);
-    expect(clicks).toEqual([{ href: "blob:test-url", download: "test.jpg" }]);
+    expect(clicks).toEqual([
+      { href: "blob:test-url", download: "test.jpg", isConnected: true },
+    ]);
+    // WebKit resolves blob-URL downloads asynchronously; revoking
+    // synchronously can abort the download, so the revoke must be deferred.
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(REVOKE_DELAY_MS);
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:test-url");
   });
 });

@@ -467,7 +467,8 @@ const detect = async (frame: ImageBitmap, includeFrame: boolean) => {
     }
 
     // Full-frame JPEG for debug-mode saving, gated on the same condition that
-    // produces the crop so the saved frame always matches the shown thumbnail.
+    // attempts the crop; the context only surfaces it beside a valid crop
+    // from the same message.
     let fullFrame: Blob | undefined;
     if (includeFrame && topIndex !== undefined) {
       fullFrame = await encodeFrame(frame);

@@ -1,7 +1,12 @@
-import { FRAME_FILE_EXTENSION, FRAME_FILE_PREFIX } from "./consts";
+import {
+  FRAME_FILE_EXTENSION,
+  FRAME_FILE_PREFIX,
+  REVOKE_DELAY_MS,
+} from "./consts";
 
 export * from "./consts";
 
+/** Zero-pads a date field to two digits. */
 const pad = (value: number): string => String(value).padStart(2, "0");
 
 /**
@@ -20,6 +25,8 @@ export const downloadBlob = (blob: Blob, filename: string): void => {
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = filename;
+  document.body.appendChild(anchor);
   anchor.click();
-  URL.revokeObjectURL(url);
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS);
 };

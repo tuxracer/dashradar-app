@@ -86,9 +86,9 @@ export const DetectionProvider = ({
   const { showDebug } = useSettings();
   // Mirrors showDebug for sendFrame, which is a stable callback: the pump
   // reads the current value per capture instead of re-subscribing on toggles.
-  const includeFramesRef = useRef(showDebug);
+  const includeFrameRef = useRef(showDebug);
   useEffect(() => {
-    includeFramesRef.current = showDebug;
+    includeFrameRef.current = showDebug;
   }, [showDebug]);
 
   const [status, setStatus] = useState<DetectionStatus>("loading-model");
@@ -236,7 +236,7 @@ export const DetectionProvider = ({
       };
       inFlightRef.current += 1;
       worker.postMessage(
-        { type: "detect", frame, includeFrame: includeFramesRef.current },
+        { type: "detect", frame, includeFrame: includeFrameRef.current },
         [frame],
       );
     } catch {
