@@ -1,5 +1,10 @@
 /// <reference lib="webworker" />
-import { env, InferenceSession, Tensor } from "onnxruntime-web";
+// The /webgpu subpath is deliberate: it runs WebGPU through the native C++
+// WebGPU EP (asyncify runtime), not the root import's JSEP TypeScript kernels.
+// JSEP has no TopK kernel, which parks this graph's TopK on the CPU EP and
+// makes graph capture impossible; the native EP has one. Its WASM EP also runs
+// the int8 build, so this one import covers both backends.
+import { env, InferenceSession, Tensor } from "onnxruntime-web/webgpu";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 import {
   INPUT_SIZE,
@@ -224,9 +229,10 @@ const resolveIoNames = (
  * Create a WebGPU session with graph capture enabled. Capture records the
  * model's kernel dispatches on the first run and replays them on later runs,
  * cutting the per-frame CPU overhead of dispatching RF-DETR's hundreds of
- * small kernels. Only attempted while `WEBGPU_GRAPH_CAPTURE` is on: capture
- * requires every graph node on the WebGPU EP, and the current export still
- * fails that check on every device (see the flag's doc in consts.ts).
+ * small kernels. Capture requires every graph node on the WebGPU EP, which
+ * this graph only satisfies on the native C++ WebGPU EP (see the
+ * `WEBGPU_GRAPH_CAPTURE` doc in consts.ts and the import note at the top of
+ * this file).
  *
  * A capture session only accepts GPU-located IO, so the input is one
  * persistent GPU buffer written per frame and outputs are forced to

@@ -19,16 +19,19 @@ import type { DetectionBackend } from "./types";
  * new weights once. When you publish a new model, push a new tag on the HF repo
  * and update `MODEL_REVISION` below to match.
  *
- * WebGPU streams the full-precision fp32 model (~118 MB) and WASM streams a
- * smaller int8-quantized model (~35 MB). WebGPU deliberately does NOT use the
- * fp16 build: onnxruntime-web's WebGPU GridSample kernel emits invalid WGSL for
- * fp16 tensors (an `f32 * f16` multiply, which WGSL forbids), so its shader
- * fails to compile and GridSample silently produces garbage. RF-DETR's decoder
- * samples features through GridSample, so the fp16 build yields broken
- * detections on every WebGPU device. fp32 makes the multiply `f32 * f32`, which
- * compiles, and as a bonus needs no `shader-f16` GPU feature so it runs on more
- * GPUs. All three builds have fp32 inputs/outputs, so one pre/post-process fits
- * each.
+ * WebGPU streams the full-precision fp32 model (~114 MB) and WASM streams a
+ * smaller int8-quantized model (~31 MB). WebGPU deliberately does NOT use the
+ * fp16 build: the JSEP WebGPU GridSample kernel emits invalid WGSL for fp16
+ * tensors (an `f32 * f16` multiply, which WGSL forbids), so its shader fails
+ * to compile and GridSample silently produces garbage. RF-DETR's decoder
+ * samples features through GridSample, so under JSEP the fp16 build yields
+ * broken detections on every WebGPU device. fp32 makes the multiply
+ * `f32 * f32`, which compiles, and needs no `shader-f16` GPU feature so it
+ * runs on more GPUs. Note the worker now runs the native C++ WebGPU EP
+ * ("onnxruntime-web/webgpu"), not JSEP, where the model repo verified the
+ * v1.5+ mixed-precision fp16 build works; moving the webgpu URL to it is a
+ * candidate follow-up pending its own verification. All three builds have
+ * fp32 inputs/outputs, so one pre/post-process fits each.
  */
 /**
  * Hugging Face revision tag the model URLs pin to. Bump this (and push the
@@ -46,18 +49,15 @@ export const MODEL_URL_BY_BACKEND: Readonly<Record<DetectionBackend, string>> =
 
 /**
  * Attempt a WebGPU session with graph capture (`enableGraphCapture`) before
- * falling back to a plain session. Off because capture still cannot initialize
- * with the current export: the graph's single TopK node has no WebGPU (JSEP)
- * kernel in onnxruntime-web 1.27, ORT assigns it to the CPU EP on every
- * device, and capture requires every node on the WebGPU EP. The v1.6 onnxslim
- * re-export removed the shape subgraphs that used to trip this check, but TopK
- * remains, so the attempt fails deterministically and would waste a full
- * failed session initialization on every WebGPU cold start. Flip this on only
- * after an export without TopK (or an onnxruntime-web with a WebGPU TopK
- * kernel) is verified in Chrome: the debug overlay's "graph capture" row must
- * read "on".
+ * falling back to a plain session. Requires the native C++ WebGPU EP (the
+ * worker's "onnxruntime-web/webgpu" import with the asyncify runtime): the
+ * root import's JSEP implementation has no TopK kernel, parks this graph's
+ * TopK on the CPU EP, and fails capture's all-nodes-partitioned check on
+ * every device. On devices where capture still cannot initialize or run, the
+ * worker falls back to a plain WebGPU session and the debug overlay's
+ * "graph capture" row reads "failed" with the reason.
  */
-export const WEBGPU_GRAPH_CAPTURE = false;
+export const WEBGPU_GRAPH_CAPTURE = true;
 
 /** Square input edge the model expects (NCHW `[1,3,512,512]`). */
 export const INPUT_SIZE = 512;

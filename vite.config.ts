@@ -25,11 +25,14 @@ const CROSS_ORIGIN_ISOLATION_HEADERS = {
  * binary and its ES-module glue, including the code its thread workers load).
  * We serve them same-origin from /ort/ instead of letting the runtime pull them
  * from cdn.jsdelivr.net, so cross-origin isolation does not block them and the
- * app keeps no live CDN dependency.
+ * app keeps no live CDN dependency. The asyncify pair belongs to the
+ * "onnxruntime-web/webgpu" bundle the worker imports (native C++ WebGPU EP);
+ * the root import would fetch the jsep pair instead, so keep these in sync
+ * with the worker's import.
  */
 const ORT_RUNTIME_FILES = [
-  "ort-wasm-simd-threaded.jsep.wasm",
-  "ort-wasm-simd-threaded.jsep.mjs",
+  "ort-wasm-simd-threaded.asyncify.wasm",
+  "ort-wasm-simd-threaded.asyncify.mjs",
 ] as const;
 
 /** Absolute path to one of onnxruntime-web's shipped runtime files. */
