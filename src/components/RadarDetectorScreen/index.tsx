@@ -48,7 +48,10 @@ const ALERT_RING_COLOR = `rgb(${SIGNAL_HIGH_COLOR.join(", ")})`;
  * raw signal rather than the peak-held level, so the beeps cut off as soon as
  * the detection is gone while the dial decays smoothly behind them; the beeper
  * exists only while this mode is mounted, and audioEnabled false feeds it
- * silence instead.
+ * silence instead. The contact card's direction row follows the same rule as
+ * the audio: it renders only while the raw signal is nonzero (a live
+ * detection), so a stale heading is never shown while the card lingers
+ * through the dial's decay tail.
  */
 export const RadarDetectorScreen = ({
   confidence,
@@ -259,14 +262,16 @@ export const RadarDetectorScreen = ({
             ref={cropCanvasRef}
             className="min-h-0 w-full flex-1 object-contain px-3 py-2"
           />
-          <div className="flex items-center justify-center px-3 pb-2 text-sm font-semibold">
-            <span
-              data-testid="contact-direction"
-              className="tracking-[0.2em] text-white/75"
-            >
-              {DIRECTION_DISPLAY[contact.direction]}
-            </span>
-          </div>
+          {confidence > 0 && (
+            <div className="flex items-center justify-center px-3 pb-2 text-sm font-semibold">
+              <span
+                data-testid="contact-direction"
+                className="tracking-[0.2em] text-white/75"
+              >
+                {DIRECTION_DISPLAY[contact.direction]}
+              </span>
+            </div>
+          )}
         </div>
       )}
     </div>

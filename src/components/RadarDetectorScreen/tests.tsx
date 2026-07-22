@@ -138,6 +138,29 @@ describe("RadarDetectorScreen contact card", () => {
     expect(screen.queryByTestId("contact-card")).not.toBeInTheDocument();
   });
 
+  it("drops the direction row as soon as the detection clears, keeping the thumbnail", () => {
+    const view = render(
+      <RadarDetectorScreen
+        confidence={0.5}
+        audioEnabled={false}
+        contact={testContact("left")}
+      />,
+    );
+    expect(screen.getByTestId("contact-direction")).toBeInTheDocument();
+
+    // The detection disappears but the contact lingers through the dial's
+    // decay tail: the card (thumbnail) stays, the stale heading must not.
+    view.rerender(
+      <RadarDetectorScreen
+        confidence={0}
+        audioEnabled={false}
+        contact={testContact("left")}
+      />,
+    );
+    expect(screen.getByTestId("contact-card")).toBeInTheDocument();
+    expect(screen.queryByTestId("contact-direction")).not.toBeInTheDocument();
+  });
+
   it("starts with the card hidden until the rAF loop lights it", () => {
     render(
       <RadarDetectorScreen
