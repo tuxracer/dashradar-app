@@ -35,7 +35,7 @@ const testContact = (direction: Contact["direction"]): Contact => ({
 });
 
 describe("RadarDetectorScreen contact card", () => {
-  it("renders the card with percent and direction from the contact", () => {
+  it("renders the card with the direction from the contact", () => {
     render(
       <RadarDetectorScreen
         confidence={0.5}
@@ -44,8 +44,6 @@ describe("RadarDetectorScreen contact card", () => {
       />,
     );
     expect(screen.getByTestId("contact-card")).toBeInTheDocument();
-    expect(screen.getByText("CONTACT")).toBeInTheDocument();
-    expect(screen.getByText("50%")).toBeInTheDocument();
     expect(screen.getByTestId("contact-direction")).toHaveTextContent("LEFT");
   });
 

@@ -249,17 +249,11 @@ export const RadarDetectorScreen = ({
           data-testid="contact-card"
           className="absolute right-[4%] top-1/2 flex max-h-[72%] w-[24%] -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-hud-amber/40 bg-surface/90 opacity-0 transition-opacity duration-500 group-data-[contact=true]:opacity-100 portrait:bottom-[4%] portrait:left-1/2 portrait:right-auto portrait:top-auto portrait:w-[56%] portrait:-translate-x-1/2 portrait:translate-y-0"
         >
-          <span className="px-3 pt-2 text-[10px] font-semibold tracking-[0.34em] text-white/45">
-            CONTACT
-          </span>
           <canvas
             ref={cropCanvasRef}
             className="min-h-0 w-full flex-1 object-contain px-3 py-2"
           />
-          <div className="flex items-center justify-between px-3 pb-2 text-sm font-semibold">
-            <span className="tabular-nums text-hud-amber">
-              {Math.round(contact.signal * 100)}%
-            </span>
+          <div className="flex items-center justify-center px-3 pb-2 text-sm font-semibold">
             <span
               data-testid="contact-direction"
               className="tracking-[0.2em] text-white/75"
