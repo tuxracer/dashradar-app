@@ -15,6 +15,7 @@ import {
 import {
   cropRect,
   decodeDetections,
+  ensureCapacity,
   preprocess,
   topDetectionIndex,
 } from "./inference";
@@ -182,6 +183,15 @@ const matchCachedModel = async (url: string): Promise<Response | undefined> => {
 /**
  * Stream the model over the network, reporting byte progress, and return the
  * downloaded weights. Progress mirrors the old Transformers.js load UX.
+ *
+ * Chunks stream directly into one buffer preallocated from Content-Length
+ * rather than being accumulated and copied into a second buffer at the end.
+ * The fp32 build is ~118 MB, so accumulate-then-copy briefly holds both
+ * copies (~236 MB) right before InferenceSession.create makes its own, which
+ * risks an OOM worker crash on low-RAM phones at first load. When
+ * Content-Length is missing or understates the body (e.g. a compressed
+ * transfer), ensureCapacity grows the buffer instead, so the copy-free path
+ * is an optimization, not a correctness requirement.
  */
 const fetchModel = async (url: string): Promise<Uint8Array> => {
   const file = url.slice(url.lastIndexOf("/") + 1);
@@ -191,24 +201,21 @@ const fetchModel = async (url: string): Promise<Uint8Array> => {
   }
   const total = Number(response.headers.get("Content-Length")) || 0;
   const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
+  let buffer = new Uint8Array(total);
   let loaded = 0;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) {
       break;
     }
-    chunks.push(value);
+    buffer = ensureCapacity(buffer, loaded, loaded + value.byteLength);
+    buffer.set(value, loaded);
     loaded += value.byteLength;
     post({ type: "model-progress", progress: { file, loaded, total } });
   }
-  const buffer = new Uint8Array(loaded);
-  let offset = 0;
-  for (const chunk of chunks) {
-    buffer.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return buffer;
+  // A subarray, not a slice: a slice would copy and recreate the exact
+  // double-buffer peak this preallocation exists to avoid.
+  return loaded === buffer.byteLength ? buffer : buffer.subarray(0, loaded);
 };
 
 /** Resolve the graph's input/output names from a freshly created session. */

@@ -123,6 +123,27 @@ export const cropRect = (
   };
 };
 
+/**
+ * Return a buffer with capacity for `needed` bytes, preserving the first
+ * `loaded` bytes already written. Used by the worker's model download: the
+ * final buffer is preallocated from Content-Length so streamed chunks land in
+ * place with no end-of-download copy, and this growth path only runs when
+ * Content-Length was absent or understated the body. Growth at least doubles
+ * the capacity so repeated growth stays amortized-linear.
+ */
+export const ensureCapacity = (
+  buffer: Uint8Array<ArrayBuffer>,
+  loaded: number,
+  needed: number,
+): Uint8Array<ArrayBuffer> => {
+  if (needed <= buffer.byteLength) {
+    return buffer;
+  }
+  const grown = new Uint8Array(Math.max(needed, buffer.byteLength * 2));
+  grown.set(buffer.subarray(0, loaded));
+  return grown;
+};
+
 /** Index of the highest-scoring detection, or undefined when there are none. */
 export const topDetectionIndex = (
   detections: RawDetection[],

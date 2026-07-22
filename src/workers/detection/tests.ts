@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   cropRect,
   decodeDetections,
+  ensureCapacity,
   preprocess,
   topDetectionIndex,
 } from "@/workers/detection/inference";
@@ -231,6 +232,44 @@ describe("topDetectionIndex", () => {
 
   it("returns undefined for an empty array", () => {
     expect(topDetectionIndex([])).toBeUndefined();
+  });
+});
+
+describe("ensureCapacity", () => {
+  it("returns the same buffer untouched when capacity already suffices", () => {
+    const buffer = new Uint8Array(8);
+    expect(ensureCapacity(buffer, 4, 8)).toBe(buffer);
+    expect(ensureCapacity(buffer, 4, 6)).toBe(buffer);
+  });
+
+  it("preserves the written bytes when growing", () => {
+    const buffer = Uint8Array.from([1, 2, 3, 4]);
+    const grown = ensureCapacity(buffer, 4, 5);
+    expect(grown).not.toBe(buffer);
+    expect(Array.from(grown.subarray(0, 4))).toEqual([1, 2, 3, 4]);
+    expect(grown.byteLength).toBeGreaterThanOrEqual(5);
+  });
+
+  it("copies only the loaded prefix, not stale bytes past it", () => {
+    const buffer = Uint8Array.from([1, 2, 9, 9]);
+    const grown = ensureCapacity(buffer, 2, 5);
+    expect(Array.from(grown.subarray(0, 2))).toEqual([1, 2]);
+    expect(grown[2]).toBe(0);
+  });
+
+  it("at least doubles so repeated growth stays amortized-linear", () => {
+    const grown = ensureCapacity(new Uint8Array(100), 100, 101);
+    expect(grown.byteLength).toBe(200);
+  });
+
+  it("jumps straight to needed when doubling is not enough", () => {
+    const grown = ensureCapacity(new Uint8Array(4), 4, 100);
+    expect(grown.byteLength).toBe(100);
+  });
+
+  it("grows from an empty buffer, the no-Content-Length starting state", () => {
+    const grown = ensureCapacity(new Uint8Array(0), 0, 3);
+    expect(grown.byteLength).toBe(3);
   });
 });
 
