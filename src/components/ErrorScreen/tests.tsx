@@ -5,7 +5,9 @@ import { ErrorScreen } from "@/components/ErrorScreen";
 describe("ErrorScreen", () => {
   it("explains a denied camera permission", () => {
     render(<ErrorScreen code="PERMISSION_DENIED" />);
-    expect(screen.getByText(/Camera access is blocked/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/spots patrol vehicles by watching the road/),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /try again/i }),
     ).toBeInTheDocument();
