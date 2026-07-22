@@ -94,3 +94,10 @@ export const CROP_PADDING = 0.15;
  * than this are never upscaled.
  */
 export const CROP_MAX_EDGE = 320;
+
+/**
+ * JPEG quality for the full-frame capture returned with a detection when the
+ * context asks for it (debug-mode frame saving). High enough that compression
+ * artifacts stay irrelevant for training data, at a fraction of PNG size.
+ */
+export const FRAME_JPEG_QUALITY = 0.92;

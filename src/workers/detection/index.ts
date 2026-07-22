@@ -7,6 +7,7 @@
 import { env, InferenceSession, Tensor } from "onnxruntime-web/webgpu";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 import {
+  FRAME_JPEG_QUALITY,
   INPUT_SIZE,
   MODEL_URL_BY_BACKEND,
   WASM_THREAD_CAP,
@@ -367,7 +368,29 @@ const loadModel = async () => {
   }
 };
 
-const detect = async (frame: ImageBitmap) => {
+/**
+ * Encode the full inference frame as a JPEG blob for debug-mode frame saving.
+ * Best-effort like the crop: any failure returns undefined and never blocks
+ * the detection result.
+ */
+const encodeFrame = async (frame: ImageBitmap): Promise<Blob | undefined> => {
+  try {
+    const canvas = new OffscreenCanvas(frame.width, frame.height);
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return undefined;
+    }
+    context.drawImage(frame, 0, 0);
+    return await canvas.convertToBlob({
+      type: "image/jpeg",
+      quality: FRAME_JPEG_QUALITY,
+    });
+  } catch {
+    return undefined;
+  }
+};
+
+const detect = async (frame: ImageBitmap, includeFrame: boolean) => {
   if (!model) {
     frame.close();
     return;
@@ -443,12 +466,20 @@ const detect = async (frame: ImageBitmap) => {
       }
     }
 
+    // Full-frame JPEG for debug-mode saving, gated on the same condition that
+    // produces the crop so the saved frame always matches the shown thumbnail.
+    let fullFrame: Blob | undefined;
+    if (includeFrame && topIndex !== undefined) {
+      fullFrame = await encodeFrame(frame);
+    }
+
     post(
       {
         type: "detections",
         detections,
         timing: { preprocessMs, inferenceMs, decodeMs },
         crop,
+        frame: fullFrame,
       },
       crop ? [crop.image] : [],
     );
@@ -468,5 +499,5 @@ self.onmessage = (event: MessageEvent<unknown>) => {
     void loadModel();
     return;
   }
-  void detect(request.frame);
+  void detect(request.frame, request.includeFrame ?? false);
 };
