@@ -65,11 +65,19 @@ type BackendChoice = {
  * Pick the execution backend, probing for a usable WebGPU device rather than
  * only checking that the API exists. On some devices `navigator.gpu` is present
  * but no adapter or device can actually be acquired. If we trusted the API
- * check alone, we would download the much larger fp32 WebGPU build, fail at
+ * check alone, we would download the much larger WebGPU build, fail at
  * session creation, then fall back to wasm and download the int8 build too. A
  * successful adapter + device probe here proves WebGPU works before we commit
  * to that larger download, so an unusable GPU goes straight to wasm and only
  * one set of weights is fetched.
+ *
+ * WebGPU is also gated on the adapter exposing `shader-f16`. Any fp16 tensor
+ * in a model graph makes onnxruntime-web require that feature at session
+ * creation, so gating here keeps the backend choice a clean two-way split:
+ * the webgpu URL can point at an fp16 (or mixed-precision) build without a
+ * third fp32-fallback branch, and an adapter without the feature goes straight
+ * to wasm instead of failing the session and double-downloading. GPUs lacking
+ * `shader-f16` are rare on the phones this app targets.
  *
  * Runs in the worker scope, which is where onnxruntime-web needs WebGPU: some
  * browsers expose `navigator.gpu` on the main thread but not inside a worker.
@@ -96,6 +104,9 @@ const resolveBackend = async (): Promise<BackendChoice> => {
     }
     probe.adapter = true;
     probe.shaderF16 = adapter.features.has("shader-f16");
+    if (!probe.shaderF16) {
+      return { backend: "wasm", probe };
+    }
     const device = await adapter.requestDevice();
     probe.device = true;
     // Release the probe device; onnxruntime-web acquires its own.

@@ -45,12 +45,12 @@ const probeStages = (probe: BackendProbe): string => {
 };
 
 /**
- * Plain-language verdict on whether this device could create a session for a
- * mixed-precision fp16 model build. Any fp16 tensor in the graph makes
- * onnxruntime-web require the `shader-f16` WebGPU feature at session creation,
- * so the adapter feature check from the worker's backend probe is the signal:
- * "supported" means a mixed build is an option here, "unsupported" means only
- * the fp32 build can run on WebGPU.
+ * Plain-language verdict on the `shader-f16` WebGPU feature from the worker's
+ * backend probe. Any fp16 tensor in a model graph makes onnxruntime-web
+ * require the feature at session creation, so `resolveBackend` gates the
+ * WebGPU backend on it: "supported" means this device is eligible for GPU
+ * inference, "unsupported" means it runs the WASM path even though WebGPU
+ * exists.
  */
 const f16Support = (probe: BackendProbe | undefined): string => {
   if (!probe) {
