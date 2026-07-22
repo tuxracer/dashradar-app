@@ -20,4 +20,11 @@ export type TrackerConfig = {
   iouMatchThreshold: number;
   /** Unmatched frames a track coasts before being dropped. */
   maxMisses: number;
+  /**
+   * Blend weight for a matched detection's score, in (0, 1]. Each match moves
+   * the track's score this fraction of the way toward the new raw score, so
+   * frame-to-frame model jitter averages out instead of passing through. 1
+   * disables smoothing (adopt the raw score outright).
+   */
+  scoreSmoothingAlpha: number;
 };

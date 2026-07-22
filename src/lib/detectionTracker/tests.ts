@@ -27,6 +27,7 @@ const detection = (overrides: Partial<Detection> = {}): Detection => ({
 const config: TrackerConfig = {
   iouMatchThreshold: 0.3,
   maxMisses: 2,
+  scoreSmoothingAlpha: 0.5,
 };
 
 describe("iou", () => {
@@ -89,7 +90,7 @@ describe("stepTracker", () => {
     expect(drifted.visible).toHaveLength(1);
   });
 
-  it("adopts the newest matched detection's box and score", () => {
+  it("adopts a matched detection's box outright but eases its score by scoreSmoothingAlpha", () => {
     let state = initialTrackerState();
     state = stepTracker(state, [detection({ score: 0.8 })], config).state;
     const updated = stepTracker(
@@ -97,8 +98,46 @@ describe("stepTracker", () => {
       [detection({ score: 0.95, box: box(0.41, 0.51, 0.61, 0.81) })],
       config,
     );
-    expect(updated.visible[0].score).toBe(0.95);
+    // Alpha 0.5 moves the score halfway from 0.8 toward 0.95.
+    expect(updated.visible[0].score).toBeCloseTo(0.875);
     expect(updated.visible[0].box.xmin).toBeCloseTo(0.41);
+  });
+
+  it("damps alternating score jitter instead of passing it through", () => {
+    // A static scene where the model alternates 0.94 / 0.76 on the same
+    // object. Without smoothing the shown score would swing the full 0.18
+    // every frame; with alpha 0.5 the swing settles well inside that band.
+    let state = initialTrackerState();
+    state = stepTracker(state, [detection({ score: 0.94 })], config).state;
+    const shown: number[] = [];
+    for (const raw of [0.76, 0.94, 0.76, 0.94]) {
+      const stepped = stepTracker(state, [detection({ score: raw })], config);
+      state = stepped.state;
+      shown.push(stepped.visible[0].score);
+    }
+    const swings = shown.slice(1).map((score, i) => Math.abs(score - shown[i]));
+    expect(Math.max(...swings)).toBeLessThan(0.18 / 2 + 0.001);
+  });
+
+  it("adopts the raw score outright when scoreSmoothingAlpha is 1", () => {
+    const unsmoothed: TrackerConfig = { ...config, scoreSmoothingAlpha: 1 };
+    let state = initialTrackerState();
+    state = stepTracker(state, [detection({ score: 0.8 })], unsmoothed).state;
+    const updated = stepTracker(
+      state,
+      [detection({ score: 0.95 })],
+      unsmoothed,
+    );
+    expect(updated.visible[0].score).toBe(0.95);
+  });
+
+  it("shows a brand-new track's first score unsmoothed", () => {
+    const { visible } = stepTracker(
+      initialTrackerState(),
+      [detection({ score: 0.91 })],
+      config,
+    );
+    expect(visible[0].score).toBe(0.91);
   });
 
   it("matches two detections to two separate tracks greedily without double-claiming", () => {

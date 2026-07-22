@@ -81,12 +81,18 @@ export const stepTracker = (
     const track = tracks[i];
     const detection = matchedDetByTrack.get(i);
     if (detection) {
+      // Ease the score toward the new raw value instead of adopting it
+      // outright, so per-frame model jitter does not whipsaw downstream
+      // readouts (the radar detector percentage in particular).
+      const score =
+        track.score +
+        (detection.score - track.score) * config.scoreSmoothingAlpha;
       nextTracks.push({
         ...track,
         label: detection.label,
         displayLabel: detection.displayLabel,
         category: detection.category,
-        score: detection.score,
+        score,
         box: detection.box,
         misses: 0,
       });

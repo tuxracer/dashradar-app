@@ -13,8 +13,17 @@ export const IOU_MATCH_THRESHOLD = 0.3;
  */
 export const MAX_MISSES = 2;
 
+/**
+ * Blend weight for a matched detection's score (see TrackerConfig). At the
+ * detector's ~1 Hz cadence, 0.5 averages each pair of consecutive frames,
+ * roughly halving raw score jitter before it reaches the HUD and the radar
+ * detector meter. Tune on-device.
+ */
+export const SCORE_SMOOTHING_ALPHA = 0.5;
+
 /** Default tuning applied by createDetectionTracker. */
 export const DEFAULT_TRACKER_CONFIG: TrackerConfig = {
   iouMatchThreshold: IOU_MATCH_THRESHOLD,
   maxMisses: MAX_MISSES,
+  scoreSmoothingAlpha: SCORE_SMOOTHING_ALPHA,
 };
