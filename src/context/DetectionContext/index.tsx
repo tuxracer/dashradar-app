@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { track } from "@vercel/analytics";
+import { useSettings } from "@/context/SettingsContext";
 import { waitForNextVideoFrame } from "@/lib/camera";
 import type { HudModel } from "@/lib/detection";
 import { buildHudModel, toRoadDetections } from "@/lib/detection";
@@ -82,6 +83,14 @@ export const DetectionProvider = ({
   createWorker = createDetectionWorker,
   createMotionManager = createMotionSensorManager,
 }: DetectionProviderProps) => {
+  const { showDebug } = useSettings();
+  // Mirrors showDebug for sendFrame, which is a stable callback: the pump
+  // reads the current value per capture instead of re-subscribing on toggles.
+  const includeFramesRef = useRef(showDebug);
+  useEffect(() => {
+    includeFramesRef.current = showDebug;
+  }, [showDebug]);
+
   const [status, setStatus] = useState<DetectionStatus>("loading-model");
   const [backend, setBackend] = useState<DetectionBackend>();
   const [backendProbe, setBackendProbe] = useState<BackendProbe>();
@@ -226,7 +235,10 @@ export const DetectionProvider = ({
         pitch: capturedOrientation.pitch,
       };
       inFlightRef.current += 1;
-      worker.postMessage({ type: "detect", frame }, [frame]);
+      worker.postMessage(
+        { type: "detect", frame, includeFrame: includeFramesRef.current },
+        [frame],
+      );
     } catch {
       if (generation !== pumpGenerationRef.current || !runningRef.current) {
         return;
@@ -400,6 +412,7 @@ export const DetectionProvider = ({
             if (cropDetection) {
               replaceContact({
                 image: message.crop.image,
+                frame: message.frame,
                 score: cropDetection.score,
                 signal: signalFromScore(cropDetection.score),
                 box: cropDetection.box,

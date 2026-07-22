@@ -10,6 +10,7 @@ import {
   POLICE_EVENT_DEBOUNCE_MS,
   useDetection,
 } from "@/context/DetectionContext";
+import { SettingsProvider, STORAGE_KEY } from "@/context/SettingsContext";
 
 vi.mock("@vercel/analytics", () => ({ track: vi.fn() }));
 import type {
@@ -155,7 +156,9 @@ const DeltaProbe = () => {
 const renderWithProvider = (ui: ReactNode) => {
   const worker = new FakeWorker();
   render(
-    <DetectionProvider createWorker={() => worker}>{ui}</DetectionProvider>,
+    <SettingsProvider>
+      <DetectionProvider createWorker={() => worker}>{ui}</DetectionProvider>
+    </SettingsProvider>,
   );
   return worker;
 };
@@ -214,6 +217,9 @@ afterEach(() => {
   // Restore the prototype visibilityState getter shadowed by
   // setDocumentVisibility, so later tests see jsdom's real value.
   Reflect.deleteProperty(document, "visibilityState");
+  // A seeded showDebug (or any other persisted setting) must not leak between
+  // tests: SettingsProvider persists its state to localStorage on mount.
+  window.localStorage.clear();
 });
 
 describe("DetectionProvider", () => {
@@ -623,9 +629,11 @@ describe("DetectionProvider", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = new FakeWorker();
     render(
-      <DetectionProvider createWorker={() => worker}>
-        <StartStopWithVideo video={video} />
-      </DetectionProvider>,
+      <SettingsProvider>
+        <DetectionProvider createWorker={() => worker}>
+          <StartStopWithVideo video={video} />
+        </DetectionProvider>
+      </SettingsProvider>,
     );
     act(() => {
       worker.emit({ type: "ready", backend: "wasm" });
@@ -658,9 +666,11 @@ describe("DetectionProvider", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = new FakeWorker();
     render(
-      <DetectionProvider createWorker={() => worker}>
-        <StartStopWithVideo video={video} />
-      </DetectionProvider>,
+      <SettingsProvider>
+        <DetectionProvider createWorker={() => worker}>
+          <StartStopWithVideo video={video} />
+        </DetectionProvider>
+      </SettingsProvider>,
     );
     act(() => {
       worker.emit({ type: "ready", backend: "wasm" });
@@ -748,9 +758,11 @@ describe("DetectionProvider", () => {
     const worker = new FakeWorker();
     render(
       <StrictMode>
-        <DetectionProvider createWorker={() => worker}>
-          <StartOnReady />
-        </DetectionProvider>
+        <SettingsProvider>
+          <DetectionProvider createWorker={() => worker}>
+            <StartOnReady />
+          </DetectionProvider>
+        </SettingsProvider>
       </StrictMode>,
     );
     act(() => {
@@ -1000,6 +1012,54 @@ describe("DetectionProvider", () => {
     });
     expect(screen.getByTestId("objects").textContent).toBe("1");
   });
+
+  it("posts includeFrame false while the debug setting is off", async () => {
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    expect(
+      worker.posted.find((message) => message.type === "detect"),
+    ).toMatchObject({ includeFrame: false });
+  });
+
+  it("posts includeFrame true while the debug setting is on", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ showDebug: true }),
+    );
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    expect(
+      worker.posted.find((message) => message.type === "detect"),
+    ).toMatchObject({ includeFrame: true });
+  });
 });
 
 describe("visibility pause", () => {
@@ -1097,13 +1157,15 @@ describe("motion compensation", () => {
     };
     const worker = new FakeWorker();
     render(
-      <DetectionProvider
-        createWorker={() => worker}
-        createMotionManager={() => manager}
-      >
-        <DeltaProbe />
-        <StartOnReady />
-      </DetectionProvider>,
+      <SettingsProvider>
+        <DetectionProvider
+          createWorker={() => worker}
+          createMotionManager={() => manager}
+        >
+          <DeltaProbe />
+          <StartOnReady />
+        </DetectionProvider>
+      </SettingsProvider>,
     );
     act(() => {
       worker.emit({ type: "ready", backend: "wasm" });
@@ -1146,12 +1208,14 @@ describe("motion compensation", () => {
     };
     const worker = new FakeWorker();
     render(
-      <DetectionProvider
-        createWorker={() => worker}
-        createMotionManager={() => manager}
-      >
-        <MotionPermissionProbe />
-      </DetectionProvider>,
+      <SettingsProvider>
+        <DetectionProvider
+          createWorker={() => worker}
+          createMotionManager={() => manager}
+        >
+          <MotionPermissionProbe />
+        </DetectionProvider>
+      </SettingsProvider>,
     );
     expect(screen.getByTestId("motion-permission").textContent).toBe("prompt");
   });
@@ -1180,6 +1244,7 @@ const ContactProbe = () => {
       </span>
       <span data-testid="contact-signal">{contact?.signal ?? "none"}</span>
       <span data-testid="contact-score">{contact?.score ?? "none"}</span>
+      <span data-testid="contact-frame">{contact?.frame ? "yes" : "none"}</span>
     </div>
   );
 };
@@ -1200,9 +1265,11 @@ describe("DetectionProvider contact", () => {
     vi.stubGlobal("ImageBitmap", FakeImageBitmap);
     const worker = new FakeWorker();
     render(
-      <DetectionProvider createWorker={() => worker}>
-        <ContactProbe />
-      </DetectionProvider>,
+      <SettingsProvider>
+        <DetectionProvider createWorker={() => worker}>
+          <ContactProbe />
+        </DetectionProvider>
+      </SettingsProvider>,
     );
     // score 0.85 with SIGNAL_FLOOR 0.7 remaps to 0.5; center-x 0.2 is left.
     act(() => {
@@ -1223,9 +1290,11 @@ describe("DetectionProvider contact", () => {
     const worker = new FakeWorker();
     const first = new FakeImageBitmap();
     render(
-      <DetectionProvider createWorker={() => worker}>
-        <ContactProbe />
-      </DetectionProvider>,
+      <SettingsProvider>
+        <DetectionProvider createWorker={() => worker}>
+          <ContactProbe />
+        </DetectionProvider>
+      </SettingsProvider>,
     );
     act(() => {
       worker.emit({
@@ -1251,9 +1320,11 @@ describe("DetectionProvider contact", () => {
     vi.stubGlobal("ImageBitmap", FakeImageBitmap);
     const worker = new FakeWorker();
     render(
-      <DetectionProvider createWorker={() => worker}>
-        <ContactProbe />
-      </DetectionProvider>,
+      <SettingsProvider>
+        <DetectionProvider createWorker={() => worker}>
+          <ContactProbe />
+        </DetectionProvider>
+      </SettingsProvider>,
     );
     act(() => {
       worker.emit({
@@ -1274,9 +1345,11 @@ describe("DetectionProvider contact", () => {
     const worker = new FakeWorker();
     const orphan = new FakeImageBitmap();
     render(
-      <DetectionProvider createWorker={() => worker}>
-        <ContactProbe />
-      </DetectionProvider>,
+      <SettingsProvider>
+        <DetectionProvider createWorker={() => worker}>
+          <ContactProbe />
+        </DetectionProvider>
+      </SettingsProvider>,
     );
     act(() => {
       worker.emit({
@@ -1295,9 +1368,11 @@ describe("DetectionProvider contact", () => {
     const worker = new FakeWorker();
     const image = new FakeImageBitmap();
     render(
-      <DetectionProvider createWorker={() => worker}>
-        <ContactProbe />
-      </DetectionProvider>,
+      <SettingsProvider>
+        <DetectionProvider createWorker={() => worker}>
+          <ContactProbe />
+        </DetectionProvider>
+      </SettingsProvider>,
     );
     act(() => {
       worker.emit({
@@ -1319,9 +1394,11 @@ describe("DetectionProvider contact", () => {
     const worker = new FakeWorker();
     const image = new FakeImageBitmap();
     const { unmount } = render(
-      <DetectionProvider createWorker={() => worker}>
-        <ContactProbe />
-      </DetectionProvider>,
+      <SettingsProvider>
+        <DetectionProvider createWorker={() => worker}>
+          <ContactProbe />
+        </DetectionProvider>
+      </SettingsProvider>,
     );
     act(() => {
       worker.emit({
@@ -1333,5 +1410,49 @@ describe("DetectionProvider contact", () => {
     });
     unmount();
     expect(image.close).toHaveBeenCalled();
+  });
+
+  it("carries the full-frame blob into the contact", () => {
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const worker = new FakeWorker();
+    render(
+      <SettingsProvider>
+        <DetectionProvider createWorker={() => worker}>
+          <ContactProbe />
+        </DetectionProvider>
+      </SettingsProvider>,
+    );
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [policeDetection(0.85, 0.15, 0.25)],
+        timing,
+        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
+        frame: new Blob(["jpeg"], { type: "image/jpeg" }),
+      });
+    });
+    expect(screen.getByTestId("contact-frame")).toHaveTextContent("yes");
+  });
+
+  it("exposes no frame when the response omits it", () => {
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const worker = new FakeWorker();
+    render(
+      <SettingsProvider>
+        <DetectionProvider createWorker={() => worker}>
+          <ContactProbe />
+        </DetectionProvider>
+      </SettingsProvider>,
+    );
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [policeDetection(0.85, 0.15, 0.25)],
+        timing,
+        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
+      });
+    });
+    expect(screen.getByTestId("contact-direction")).toHaveTextContent("left");
+    expect(screen.getByTestId("contact-frame")).toHaveTextContent("none");
   });
 });

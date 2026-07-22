@@ -29,6 +29,12 @@ export type ModelProgress = { loadedBytes: number; totalBytes: number };
 export type Contact = {
   /** Cutout ImageBitmap of the detection, from the exact inference frame. */
   image: ImageBitmap;
+  /**
+   * Full inference frame the crop was cut from, JPEG-encoded by the worker.
+   * Present only when the frame was captured with the debug setting on; the
+   * contact card's SAVE button downloads it for training data.
+   */
+  frame?: Blob;
   /** Raw model score of the cropped detection. */
   score: number;
   /** Score remapped onto the meter's signal band (signalFromScore); the same
