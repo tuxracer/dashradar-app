@@ -9,6 +9,7 @@ import {
   SEGMENT_COUNT,
   SIGNAL_HIGH_COLOR,
 } from "@/lib/radarSignal";
+import { downloadBlob, frameFilename } from "@/lib/saveFrame";
 import {
   ALERT_THRESHOLD,
   ARC_SWEEP_DEG,
@@ -26,6 +27,8 @@ type RadarDetectorScreenProps = {
   audioEnabled: boolean;
   /** Latest detection cutout to render as the contact card, if any. */
   contact?: Contact;
+  /** Whether the debug setting is on; reveals the contact card's SAVE button. */
+  debug?: boolean;
 };
 
 /** Arc angle for a segment, in degrees, 0 pointing straight up. */
@@ -51,12 +54,15 @@ const ALERT_RING_COLOR = `rgb(${SIGNAL_HIGH_COLOR.join(", ")})`;
  * silence instead. The contact card's direction row follows the same rule as
  * the audio: it renders only while the raw signal is nonzero (a live
  * detection), so a stale heading is never shown while the card lingers
- * through the dial's decay tail.
+ * through the dial's decay tail. While the debug setting is on and the
+ * contact carries the full inference frame, the card also shows a SAVE
+ * button that downloads that frame as a JPEG for collecting training data.
  */
 export const RadarDetectorScreen = ({
   confidence,
   audioEnabled,
   contact,
+  debug,
 }: RadarDetectorScreenProps) => {
   const confidenceRef = useRef(confidence);
   const audioEnabledRef = useRef(audioEnabled);
@@ -186,6 +192,8 @@ export const RadarDetectorScreen = ({
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
+  const frameBlob = contact?.frame;
+
   return (
     <div
       ref={screenRef}
@@ -256,7 +264,7 @@ export const RadarDetectorScreen = ({
       {contact && (
         <div
           data-testid="contact-card"
-          className="absolute right-[4%] top-1/2 flex max-h-[72%] w-[24%] -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-hud-amber/40 bg-surface/90 opacity-0 transition-opacity duration-500 group-data-[contact=true]:opacity-100 portrait:bottom-[4%] portrait:left-1/2 portrait:right-auto portrait:top-auto portrait:w-[56%] portrait:-translate-x-1/2 portrait:translate-y-0"
+          className="invisible absolute right-[4%] top-1/2 flex max-h-[72%] w-[24%] -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-hud-amber/40 bg-surface/90 opacity-0 [transition:opacity_500ms,visibility_0s_500ms] group-data-[contact=true]:visible group-data-[contact=true]:opacity-100 group-data-[contact=true]:[transition:opacity_500ms] portrait:bottom-[4%] portrait:left-1/2 portrait:right-auto portrait:top-auto portrait:w-[56%] portrait:-translate-x-1/2 portrait:translate-y-0"
         >
           <canvas
             ref={cropCanvasRef}
@@ -271,6 +279,15 @@ export const RadarDetectorScreen = ({
                 {DIRECTION_DISPLAY[contact.direction]}
               </span>
             </div>
+          )}
+          {debug && frameBlob && (
+            <button
+              data-testid="contact-save"
+              onClick={() => downloadBlob(frameBlob, frameFilename(new Date()))}
+              className="mx-3 mb-3 rounded-md border border-hud-amber/40 bg-hud-amber/10 py-3 text-sm font-semibold tracking-[0.3em] text-hud-amber"
+            >
+              SAVE
+            </button>
           )}
         </div>
       )}

@@ -142,6 +142,7 @@ const RadarScreen = () => {
             confidence={hudSignal(hud)}
             audioEnabled={radarAudio}
             contact={contact}
+            debug={showDebug}
           />
         ) : (
           <>

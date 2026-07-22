@@ -7,6 +7,7 @@ import {
 import type { Contact } from "@/context/DetectionContext";
 import { isAudible } from "@/lib/radarAudio";
 import { SEGMENT_COUNT } from "@/lib/radarSignal";
+import { downloadBlob } from "@/lib/saveFrame";
 
 /** Spy on the beeper so tests can observe what level the rAF loop feeds it. */
 const beeperUpdate = vi.fn<(level: number, nowMs: number) => void>();
@@ -17,6 +18,11 @@ vi.mock("@/lib/radarAudio", async (importOriginal) => ({
     update: beeperUpdate,
     dispose: () => {},
   }),
+}));
+
+vi.mock("@/lib/saveFrame", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/saveFrame")>()),
+  downloadBlob: vi.fn(),
 }));
 
 describe("RadarDetectorScreen", () => {
@@ -100,8 +106,12 @@ describe("RadarDetectorScreen", () => {
 /** Test contact; the bitmap is a cast fake because jsdom has no ImageBitmap
  * and the component only reads width/height and draws it (draw is skipped
  * when jsdom's canvas has no 2d context). */
-const testContact = (direction: Contact["direction"]): Contact => ({
+const testContact = (
+  direction: Contact["direction"],
+  frame?: Blob,
+): Contact => ({
   image: { width: 320, height: 240, close: () => {} } as unknown as ImageBitmap,
+  frame,
   score: 0.85,
   signal: 0.5,
   box: { xmin: 0.1, ymin: 0.4, xmax: 0.3, ymax: 0.6 },
@@ -174,5 +184,60 @@ describe("RadarDetectorScreen contact card", () => {
     expect(
       screen.getByTestId("contact-card").closest("[data-contact]"),
     ).toHaveAttribute("data-contact", "false");
+  });
+});
+
+describe("RadarDetectorScreen frame saving", () => {
+  const frameBlob = () => new Blob(["jpeg"], { type: "image/jpeg" });
+
+  it("shows SAVE only when debug is on and the contact carries a frame", () => {
+    const view = render(
+      <RadarDetectorScreen
+        confidence={0.5}
+        audioEnabled={false}
+        contact={testContact("left", frameBlob())}
+        debug={true}
+      />,
+    );
+    expect(screen.getByTestId("contact-save")).toBeInTheDocument();
+
+    // Same contact without debug: no button.
+    view.rerender(
+      <RadarDetectorScreen
+        confidence={0.5}
+        audioEnabled={false}
+        contact={testContact("left", frameBlob())}
+      />,
+    );
+    expect(screen.queryByTestId("contact-save")).not.toBeInTheDocument();
+
+    // Debug on but a contact captured without a frame: no button.
+    view.rerender(
+      <RadarDetectorScreen
+        confidence={0.5}
+        audioEnabled={false}
+        contact={testContact("left")}
+        debug={true}
+      />,
+    );
+    expect(screen.queryByTestId("contact-save")).not.toBeInTheDocument();
+  });
+
+  it("downloads the frame as a timestamped JPEG on tap", () => {
+    vi.mocked(downloadBlob).mockClear();
+    const frame = frameBlob();
+    render(
+      <RadarDetectorScreen
+        confidence={0.5}
+        audioEnabled={false}
+        contact={testContact("left", frame)}
+        debug={true}
+      />,
+    );
+    screen.getByTestId("contact-save").click();
+    expect(downloadBlob).toHaveBeenCalledWith(
+      frame,
+      expect.stringMatching(/^dashradar-frame-\d{4}-\d{2}-\d{2}-\d{6}\.jpg$/),
+    );
   });
 });
