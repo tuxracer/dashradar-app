@@ -88,6 +88,10 @@ export const RadarDetectorScreen = ({
     if (!canvas || !contact) {
       return;
     }
+    // A closed ImageBitmap reports 0x0 dimensions; drawImage would throw.
+    if (contact.image.width === 0) {
+      return;
+    }
     canvas.width = contact.image.width;
     canvas.height = contact.image.height;
     const context = canvas.getContext("2d");
@@ -138,17 +142,17 @@ export const RadarDetectorScreen = ({
         }
       });
 
-      const contact = level >= CONTACT_THRESHOLD;
+      const hasSignal = level >= CONTACT_THRESHOLD;
       const readout = readoutRef.current;
       if (readout) {
         readout.textContent = `${Math.round(level * 100)}%`;
-        readout.style.color = contact ? color : "";
+        readout.style.color = hasSignal ? color : "";
       }
 
       const status = statusRef.current;
       if (status) {
         status.textContent = level >= ALERT_THRESHOLD ? "ALERT" : "SCANNING";
-        status.style.color = contact ? color : "";
+        status.style.color = hasSignal ? color : "";
       }
 
       const glow = glowRef.current;

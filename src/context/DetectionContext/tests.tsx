@@ -1313,4 +1313,25 @@ describe("DetectionProvider contact", () => {
     expect(image.close).toHaveBeenCalled();
     expect(screen.getByTestId("contact-direction")).toHaveTextContent("none");
   });
+
+  it("closes the contact bitmap on unmount", () => {
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const worker = new FakeWorker();
+    const image = new FakeImageBitmap();
+    const { unmount } = render(
+      <DetectionProvider createWorker={() => worker}>
+        <ContactProbe />
+      </DetectionProvider>,
+    );
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [policeDetection(0.85, 0.15, 0.25)],
+        timing,
+        crop: { image, detectionIndex: 0 },
+      });
+    });
+    unmount();
+    expect(image.close).toHaveBeenCalled();
+  });
 });
