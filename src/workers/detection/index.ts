@@ -1,7 +1,12 @@
 /// <reference lib="webworker" />
 import { env, InferenceSession, Tensor } from "onnxruntime-web";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
-import { INPUT_SIZE, MODEL_URL_BY_BACKEND, WASM_THREAD_CAP } from "./consts";
+import {
+  INPUT_SIZE,
+  MODEL_URL_BY_BACKEND,
+  WASM_THREAD_CAP,
+  WEBGPU_GRAPH_CAPTURE,
+} from "./consts";
 import {
   cropRect,
   decodeDetections,
@@ -30,12 +35,29 @@ const wasmThreads = Math.min(
 );
 env.wasm.numThreads = wasmThreads;
 
+/**
+ * State for a WebGPU session created with graph capture enabled. The input
+ * lives in one persistent GPU buffer: a capture session rejects CPU-located
+ * input tensors at run(), so each frame is written into this buffer with
+ * `device.queue.writeBuffer` and the session always sees the same
+ * `Tensor.fromGpuBuffer` wrapper.
+ */
+type CaptureIo = {
+  device: GPUDevice;
+  inputGpuBuffer: GPUBuffer;
+  inputTensor: Tensor;
+};
+
 /** Names discovered from the session graph, resolved at load time. */
 type ModelIo = {
   session: InferenceSession;
   inputName: string;
   detsName: string;
   labelsName: string;
+  /** Present when the session runs with WebGPU graph capture (gpu-buffer IO). */
+  capture?: CaptureIo;
+  /** Why the graph-capture attempt fell back to a plain session, if it did. */
+  captureError?: string;
 };
 
 let model: ModelIo | undefined;
@@ -58,7 +80,10 @@ const post = (message: WorkerResponse, transfer: Transferable[] = []) => {
 /** Backend choice plus the per-stage evidence gathered while deciding. */
 type BackendChoice = {
   backend: DetectionBackend;
-  probe: Omit<BackendProbe, "chosen" | "sessionError">;
+  probe: Omit<
+    BackendProbe,
+    "chosen" | "sessionError" | "graphCapture" | "graphCaptureError"
+  >;
 };
 
 /**
@@ -181,6 +206,78 @@ const fetchModel = async (url: string): Promise<Uint8Array> => {
   return buffer;
 };
 
+/** Resolve the graph's input/output names from a freshly created session. */
+const resolveIoNames = (
+  session: InferenceSession,
+): Pick<ModelIo, "inputName" | "detsName" | "labelsName"> => {
+  const inputName = session.inputNames[0];
+  const detsName = session.outputNames.includes(EXPECTED_DETS_NAME)
+    ? EXPECTED_DETS_NAME
+    : session.outputNames[0];
+  const labelsName = session.outputNames.includes(EXPECTED_LABELS_NAME)
+    ? EXPECTED_LABELS_NAME
+    : session.outputNames[1];
+  return { inputName, detsName, labelsName };
+};
+
+/**
+ * Create a WebGPU session with graph capture enabled. Capture records the
+ * model's kernel dispatches on the first run and replays them on later runs,
+ * cutting the per-frame CPU overhead of dispatching RF-DETR's hundreds of
+ * small kernels. Only attempted while `WEBGPU_GRAPH_CAPTURE` is on: capture
+ * requires every graph node on the WebGPU EP, and the current export still
+ * fails that check on every device (see the flag's doc in consts.ts).
+ *
+ * A capture session only accepts GPU-located IO, so the input is one
+ * persistent GPU buffer written per frame and outputs are forced to
+ * `gpu-buffer` and read back with `getData(true)`.
+ *
+ * The first run here is deliberate: it performs the actual capture, doubles as
+ * shader warm-up, and surfaces run-time capture incompatibility (which does
+ * not always fail at session creation) while the caller can still fall back
+ * to a plain session cheaply, with the weights still in scope. Throws on any
+ * failure after releasing whatever was created.
+ */
+const createCaptureModel = async (weights: Uint8Array): Promise<ModelIo> => {
+  const session = await InferenceSession.create(weights, {
+    executionProviders: ["webgpu"],
+    enableGraphCapture: true,
+    preferredOutputLocation: "gpu-buffer",
+  });
+  let inputGpuBuffer: GPUBuffer | undefined;
+  try {
+    // The device must come from ORT after session creation so the buffer is
+    // created on the same GPUDevice the backend runs on.
+    const device = await env.webgpu.device;
+    inputGpuBuffer = device.createBuffer({
+      size: inputBuffer.byteLength,
+      usage:
+        GPUBufferUsage.STORAGE |
+        GPUBufferUsage.COPY_SRC |
+        GPUBufferUsage.COPY_DST,
+    });
+    const inputTensor = Tensor.fromGpuBuffer(inputGpuBuffer, {
+      dataType: "float32",
+      dims: [1, 3, INPUT_SIZE, INPUT_SIZE],
+    });
+    const io = resolveIoNames(session);
+    // Validation + capture run on the (still zeroed) input buffer.
+    device.queue.writeBuffer(inputGpuBuffer, 0, inputBuffer);
+    const outputs = await session.run({ [io.inputName]: inputTensor });
+    await outputs[io.detsName].getData(true);
+    await outputs[io.labelsName].getData(true);
+    return { session, ...io, capture: { device, inputGpuBuffer, inputTensor } };
+  } catch (error) {
+    inputGpuBuffer?.destroy();
+    try {
+      await session.release();
+    } catch {
+      // The session may already be unusable; releasing is best-effort.
+    }
+    throw error;
+  }
+};
+
 /** Download and instantiate the session for one backend. */
 const loadForBackend = async (backend: DetectionBackend): Promise<ModelIo> => {
   const url = MODEL_URL_BY_BACKEND[backend];
@@ -193,17 +290,20 @@ const loadForBackend = async (backend: DetectionBackend): Promise<ModelIo> => {
   const weights = cached
     ? new Uint8Array(await cached.arrayBuffer())
     : await fetchModel(url);
+  let captureError: string | undefined;
+  if (backend === "webgpu" && WEBGPU_GRAPH_CAPTURE) {
+    try {
+      return await createCaptureModel(weights);
+    } catch (error) {
+      // Capture may not work on this device or export; fall back to a plain
+      // WebGPU session and record why for the debug overlay.
+      captureError = describeError(error);
+    }
+  }
   const session = await InferenceSession.create(weights, {
     executionProviders: [backend === "webgpu" ? "webgpu" : "wasm"],
   });
-  const inputName = session.inputNames[0];
-  const detsName = session.outputNames.includes(EXPECTED_DETS_NAME)
-    ? EXPECTED_DETS_NAME
-    : session.outputNames[0];
-  const labelsName = session.outputNames.includes(EXPECTED_LABELS_NAME)
-    ? EXPECTED_LABELS_NAME
-    : session.outputNames[1];
-  return { session, inputName, detsName, labelsName };
+  return { session, ...resolveIoNames(session), captureError };
 };
 
 const loadModel = async () => {
@@ -213,7 +313,12 @@ const loadModel = async () => {
     model = await loadForBackend(preferredBackend);
     post({
       type: "backend-probe",
-      probe: { ...probe, chosen: preferredBackend },
+      probe: {
+        ...probe,
+        chosen: preferredBackend,
+        graphCapture: model.capture !== undefined,
+        graphCaptureError: model.captureError,
+      },
     });
     post({ type: "ready", backend: preferredBackend });
     return;
@@ -225,7 +330,7 @@ const loadModel = async () => {
     if (preferredBackend !== "webgpu") {
       post({
         type: "backend-probe",
-        probe: { ...probe, chosen: "wasm", sessionError },
+        probe: { ...probe, chosen: "wasm", sessionError, graphCapture: false },
       });
       post({ type: "worker-error", code: "MODEL_LOAD_FAILED" });
       return;
@@ -237,13 +342,13 @@ const loadModel = async () => {
     model = await loadForBackend("wasm");
     post({
       type: "backend-probe",
-      probe: { ...probe, chosen: "wasm", sessionError },
+      probe: { ...probe, chosen: "wasm", sessionError, graphCapture: false },
     });
     post({ type: "ready", backend: "wasm" });
   } catch {
     post({
       type: "backend-probe",
-      probe: { ...probe, chosen: "wasm", sessionError },
+      probe: { ...probe, chosen: "wasm", sessionError, graphCapture: false },
     });
     post({ type: "worker-error", code: "MODEL_LOAD_FAILED" });
   }
@@ -261,21 +366,39 @@ const detect = async (frame: ImageBitmap) => {
     }
     inputContext.drawImage(frame, 0, 0, INPUT_SIZE, INPUT_SIZE);
     const imageData = inputContext.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
-    const input = new Tensor("float32", preprocess(imageData, inputBuffer), [
-      1,
-      3,
-      INPUT_SIZE,
-      INPUT_SIZE,
-    ]);
+    const inputData = preprocess(imageData, inputBuffer);
     const preprocessMs = performance.now() - preprocessStart;
 
+    // The capture path writes the frame into the persistent GPU input buffer
+    // and reads the gpu-buffer outputs back with getData(true), which both
+    // downloads the data and releases the GPU-side output. Its inference time
+    // therefore includes the readback (the GPU sync point), matching what the
+    // plain path's run() already includes.
     const inferenceStart = performance.now();
-    const outputs = await model.session.run({ [model.inputName]: input });
+    let dets: Float32Array;
+    let labels: Float32Array;
+    if (model.capture) {
+      const { device, inputGpuBuffer, inputTensor } = model.capture;
+      device.queue.writeBuffer(inputGpuBuffer, 0, inputData);
+      const outputs = await model.session.run({
+        [model.inputName]: inputTensor,
+      });
+      dets = (await outputs[model.detsName].getData(true)) as Float32Array;
+      labels = (await outputs[model.labelsName].getData(true)) as Float32Array;
+    } else {
+      const input = new Tensor("float32", inputData, [
+        1,
+        3,
+        INPUT_SIZE,
+        INPUT_SIZE,
+      ]);
+      const outputs = await model.session.run({ [model.inputName]: input });
+      dets = outputs[model.detsName].data as Float32Array;
+      labels = outputs[model.labelsName].data as Float32Array;
+    }
     const inferenceMs = performance.now() - inferenceStart;
 
     const decodeStart = performance.now();
-    const dets = outputs[model.detsName].data as Float32Array;
-    const labels = outputs[model.labelsName].data as Float32Array;
     const detections = decodeDetections(dets, labels, CONFIDENCE_THRESHOLD);
     const decodeMs = performance.now() - decodeStart;
 

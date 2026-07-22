@@ -32,6 +32,19 @@ const debug: DebugSnapshot = {
 
 const noMotion = (): YawPitch => ({ yaw: 0, pitch: 0 });
 
+/** Complete probe with quiet defaults; override the fields a test cares about. */
+const probe = (overrides: Partial<BackendProbe> = {}): BackendProbe => ({
+  workerGpu: true,
+  adapter: true,
+  device: true,
+  shaderF16: false,
+  graphCapture: false,
+  chosen: "wasm",
+  crossOriginIsolated: true,
+  threads: 4,
+  ...overrides,
+});
+
 const renderOverlay = (
   backendProbe?: BackendProbe,
   getMotionDelta: () => YawPitch = noMotion,
@@ -72,74 +85,67 @@ describe("DebugOverlay", () => {
 
   it("shows the WebGPU probe stages when a probe is present", () => {
     enableDebug();
-    renderOverlay({
-      workerGpu: true,
-      adapter: true,
-      device: true,
-      shaderF16: false,
-      chosen: "wasm",
-      crossOriginIsolated: true,
-      threads: 4,
-    });
+    renderOverlay(probe());
     expect(screen.getByText(/no-f16/)).toBeInTheDocument();
     expect(screen.getByText(/\bgpu\b/)).toBeInTheDocument();
   });
 
   it("reports shader-f16 support from the probe", () => {
     enableDebug();
-    renderOverlay({
-      workerGpu: true,
-      adapter: true,
-      device: true,
-      shaderF16: true,
-      chosen: "webgpu",
-      crossOriginIsolated: true,
-      threads: 4,
-    });
+    renderOverlay(probe({ shaderF16: true, chosen: "webgpu" }));
     expect(screen.getByText("shader-f16")).toBeInTheDocument();
     expect(screen.getByText("supported")).toBeInTheDocument();
   });
 
   it("reports missing WebGPU on the shader-f16 row when the worker has no gpu", () => {
     enableDebug();
-    renderOverlay({
-      workerGpu: false,
-      adapter: false,
-      device: false,
-      shaderF16: false,
-      chosen: "wasm",
-      crossOriginIsolated: true,
-      threads: 4,
-    });
+    renderOverlay(probe({ workerGpu: false, adapter: false, device: false }));
     expect(screen.getByText("no webgpu")).toBeInTheDocument();
   });
 
   it("shows the session error when the WebGPU session failed to build", () => {
     enableDebug();
-    renderOverlay({
-      workerGpu: true,
-      adapter: true,
-      device: true,
-      shaderF16: false,
-      sessionError: "shader-f16 not supported",
-      chosen: "wasm",
-      crossOriginIsolated: true,
-      threads: 4,
-    });
+    renderOverlay(probe({ sessionError: "shader-f16 not supported" }));
     expect(screen.getByText("shader-f16 not supported")).toBeInTheDocument();
+  });
+
+  it("reports graph capture on when the webgpu session captured", () => {
+    enableDebug();
+    renderOverlay(
+      probe({ shaderF16: true, graphCapture: true, chosen: "webgpu" }),
+    );
+    expect(screen.getByText("graph capture")).toBeInTheDocument();
+    expect(screen.getByText("on")).toBeInTheDocument();
+  });
+
+  it("shows the graph capture error when the capture attempt fell back", () => {
+    enableDebug();
+    renderOverlay(
+      probe({
+        shaderF16: true,
+        chosen: "webgpu",
+        graphCaptureError: "capture rejected at run",
+      }),
+    );
+    expect(screen.getByText("failed")).toBeInTheDocument();
+    expect(screen.getByText("capture rejected at run")).toBeInTheDocument();
+  });
+
+  it("marks graph capture disabled when no attempt was made on webgpu", () => {
+    enableDebug();
+    renderOverlay(probe({ shaderF16: true, chosen: "webgpu" }));
+    expect(screen.getByText("disabled")).toBeInTheDocument();
+  });
+
+  it("marks graph capture n/a on the wasm backend", () => {
+    enableDebug();
+    renderOverlay(probe());
+    expect(screen.getByText("n/a")).toBeInTheDocument();
   });
 
   it("shows the WASM thread count and cross-origin isolation state", () => {
     enableDebug();
-    renderOverlay({
-      workerGpu: true,
-      adapter: false,
-      device: false,
-      shaderF16: false,
-      chosen: "wasm",
-      crossOriginIsolated: true,
-      threads: 4,
-    });
+    renderOverlay(probe({ adapter: false, device: false }));
     expect(screen.getByText(/4T · isolated/)).toBeInTheDocument();
   });
 });

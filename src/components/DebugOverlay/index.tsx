@@ -65,6 +65,27 @@ const f16Support = (probe: BackendProbe | undefined): string => {
   return probe.shaderF16 ? "supported" : "unsupported";
 };
 
+/**
+ * Whether the WebGPU session runs with graph capture (recorded kernel
+ * dispatches replayed per frame). "disabled" means the `WEBGPU_GRAPH_CAPTURE`
+ * flag is off so no attempt was made; "failed" means the attempt was made and
+ * the worker fell back to a plain session, with the probe's `graphCaptureError`
+ * block below the rows saying why. Not applicable on the wasm backend, which
+ * has no capture concept.
+ */
+const captureSupport = (probe: BackendProbe | undefined): string => {
+  if (!probe) {
+    return "probing";
+  }
+  if (probe.chosen !== "webgpu") {
+    return "n/a";
+  }
+  if (probe.graphCapture) {
+    return "on";
+  }
+  return probe.graphCaptureError ? "failed" : "disabled";
+};
+
 /** Milliseconds to one decimal place, e.g. "5.6 ms". */
 const ms = (value: number): string => `${value.toFixed(1)} ms`;
 
@@ -161,6 +182,7 @@ export const DebugOverlay = ({
         <Row label="wgpu probe" value={probeStages(backendProbe)} />
       )}
       <Row label="shader-f16" value={f16Support(backendProbe)} />
+      <Row label="graph capture" value={captureSupport(backendProbe)} />
       <Row label="wgpu main" value={mainThreadWebGpu ?? "probing"} />
       {backendProbe && (
         <Row
@@ -175,6 +197,14 @@ export const DebugOverlay = ({
           <div className="text-white/50">wgpu session error</div>
           <div className="break-words text-hud-amber">
             {backendProbe.sessionError}
+          </div>
+        </div>
+      )}
+      {backendProbe?.graphCaptureError && (
+        <div className="mt-1 border-t border-white/10 pt-1">
+          <div className="text-white/50">graph capture error</div>
+          <div className="break-words text-hud-amber">
+            {backendProbe.graphCaptureError}
           </div>
         </div>
       )}

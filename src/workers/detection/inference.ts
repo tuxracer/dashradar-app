@@ -21,8 +21,8 @@ import {
  */
 export const preprocess = (
   imageData: ImageData,
-  out?: Float32Array,
-): Float32Array => {
+  out?: Float32Array<ArrayBuffer>,
+): Float32Array<ArrayBuffer> => {
   const { data } = imageData;
   const pixels = INPUT_SIZE * INPUT_SIZE;
   const tensor = out ?? new Float32Array(3 * pixels);

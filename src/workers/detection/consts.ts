@@ -44,6 +44,21 @@ export const MODEL_URL_BY_BACKEND: Readonly<Record<DetectionBackend, string>> =
     wasm: `https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1/resolve/${MODEL_REVISION}/onnx/model_int8.onnx`,
   };
 
+/**
+ * Attempt a WebGPU session with graph capture (`enableGraphCapture`) before
+ * falling back to a plain session. Off because capture still cannot initialize
+ * with the current export: the graph's single TopK node has no WebGPU (JSEP)
+ * kernel in onnxruntime-web 1.27, ORT assigns it to the CPU EP on every
+ * device, and capture requires every node on the WebGPU EP. The v1.6 onnxslim
+ * re-export removed the shape subgraphs that used to trip this check, but TopK
+ * remains, so the attempt fails deterministically and would waste a full
+ * failed session initialization on every WebGPU cold start. Flip this on only
+ * after an export without TopK (or an onnxruntime-web with a WebGPU TopK
+ * kernel) is verified in Chrome: the debug overlay's "graph capture" row must
+ * read "on".
+ */
+export const WEBGPU_GRAPH_CAPTURE = false;
+
 /** Square input edge the model expects (NCHW `[1,3,512,512]`). */
 export const INPUT_SIZE = 512;
 

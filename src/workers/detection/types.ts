@@ -133,6 +133,17 @@ export type BackendProbe = {
   shaderF16: boolean;
   /** InferenceSession.create failure message for the WebGPU attempt, if any. */
   sessionError?: string;
+  /**
+   * The WebGPU session was created with graph capture enabled (kernel
+   * dispatches recorded on the first run and replayed on later runs). Always
+   * false on the wasm backend. False on webgpu means either the
+   * `WEBGPU_GRAPH_CAPTURE` flag is off (no attempt was made) or the attempt
+   * failed and the worker fell back to a plain WebGPU session;
+   * `graphCaptureError` is set only in the failed case.
+   */
+  graphCapture: boolean;
+  /** Failure message from the graph-capture attempt when it fell back. */
+  graphCaptureError?: string;
   /** Backend actually selected after probing and any fallback. */
   chosen: DetectionBackend;
   /**
@@ -153,6 +164,9 @@ const isBackendProbe = (value: unknown): value is BackendProbe => {
     isBoolean(value.device) &&
     isBoolean(value.shaderF16) &&
     (value.sessionError === undefined || isString(value.sessionError)) &&
+    isBoolean(value.graphCapture) &&
+    (value.graphCaptureError === undefined ||
+      isString(value.graphCaptureError)) &&
     isDetectionBackend(value.chosen) &&
     isBoolean(value.crossOriginIsolated) &&
     isNumber(value.threads)
