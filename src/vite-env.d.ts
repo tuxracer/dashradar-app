@@ -2,6 +2,18 @@
 /// <reference types="vite-plugin-pwa/client" />
 /// <reference types="@webgpu/types" />
 
+interface ImportMetaEnv {
+  /**
+   * Sentry DSN (public client key). Empty or absent disables Sentry. Set in
+   * .env.local for local dev and in the hosting environment for production.
+   */
+  readonly VITE_SENTRY_DSN: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
+
 /** App version injected at build time from package.json (see vite.config.ts `define`). */
 declare const __APP_VERSION__: string;
 

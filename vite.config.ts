@@ -2,6 +2,7 @@ import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import type { Plugin } from "vite";
@@ -196,12 +197,57 @@ const APP_VERSION: string = JSON.parse(
   readFileSync(new URL("./package.json", import.meta.url), "utf-8"),
 ).version;
 
+/**
+ * Release identifier for uploaded source maps. Must match the runtime `release`
+ * in src/instrument.ts (both built from __APP_VERSION__ and __COMMIT_SHA__) so
+ * production stack traces resolve against the artifacts uploaded here.
+ */
+const SENTRY_RELEASE = `dashradar@${APP_VERSION}+${SHORT_COMMIT_SHA}`;
+
+/**
+ * True when a Sentry auth token is available (set in the Vercel build
+ * environment). Source-map generation and upload are gated on it, so ordinary
+ * builds without the token skip both and never emit orphan .map files.
+ */
+const SENTRY_SOURCE_MAPS_ENABLED: boolean = !!process.env.SENTRY_AUTH_TOKEN;
+
+/**
+ * Upload source maps to Sentry so production (minified) stack traces resolve to
+ * original source, and annotate React component names while at it. Runs only
+ * when SENTRY_SOURCE_MAPS_ENABLED, and must come after every other plugin. The
+ * org auth token embeds its own region (the org is in Sentry's EU region), so
+ * no url is set here. The token is a secret read from the environment, never
+ * committed.
+ */
+const sentrySourceMaps = (): Plugin[] =>
+  SENTRY_SOURCE_MAPS_ENABLED
+    ? sentryVitePlugin({
+        org: "derek-petersen",
+        project: "dashradar",
+        authToken: process.env.SENTRY_AUTH_TOKEN,
+        release: { name: SENTRY_RELEASE },
+        reactComponentAnnotation: { enabled: true },
+        sourcemaps: { filesToDeleteAfterUpload: ["./dist/**/*.map"] },
+      })
+    : [];
+
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
     __COMMIT_SHA__: JSON.stringify(SHORT_COMMIT_SHA),
   },
-  plugins: [react(), tailwindcss(), commitShaMeta(), ortRuntime(), pwa()],
+  // "hidden" emits source maps but strips the sourceMappingURL comment, so
+  // browsers never load them; the Sentry plugin uploads them and deletes the
+  // .map files from dist afterward. Off entirely when the token is absent.
+  build: { sourcemap: SENTRY_SOURCE_MAPS_ENABLED ? "hidden" : false },
+  plugins: [
+    react(),
+    tailwindcss(),
+    commitShaMeta(),
+    ortRuntime(),
+    pwa(),
+    ...sentrySourceMaps(),
+  ],
   resolve: { tsconfigPaths: true },
   server: { headers: CROSS_ORIGIN_ISOLATION_HEADERS },
   preview: { headers: CROSS_ORIGIN_ISOLATION_HEADERS },

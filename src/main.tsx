@@ -1,5 +1,8 @@
+import "./instrument";
+
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { reactErrorHandler } from "@sentry/react";
 import { registerSW } from "virtual:pwa-register";
 import { Analytics } from "@vercel/analytics/react";
 import { isDoNotTrackEnabled } from "@/lib/doNotTrack";
@@ -20,7 +23,13 @@ if (!rootElement) {
   throw new Error("Missing #root element");
 }
 
-createRoot(rootElement).render(
+createRoot(rootElement, {
+  // Route the three React 19 root error callbacks through Sentry so uncaught,
+  // boundary-caught, and recoverable render errors are all reported.
+  onUncaughtError: reactErrorHandler(),
+  onCaughtError: reactErrorHandler(),
+  onRecoverableError: reactErrorHandler(),
+}).render(
   <StrictMode>
     <App />
     {/* Honor Do Not Track / Global Privacy Control: beforeSend gates both page
