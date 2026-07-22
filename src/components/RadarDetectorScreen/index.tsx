@@ -151,7 +151,7 @@ export const RadarDetectorScreen = ({
 
       const status = statusRef.current;
       if (status) {
-        status.textContent = level >= ALERT_THRESHOLD ? "ALERT" : "SCANNING";
+        status.textContent = hasSignal ? "ALERT" : "SCANNING";
         status.style.color = hasSignal ? color : "";
       }
 

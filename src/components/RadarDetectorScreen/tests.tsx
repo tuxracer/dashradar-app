@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { RadarDetectorScreen } from "@/components/RadarDetectorScreen";
 import type { Contact } from "@/context/DetectionContext";
@@ -19,6 +19,21 @@ describe("RadarDetectorScreen", () => {
     render(<RadarDetectorScreen confidence={0} audioEnabled={false} />);
     expect(screen.getByText("0%")).toBeInTheDocument();
     expect(screen.getByTestId("signal-status")).toHaveTextContent("SCANNING");
+  });
+
+  it("flips the status to ALERT once any signal registers", async () => {
+    render(<RadarDetectorScreen confidence={0.2} audioEnabled={false} />);
+    await waitFor(() =>
+      expect(screen.getByTestId("signal-status")).toHaveTextContent("ALERT"),
+    );
+  });
+
+  it("keeps SCANNING while the signal stays at zero", async () => {
+    render(<RadarDetectorScreen confidence={0} audioEnabled={false} />);
+    // Let the rAF loop tick at least once before asserting nothing changed.
+    await waitFor(() =>
+      expect(screen.getByTestId("signal-status")).toHaveTextContent("SCANNING"),
+    );
   });
 });
 

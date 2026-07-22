@@ -7,15 +7,16 @@ import type { ContactDirection } from "@/lib/radarSignal";
 export const ARC_SWEEP_DEG = 240;
 
 /**
- * Signal level at or above which the meter enters its ALERT state: the status
- * word flips to ALERT and the red ring around the readout pulses.
+ * Signal level at or above which the pulsing red ring around the readout
+ * lights up, marking a strong signal.
  */
 export const ALERT_THRESHOLD = 0.8;
 
 /**
- * Signal level at or above which the readout and status word take the signal
- * color instead of the muted idle color. Just above zero so the idle meter
- * stays quiet while any real signal registers immediately.
+ * Signal level at or above which the meter registers a contact: the readout
+ * and status word take the signal color and the status word flips from
+ * SCANNING to ALERT. Just above zero so the idle meter stays quiet while any
+ * real signal registers immediately.
  */
 export const CONTACT_THRESHOLD = 0.01;
 
