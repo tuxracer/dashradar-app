@@ -36,7 +36,7 @@ import type { DetectionBackend } from "./types";
  * the `CacheFirst` "model-cache" so returning visitors download the new weights
  * instead of being served the old cached copy forever.
  */
-export const MODEL_REVISION = "v1.3";
+export const MODEL_REVISION = "v1.4";
 
 export const MODEL_URL_BY_BACKEND: Readonly<Record<DetectionBackend, string>> =
   {
