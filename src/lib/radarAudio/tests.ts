@@ -1,13 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  beepFrequencyHz,
   beepIntervalMs,
   createRadarBeeper,
   isAudible,
   AUDIO_FLOOR,
   BEEP_DURATION_MS,
-  FREQ_HIGH_HZ,
-  FREQ_LOW_HZ,
+  BEEP_FREQ_HZ,
   INTERVAL_MAX_MS,
   INTERVAL_MIN_MS,
   MASTER_GAIN,
@@ -94,17 +92,6 @@ describe("beepIntervalMs", () => {
   });
 });
 
-describe("beepFrequencyHz", () => {
-  it("spans the low and high pitches across the signal range", () => {
-    expect(beepFrequencyHz(0)).toBe(FREQ_LOW_HZ);
-    expect(beepFrequencyHz(1)).toBe(FREQ_HIGH_HZ);
-  });
-
-  it("rises with the signal", () => {
-    expect(beepFrequencyHz(0.8)).toBeGreaterThan(beepFrequencyHz(0.2));
-  });
-});
-
 describe("isAudible", () => {
   it("is silent at or below the audio floor", () => {
     expect(isAudible(AUDIO_FLOOR)).toBe(false);
@@ -127,13 +114,27 @@ describe("createRadarBeeper", () => {
     const context = audioContext();
     expect(context.oscillator.start).toHaveBeenCalledOnce();
     expect(context.oscillator.frequency.setValueAtTime).toHaveBeenCalledWith(
-      beepFrequencyHz(0.5),
+      BEEP_FREQ_HZ,
       context.currentTime,
     );
     expect(context.gainNode.gain.linearRampToValueAtTime).toHaveBeenCalledWith(
       MASTER_GAIN,
       expect.any(Number),
     );
+    beeper.dispose();
+  });
+
+  it("beeps at the same pitch regardless of signal level", () => {
+    const beeper = createRadarBeeper();
+    beeper.update(0.2, 1_000);
+    // Advance well past the interval so the stronger signal beeps again.
+    beeper.update(0.9, 1_000 + INTERVAL_MAX_MS);
+    const pitches =
+      audioContext().oscillator.frequency.setValueAtTime.mock.calls.map(
+        ([hz]) => hz,
+      );
+    expect(pitches.length).toBeGreaterThan(1);
+    expect(pitches.every((hz) => hz === BEEP_FREQ_HZ)).toBe(true);
     beeper.dispose();
   });
 

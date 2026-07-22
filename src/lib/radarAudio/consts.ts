@@ -31,8 +31,10 @@ export const INTERVAL_MAX_MS = 900;
 /** Gap between beeps at full signal, in ms (fastest cadence, still pulsing). */
 export const INTERVAL_MIN_MS = 130;
 
-/** Beep pitch at zero signal, in Hz. Rises toward FREQ_HIGH_HZ as signal climbs. */
-export const FREQ_LOW_HZ = 620;
-
-/** Beep pitch at full signal, in Hz. */
-export const FREQ_HIGH_HZ = 1200;
+/**
+ * Beep pitch, in Hz. Fixed across all signal levels: only the cadence
+ * (beepIntervalMs) speeds up with the signal, never the tone. A sweeping pitch
+ * reads as an annoying whine, so the tone stays constant and the rate carries
+ * the confidence. High enough to cut through road noise on a dash mount.
+ */
+export const BEEP_FREQ_HZ = 800;

@@ -2,9 +2,8 @@ import {
   ATTACK_SEC,
   AUDIO_FLOOR,
   BEEP_DURATION_MS,
+  BEEP_FREQ_HZ,
   BEEP_WAVEFORM,
-  FREQ_HIGH_HZ,
-  FREQ_LOW_HZ,
   INTERVAL_MAX_MS,
   INTERVAL_MIN_MS,
   MASTER_GAIN,
@@ -32,10 +31,6 @@ export const beepIntervalMs = (level: number): number => {
   return lerp(INTERVAL_MAX_MS, INTERVAL_MIN_MS, t);
 };
 
-/** Beep pitch for a signal level in [0, 1], rising with the signal. */
-export const beepFrequencyHz = (level: number): number =>
-  lerp(FREQ_LOW_HZ, FREQ_HIGH_HZ, clamp01(level));
-
 /** Radar-detector beeper driven once per animation frame via update(). */
 export type RadarBeeper = {
   /**
@@ -57,9 +52,9 @@ type BeeperNodes = {
 const UNLOCK_EVENTS = ["pointerdown", "touchend", "keydown"] as const;
 
 /**
- * Creates the radar-detector beeper: discrete beeps whose cadence and pitch
- * rise with the signal level, and silence when there is no signal. Each beep is
- * a short self-terminating envelope, so there is never a sustained tone.
+ * Creates the radar-detector beeper: discrete beeps whose cadence rises with
+ * the signal level at a fixed pitch, and silence when there is no signal. Each
+ * beep is a short self-terminating envelope, so there is never a sustained tone.
  *
  * The AudioContext and a single persistent oscillator are created lazily on the
  * first audible update, so a muted or signal-free session never touches Web
@@ -131,7 +126,7 @@ export const createRadarBeeper = (): RadarBeeper => {
     nextBeepAtMs = nowMs + beepIntervalMs(level);
     const { context, oscillator, gain } = active;
     const now = context.currentTime;
-    oscillator.frequency.setValueAtTime(beepFrequencyHz(level), now);
+    oscillator.frequency.setValueAtTime(BEEP_FREQ_HZ, now);
     const beepEnd = now + BEEP_DURATION_MS / 1000;
     gain.gain.cancelScheduledValues(now);
     gain.gain.setValueAtTime(0, now);
