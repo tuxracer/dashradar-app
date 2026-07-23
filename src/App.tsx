@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { track } from "@vercel/analytics";
+import { CameraOff } from "lucide-react";
 import { CameraView } from "@/components/CameraView";
 import { DebugOverlay } from "@/components/DebugOverlay";
 import { ErrorScreen } from "@/components/ErrorScreen";
@@ -51,6 +52,7 @@ const RadarScreen = () => {
     error,
     start,
     recovering,
+    cameraStalled,
     cameraEpoch,
   } = useDetection();
   const { showDebug, radarAudio } = useSettings();
@@ -108,6 +110,22 @@ const RadarScreen = () => {
   }
   if (status === "error" && error) {
     return <ErrorScreen code={error} />;
+  }
+  // Automatic camera recovery gave up on a frozen or black feed: ask the driver
+  // to clear the lens and reload rather than looping silent remounts/reloads.
+  if (cameraStalled) {
+    return (
+      <ErrorScreen
+        code="CAMERA_STALLED"
+        icon={
+          <CameraOff
+            className="h-16 w-16 text-hud-amber"
+            strokeWidth={1.5}
+            aria-hidden
+          />
+        }
+      />
+    );
   }
 
   // While the model is still loading, keep the radar-mode UI unmounted and the

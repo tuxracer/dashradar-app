@@ -29,11 +29,26 @@ describe("ErrorScreen", () => {
       "MODEL_LOAD_FAILED",
       "INFERENCE_FAILED",
       "WORKER_CRASHED",
+      "CAMERA_STALLED",
     ] as const;
     for (const code of codes) {
       const { unmount } = render(<ErrorScreen code={code} />);
       expect(screen.getByTestId("error-message").textContent).not.toBe("");
       unmount();
     }
+  });
+
+  it("asks the driver to clear the lens on a stalled camera", () => {
+    render(<ErrorScreen code="CAMERA_STALLED" />);
+    expect(
+      screen.getByText(/make sure nothing is blocking the camera/i),
+    ).toBeInTheDocument();
+  });
+
+  it("renders a supplied icon above the copy", () => {
+    render(
+      <ErrorScreen code="CAMERA_STALLED" icon={<svg data-testid="icon" />} />,
+    );
+    expect(screen.getByTestId("icon")).toBeInTheDocument();
   });
 });

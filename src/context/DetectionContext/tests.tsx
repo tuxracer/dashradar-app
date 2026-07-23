@@ -160,13 +160,14 @@ const StartStopWithVideo = ({ video }: { video: HTMLVideoElement }) => {
 };
 
 const RecoveryProbe = ({ video }: { video: HTMLVideoElement }) => {
-  const { recovering, cameraEpoch, start } = useDetection();
+  const { recovering, cameraStalled, cameraEpoch, start } = useDetection();
   return (
     <>
       <button onClick={() => start(video)} data-testid="start">
         start
       </button>
       <span data-testid="recovering">{String(recovering)}</span>
+      <span data-testid="camera-stalled">{String(cameraStalled)}</span>
       <span data-testid="camera-epoch">{cameraEpoch}</span>
     </>
   );
@@ -2203,12 +2204,11 @@ describe("DetectionProvider camera recovery", () => {
     expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
   });
 
-  /** Drive one frozen-feed recovery: repeat an identical fingerprint to the
-   *  threshold, then simulate the remounted CameraView delivering a stream. */
-  const driveFrozenRecovery = async (
-    worker: FakeWorker,
-    present: () => void,
-  ) => {
+  /** Drive one frozen-feed stall: repeat an identical fingerprint to the
+   *  threshold, tripping recovery. Does NOT resume the pump, so it exercises the
+   *  terminal escalation (which stops the pump for good) as well as the remount
+   *  path. */
+  const driveFrozenStall = async (worker: FakeWorker, present: () => void) => {
     for (let i = 0; i <= STALE_FRAME_THRESHOLD; i += 1) {
       await act(async () => {
         present();
@@ -2221,20 +2221,23 @@ describe("DetectionProvider camera recovery", () => {
         await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS + 20);
       });
     }
+  };
+
+  /** Drive one frozen-feed recovery: stall to the threshold, then simulate the
+   *  remounted CameraView delivering a fresh stream that resumes the pump. */
+  const driveFrozenRecovery = async (
+    worker: FakeWorker,
+    present: () => void,
+  ) => {
+    await driveFrozenStall(worker, present);
     // Fresh stream from the remount resumes the pump.
     act(() => {
       screen.getByTestId("start").click();
     });
   };
 
-  it("reloads the page after MAX_RECONNECT_ATTEMPTS failed recoveries", async () => {
+  it("shows the stalled alert after MAX_RECONNECT_ATTEMPTS failed recoveries", async () => {
     vi.useFakeTimers();
-    const reload = vi.fn();
-    // jsdom's window.location.reload is a non-configurable own property, so
-    // neither vi.spyOn nor Object.defineProperty can override it in place;
-    // stub the whole location global instead (vi.unstubAllGlobals in the
-    // file's afterEach restores the real one for later tests).
-    vi.stubGlobal("location", { ...window.location, reload });
     vi.stubGlobal(
       "createImageBitmap",
       vi.fn(async () => fakeBitmap()),
@@ -2253,11 +2256,23 @@ describe("DetectionProvider camera recovery", () => {
     for (let attempt = 0; attempt < MAX_RECONNECT_ATTEMPTS; attempt += 1) {
       await driveFrozenRecovery(worker, presentFrame);
     }
-    expect(reload).not.toHaveBeenCalled();
+    expect(screen.getByTestId("camera-stalled").textContent).toBe("false");
 
-    // One more frozen run: attempts now equal MAX, so this recovery reloads.
-    await driveFrozenRecovery(worker, presentFrame);
-    expect(reload).toHaveBeenCalledTimes(1);
+    // One more frozen stall: attempts now equal MAX, so recovery gives up and
+    // surfaces the terminal alert instead of remounting. The overlay's
+    // "recovering" flag stays false; only cameraStalled flips.
+    await driveFrozenStall(worker, presentFrame);
+    expect(screen.getByTestId("camera-stalled").textContent).toBe("true");
+    expect(screen.getByTestId("recovering").textContent).toBe("false");
+
+    // The unrecoverable stall is reported to analytics exactly once: it is the
+    // only signal of a fleet-wide camera failure the old silent reload erased,
+    // and the recovery re-entrancy guard must keep a further stall from
+    // re-firing it. `track`'s other calls here are ready events, not "error".
+    const stalledReports = vi
+      .mocked(track)
+      .mock.calls.filter(([event]) => event === "error");
+    expect(stalledReports).toEqual([["error", { code: "CAMERA_STALLED" }]]);
   });
 
   /** Drive `count` pump rounds with a distinct (changing) fingerprint each
@@ -2285,14 +2300,8 @@ describe("DetectionProvider camera recovery", () => {
     }
   };
 
-  it("a healthy run resets the reconnect counter so a later stall does not reload", async () => {
+  it("a healthy run resets the reconnect counter so a later stall does not give up", async () => {
     vi.useFakeTimers();
-    const reload = vi.fn();
-    // jsdom's window.location.reload is a non-configurable own property, so
-    // neither vi.spyOn nor Object.defineProperty can override it in place;
-    // stub the whole location global instead (vi.unstubAllGlobals in the
-    // file's afterEach restores the real one for later tests).
-    vi.stubGlobal("location", { ...window.location, reload });
     vi.stubGlobal(
       "createImageBitmap",
       vi.fn(async () => fakeBitmap()),
@@ -2306,22 +2315,23 @@ describe("DetectionProvider camera recovery", () => {
       screen.getByTestId("start").click();
     });
 
-    // Stack attempts to the brink of reload, exactly as the reload test above.
+    // Stack attempts to the brink of the terminal alert, exactly as the test
+    // above.
     for (let attempt = 0; attempt < MAX_RECONNECT_ATTEMPTS; attempt += 1) {
       await driveFrozenRecovery(worker, presentFrame);
     }
-    expect(reload).not.toHaveBeenCalled();
+    expect(screen.getByTestId("camera-stalled").textContent).toBe("false");
 
     // A healthy run on the resumed pump proves the feed recovered, resetting
     // the reconnect counter back to 0.
     await driveHealthyFrames(worker, presentFrame, RECOVERY_HEALTHY_FRAMES);
 
-    // One more frozen run: without the reset, attempts would already equal
-    // MAX and this recovery would reload; the healthy run zeroed the
-    // counter, so this recovery only bumps it back to 1.
+    // One more frozen run: without the reset, attempts would already equal MAX
+    // and this stall would surface the terminal alert; the healthy run zeroed
+    // the counter, so this recovery just remounts (bumping cameraEpoch) instead.
     await driveFrozenRecovery(worker, presentFrame);
-    expect(reload).not.toHaveBeenCalled();
-    // Confirms the final recovery actually engaged (rather than reload being
+    expect(screen.getByTestId("camera-stalled").textContent).toBe("false");
+    // Confirms the final recovery actually engaged (rather than the alert being
     // skipped for some other reason): the first loop's 3 recoveries bump
     // cameraEpoch to 3, the healthy run leaves it untouched, and this last
     // recovery bumps it to 4.

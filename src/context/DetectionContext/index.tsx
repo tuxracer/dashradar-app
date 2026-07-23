@@ -120,6 +120,10 @@ export const DetectionProvider = ({
   // double-invokes updaters; see statusRef above).
   const contactRef = useRef<Contact | undefined>(undefined);
   const [recovering, setRecovering] = useState(false);
+  // Terminal flag: automatic recovery gave up after MAX_RECONNECT_ATTEMPTS on a
+  // frozen or black feed. App renders the CAMERA_STALLED alert; a reload (the
+  // alert's button) is the only exit, so no ref mirror is needed.
+  const [cameraStalled, setCameraStalled] = useState(false);
   // Mirrors `recovering` so beginRecovery's re-entrancy guard and the pump can
   // branch on it outside a setState updater (StrictMode double-invokes those).
   const recoveringRef = useRef(false);
@@ -754,9 +758,13 @@ export const DetectionProvider = ({
    * Recover a dead camera feed in place. Stops the pump, resets the
    * frozen-feed detectors, and remounts the camera by bumping cameraEpoch
    * (App keys CameraView on it). After MAX_RECONNECT_ATTEMPTS consecutive
-   * recoveries that never proved healthy, reloads the page instead as a last
-   * resort. The re-entrancy guard means a second trigger while already
-   * recovering is a no-op; the fresh stream's start() clears it.
+   * recoveries that never proved healthy, gives up and surfaces the
+   * CAMERA_STALLED alert (via setCameraStalled) instead of another remount: a
+   * feed still black after several remounts is likely an obscured or failed
+   * lens that a silent page reload would only loop on, so the driver is asked
+   * to clear the camera and reload manually. The re-entrancy guard means a
+   * second trigger while already recovering is a no-op; the fresh stream's
+   * start() clears it.
    */
   const beginRecovery = useCallback(() => {
     if (recoveringRef.current) {
@@ -769,7 +777,12 @@ export const DetectionProvider = ({
     healthyFrameCountRef.current = 0;
     stop();
     if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
-      window.location.reload();
+      // Automatic recovery is out of attempts; hand off to the driver. Track it
+      // so the fleet-wide rate of unrecoverable camera stalls is visible (the
+      // old silent reload left no signal). recovering stays false, so the
+      // "Reconnecting camera..." overlay never shows for this terminal state.
+      track("error", { code: "CAMERA_STALLED" });
+      setCameraStalled(true);
       return;
     }
     reconnectAttemptsRef.current += 1;
@@ -914,6 +927,7 @@ export const DetectionProvider = ({
       error,
       contact,
       recovering,
+      cameraStalled,
       cameraEpoch,
       start,
       stop,
@@ -931,6 +945,7 @@ export const DetectionProvider = ({
       error,
       contact,
       recovering,
+      cameraStalled,
       cameraEpoch,
       start,
       stop,

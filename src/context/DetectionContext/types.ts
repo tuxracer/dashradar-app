@@ -139,6 +139,13 @@ export type DetectionContextValue = {
   /** True while the camera feed is being re-acquired after a detected stall. */
   recovering: boolean;
   /**
+   * True once automatic camera recovery has exhausted its remount attempts on a
+   * frozen or black feed. Terminal: the pump is stopped and the app shows the
+   * CAMERA_STALLED alert asking the driver to clear the lens and reload. Only a
+   * reload clears it.
+   */
+  cameraStalled: boolean;
+  /**
    * Increments once per camera recovery. App keys the CameraView element on
    * it, so a bump remounts the camera and re-runs getUserMedia.
    */

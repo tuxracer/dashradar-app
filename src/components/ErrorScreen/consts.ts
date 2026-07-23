@@ -1,7 +1,19 @@
 import type { CameraErrorCode } from "@/lib/camera";
 import type { DetectionErrorCode } from "@/workers/detection/types";
 
-export type AppErrorCode = CameraErrorCode | DetectionErrorCode;
+/**
+ * Error codes the app raises itself, neither a getUserMedia CameraErrorCode nor
+ * a worker DetectionErrorCode. CAMERA_STALLED is surfaced when automatic camera
+ * recovery has exhausted its remount attempts on a frozen or black feed, so the
+ * driver is asked to clear the lens and reload rather than the page silently
+ * reloading in a loop.
+ */
+export type AppLevelErrorCode = "CAMERA_STALLED";
+
+export type AppErrorCode =
+  | CameraErrorCode
+  | DetectionErrorCode
+  | AppLevelErrorCode;
 
 export const ERROR_COPY: Readonly<Record<AppErrorCode, string>> = {
   PERMISSION_DENIED:
@@ -15,4 +27,6 @@ export const ERROR_COPY: Readonly<Record<AppErrorCode, string>> = {
     "The detection model couldn't be downloaded. Check your connection, then try again.",
   INFERENCE_FAILED: "Detection stopped unexpectedly. Reload to restart it.",
   WORKER_CRASHED: "Detection stopped unexpectedly. Reload to restart it.",
+  CAMERA_STALLED:
+    "Camera view lost. Make sure nothing is blocking the camera, then reload.",
 };
