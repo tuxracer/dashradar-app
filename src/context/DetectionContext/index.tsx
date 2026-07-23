@@ -155,6 +155,10 @@ export const DetectionProvider = ({
   // recycled worker's `ready` does not re-fire them, which would otherwise
   // inflate the counts every WORKER_RECYCLE_AFTER_MS of a scanning session.
   const readyTrackedRef = useRef(false);
+  // Whether this page load's `load` posts carried forceWasm (the WASM safe
+  // mode was armed). Captured at post time so the ready handler can report
+  // the safe_mode_load analytics event without re-reading localStorage.
+  const safeModeLoadRef = useRef(false);
   const videoRef = useRef<HTMLVideoElement | undefined>(undefined);
   const runningRef = useRef(false);
   // Mirrors `status` so event handlers can branch on the current status
@@ -369,7 +373,9 @@ export const DetectionProvider = ({
         }
         // forceWasm re-reads per load post (mount and each recycle), so a
         // safe mode armed at startup governs every session of this page load.
-        worker.postMessage({ type: "load", forceWasm: isWasmSafeModeArmed() });
+        const forceWasm = isWasmSafeModeArmed();
+        safeModeLoadRef.current = forceWasm;
+        worker.postMessage({ type: "load", forceWasm });
       });
     };
 
@@ -422,6 +428,13 @@ export const DetectionProvider = ({
               backend: message.backend,
               fromCache: modelFromCacheRef.current,
             });
+            // Count sessions that had to run in the WASM safe mode after a
+            // detected WebGPU crash, so the fleet-wide fallback rate is
+            // visible without opening Sentry. Fires only when the model
+            // actually became ready under safe mode, not merely on arming.
+            if (safeModeLoadRef.current) {
+              track("safe_mode_load");
+            }
           }
           if (runningRef.current) {
             statusRef.current = "running";

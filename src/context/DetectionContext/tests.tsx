@@ -245,6 +245,33 @@ describe("DetectionProvider", () => {
     });
   });
 
+  it("reports a safe_mode_load event when the model becomes ready under safe mode", async () => {
+    armWasmSafeMode();
+    const worker = renderWithProvider(<Probe />);
+    await waitFor(() => {
+      expect(worker.posted).toContainEqual({ type: "load", forceWasm: true });
+    });
+    expect(track).not.toHaveBeenCalledWith("safe_mode_load");
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    expect(track).toHaveBeenCalledWith("safe_mode_load");
+    expect(
+      vi.mocked(track).mock.calls.filter(([name]) => name === "safe_mode_load"),
+    ).toHaveLength(1);
+  });
+
+  it("does not report safe_mode_load on a normal ready", async () => {
+    const worker = renderWithProvider(<Probe />);
+    await waitFor(() => {
+      expect(worker.posted).toContainEqual({ type: "load", forceWasm: false });
+    });
+    act(() => {
+      worker.emit({ type: "ready", backend: "webgpu" });
+    });
+    expect(track).not.toHaveBeenCalledWith("safe_mode_load");
+  });
+
   it("flags a network download when the model is not cached", () => {
     const worker = renderWithProvider(<Probe />);
     expect(screen.getByTestId("downloading").textContent).toBe("false");
