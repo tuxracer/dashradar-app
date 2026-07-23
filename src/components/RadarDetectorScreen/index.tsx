@@ -79,7 +79,7 @@ export const RadarDetectorScreen = ({
 
   // Refs may not be written during render; mirror the latest prop in via an
   // effect so the persistent rAF loop reads the current value without
-  // re-subscribing (the same pattern HudOverlay uses).
+  // re-subscribing.
   useEffect(() => {
     confidenceRef.current = confidence;
   }, [confidence]);

@@ -6,7 +6,6 @@ import type {
   ModelProgress,
 } from "@/context/DetectionContext";
 import type { Size } from "@/lib/detection";
-import { orientationDeltaToPixels, type YawPitch } from "@/lib/motionSensor";
 import type { BackendProbe, DetectionBackend } from "@/workers/detection/types";
 
 /** Props for DebugOverlay. Data is passed in so it renders without the worker. */
@@ -21,13 +20,10 @@ type DebugOverlayProps = {
   getDebug: () => DebugSnapshot;
   videoSize: Size | undefined;
   viewportSize: Size;
-  /** Live yaw/pitch delta since the displayed detection was captured. */
-  getMotionDelta: () => YawPitch;
 };
 
 /** Values the readout tick polls together, rendered as one state update. */
 type DebugReadout = {
-  motion: YawPitch;
   debug: DebugSnapshot;
   fps: number;
 };
@@ -113,12 +109,10 @@ export const DebugOverlay = ({
   getDebug,
   videoSize,
   viewportSize,
-  getMotionDelta,
 }: DebugOverlayProps) => {
   const { showDebug } = useSettings();
 
   const [readout, setReadout] = useState<DebugReadout>(() => ({
-    motion: { yaw: 0, pitch: 0 },
     debug: getDebug(),
     fps: getFps(),
   }));
@@ -137,18 +131,14 @@ export const DebugOverlay = ({
       // Throttle to ~8 Hz; the readout is for eyeballing, not smoothness.
       if (time - last > 120) {
         last = time;
-        setReadout({
-          motion: getMotionDelta(),
-          debug: getDebug(),
-          fps: getFps(),
-        });
+        setReadout({ debug: getDebug(), fps: getFps() });
       }
       frame = window.requestAnimationFrame(tick);
     };
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
-  }, [getMotionDelta, getDebug, getFps, showDebug]);
-  const { motion, debug, fps } = readout;
+  }, [getDebug, getFps, showDebug]);
+  const { debug, fps } = readout;
 
   if (!showDebug) {
     return null;
@@ -166,11 +156,6 @@ export const DebugOverlay = ({
   const videoLabel = videoSize
     ? `${videoSize.width}x${videoSize.height}`
     : "unknown";
-  const toDeg = (rad: number): number => (rad * 180) / Math.PI;
-  const offset =
-    videoSize !== undefined
-      ? orientationDeltaToPixels(motion, videoSize, viewportSize)
-      : { dx: 0, dy: 0 };
 
   return (
     <div className="pointer-events-none absolute left-4 top-[max(3.5rem,calc(env(safe-area-inset-top)+2.75rem))] z-20 min-w-40 rounded-lg border border-white/15 bg-black/70 px-3 py-2 font-mono text-[11px] leading-relaxed text-white/85 backdrop-blur-sm">
@@ -221,14 +206,6 @@ export const DebugOverlay = ({
       <Row
         label="detections"
         value={`${debug.shownCount} / ${debug.filteredCount} / ${debug.rawCount}`}
-      />
-      <Row
-        label="motion"
-        value={`${toDeg(motion.yaw).toFixed(1)}° / ${toDeg(motion.pitch).toFixed(1)}°`}
-      />
-      <Row
-        label="offset"
-        value={`${Math.round(offset.dx)} / ${Math.round(offset.dy)} px`}
       />
       <Row
         label="viewport"

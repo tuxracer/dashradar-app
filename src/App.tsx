@@ -49,7 +49,6 @@ const RadarScreen = () => {
     getDebugSnapshot,
     error,
     start,
-    getMotionDelta,
   } = useDetection();
   const { showDebug, radarAudio } = useSettings();
   const [showIntro, setShowIntro] = useState(shouldShowIntro);
@@ -141,7 +140,6 @@ const RadarScreen = () => {
         getDebug={getDebugSnapshot}
         videoSize={videoSize}
         viewportSize={viewportSize}
-        getMotionDelta={getMotionDelta}
       />
       <SettingsScreen backend={backend} />
       {status === "loading-model" && downloadingModel && (

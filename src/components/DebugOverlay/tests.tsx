@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DebugOverlay } from "@/components/DebugOverlay";
 import { SettingsProvider, STORAGE_KEY } from "@/context/SettingsContext";
 import type { DebugSnapshot } from "@/context/DetectionContext";
-import type { YawPitch } from "@/lib/motionSensor";
 import type { BackendProbe } from "@/workers/detection/types";
 
 afterEach(() => {
@@ -11,10 +10,7 @@ afterEach(() => {
 });
 
 const enableDebug = () =>
-  window.localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({ showVideo: true, showDebug: true }),
-  );
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ showDebug: true }));
 
 const debug: DebugSnapshot = {
   captureMs: 1.2,
@@ -30,8 +26,6 @@ const debug: DebugSnapshot = {
   pacingRule: "rest",
 };
 
-const noMotion = (): YawPitch => ({ yaw: 0, pitch: 0 });
-
 /** Complete probe with quiet defaults; override the fields a test cares about. */
 const probe = (overrides: Partial<BackendProbe> = {}): BackendProbe => ({
   workerGpu: true,
@@ -45,10 +39,7 @@ const probe = (overrides: Partial<BackendProbe> = {}): BackendProbe => ({
   ...overrides,
 });
 
-const renderOverlay = (
-  backendProbe?: BackendProbe,
-  getMotionDelta: () => YawPitch = noMotion,
-) =>
+const renderOverlay = (backendProbe?: BackendProbe) =>
   render(
     <SettingsProvider>
       <DebugOverlay
@@ -60,7 +51,6 @@ const renderOverlay = (
         getDebug={() => debug}
         videoSize={{ width: 1280, height: 720 }}
         viewportSize={{ width: 800, height: 400 }}
-        getMotionDelta={getMotionDelta}
       />
     </SettingsProvider>,
   );
@@ -150,28 +140,12 @@ describe("DebugOverlay", () => {
   });
 });
 
-describe("DebugOverlay motion readout", () => {
+describe("DebugOverlay readout loop", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it("does not schedule the readout loop while showDebug is off", () => {
     const rafSpy = vi.spyOn(window, "requestAnimationFrame").mockReturnValue(0);
     renderOverlay();
     expect(rafSpy).not.toHaveBeenCalled();
-  });
-
-  it("renders the motion delta once an animation frame runs", () => {
-    // One-shot rAF: the readout tick re-schedules itself, so a mock that always
-    // calls cb would recurse infinitely.
-    let ran = false;
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
-      if (!ran) {
-        ran = true;
-        cb(200);
-      }
-      return 0;
-    });
-    enableDebug();
-    renderOverlay(undefined, () => ({ yaw: 0.1, pitch: 0 }));
-    expect(screen.getByText("motion")).toBeInTheDocument();
   });
 });

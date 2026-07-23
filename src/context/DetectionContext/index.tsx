@@ -19,12 +19,6 @@ import {
 import type { HudModel } from "@/lib/detection";
 import { buildHudModel, toRoadDetections } from "@/lib/detection";
 import { createDetectionTracker } from "@/lib/detectionTracker";
-import { createMotionSensorManager } from "@/lib/motionSensor";
-import type {
-  MotionPermission,
-  MotionSensorManager,
-  YawPitch,
-} from "@/lib/motionSensor";
 import { contactDirection, signalFromScore } from "@/lib/radarSignal";
 import { waitForServiceWorkerControl } from "@/lib/serviceWorker";
 import { POLICE_LABEL } from "@/workers/detection/consts";
@@ -80,14 +74,11 @@ type DetectionProviderProps = {
   children: ReactNode;
   /** Test seam: defaults to the real detection worker. */
   createWorker?: () => DetectionWorkerLike;
-  /** Test seam: defaults to the real motion-sensor manager. */
-  createMotionManager?: () => MotionSensorManager;
 };
 
 export const DetectionProvider = ({
   children,
   createWorker = createDetectionWorker,
-  createMotionManager = createMotionSensorManager,
 }: DetectionProviderProps) => {
   const { showDebug, settingsOpen } = useSettings();
   // Mirrors showDebug for sendFrame, which is a stable callback: the pump
@@ -114,8 +105,6 @@ export const DetectionProvider = ({
   // that would re-render every consumer per frame.
   const fpsRef = useRef(0);
   const debugRef = useRef<DebugSnapshot>(INITIAL_DEBUG);
-  const [motionPermission, setMotionPermission] =
-    useState<MotionPermission>("unsupported");
   const [contact, setContact] = useState<Contact>();
   // Mirrors `contact` so the previous bitmap can be closed from event
   // handlers without a side effect inside a setState updater (StrictMode
@@ -165,14 +154,6 @@ export const DetectionProvider = ({
   // recycled worker's `ready` does not re-fire them, which would otherwise
   // inflate the counts every WORKER_RECYCLE_AFTER_MS of a scanning session.
   const readyTrackedRef = useRef(false);
-  // The motion manager is created once. A ref (not useMemo) keeps it stable
-  // across renders and reachable from the sendFrame/result handlers.
-  const motionRef = useRef<MotionSensorManager | undefined>(undefined);
-  // Orientation snapshot taken at the moment a frame is captured, and the
-  // reference orientation for the currently displayed detection. Only one
-  // frame is ever in flight, so a single capture ref suffices.
-  const captureOrientationRef = useRef<YawPitch>({ yaw: 0, pitch: 0 });
-  const referenceOrientationRef = useRef<YawPitch>({ yaw: 0, pitch: 0 });
   const videoRef = useRef<HTMLVideoElement | undefined>(undefined);
   const runningRef = useRef(false);
   // Mirrors `status` so event handlers can branch on the current status
@@ -281,14 +262,6 @@ export const DetectionProvider = ({
       }
       lastCaptureMsRef.current = performance.now() - captureStart;
       postTimeRef.current = performance.now();
-      const capturedOrientation = motionRef.current?.getYawPitch() ?? {
-        yaw: 0,
-        pitch: 0,
-      };
-      captureOrientationRef.current = {
-        yaw: capturedOrientation.yaw,
-        pitch: capturedOrientation.pitch,
-      };
       inFlightRef.current += 1;
       worker.postMessage(
         { type: "detect", frame, includeFrame: includeFrameRef.current },
@@ -376,24 +349,6 @@ export const DetectionProvider = ({
     };
   }, []);
 
-  // Own the motion-sensor lifecycle. Integration runs whether or not permission
-  // is granted; on iOS no devicemotion events fire until the user grants it, so
-  // the orientation simply stays at zero (no compensation).
-  useEffect(() => {
-    const manager = createMotionManager();
-    motionRef.current = manager;
-    manager.start();
-    // Seed the permission state from the freshly created manager. This effect
-    // is the only place the manager's initial permission can be read, so
-    // setting state directly here is intended, not a render-loop hazard.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setMotionPermission(manager.getPermission());
-    return () => {
-      manager.stop();
-      motionRef.current = undefined;
-    };
-  }, [createMotionManager]);
-
   useEffect(() => {
     // Defer the model download until a service worker controls the page so its
     // fetch flows through Workbox's runtime cache on a first visit. In dev
@@ -478,9 +433,6 @@ export const DetectionProvider = ({
         case "detections": {
           inFlightRef.current = Math.max(0, inFlightRef.current - 1);
           framesTotalRef.current += 1;
-          // The returned boxes correspond to the pose the frame was captured at,
-          // not the pose now. Anchor compensation to that capture pose.
-          referenceOrientationRef.current = captureOrientationRef.current;
           const roadDetections = toRoadDetections(message.detections);
           const tracked = trackerRef.current?.update(roadDetections) ?? [];
           setHud(buildHudModel(tracked));
@@ -767,26 +719,6 @@ export const DetectionProvider = ({
 
   const getDebugSnapshot = useCallback(() => debugRef.current, []);
 
-  /** Angular delta (radians) between the live orientation and the pose the
-   * currently displayed detection was captured at. */
-  const getMotionDelta = useCallback((): YawPitch => {
-    const current = motionRef.current?.getYawPitch() ?? { yaw: 0, pitch: 0 };
-    const reference = referenceOrientationRef.current;
-    return {
-      yaw: current.yaw - reference.yaw,
-      pitch: current.pitch - reference.pitch,
-    };
-  }, []);
-
-  /** Requests iOS motion permission from a user gesture; no-op elsewhere. */
-  const requestMotionPermission = useCallback(async () => {
-    const manager = motionRef.current;
-    if (!manager) {
-      return;
-    }
-    setMotionPermission(await manager.requestPermission());
-  }, []);
-
   const value = useMemo(
     () => ({
       status,
@@ -802,9 +734,6 @@ export const DetectionProvider = ({
       contact,
       start,
       stop,
-      getMotionDelta,
-      motionPermission,
-      requestMotionPermission,
     }),
     [
       status,
@@ -820,9 +749,6 @@ export const DetectionProvider = ({
       contact,
       start,
       stop,
-      getMotionDelta,
-      motionPermission,
-      requestMotionPermission,
     ],
   );
 

@@ -26,7 +26,6 @@ import type {
   DebugSnapshot,
   DetectionWorkerLike,
 } from "@/context/DetectionContext";
-import type { MotionSensorManager } from "@/lib/motionSensor";
 import type { WorkerRequest, WorkerResponse } from "@/workers/detection/types";
 
 class FakeWorker implements DetectionWorkerLike {
@@ -154,27 +153,6 @@ const SettingsToggle = () => {
         close
       </button>
     </>
-  );
-};
-
-const MotionPermissionProbe = () => {
-  const { motionPermission } = useDetection();
-  return <span data-testid="motion-permission">{motionPermission}</span>;
-};
-
-const DeltaProbe = () => {
-  const { getMotionDelta } = useDetection();
-  const [yaw, setYaw] = useState<number | undefined>(undefined);
-  return (
-    <div>
-      <button
-        data-testid="read-delta"
-        onClick={() => setYaw(getMotionDelta().yaw)}
-      >
-        read delta
-      </button>
-      <span data-testid="delta-yaw">{yaw ?? "none"}</span>
-    </div>
   );
 };
 
@@ -1648,86 +1626,6 @@ describe("worker recycle", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(detectCount(workers[1])).toBe(1);
-  });
-});
-
-describe("motion compensation", () => {
-  it("measures the motion delta from the pose at the last result", async () => {
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const orientation = { yaw: 0, pitch: 0 };
-    const manager: MotionSensorManager = {
-      start: () => {},
-      stop: () => {},
-      getYawPitch: () => orientation, // live object, mutated after capture below
-      getPermission: () => "granted",
-      requestPermission: () => Promise.resolve("granted"),
-    };
-    const worker = new FakeWorker();
-    render(
-      <SettingsProvider>
-        <DetectionProvider
-          createWorker={() => worker}
-          createMotionManager={() => manager}
-        >
-          <DeltaProbe />
-          <StartOnReady />
-        </DetectionProvider>
-      </SettingsProvider>,
-    );
-    act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    await waitFor(() => {
-      expect(
-        worker.posted.filter((message) => message.type === "detect"),
-      ).toHaveLength(1);
-    });
-    // Result lands while the camera pose is still yaw 0, so the reference is 0.
-    act(() => {
-      worker.emit({
-        type: "detections",
-        detections: [],
-        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
-      });
-    });
-    // The phone then rotates. Delta must be measured from the captured
-    // reference, which requires the context to have snapshotted a COPY at
-    // capture time.
-    orientation.yaw = 0.2;
-    act(() => {
-      screen.getByTestId("read-delta").click();
-    });
-    expect(Number(screen.getByTestId("delta-yaw").textContent)).toBeCloseTo(
-      0.2,
-    );
-  });
-
-  it("initializes motionPermission from the manager", () => {
-    const manager: MotionSensorManager = {
-      start: () => {},
-      stop: () => {},
-      getYawPitch: () => ({ yaw: 0, pitch: 0 }),
-      getPermission: () => "prompt",
-      requestPermission: () => Promise.resolve("granted"),
-    };
-    const worker = new FakeWorker();
-    render(
-      <SettingsProvider>
-        <DetectionProvider
-          createWorker={() => worker}
-          createMotionManager={() => manager}
-        >
-          <MotionPermissionProbe />
-        </DetectionProvider>
-      </SettingsProvider>,
-    );
-    expect(screen.getByTestId("motion-permission").textContent).toBe("prompt");
   });
 });
 

@@ -1,5 +1,4 @@
 import type { HudModel } from "@/lib/detection";
-import type { MotionPermission, YawPitch } from "@/lib/motionSensor";
 import type { ContactDirection } from "@/lib/radarSignal";
 import type { NormalizedBox } from "@/types";
 import type {
@@ -126,14 +125,6 @@ export type DetectionContextValue = {
   contact: Contact | undefined;
   start: (video: HTMLVideoElement) => void;
   stop: () => void;
-  /** Cumulative yaw/pitch (radians) the camera has rotated since the currently
-   * displayed detection was captured. Zero when motion is unavailable. Read per
-   * animation frame by the HUD overlay to offset stale boxes. */
-  getMotionDelta: () => YawPitch;
-  /** Motion-sensor permission state; drives the iOS tap-to-start gate. */
-  motionPermission: MotionPermission;
-  /** Requests iOS motion permission from a user gesture; no-op elsewhere. */
-  requestMotionPermission: () => Promise<void>;
 };
 
 /**
