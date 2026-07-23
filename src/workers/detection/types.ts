@@ -214,9 +214,18 @@ export type WorkerResponse =
       timing: FrameTiming;
       crop?: DetectionCrop;
       /**
-       * Full inference frame encoded as JPEG, present only when the request
-       * asked for it (includeFrame) and the frame had a top detection. The
-       * exact image the crop was cut from, for saving as training data.
+       * Downscaled full-frame thumbnail, present only when the request asked
+       * for it (includeFrame, i.e. debug mode) and the frame had no top
+       * detection to crop. Lets the debug UI show what every scan saw even when
+       * nothing was detected. Mutually exclusive with `crop`: a frame with a
+       * top detection sends `crop` instead.
+       */
+      frameThumbnail?: ImageBitmap;
+      /**
+       * Full inference frame encoded as JPEG, present whenever the request
+       * asked for it (includeFrame). Pairs with the crop or the frame
+       * thumbnail from the same message as the image the contact card's SAVE
+       * button downloads for training data.
        */
       frame?: Blob;
       /**
@@ -249,6 +258,9 @@ export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
         value.detections.every(isRawDetection) &&
         isFrameTiming(value.timing) &&
         (value.crop === undefined || isDetectionCrop(value.crop)) &&
+        (value.frameThumbnail === undefined ||
+          (typeof ImageBitmap !== "undefined" &&
+            value.frameThumbnail instanceof ImageBitmap)) &&
         (value.frame === undefined || value.frame instanceof Blob) &&
         (value.fingerprint === undefined || isNumber(value.fingerprint))
       );

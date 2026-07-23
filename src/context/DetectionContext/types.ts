@@ -24,24 +24,35 @@ export type MainThreadWebGpu =
 
 export type ModelProgress = { loadedBytes: number; totalBytes: number };
 
-/** Latest detection cutout: the evidence radar detector mode renders. */
+/**
+ * Latest cutout the radar detector mode renders on its contact card. Usually a
+ * detection crop with its score, signal, box, and direction. In debug mode a
+ * scan with no detection instead produces a bare frame preview (image and
+ * frame only): the detection-only fields below are absent for it.
+ */
 export type Contact = {
-  /** Cutout ImageBitmap of the detection, from the exact inference frame. */
+  /**
+   * The card image: a cutout of the detection, or, for a debug frame preview,
+   * a downscaled thumbnail of the whole inference frame.
+   */
   image: ImageBitmap;
   /**
-   * Full inference frame the crop was cut from, JPEG-encoded by the worker.
+   * Full inference frame the image was taken from, JPEG-encoded by the worker.
    * Present only when the frame was captured with the debug setting on; the
    * contact card's SAVE button downloads it for training data.
    */
   frame?: Blob;
-  /** Raw model score of the cropped detection. */
-  score: number;
+  /** Raw model score of the cropped detection. Absent on a frame preview. */
+  score?: number;
   /** Score remapped onto the meter's signal band (signalFromScore); the same
-   * semantic as the dial readout so the two can never disagree. */
-  signal: number;
-  box: NormalizedBox;
-  direction: ContactDirection;
-  /** performance.now() when the result carrying this crop arrived. */
+   * semantic as the dial readout so the two can never disagree. Absent on a
+   * frame preview. */
+  signal?: number;
+  /** Cropped detection's box. Absent on a frame preview. */
+  box?: NormalizedBox;
+  /** Cropped detection's heading. Absent on a frame preview. */
+  direction?: ContactDirection;
+  /** performance.now() when the result carrying this image arrived. */
   at: number;
 };
 
@@ -117,10 +128,12 @@ export type DetectionContextValue = {
   getDebugSnapshot: () => DebugSnapshot;
   error: DetectionErrorCode | undefined;
   /**
-   * Latest detection cutout with its score, remapped signal, and direction.
-   * Replaced when a new crop arrives; left untouched by detection-free frames
-   * so radar detector mode's contact card lingers through the meter's decay
-   * tail. Cleared on worker errors and teardown.
+   * Latest cutout with its score, remapped signal, and direction. Replaced
+   * when a new crop arrives; left untouched by detection-free frames so radar
+   * detector mode's contact card lingers through the meter's decay tail. In
+   * debug mode a detection-free scan instead replaces it with a bare frame
+   * preview, so the card shows what every scan saw. Cleared on worker errors
+   * and teardown.
    */
   contact: Contact | undefined;
   /** True while the camera feed is being re-acquired after a detected stall. */

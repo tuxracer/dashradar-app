@@ -119,6 +119,13 @@ const testContact = (
   at: 0,
 });
 
+/** Debug frame preview: a bare thumbnail with no detection metadata. */
+const previewContact = (frame?: Blob): Contact => ({
+  image: { width: 320, height: 240, close: () => {} } as unknown as ImageBitmap,
+  frame,
+  at: 0,
+});
+
 describe("RadarDetectorScreen contact card", () => {
   it("renders the card with the direction from the contact", () => {
     render(
@@ -239,5 +246,59 @@ describe("RadarDetectorScreen frame saving", () => {
       frame,
       expect.stringMatching(/^dashradar-frame-\d{4}-\d{2}-\d{2}-\d{6}\.jpg$/),
     );
+  });
+});
+
+describe("RadarDetectorScreen debug frame preview", () => {
+  const frameBlob = () => new Blob(["jpeg"], { type: "image/jpeg" });
+
+  it("keeps the card lit every scan in debug mode even at a zero meter", async () => {
+    render(
+      <RadarDetectorScreen
+        confidence={0}
+        audioEnabled={false}
+        contact={previewContact()}
+        debug={true}
+      />,
+    );
+    // A detection-free scan holds the meter at zero, but debug mode keeps the
+    // card visible so the frame preview shows on every scan.
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("contact-card").closest("[data-contact]"),
+      ).toHaveAttribute("data-contact", "true"),
+    );
+  });
+
+  it("hides a zero-meter contact when debug is off", async () => {
+    render(
+      <RadarDetectorScreen
+        confidence={0}
+        audioEnabled={false}
+        contact={previewContact()}
+      />,
+    );
+    // Without debug the card is meter-gated: at zero it fades out. Let the rAF
+    // loop tick first so this is not just the pre-tick default.
+    await waitFor(() =>
+      expect(screen.getByTestId("signal-status")).toHaveTextContent("SCANNING"),
+    );
+    expect(
+      screen.getByTestId("contact-card").closest("[data-contact]"),
+    ).toHaveAttribute("data-contact", "false");
+  });
+
+  it("shows a preview's SAVE button but never a direction row", () => {
+    render(
+      <RadarDetectorScreen
+        confidence={0}
+        audioEnabled={false}
+        contact={previewContact(frameBlob())}
+        debug={true}
+      />,
+    );
+    expect(screen.getByTestId("contact-card")).toBeInTheDocument();
+    expect(screen.getByTestId("contact-save")).toBeInTheDocument();
+    expect(screen.queryByTestId("contact-direction")).not.toBeInTheDocument();
   });
 });

@@ -526,6 +526,15 @@ export const DetectionProvider = ({
             } else {
               message.crop.image.close();
             }
+          } else if (message.frameThumbnail) {
+            // Debug mode, no detection to crop: show a bare frame preview so the
+            // card reflects every scan. No detection metadata, so the meter
+            // stays at zero and the card's direction row stays hidden.
+            replaceContact({
+              image: message.frameThumbnail,
+              frame: message.frame,
+              at: performance.now(),
+            });
           }
           // Report an anonymous police sighting to analytics on the leading
           // edge only: fire when police appear, then stay quiet until they have

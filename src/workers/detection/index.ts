@@ -8,6 +8,7 @@ import { env, InferenceSession, Tensor } from "onnxruntime-web/webgpu";
 import { isWebKitUa } from "@/lib/browserEngine";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 import {
+  CROP_MAX_EDGE,
   FRAME_JPEG_QUALITY,
   INPUT_SIZE,
   MODEL_URL_BY_BACKEND,
@@ -385,6 +386,30 @@ const loadModel = async (forceWasm: boolean) => {
 };
 
 /**
+ * Downscale the full inference frame to a thumbnail bitmap for the debug
+ * contact card, shown on scans that had no detection to crop. The long edge is
+ * capped at CROP_MAX_EDGE (never upscaled), matching the detection crop's
+ * sizing. Best-effort like the crop: any failure returns undefined and never
+ * blocks the detection result.
+ */
+const createFrameThumbnail = async (
+  frame: ImageBitmap,
+): Promise<ImageBitmap | undefined> => {
+  const scale = Math.min(
+    1,
+    CROP_MAX_EDGE / Math.max(frame.width, frame.height),
+  );
+  try {
+    return await createImageBitmap(frame, {
+      resizeWidth: Math.max(1, Math.round(frame.width * scale)),
+      resizeHeight: Math.max(1, Math.round(frame.height * scale)),
+    });
+  } catch {
+    return undefined;
+  }
+};
+
+/**
  * Encode the full inference frame as a JPEG blob for debug-mode frame saving.
  * Best-effort like the crop: any failure returns undefined and never blocks
  * the detection result.
@@ -483,24 +508,42 @@ const detect = async (frame: ImageBitmap, includeFrame: boolean) => {
       }
     }
 
-    // Full-frame JPEG for debug-mode saving, gated on the same condition that
-    // attempts the crop; the context only surfaces it beside a valid crop
-    // from the same message.
+    // In debug mode (includeFrame), when there is no detection to crop, send a
+    // downscaled full-frame thumbnail so the contact card still shows what the
+    // scan saw. A frame with a top detection sends the crop instead, so the two
+    // are mutually exclusive.
+    let frameThumbnail: ImageBitmap | undefined;
+    if (includeFrame && topIndex === undefined) {
+      frameThumbnail = await createFrameThumbnail(frame);
+    }
+
+    // Full-frame JPEG for debug-mode saving, sent whenever debug asked for it
+    // so the card's SAVE button works beside both a crop and a frame thumbnail
+    // (a missed-detection frame is exactly the kind worth saving as training
+    // data).
     let fullFrame: Blob | undefined;
-    if (includeFrame && topIndex !== undefined) {
+    if (includeFrame) {
       fullFrame = await encodeFrame(frame);
     }
 
+    const transfer: Transferable[] = [];
+    if (crop) {
+      transfer.push(crop.image);
+    }
+    if (frameThumbnail) {
+      transfer.push(frameThumbnail);
+    }
     post(
       {
         type: "detections",
         detections,
         timing: { preprocessMs, inferenceMs, decodeMs },
         crop,
+        frameThumbnail,
         frame: fullFrame,
         fingerprint,
       },
-      crop ? [crop.image] : [],
+      transfer,
     );
   } catch {
     post({ type: "worker-error", code: "INFERENCE_FAILED" });
