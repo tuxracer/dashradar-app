@@ -2466,4 +2466,85 @@ describe("DetectionProvider camera recovery", () => {
     // recovery bumps it to 4.
     expect(screen.getByTestId("camera-epoch").textContent).toBe("4");
   });
+
+  // Shared across every driveObscuredStall call in the file so fingerprints
+  // never repeat, including across a chain of driveObscuredRecovery calls
+  // within a single test: a noisy obscured lens must never trip the frozen
+  // detector's identical-fingerprint check.
+  let obscuredFingerprintCounter = 0;
+
+  /** Drive one obscured-lens stall: repeat OBSCURED_FRAME_THRESHOLD + 1 dark
+   *  (brightFraction 0) frames, each with a distinct, never-before-seen
+   *  fingerprint so the frozen detector never fires, isolating the obscured
+   *  detector. Does NOT resume the pump, so it exercises the terminal
+   *  escalation (which stops the pump for good) as well as the remount path.
+   *  Mirrors driveFrozenStall's present -> emit -> advance cycle. */
+  const driveObscuredStall = async (
+    worker: FakeWorker,
+    present: () => void,
+  ) => {
+    for (let i = 0; i <= OBSCURED_FRAME_THRESHOLD; i += 1) {
+      await act(async () => {
+        present();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      act(() => {
+        obscuredFingerprintCounter += 1;
+        emitDetections(worker, obscuredFingerprintCounter, 0);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS + 20);
+      });
+    }
+  };
+
+  /** Drive one obscured-lens recovery: stall to the threshold, then simulate
+   *  the remounted CameraView delivering a fresh stream that resumes the
+   *  pump. */
+  const driveObscuredRecovery = async (
+    worker: FakeWorker,
+    present: () => void,
+  ) => {
+    await driveObscuredStall(worker, present);
+    // Fresh stream from the remount resumes the pump.
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+  };
+
+  it("shows the stalled alert after MAX_RECONNECT_ATTEMPTS failed obscured recoveries", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(async () => fakeBitmap()),
+    );
+    const { video, presentFrame } = videoWithControlledFrames();
+    const worker = renderWithProvider(<RecoveryProbe video={video} />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "webgpu" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+
+    // Each obscured recovery re-stalls immediately (still dark, still
+    // changing), never reaching RECOVERY_HEALTHY_FRAMES healthy frames since a
+    // dark frame is never healthy, so attempts stack.
+    for (let attempt = 0; attempt < MAX_RECONNECT_ATTEMPTS; attempt += 1) {
+      await driveObscuredRecovery(worker, presentFrame);
+    }
+    expect(screen.getByTestId("camera-stalled").textContent).toBe("false");
+
+    // One more obscured stall: attempts now equal MAX, so recovery gives up
+    // and surfaces the terminal alert instead of remounting.
+    await driveObscuredStall(worker, presentFrame);
+    expect(screen.getByTestId("camera-stalled").textContent).toBe("true");
+    expect(screen.getByTestId("recovering").textContent).toBe("false");
+
+    // The unrecoverable stall is reported to analytics exactly once.
+    const stalledReports = vi
+      .mocked(track)
+      .mock.calls.filter(([event]) => event === "error");
+    expect(stalledReports).toEqual([["error", { code: "CAMERA_STALLED" }]]);
+  });
 });

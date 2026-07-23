@@ -627,6 +627,15 @@ export const DetectionProvider = ({
               brightFraction < DARK_BRIGHT_FRACTION
             ) {
               darkFrameCountRef.current += 1;
+              // A dark frame is not a healthy frame. Without this reset, a
+              // noisy obscured lens (changing fingerprints, so the
+              // fingerprint block above counts each frame as healthy) would
+              // drive healthyFrameCountRef to RECOVERY_HEALTHY_FRAMES and
+              // zero reconnectAttemptsRef on the same frame the obscured
+              // detector fires, so reconnectAttemptsRef could never reach
+              // MAX_RECONNECT_ATTEMPTS and the feed would never escalate to
+              // the terminal CAMERA_STALLED alert.
+              healthyFrameCountRef.current = 0;
             } else {
               darkFrameCountRef.current = 0;
             }
