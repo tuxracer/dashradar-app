@@ -387,7 +387,7 @@ export default defineConfig(({ command, isPreview }) => {
       ...sentrySourceMaps(),
     ],
     resolve: { tsconfigPaths: true },
-    server: { headers: CROSS_ORIGIN_ISOLATION_HEADERS },
+    server: { headers: CROSS_ORIGIN_ISOLATION_HEADERS, open: true },
     preview: { headers: CROSS_ORIGIN_ISOLATION_HEADERS },
     test: {
       environment: "jsdom",
