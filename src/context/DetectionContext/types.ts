@@ -28,9 +28,11 @@ export type ModelProgress = { loadedBytes: number; totalBytes: number };
  * Which detector tripped a camera-stall recovery, reported on the `camera_stall`
  * analytics event: `frozen` is the streak of byte-identical frames (a frozen or
  * black feed), `watchdog` is no detection result arriving within the watchdog
- * window (the feed fully stalled, so no result comes back at all).
+ * window (the feed fully stalled, so no result comes back at all), `obscured`
+ * is a streak of frames with no bright pixels anywhere (a physically covered
+ * lens).
  */
-export type CameraStallReason = "frozen" | "watchdog";
+export type CameraStallReason = "frozen" | "watchdog" | "obscured";
 
 /**
  * Latest cutout the radar detector mode renders on its contact card. Usually a

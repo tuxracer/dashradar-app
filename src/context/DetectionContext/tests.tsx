@@ -8,6 +8,7 @@ import {
   FRAME_RETRY_MS,
   MAX_RECONNECT_ATTEMPTS,
   MIN_FRAME_INTERVAL_MS,
+  OBSCURED_FRAME_THRESHOLD,
   POLICE_EVENT_DEBOUNCE_MS,
   RECOVERY_HEALTHY_FRAMES,
   STALE_FRAME_THRESHOLD,
@@ -206,18 +207,23 @@ const fakeBitmap = () => {
 };
 
 /**
- * Emit one detections result with the given fingerprint. Assumes the pump has
- * already posted a detect frame (a prior present + prime). These tests run
- * under `vi.useFakeTimers()`, so callers step the pump between rounds by
- * calling `presentFrame()` and advancing the fake timers, not by awaiting
- * real elapsed time.
+ * Emit one detections result with the given fingerprint and optional
+ * brightFraction. Assumes the pump has already posted a detect frame (a prior
+ * present + prime). These tests run under `vi.useFakeTimers()`, so callers
+ * step the pump between rounds by calling `presentFrame()` and advancing the
+ * fake timers, not by awaiting real elapsed time.
  */
-const emitDetections = (worker: FakeWorker, fingerprint: number) => {
+const emitDetections = (
+  worker: FakeWorker,
+  fingerprint: number,
+  brightFraction?: number,
+) => {
   worker.emit({
     type: "detections",
     detections: [],
     timing: { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 },
     fingerprint,
+    brightFraction,
   });
 };
 
@@ -2084,6 +2090,82 @@ describe("DetectionProvider camera recovery", () => {
     expect(screen.getByTestId("camera-epoch").textContent).toBe("1");
     // The detected stall is reported to analytics, tagged as a frozen feed.
     expect(track).toHaveBeenCalledWith("camera_stall", { reason: "frozen" });
+  });
+
+  it("recovers the camera after a run of dark frames", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const { video, presentFrame } = videoWithControlledFrames();
+    const worker = renderWithProvider(<RecoveryProbe video={video} />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "webgpu" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+
+    expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
+
+    // Distinct fingerprint each round (so the frozen detector never fires) but
+    // brightFraction 0 (a fully dark feed), isolating the obscured detector.
+    for (let i = 0; i <= OBSCURED_FRAME_THRESHOLD; i += 1) {
+      await act(async () => {
+        presentFrame();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      act(() => {
+        emitDetections(worker, i, 0);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+      });
+    }
+
+    expect(screen.getByTestId("recovering").textContent).toBe("true");
+    expect(screen.getByTestId("camera-epoch").textContent).toBe("1");
+    // The detected stall is reported to analytics, tagged as an obscured lens.
+    expect(track).toHaveBeenCalledWith("camera_stall", { reason: "obscured" });
+  });
+
+  it("does not recover when a bright frame interrupts the dark run", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const { video, presentFrame } = videoWithControlledFrames();
+    const worker = renderWithProvider(<RecoveryProbe video={video} />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "webgpu" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+
+    for (let i = 0; i <= OBSCURED_FRAME_THRESHOLD + 2; i += 1) {
+      await act(async () => {
+        presentFrame();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      act(() => {
+        // A single bright frame (0.5) in the middle resets the streak; the dark
+        // runs on either side of it (3 frames, then 4) each stay under
+        // OBSCURED_FRAME_THRESHOLD, so the streak never reaches the threshold.
+        emitDetections(worker, i, i === 3 ? 0.5 : 0);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+      });
+    }
+
+    expect(screen.getByTestId("recovering").textContent).toBe("false");
+    expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
+    expect(track).not.toHaveBeenCalledWith("camera_stall", {
+      reason: "obscured",
+    });
   });
 
   it("does not recover while frames keep changing", async () => {

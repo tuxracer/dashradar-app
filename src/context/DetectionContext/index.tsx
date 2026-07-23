@@ -34,11 +34,13 @@ import type {
 } from "@/workers/detection/types";
 import { isWorkerResponse } from "@/workers/detection/types";
 import {
+  DARK_BRIGHT_FRACTION,
   FPS_SAMPLE_SIZE,
   FRAME_RETRY_MS,
   INITIAL_DEBUG,
   MAX_RECONNECT_ATTEMPTS,
   MIN_FRAME_INTERVAL_MS,
+  OBSCURED_FRAME_THRESHOLD,
   PACING_REST_RATIO,
   POLICE_EVENT_DEBOUNCE_MS,
   RECOVERY_HEALTHY_FRAMES,
@@ -136,6 +138,11 @@ export const DetectionProvider = ({
   // a frozen or black feed (a live feed always varies), triggering recovery.
   const lastFingerprintRef = useRef<number | undefined>(undefined);
   const staleFrameCountRef = useRef(0);
+  // Count of consecutive dark inference frames (brightFraction below
+  // DARK_BRIGHT_FRACTION). OBSCURED_FRAME_THRESHOLD of them means a physically
+  // obscured lens: a noisy near-black feed the byte-identical fingerprint check
+  // above cannot catch, because sensor noise perturbs every frame.
+  const darkFrameCountRef = useRef(0);
   // Consecutive changing frames since the last stall; RECOVERY_HEALTHY_FRAMES
   // of them prove a recovery worked and reset the reconnect-attempt counter.
   const healthyFrameCountRef = useRef(0);
@@ -607,6 +614,26 @@ export const DetectionProvider = ({
               }
             }
             lastFingerprintRef.current = fingerprint;
+            // Obscured-lens detector: a covered lens presents a noisy near-black
+            // frame (changing fingerprints, so the frozen check below never
+            // fires) with no bright pixels anywhere. brightFraction below the
+            // dark threshold for OBSCURED_FRAME_THRESHOLD consecutive frames
+            // means the lens is blocked. A night scene keeps some bright region,
+            // so it stays above and this streak resets.
+            const { brightFraction } = message;
+            if (
+              brightFraction !== undefined &&
+              brightFraction < DARK_BRIGHT_FRACTION
+            ) {
+              darkFrameCountRef.current += 1;
+            } else {
+              darkFrameCountRef.current = 0;
+            }
+            if (darkFrameCountRef.current >= OBSCURED_FRAME_THRESHOLD) {
+              beginRecoveryRef.current("obscured");
+              // Recovery owns the pump now (stop() ran); skip the re-prime.
+              break;
+            }
             if (staleFrameCountRef.current >= STALE_FRAME_THRESHOLD) {
               beginRecoveryRef.current("frozen");
               // Recovery owns the pump now (stop() ran); skip the re-prime
@@ -726,6 +753,7 @@ export const DetectionProvider = ({
       setRecovering(false);
       lastFingerprintRef.current = undefined;
       staleFrameCountRef.current = 0;
+      darkFrameCountRef.current = 0;
       healthyFrameCountRef.current = 0;
       // Branch on statusRef outside the setStatus updater: StrictMode
       // double-invokes updater functions, so a side effect (the frame pump)
@@ -785,6 +813,7 @@ export const DetectionProvider = ({
       window.clearTimeout(watchdogTimerRef.current);
       lastFingerprintRef.current = undefined;
       staleFrameCountRef.current = 0;
+      darkFrameCountRef.current = 0;
       healthyFrameCountRef.current = 0;
       stop();
       if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {

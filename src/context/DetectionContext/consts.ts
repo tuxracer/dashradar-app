@@ -117,3 +117,21 @@ export const RECOVERY_HEALTHY_FRAMES = 5;
  * latency here is a safe trade for not false-firing on a slow-but-alive device.
  */
 export const WATCHDOG_MS = 15_000;
+
+/**
+ * brightFraction below which an inference frame counts as "dark" for the
+ * obscured-lens detector. The reference obscured frame has zero pixels above
+ * the worker's BRIGHT_LUMA_THRESHOLD, so its brightFraction is 0; this 0.1%
+ * floor tolerates a few noisy bright specks while any genuinely lit region
+ * (which a night driving scene always has) blows well past it.
+ */
+export const DARK_BRIGHT_FRACTION = 0.001;
+
+/**
+ * Consecutive dark frames (brightFraction below DARK_BRIGHT_FRACTION) that mark
+ * a physically obscured lens and trigger camera recovery. At the ~0.5 fps
+ * pacing floor this is about ten seconds, matching STALE_FRAME_THRESHOLD's
+ * conservatism: long enough to ride out a momentary dark patch (a brief
+ * underpass) without a spurious reconnect while driving.
+ */
+export const OBSCURED_FRAME_THRESHOLD = 5;
