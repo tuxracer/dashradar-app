@@ -65,5 +65,6 @@ export const readPreviousSessionEnd = (
     framesProcessed: parsed.framesProcessed,
     backend: parsed.backend,
     graphCapture: parsed.graphCapture,
+    release: parsed.release,
   };
 };

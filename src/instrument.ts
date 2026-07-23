@@ -1,5 +1,9 @@
 import * as Sentry from "@sentry/react";
-import { armWasmSafeMode } from "@/lib/backendSafeMode";
+import { APP_RELEASE } from "@/lib/appRelease";
+import {
+  recordWebGpuCrash,
+  shouldCountWebGpuCrash,
+} from "@/lib/backendSafeMode";
 import { readPreviousSessionEnd } from "@/lib/crashSentinel";
 import { isDoNotTrackEnabled } from "@/lib/doNotTrack";
 
@@ -11,12 +15,6 @@ import { isDoNotTrackEnabled } from "@/lib/doNotTrack";
 const TRACES_SAMPLE_RATE = 1.0;
 
 /**
- * Build-time release identifier tying every event back to the exact deployed
- * build. __APP_VERSION__ and __COMMIT_SHA__ are injected by vite.config.ts.
- */
-const RELEASE = `dashradar@${__APP_VERSION__}+${__COMMIT_SHA__}`;
-
-/**
  * Consume the previous session's crash sentinel, if any, before the DNT gate
  * below so a dirty record is always read and cleared regardless of whether
  * this session reports it. iOS sometimes kills the page mid-scan with no JS
@@ -26,16 +24,15 @@ const RELEASE = `dashradar@${__APP_VERSION__}+${__COMMIT_SHA__}`;
 const previousSessionEnd = readPreviousSessionEnd();
 
 /**
- * A crash on the WebGPU backend arms the WASM safe mode: this release's
- * remaining sessions run detection on the CPU instead of the GPU path that
- * (by the strongest available signal) just took the page down. A local
- * stability decision, not telemetry, so it sits outside the DNT gate below.
+ * A same-release crash on the WebGPU backend counts toward the WASM safe
+ * mode's crash streak; at SAFE_MODE_CRASH_THRESHOLD consecutive crashes the
+ * release's remaining sessions run detection on the CPU instead of the GPU
+ * path that (by the strongest available signal) keeps taking the page down.
+ * A local stability decision, not telemetry, so it sits outside the DNT gate
+ * below.
  */
-if (
-  previousSessionEnd?.outcome === "crash" &&
-  previousSessionEnd.backend === "webgpu"
-) {
-  armWasmSafeMode();
+if (shouldCountWebGpuCrash(previousSessionEnd)) {
+  recordWebGpuCrash();
 }
 
 /**
@@ -51,7 +48,7 @@ if (!isDoNotTrackEnabled()) {
   Sentry.init({
     dsn: import.meta.env.VITE_SENTRY_DSN,
     environment: import.meta.env.MODE,
-    release: RELEASE,
+    release: APP_RELEASE,
 
     // Errors plus tracing, the Sentry-recommended baseline. Session Replay is
     // deliberately left off: it would record the live camera feed and
@@ -74,14 +71,25 @@ if (!isDoNotTrackEnabled()) {
   // restart, deliberate shutdown), which cannot be told apart from a genuine
   // crash by gap alone but is far less likely to be one.
   if (previousSessionEnd) {
-    const { outcome, gapMs, uptimeMs, framesProcessed, backend, graphCapture } =
-      previousSessionEnd;
+    const {
+      outcome,
+      gapMs,
+      uptimeMs,
+      framesProcessed,
+      backend,
+      graphCapture,
+      release,
+    } = previousSessionEnd;
     Sentry.captureMessage("Previous session terminated while scanning", {
       level: outcome === "crash" ? "error" : "warning",
       tags: {
         sessionEnd: outcome,
         backend: backend ?? "unknown",
         graphCapture: String(graphCapture ?? "unknown"),
+        // The build that wrote the record, versus the event's own release
+        // tag (the build reporting it): they differ when a deploy landed
+        // between the dirty session and this launch.
+        sentinelRelease: release ?? "unknown",
       },
       extra: { gapMs, uptimeMs, framesProcessed },
     });

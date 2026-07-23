@@ -19,6 +19,7 @@ describe("writeHeartbeat / readPreviousSessionEnd", () => {
       framesProcessed: 3,
       backend: "webgpu",
       graphCapture: true,
+      release: "dashradar@1.2.3+abc1234",
     });
     const result = readPreviousSessionEnd(1_500 + CRASH_RELAUNCH_WINDOW_MS);
     expect(result).toEqual({
@@ -28,6 +29,7 @@ describe("writeHeartbeat / readPreviousSessionEnd", () => {
       framesProcessed: 3,
       backend: "webgpu",
       graphCapture: true,
+      release: "dashradar@1.2.3+abc1234",
     });
   });
 
@@ -41,7 +43,22 @@ describe("writeHeartbeat / readPreviousSessionEnd", () => {
       framesProcessed: 0,
       backend: undefined,
       graphCapture: undefined,
+      release: undefined,
     });
+  });
+
+  it("returns undefined and clears the key when the release has the wrong type", () => {
+    window.localStorage.setItem(
+      SENTINEL_STORAGE_KEY,
+      JSON.stringify({
+        startedAt: 0,
+        lastBeatAt: 0,
+        framesProcessed: 0,
+        release: 7,
+      }),
+    );
+    expect(readPreviousSessionEnd()).toBeUndefined();
+    expect(window.localStorage.getItem(SENTINEL_STORAGE_KEY)).toBeNull();
   });
 
   it("removes the stored record once it has been read", () => {

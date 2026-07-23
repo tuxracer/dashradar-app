@@ -10,7 +10,11 @@ import {
 import type { ReactNode } from "react";
 import { track } from "@vercel/analytics";
 import { useSettings } from "@/context/SettingsContext";
-import { isWasmSafeModeArmed } from "@/lib/backendSafeMode";
+import { APP_RELEASE } from "@/lib/appRelease";
+import {
+  isWasmSafeModeArmed,
+  resetWebGpuCrashStreak,
+} from "@/lib/backendSafeMode";
 import { waitForNextVideoFrame } from "@/lib/camera";
 import {
   clearSentinel,
@@ -721,6 +725,9 @@ export const DetectionProvider = ({
         framesProcessed: framesTotalRef.current - baseline,
         backend: backendRef.current,
         graphCapture: graphCaptureRef.current,
+        // Stamp the writing build: the safe-mode arming decision only trusts
+        // records from its own release (see shouldCountWebGpuCrash).
+        release: APP_RELEASE,
       });
     };
     // A reload or navigation away mid-scan unloads the page without ever
@@ -731,8 +738,18 @@ export const DetectionProvider = ({
     // pagehide, so genuine kills still leave the record behind. If the page
     // returns from the bfcache instead of unloading, the still-running
     // interval rewrites the record on its next tick, restoring coverage.
-    const handlePageHide = () => {
+    // A clean end of a scanning session (any exit from "running" other than
+    // the page dying) also resets a below-threshold WebGPU crash streak: the
+    // session just proved the backend does not take the page down, so an
+    // earlier isolated crash stops counting toward safe mode. An armed record
+    // is kept (resetWebGpuCrashStreak refuses to disarm), since armed
+    // sessions run WASM and prove nothing about WebGPU.
+    const endCleanly = () => {
       clearSentinel();
+      resetWebGpuCrashStreak();
+    };
+    const handlePageHide = () => {
+      endCleanly();
     };
     window.addEventListener("pagehide", handlePageHide);
     beat();
@@ -740,7 +757,7 @@ export const DetectionProvider = ({
     return () => {
       window.removeEventListener("pagehide", handlePageHide);
       window.clearInterval(intervalId);
-      clearSentinel();
+      endCleanly();
     };
   }, [status]);
 

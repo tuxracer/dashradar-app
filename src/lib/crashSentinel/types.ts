@@ -1,4 +1,4 @@
-import { isBoolean, isNumber, isPlainObject } from "remeda";
+import { isBoolean, isNumber, isPlainObject, isString } from "remeda";
 import type { DetectionBackend } from "@/workers/detection/types";
 import { isDetectionBackend } from "@/workers/detection/types";
 
@@ -8,7 +8,10 @@ import { isDetectionBackend } from "@/workers/detection/types";
  * this one ended cleanly. `startedAt`/`lastBeatAt` are `Date.now()` epoch ms
  * (never `performance.now()`, which resets every page load and so cannot be
  * compared across launches). `backend`/`graphCapture` are absent until the
- * worker has reported them.
+ * worker has reported them. `release` is the build that wrote the record
+ * (optional only for records written by builds predating the field); the
+ * safe-mode arming decision requires it to match the reading build, so a
+ * crash of an old build never pins the new build to WASM.
  */
 export type SentinelRecord = {
   startedAt: number;
@@ -16,6 +19,7 @@ export type SentinelRecord = {
   framesProcessed: number;
   backend?: DetectionBackend;
   graphCapture?: boolean;
+  release?: string;
 };
 
 /** Validates a value parsed from localStorage before it is trusted as a SentinelRecord. */
@@ -26,7 +30,8 @@ export const isSentinelRecord = (value: unknown): value is SentinelRecord => {
     isNumber(value.lastBeatAt) &&
     isNumber(value.framesProcessed) &&
     (value.backend === undefined || isDetectionBackend(value.backend)) &&
-    (value.graphCapture === undefined || isBoolean(value.graphCapture))
+    (value.graphCapture === undefined || isBoolean(value.graphCapture)) &&
+    (value.release === undefined || isString(value.release))
   );
 };
 
@@ -45,4 +50,5 @@ export type PreviousSessionEnd = {
   framesProcessed: number;
   backend?: DetectionBackend;
   graphCapture?: boolean;
+  release?: string;
 };

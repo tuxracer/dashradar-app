@@ -16,11 +16,23 @@ import {
   STORAGE_KEY,
   useSettings,
 } from "@/context/SettingsContext";
-import { armWasmSafeMode } from "@/lib/backendSafeMode";
+import { APP_RELEASE } from "@/lib/appRelease";
+import {
+  recordWebGpuCrash,
+  SAFE_MODE_CRASH_THRESHOLD,
+  SAFE_MODE_STORAGE_KEY,
+} from "@/lib/backendSafeMode";
 import {
   HEARTBEAT_INTERVAL_MS,
   SENTINEL_STORAGE_KEY,
 } from "@/lib/crashSentinel";
+
+/** Arms the WASM safe mode by recording a full crash streak. */
+const armSafeMode = () => {
+  for (let i = 0; i < SAFE_MODE_CRASH_THRESHOLD; i += 1) {
+    recordWebGpuCrash();
+  }
+};
 
 vi.mock("@vercel/analytics", () => ({ track: vi.fn() }));
 import type {
@@ -238,7 +250,7 @@ describe("DetectionProvider", () => {
   });
 
   it("requests the wasm backend when the safe mode is armed", async () => {
-    armWasmSafeMode();
+    armSafeMode();
     const worker = renderWithProvider(<Probe />);
     await waitFor(() => {
       expect(worker.posted).toContainEqual({ type: "load", forceWasm: true });
@@ -246,7 +258,7 @@ describe("DetectionProvider", () => {
   });
 
   it("reports a safe_mode_load event when the model becomes ready under safe mode", async () => {
-    armWasmSafeMode();
+    armSafeMode();
     const worker = renderWithProvider(<Probe />);
     await waitFor(() => {
       expect(worker.posted).toContainEqual({ type: "load", forceWasm: true });
@@ -1283,7 +1295,54 @@ describe("crash sentinel heartbeat", () => {
     expect(readSentinel()).toMatchObject({
       framesProcessed: 0,
       backend: "wasm",
+      release: APP_RELEASE,
     });
+  });
+
+  it("resets a below-threshold crash streak when a session ends cleanly", () => {
+    recordWebGpuCrash();
+    expect(window.localStorage.getItem(SAFE_MODE_STORAGE_KEY)).not.toBeNull();
+    const worker = renderWithProvider(<StartStop />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    act(() => {
+      screen.getByTestId("stop").click();
+    });
+    expect(window.localStorage.getItem(SAFE_MODE_STORAGE_KEY)).toBeNull();
+  });
+
+  it("resets a below-threshold crash streak on pagehide", () => {
+    recordWebGpuCrash();
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    act(() => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+    expect(window.localStorage.getItem(SAFE_MODE_STORAGE_KEY)).toBeNull();
+  });
+
+  it("keeps an armed safe mode across a clean session end", () => {
+    armSafeMode();
+    const worker = renderWithProvider(<StartStop />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    act(() => {
+      screen.getByTestId("stop").click();
+    });
+    expect(window.localStorage.getItem(SAFE_MODE_STORAGE_KEY)).not.toBeNull();
   });
 
   it("clears the sentinel record when stop() leaves the running state", () => {
