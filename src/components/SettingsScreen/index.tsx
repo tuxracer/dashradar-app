@@ -130,8 +130,7 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
                   Throttle inference
                 </span>
                 <span className="text-sm font-medium text-white/45">
-                  Off runs inference as fast as possible, skipping the pacing
-                  that limits heat and battery use.
+                  Paces detection to limit heat and battery.
                 </span>
               </span>
               <Toggle on={throttleInference} />
