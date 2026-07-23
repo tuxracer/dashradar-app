@@ -585,6 +585,7 @@ export const DetectionProvider = ({
             rawCount: message.detections.length,
             filteredCount: roadDetections.length,
             shownCount: tracked.length,
+            brightFraction: message.brightFraction ?? 0,
             // Carried forward for one line; schedulePacedFrame below writes
             // this frame's actual pacing decision.
             pacingDelayMs: debugRef.current.pacingDelayMs,

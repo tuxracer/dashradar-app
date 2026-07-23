@@ -112,6 +112,7 @@ const DebugProbe = () => {
       <span data-testid="overhead">{debug?.overheadMs ?? "none"}</span>
       <span data-testid="pacing-delay">{debug?.pacingDelayMs ?? "none"}</span>
       <span data-testid="pacing-rule">{debug?.pacingRule ?? "none"}</span>
+      <span data-testid="bright">{debug?.brightFraction ?? "none"}</span>
     </div>
   );
 };
@@ -1042,6 +1043,38 @@ describe("DetectionProvider", () => {
     const pacingDelay = Number(screen.getByTestId("pacing-delay").textContent);
     expect(pacingDelay).toBeGreaterThan(0);
     expect(pacingDelay).toBeLessThanOrEqual(MIN_FRAME_INTERVAL_MS);
+  });
+
+  it("records brightFraction from the detections message in the debug snapshot", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(
+      <>
+        <DebugProbe />
+        <StartOnReady />
+      </>,
+    );
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    // Post a real frame so the detections handler below has an in-flight
+    // capture to resolve.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    act(() => {
+      emitDetections(worker, 1, 0.37);
+    });
+    act(() => {
+      screen.getByTestId("read-debug").click();
+    });
+    expect(Number(screen.getByTestId("bright").textContent)).toBeCloseTo(0.37);
   });
 
   it("auto-starts detection when ready arrives after start", async () => {

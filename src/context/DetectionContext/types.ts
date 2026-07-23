@@ -90,6 +90,12 @@ export type DebugSnapshot = {
   /** Detections after the coasting tracker (what the HUD renders). */
   shownCount: number;
   /**
+   * Fraction of the last frame's subsample bright enough to rule out an
+   * obscured lens (frameBrightFraction). Near zero means a dark or covered
+   * feed; shown in the debug overlay to tune the obscured-lens threshold.
+   */
+  brightFraction: number;
+  /**
    * Time inside the round trip not spent in the worker's three stages:
    * postMessage delivery each way plus scheduling. Isolates worker-boundary
    * cost from model compute.

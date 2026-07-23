@@ -21,6 +21,7 @@ const debug: DebugSnapshot = {
   rawCount: 4,
   filteredCount: 2,
   shownCount: 1,
+  brightFraction: 0.42,
   overheadMs: 2.5,
   pacingDelayMs: 600,
   pacingRule: "rest",
@@ -72,6 +73,8 @@ describe("DebugOverlay", () => {
     expect(screen.getByText("2.5 ms")).toBeInTheDocument();
     expect(screen.getByText("pacing")).toBeInTheDocument();
     expect(screen.getByText("600.0 ms · rest")).toBeInTheDocument();
+    expect(screen.getByText("bright")).toBeInTheDocument();
+    expect(screen.getByText("42.00%")).toBeInTheDocument();
   });
 
   it("shows the WebGPU probe stages when a probe is present", () => {
