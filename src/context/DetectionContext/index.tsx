@@ -21,6 +21,7 @@ import {
   HEARTBEAT_INTERVAL_MS,
   writeHeartbeat,
 } from "@/lib/crashSentinel";
+import { DEV_VIDEO_URL } from "@/lib/devVideo";
 import type { HudModel } from "@/lib/detection";
 import { buildHudModel, toRoadDetections } from "@/lib/detection";
 import { createDetectionTracker } from "@/lib/detectionTracker";
@@ -86,11 +87,20 @@ type DetectionProviderProps = {
   children: ReactNode;
   /** Test seam: defaults to the real detection worker. */
   createWorker?: () => DetectionWorkerLike;
+  /**
+   * True when a dev video file drives the feed instead of the camera (see
+   * src/lib/devVideo). A file-backed feed legitimately pauses and repeats
+   * frames, so the camera-stall machinery (watchdog, frozen and obscured
+   * detectors, recovery) is disabled for the whole session. The prop is a
+   * test seam; production always derives it from DEV_VIDEO_URL.
+   */
+  devVideoMode?: boolean;
 };
 
 export const DetectionProvider = ({
   children,
   createWorker = createDetectionWorker,
+  devVideoMode = DEV_VIDEO_URL !== null,
 }: DetectionProviderProps) => {
   const { showDebug, settingsOpen } = useSettings();
   // Mirrors showDebug for sendFrame, which is a stable callback: the pump
@@ -438,6 +448,11 @@ export const DetectionProvider = ({
      * so it never fires during a paused pump or the recycle load window.
      */
     const armWatchdog = () => {
+      // A paused dev video produces no results for as long as the user
+      // likes; never arm the stall watchdog against a file-backed feed.
+      if (devVideoMode) {
+        return;
+      }
       window.clearTimeout(watchdogTimerRef.current);
       watchdogTimerRef.current = window.setTimeout(() => {
         if (runningRef.current && workerLoadedRef.current) {
@@ -600,60 +615,66 @@ export const DetectionProvider = ({
           // worked.
           if (runningRef.current) {
             armWatchdog();
-            const { fingerprint, brightFraction } = message;
-            if (
-              fingerprint !== undefined &&
-              fingerprint === lastFingerprintRef.current
-            ) {
-              // Byte-identical frame: a frozen or camera-takeover stall, the
-              // frozen detector's territory. Clearing the dark streak here is
-              // what makes a solid-black frozen feed tag "frozen" rather than
-              // "obscured": the obscured detector only ever counts changing
-              // frames (its real signature, see the else branch), so a stall
-              // whose frames repeat byte for byte can only ever be frozen.
-              staleFrameCountRef.current += 1;
-              healthyFrameCountRef.current = 0;
-              darkFrameCountRef.current = 0;
-            } else {
-              // Changing frame. The obscured-lens detector looks only at these:
-              // a covered lens presents a noisy near-black feed (sensor noise
-              // changes every frame, so the frozen check never fires for it)
-              // with no bright pixels anywhere. brightFraction below the dark
-              // threshold for OBSCURED_FRAME_THRESHOLD consecutive changing
-              // frames means the lens is blocked. A night scene keeps some
-              // bright region, so it stays above and both streaks reset.
-              staleFrameCountRef.current = 0;
+            // Stall detectors are meaningless against a file-backed feed: a
+            // paused or scrubbed dev video repeats frames legitimately. Skip
+            // the accounting entirely so a tripped threshold can never take
+            // the break that skips the paced re-prime below.
+            if (!devVideoMode) {
+              const { fingerprint, brightFraction } = message;
               if (
-                brightFraction !== undefined &&
-                brightFraction < DARK_BRIGHT_FRACTION
+                fingerprint !== undefined &&
+                fingerprint === lastFingerprintRef.current
               ) {
-                // A dark frame is not a healthy frame. Counting it as healthy
-                // would drive healthyFrameCountRef to RECOVERY_HEALTHY_FRAMES
-                // and zero reconnectAttemptsRef on the same frame the obscured
-                // detector fires, so reconnectAttemptsRef could never reach
-                // MAX_RECONNECT_ATTEMPTS and a covered lens would never escalate
-                // to the terminal CAMERA_STALLED alert.
-                darkFrameCountRef.current += 1;
+                // Byte-identical frame: a frozen or camera-takeover stall, the
+                // frozen detector's territory. Clearing the dark streak here is
+                // what makes a solid-black frozen feed tag "frozen" rather than
+                // "obscured": the obscured detector only ever counts changing
+                // frames (its real signature, see the else branch), so a stall
+                // whose frames repeat byte for byte can only ever be frozen.
+                staleFrameCountRef.current += 1;
                 healthyFrameCountRef.current = 0;
-              } else {
                 darkFrameCountRef.current = 0;
-                healthyFrameCountRef.current += 1;
-                if (healthyFrameCountRef.current >= RECOVERY_HEALTHY_FRAMES) {
-                  reconnectAttemptsRef.current = 0;
+              } else {
+                // Changing frame. The obscured-lens detector looks only at these:
+                // a covered lens presents a noisy near-black feed (sensor noise
+                // changes every frame, so the frozen check never fires for it)
+                // with no bright pixels anywhere. brightFraction below the dark
+                // threshold for OBSCURED_FRAME_THRESHOLD consecutive changing
+                // frames means the lens is blocked. A night scene keeps some
+                // bright region, so it stays above and both streaks reset.
+                staleFrameCountRef.current = 0;
+                if (
+                  brightFraction !== undefined &&
+                  brightFraction < DARK_BRIGHT_FRACTION
+                ) {
+                  // A dark frame is not a healthy frame. Counting it as healthy
+                  // would drive healthyFrameCountRef to RECOVERY_HEALTHY_FRAMES
+                  // and zero reconnectAttemptsRef on the same frame the obscured
+                  // detector fires, so reconnectAttemptsRef could never reach
+                  // MAX_RECONNECT_ATTEMPTS and a covered lens would never escalate
+                  // to the terminal CAMERA_STALLED alert.
+                  darkFrameCountRef.current += 1;
+                  healthyFrameCountRef.current = 0;
+                } else {
+                  darkFrameCountRef.current = 0;
+                  healthyFrameCountRef.current += 1;
+                  if (healthyFrameCountRef.current >= RECOVERY_HEALTHY_FRAMES) {
+                    reconnectAttemptsRef.current = 0;
+                  }
                 }
               }
-            }
-            lastFingerprintRef.current = fingerprint;
-            if (staleFrameCountRef.current >= STALE_FRAME_THRESHOLD) {
-              beginRecoveryRef.current("frozen");
-              // Recovery owns the pump now (stop() ran); skip the re-prime
-              // below.
-              break;
-            }
-            if (darkFrameCountRef.current >= OBSCURED_FRAME_THRESHOLD) {
-              beginRecoveryRef.current("obscured");
-              // Recovery owns the pump now (stop() ran); skip the re-prime.
-              break;
+              lastFingerprintRef.current = fingerprint;
+              if (staleFrameCountRef.current >= STALE_FRAME_THRESHOLD) {
+                beginRecoveryRef.current("frozen");
+                // Recovery owns the pump now (stop() ran); skip the re-prime
+                // below.
+                break;
+              }
+              if (darkFrameCountRef.current >= OBSCURED_FRAME_THRESHOLD) {
+                beginRecoveryRef.current("obscured");
+                // Recovery owns the pump now (stop() ran); skip the re-prime.
+                break;
+              }
             }
           }
           // Recycle the worker once it has been running long enough, at this
@@ -746,6 +767,7 @@ export const DetectionProvider = ({
     };
   }, [
     createWorker,
+    devVideoMode,
     recordResultTime,
     replaceContact,
     schedulePacedFrame,
@@ -815,7 +837,9 @@ export const DetectionProvider = ({
    */
   const beginRecovery = useCallback(
     (reason: CameraStallReason) => {
-      if (recoveringRef.current) {
+      // Defense in depth alongside the disabled detectors: recovery would
+      // remount the player and lose the clip's playback position.
+      if (devVideoMode || recoveringRef.current) {
         return;
       }
       recoveringRef.current = true;
@@ -844,7 +868,7 @@ export const DetectionProvider = ({
       setRecovering(true);
       setCameraEpoch((epoch) => epoch + 1);
     },
-    [stop],
+    [devVideoMode, stop],
   );
   useEffect(() => {
     beginRecoveryRef.current = beginRecovery;

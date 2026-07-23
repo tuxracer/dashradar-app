@@ -189,11 +189,19 @@ const SettingsToggle = () => {
   );
 };
 
-const renderWithProvider = (ui: ReactNode) => {
+const renderWithProvider = (
+  ui: ReactNode,
+  options?: { devVideoMode?: boolean },
+) => {
   const worker = new FakeWorker();
   render(
     <SettingsProvider>
-      <DetectionProvider createWorker={() => worker}>{ui}</DetectionProvider>
+      <DetectionProvider
+        createWorker={() => worker}
+        devVideoMode={options?.devVideoMode}
+      >
+        {ui}
+      </DetectionProvider>
     </SettingsProvider>,
   );
   return worker;
@@ -2584,5 +2592,84 @@ describe("DetectionProvider camera recovery", () => {
       .mocked(track)
       .mock.calls.filter(([event]) => event === "error");
     expect(stalledReports).toEqual([["error", { code: "CAMERA_STALLED" }]]);
+  });
+});
+
+describe("dev video mode", () => {
+  // A file-backed feed legitimately pauses (no new frames) and repeats frames
+  // (a scrubbed or looping clip), so the stall machinery must never fire.
+  it("never fires the watchdog in dev video mode", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const { video, presentFrame } = videoWithControlledFrames();
+    const worker = renderWithProvider(<RecoveryProbe video={video} />, {
+      devVideoMode: true,
+    });
+    act(() => {
+      worker.emit({ type: "ready", backend: "webgpu" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    // One frame reaches the worker, then no result ever comes back: exactly
+    // what a paused dev video looks like to the pump.
+    await act(async () => {
+      presentFrame();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WATCHDOG_MS * 2);
+    });
+    expect(screen.getByTestId("recovering").textContent).toBe("false");
+    expect(screen.getByTestId("camera-stalled").textContent).toBe("false");
+    expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
+    expect(track).not.toHaveBeenCalledWith("camera_stall", {
+      reason: "watchdog",
+    });
+  });
+
+  it("keeps scanning through identical dark frames in dev video mode", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const { video, presentFrame } = videoWithControlledFrames();
+    const worker = renderWithProvider(<RecoveryProbe video={video} />, {
+      devVideoMode: true,
+    });
+    act(() => {
+      worker.emit({ type: "ready", backend: "webgpu" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    // Identical fingerprints AND zero brightness: past both thresholds, this
+    // trips the frozen detector first outside dev video mode (see the
+    // "tags a byte-identical dark feed as frozen" test above). Here neither
+    // detector may fire, and the pump must keep re-priming (the disabled
+    // stall branch must not skip the paced re-prime).
+    for (let i = 0; i <= STALE_FRAME_THRESHOLD; i += 1) {
+      await act(async () => {
+        presentFrame();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      act(() => {
+        emitDetections(worker, 42, 0);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+      });
+    }
+    expect(screen.getByTestId("recovering").textContent).toBe("false");
+    expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
+    expect(track).not.toHaveBeenCalledWith("camera_stall", expect.anything());
+    // Every loop round posted a fresh detect frame: the pump stayed alive.
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(STALE_FRAME_THRESHOLD + 1);
   });
 });
