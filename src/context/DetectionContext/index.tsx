@@ -42,6 +42,7 @@ import {
   PACING_REST_RATIO,
   POLICE_EVENT_DEBOUNCE_MS,
   SW_CONTROL_TIMEOUT_MS,
+  WORKER_RECYCLE_AFTER_MS,
 } from "./consts";
 import type {
   Contact,
@@ -130,6 +131,15 @@ export const DetectionProvider = ({
 
   // React 19 useRef requires an initial value; undefined unions cover "not yet set".
   const workerRef = useRef<DetectionWorkerLike | undefined>(undefined);
+  // performance.now() at the moment the current worker was created, so the
+  // "detections" handler can recycle it once WORKER_RECYCLE_AFTER_MS has
+  // elapsed. Only same-load comparisons are made, so performance.now (which is
+  // monotonic within a page load) is the correct clock here.
+  const workerCreatedAtRef = useRef(0);
+  // Guards the one-time ready analytics (backend_resolved/model_ready) so a
+  // recycled worker's `ready` does not re-fire them, which would otherwise
+  // inflate the counts every WORKER_RECYCLE_AFTER_MS of a scanning session.
+  const readyTrackedRef = useRef(false);
   // The motion manager is created once. A ref (not useMemo) keeps it stable
   // across renders and reachable from the sendFrame/result handlers.
   const motionRef = useRef<MotionSensorManager | undefined>(undefined);
@@ -354,9 +364,27 @@ export const DetectionProvider = ({
   }, [createMotionManager]);
 
   useEffect(() => {
-    const worker = createWorker();
-    workerRef.current = worker;
-    worker.onmessage = (event: MessageEvent) => {
+    // Defer the model download until a service worker controls the page so its
+    // fetch flows through Workbox's runtime cache on a first visit. In dev
+    // there is no service worker, so load immediately. `cancelled` guards
+    // against React StrictMode tearing the effect down before control arrives,
+    // and equally guards a recycled worker's load if the effect tears down
+    // while it is pending. On a recycle the service worker already controls the
+    // page, so the wait resolves immediately; that path is not special-cased.
+    let cancelled = false;
+    const requestLoad = (worker: DetectionWorkerLike) => {
+      const startLoad = import.meta.env.PROD
+        ? waitForServiceWorkerControl(SW_CONTROL_TIMEOUT_MS)
+        : Promise.resolve();
+      void startLoad.then(() => {
+        if (cancelled) {
+          return;
+        }
+        worker.postMessage({ type: "load" });
+      });
+    };
+
+    const handleMessage = (event: MessageEvent) => {
       const message: unknown = event.data;
       if (!isWorkerResponse(message)) {
         return;
@@ -392,12 +420,17 @@ export const DetectionProvider = ({
           // no backend there is no other view into the GPU/CPU split or how
           // often the runtime cache is actually hit. Emitted from the message
           // handler body, not a setState updater, so StrictMode's double-invoke
-          // of updaters can't double-count them.
-          track("backend_resolved", { backend: message.backend });
-          track("model_ready", {
-            backend: message.backend,
-            fromCache: modelFromCacheRef.current,
-          });
+          // of updaters can't double-count them. Gated to the first ready of the
+          // page load: a periodic worker recycle produces a fresh `ready` every
+          // WORKER_RECYCLE_AFTER_MS, which must not re-fire these events.
+          if (!readyTrackedRef.current) {
+            readyTrackedRef.current = true;
+            track("backend_resolved", { backend: message.backend });
+            track("model_ready", {
+              backend: message.backend,
+              fromCache: modelFromCacheRef.current,
+            });
+          }
           if (runningRef.current) {
             statusRef.current = "running";
             setStatus("running");
@@ -478,7 +511,32 @@ export const DetectionProvider = ({
             pacingRule: debugRef.current.pacingRule,
           };
           recordResultTime();
-          schedulePacedFrame(roundTripMs);
+          // Recycle the worker once it has been running long enough, at this
+          // result boundary where nothing is in flight (inFlightRef was just
+          // decremented to 0), so no frame is lost. Terminating and recreating
+          // the worker resets the native memory ORT and the GPU stack leak
+          // across thousands of runs; see WORKER_RECYCLE_AFTER_MS. Status stays
+          // "running" throughout, so the new worker's `ready` re-primes the
+          // pump through the handler above (runningRef is true). The recycle
+          // replaces schedulePacedFrame: the new worker's first frame is pumped
+          // by that ready, not by a paced timer on the terminated worker.
+          if (
+            runningRef.current &&
+            performance.now() - workerCreatedAtRef.current >=
+              WORKER_RECYCLE_AFTER_MS
+          ) {
+            workerRef.current?.terminate();
+            // Invalidate any capture from the old pump so it can't post onto
+            // the new worker, and drop the in-flight count to 0 for the restart.
+            pumpGenerationRef.current += 1;
+            inFlightRef.current = 0;
+            window.clearTimeout(retryTimerRef.current);
+            window.clearTimeout(paceTimerRef.current);
+            const next = spawnWorker();
+            requestLoad(next);
+          } else {
+            schedulePacedFrame(roundTripMs);
+          }
           break;
         }
         case "worker-error": {
@@ -496,7 +554,8 @@ export const DetectionProvider = ({
         }
       }
     };
-    worker.onerror = () => {
+
+    const handleError = () => {
       track("error", { code: "WORKER_CRASHED" });
       setError("WORKER_CRASHED");
       statusRef.current = "error";
@@ -508,26 +567,29 @@ export const DetectionProvider = ({
       window.clearTimeout(paceTimerRef.current);
       replaceContact(undefined);
     };
-    // Defer the model download until a service worker controls the page so its
-    // fetch flows through Workbox's runtime cache on a first visit. In dev
-    // there is no service worker, so load immediately. `cancelled` guards
-    // against React StrictMode tearing the effect down before control arrives.
-    let cancelled = false;
-    const startLoad = import.meta.env.PROD
-      ? waitForServiceWorkerControl(SW_CONTROL_TIMEOUT_MS)
-      : Promise.resolve();
-    void startLoad.then(() => {
-      if (cancelled) {
-        return;
-      }
-      worker.postMessage({ type: "load" });
-    });
+
+    // Create a worker, wire its handlers, and record its birth time. Used by
+    // both the initial mount and the periodic recycle; the recycle path pairs
+    // it with requestLoad above to re-download (from cache) the weights.
+    const spawnWorker = (): DetectionWorkerLike => {
+      const worker = createWorker();
+      workerRef.current = worker;
+      workerCreatedAtRef.current = performance.now();
+      worker.onmessage = handleMessage;
+      worker.onerror = handleError;
+      return worker;
+    };
+
+    const worker = spawnWorker();
+    requestLoad(worker);
     return () => {
       cancelled = true;
       window.clearTimeout(retryTimerRef.current);
       window.clearTimeout(paceTimerRef.current);
       replaceContact(undefined);
-      worker.terminate();
+      // Terminate whichever worker is current, which is the recycled one if a
+      // recycle has happened, not the one spawned at mount.
+      workerRef.current?.terminate();
     };
   }, [
     createWorker,

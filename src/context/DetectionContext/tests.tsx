@@ -9,6 +9,7 @@ import {
   MIN_FRAME_INTERVAL_MS,
   POLICE_EVENT_DEBOUNCE_MS,
   useDetection,
+  WORKER_RECYCLE_AFTER_MS,
 } from "@/context/DetectionContext";
 import {
   SettingsProvider,
@@ -33,11 +34,11 @@ class FakeWorker implements DetectionWorkerLike {
   onerror: ((event: ErrorEvent) => void) | null = null;
   posted: WorkerRequest[] = [];
 
+  terminate = vi.fn();
+
   postMessage(message: WorkerRequest) {
     this.posted.push(message);
   }
-
-  terminate() {}
 
   emit(message: WorkerResponse) {
     this.onmessage?.(new MessageEvent("message", { data: message }));
@@ -1343,6 +1344,202 @@ describe("crash sentinel heartbeat", () => {
       await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
     });
     expect(readSentinel()).toMatchObject({ framesProcessed: 1 });
+  });
+});
+
+describe("worker recycle", () => {
+  const emptyResult = {
+    type: "detections" as const,
+    detections: [],
+    timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+  };
+  const detectCount = (worker: FakeWorker) =>
+    worker.posted.filter((message) => message.type === "detect").length;
+
+  /** Render with a createWorker spy that returns fresh fakes, exposing every
+   * worker it hands out so the recycle can be observed. */
+  const renderWithWorkerFactory = (ui: ReactNode) => {
+    const workers: FakeWorker[] = [];
+    render(
+      <SettingsProvider>
+        <DetectionProvider
+          createWorker={() => {
+            const worker = new FakeWorker();
+            workers.push(worker);
+            return worker;
+          }}
+        >
+          {ui}
+        </DetectionProvider>
+      </SettingsProvider>,
+    );
+    return workers;
+  };
+
+  it("does not recycle a worker younger than the threshold", async () => {
+    vi.useFakeTimers();
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const workers = renderWithWorkerFactory(<StartOnReady />);
+    act(() => {
+      workers[0].emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    // Age the worker to just under the threshold before the first frame posts,
+    // so its round trip stays near zero (age is measured from creation at 0).
+    now = WORKER_RECYCLE_AFTER_MS - 1;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(detectCount(workers[0])).toBe(1);
+    // The result lands with the worker still under the recycle age.
+    act(() => {
+      workers[0].emit(emptyResult);
+    });
+    expect(workers).toHaveLength(1);
+    expect(workers[0].terminate).not.toHaveBeenCalled();
+    // The same worker is re-primed by the pacing timer, not recycled.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    });
+    expect(detectCount(workers[0])).toBe(2);
+  });
+
+  it("recycles a worker past the threshold and resumes the pump", async () => {
+    vi.useFakeTimers();
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const workers = renderWithWorkerFactory(<StartOnReady />);
+    act(() => {
+      workers[0].emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(detectCount(workers[0])).toBe(1);
+    // The worker crosses the recycle age; its next result triggers a recycle.
+    now = WORKER_RECYCLE_AFTER_MS;
+    act(() => {
+      workers[0].emit(emptyResult);
+    });
+    // The old worker is terminated and a fresh one created and told to load.
+    expect(workers).toHaveLength(2);
+    expect(workers[0].terminate).toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(workers[1].posted).toContainEqual({ type: "load" });
+    // The old worker was mid-run at recycle, so no paced frame was scheduled on
+    // it: the pump only resumes once the new worker reports ready.
+    expect(detectCount(workers[1])).toBe(0);
+    act(() => {
+      workers[1].emit({ type: "ready", backend: "wasm" });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    // Status never left "running", so the new worker's ready re-primes the pump.
+    expect(screen.getByTestId("start").getAttribute("data-status")).toBe(
+      "running",
+    );
+    expect(detectCount(workers[1])).toBe(1);
+  });
+
+  it("does not re-fire ready analytics on a recycled worker's ready", async () => {
+    vi.useFakeTimers();
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const workers = renderWithWorkerFactory(<StartOnReady />);
+    act(() => {
+      workers[0].emit({ type: "model-load-start", fromCache: false });
+      workers[0].emit({ type: "ready", backend: "webgpu" });
+    });
+    expect(track).toHaveBeenCalledWith("backend_resolved", {
+      backend: "webgpu",
+    });
+    expect(track).toHaveBeenCalledWith("model_ready", {
+      backend: "webgpu",
+      fromCache: false,
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    now = WORKER_RECYCLE_AFTER_MS;
+    act(() => {
+      workers[0].emit(emptyResult);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    // Only the recycled worker's ready is under test from here.
+    vi.mocked(track).mockClear();
+    act(() => {
+      workers[1].emit({ type: "model-load-start", fromCache: true });
+      workers[1].emit({ type: "ready", backend: "webgpu" });
+    });
+    expect(track).not.toHaveBeenCalledWith(
+      "backend_resolved",
+      expect.anything(),
+    );
+    expect(track).not.toHaveBeenCalledWith("model_ready", expect.anything());
+  });
+
+  it("leaves the pump stopped when stop lands between recycle and ready", async () => {
+    vi.useFakeTimers();
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const workers = renderWithWorkerFactory(<StartStop />);
+    act(() => {
+      workers[0].emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(detectCount(workers[0])).toBe(1);
+    now = WORKER_RECYCLE_AFTER_MS;
+    act(() => {
+      workers[0].emit(emptyResult);
+    });
+    expect(workers).toHaveLength(2);
+    // The user stops before the recycled worker finishes loading.
+    act(() => {
+      screen.getByTestId("stop").click();
+    });
+    act(() => {
+      workers[1].emit({ type: "ready", backend: "wasm" });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    });
+    // runningRef is false, so the new worker's ready must not re-prime the pump.
+    expect(detectCount(workers[1])).toBe(0);
   });
 });
 

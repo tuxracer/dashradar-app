@@ -66,3 +66,16 @@ export const INITIAL_DEBUG: DebugSnapshot = {
  * this bounds that wait so startup never stalls if control never arrives.
  */
 export const SW_CONTROL_TIMEOUT_MS = 3_000;
+
+/**
+ * How long a detection worker may run before it is recycled (terminated and
+ * recreated) at the next result boundary. onnxruntime-web and the browser GPU
+ * stacks accumulate native memory over thousands of runs that JS cannot observe
+ * or free: ORT arenas, GPU buffer pools, and the WASM heap all grow invisibly.
+ * Recreating the worker resets all of that, turning unbounded growth into
+ * bounded growth. iOS kills the whole page near a hard memory cap, so this is
+ * the primary crash mitigation for the long scanning sessions this app is built
+ * for (hours on a dash-mounted phone). The weights are cached, so a recycle
+ * re-loads from CacheStorage without a network download or visible loading UI.
+ */
+export const WORKER_RECYCLE_AFTER_MS = 900_000;
