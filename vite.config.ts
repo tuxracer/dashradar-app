@@ -155,8 +155,9 @@ const resolveDevVideoPath = (): string | undefined => {
  * only works against a server that supports them. Serve-only: production
  * builds never include the route, and __DEV_VIDEO_URL__ compiles to null.
  * Takes the resolved path rather than resolving it itself, so the resolution
- * (and the config-load-time throw on a bad path) only ever runs for a
- * `pnpm dev` run, never for a build or test run with DASHRADAR_VIDEO set.
+ * (and the config-load-time throw on a bad path) only ever runs for a real
+ * `pnpm dev` run; a build or a Vitest run with DASHRADAR_VIDEO set always
+ * gets the null define instead.
  */
 const devVideo = (path: string | undefined): Plugin => ({
   name: "dev-video",
@@ -350,11 +351,16 @@ const sentrySourceMaps = (): Plugin[] =>
     : [];
 
 export default defineConfig(({ command }) => {
-  // Resolved (and validated) only for an actual dev-server run: a build or
-  // test run with a stale/invalid DASHRADAR_VIDEO left over in the
-  // environment must still degrade to the null define below, not throw at
-  // config load.
-  const devVideoPath = command === "serve" ? resolveDevVideoPath() : undefined;
+  // Resolved (and validated) only for a real dev-server run. Vitest also
+  // loads this config through Vite's dev server (command "serve"), so the
+  // VITEST env var Vitest sets is what actually distinguishes `pnpm dev` from
+  // `pnpm test`: without excluding it, a build or test run with a
+  // stale/invalid DASHRADAR_VIDEO left over in the environment would throw at
+  // config load instead of degrading to the null define below.
+  const devVideoPath =
+    command === "serve" && !process.env.VITEST
+      ? resolveDevVideoPath()
+      : undefined;
   return {
     define: {
       __APP_VERSION__: JSON.stringify(APP_VERSION),
