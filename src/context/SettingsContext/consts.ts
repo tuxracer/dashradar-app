@@ -7,4 +7,5 @@ export const STORAGE_KEY = "dashradar:settings";
 export const DEFAULT_SETTINGS: Settings = {
   showDebug: false,
   radarAudio: true,
+  throttleInference: true,
 };

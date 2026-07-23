@@ -13,6 +13,13 @@ export type Settings = {
    * stop entirely when nothing is detected. On by default.
    */
   radarAudio: boolean;
+  /**
+   * When false, the detection pump runs inference flat-out with no pacing
+   * floor. Takes effect only while showDebug is on (DetectionContext gates it),
+   * so a phone can never run unthrottled without the debug overlay visible. On
+   * by default: the 2s pacing floor is the app's thermal/battery safeguard.
+   */
+  throttleInference: boolean;
 };
 
 /** Value exposed by the settings context via useSettings(). */
@@ -21,6 +28,8 @@ export type SettingsContextValue = {
   toggleShowDebug: () => void;
   radarAudio: boolean;
   toggleRadarAudio: () => void;
+  throttleInference: boolean;
+  toggleThrottleInference: () => void;
   /** Whether the full-screen settings panel is open. Ephemeral, not persisted. */
   settingsOpen: boolean;
   /** Opens the full-screen settings panel. */
@@ -42,6 +51,8 @@ export const isPersistedSettings = (
   return (
     isPlainObject(value) &&
     (value.showDebug === undefined || isBoolean(value.showDebug)) &&
-    (value.radarAudio === undefined || isBoolean(value.radarAudio))
+    (value.radarAudio === undefined || isBoolean(value.radarAudio)) &&
+    (value.throttleInference === undefined ||
+      isBoolean(value.throttleInference))
   );
 };

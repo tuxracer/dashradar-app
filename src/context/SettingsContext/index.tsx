@@ -59,15 +59,18 @@ type SettingsProviderProps = {
 export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const [showDebug, setShowDebug] = useState(() => loadSettings().showDebug);
   const [radarAudio, setRadarAudio] = useState(() => loadSettings().radarAudio);
+  const [throttleInference, setThrottleInference] = useState(
+    () => loadSettings().throttleInference,
+  );
 
   useEffect(() => {
-    const next: Settings = { showDebug, radarAudio };
+    const next: Settings = { showDebug, radarAudio, throttleInference };
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     } catch {
       // Storage unavailable (private mode / quota); keep the in-memory value.
     }
-  }, [showDebug, radarAudio]);
+  }, [showDebug, radarAudio, throttleInference]);
 
   const toggleShowDebug = useCallback(() => {
     setShowDebug((prev) => !prev);
@@ -75,6 +78,10 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
 
   const toggleRadarAudio = useCallback(() => {
     setRadarAudio((prev) => !prev);
+  }, []);
+
+  const toggleThrottleInference = useCallback(() => {
+    setThrottleInference((prev) => !prev);
   }, []);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -93,6 +100,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleShowDebug,
       radarAudio,
       toggleRadarAudio,
+      throttleInference,
+      toggleThrottleInference,
       settingsOpen,
       openSettings,
       closeSettings,
@@ -102,6 +111,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleShowDebug,
       radarAudio,
       toggleRadarAudio,
+      throttleInference,
+      toggleThrottleInference,
       settingsOpen,
       openSettings,
       closeSettings,

@@ -26,7 +26,11 @@ describe("SettingsContext", () => {
     act(() => result.current.toggleShowDebug());
     expect(result.current.showDebug).toBe(true);
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({ showDebug: true, radarAudio: true }),
+      JSON.stringify({
+        showDebug: true,
+        radarAudio: true,
+        throttleInference: true,
+      }),
     );
   });
 
@@ -75,7 +79,11 @@ describe("SettingsContext", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     act(() => result.current.openSettings());
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({ showDebug: false, radarAudio: true }),
+      JSON.stringify({
+        showDebug: false,
+        radarAudio: true,
+        throttleInference: true,
+      }),
     );
   });
 
@@ -89,7 +97,38 @@ describe("SettingsContext", () => {
     act(() => result.current.toggleRadarAudio());
     expect(result.current.radarAudio).toBe(false);
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({ showDebug: false, radarAudio: false }),
+      JSON.stringify({
+        showDebug: false,
+        radarAudio: false,
+        throttleInference: true,
+      }),
     );
+  });
+
+  it("defaults throttleInference to true when storage is empty", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.throttleInference).toBe(true);
+  });
+
+  it("toggling flips throttleInference and persists it to localStorage", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleThrottleInference());
+    expect(result.current.throttleInference).toBe(false);
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({
+        showDebug: false,
+        radarAudio: true,
+        throttleInference: false,
+      }),
+    );
+  });
+
+  it("tolerates a stored blob missing throttleInference, defaulting it to true", () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ showDebug: true }),
+    );
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.throttleInference).toBe(true);
   });
 });
