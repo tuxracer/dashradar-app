@@ -350,15 +350,19 @@ const sentrySourceMaps = (): Plugin[] =>
       })
     : [];
 
-export default defineConfig(({ command }) => {
-  // Resolved (and validated) only for a real dev-server run. Vitest also
-  // loads this config through Vite's dev server (command "serve"), so the
-  // VITEST env var Vitest sets is what actually distinguishes `pnpm dev` from
-  // `pnpm test`: without excluding it, a build or test run with a
-  // stale/invalid DASHRADAR_VIDEO left over in the environment would throw at
-  // config load instead of degrading to the null define below.
+export default defineConfig(({ command, isPreview }) => {
+  // Resolved (and validated) only for a real `pnpm dev` run. Vite also
+  // resolves this config with command "serve" for both Vitest and
+  // `vite preview` (`pnpm start`), so both must be excluded: the VITEST env
+  // var Vitest sets, and isPreview, which ConfigEnv sets for preview. Without
+  // excluding them, a build, test, or preview run with a stale/invalid
+  // DASHRADAR_VIDEO left over in the environment would throw at config load
+  // instead of degrading to the null define below. Preview serves the built
+  // output, where the define is already null and this configureServer-only
+  // plugin is inert either way, so excluding it here only avoids the startup
+  // throw, not a real behavior change.
   const devVideoPath =
-    command === "serve" && !process.env.VITEST
+    command === "serve" && !isPreview && !process.env.VITEST
       ? resolveDevVideoPath()
       : undefined;
   return {
