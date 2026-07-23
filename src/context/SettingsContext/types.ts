@@ -5,16 +5,17 @@ export type Settings = {
   /**
    * Master switch for the development-only settings (showDebug,
    * throttleInference, centerCropFrames). Off by default. While it is off,
-   * SettingsProvider reports each of those three at its DEFAULT_SETTINGS value
-   * no matter what is stored, so a development tweak left enabled cannot alter
-   * a normal drive. Their stored values survive, so turning this back on
+   * SettingsProvider reports each of those three at its DEVELOPER_OPTIONS_OFF
+   * value no matter what is stored, so a development tweak left enabled cannot
+   * alter a normal drive. Their stored values survive, so turning this back on
    * restores the tweaks rather than resetting them.
    */
   developerOptions: boolean;
   /**
    * When true, an on-screen debug overlay renders performance and development
-   * diagnostics (timing, detection counts, system info). Off by default. A
-   * developer option, so it only takes effect while developerOptions is on.
+   * diagnostics (timing, detection counts, system info). A developer option, so
+   * it only takes effect while developerOptions is on, and on by default there:
+   * turning developer options on is itself the request to see the diagnostics.
    */
   showDebug: boolean;
   /**
@@ -41,6 +42,15 @@ export type Settings = {
    */
   centerCropFrames: boolean;
 };
+
+/**
+ * The three development-only settings, the ones gated behind the
+ * developerOptions master switch.
+ */
+export type DeveloperOptions = Pick<
+  Settings,
+  "showDebug" | "throttleInference" | "centerCropFrames"
+>;
 
 /**
  * Value exposed by the settings context via useSettings(). The three developer

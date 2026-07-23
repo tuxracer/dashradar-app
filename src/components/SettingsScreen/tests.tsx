@@ -40,7 +40,7 @@ describe("SettingsScreen", () => {
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
         developerOptions: false,
-        showDebug: false,
+        showDebug: true,
         radarAudio: false,
         throttleInference: true,
         centerCropFrames: true,
@@ -56,11 +56,13 @@ describe("SettingsScreen", () => {
     const user = userEvent.setup();
     renderScreen();
     await open(user);
+    // The overlay is on by default under developer options, so the tap turns
+    // it off.
     await user.click(screen.getByText("Debug overlay"));
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
         developerOptions: true,
-        showDebug: true,
+        showDebug: false,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
@@ -76,7 +78,7 @@ describe("SettingsScreen", () => {
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
         developerOptions: true,
-        showDebug: false,
+        showDebug: true,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
@@ -171,7 +173,7 @@ describe("SettingsScreen", () => {
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
         developerOptions: true,
-        showDebug: false,
+        showDebug: true,
         radarAudio: true,
         throttleInference: false,
         centerCropFrames: true,
@@ -191,7 +193,7 @@ describe("SettingsScreen", () => {
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
         developerOptions: true,
-        showDebug: false,
+        showDebug: true,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: false,

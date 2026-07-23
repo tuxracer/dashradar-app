@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import type { ReactNode } from "react";
-import { DEFAULT_SETTINGS, STORAGE_KEY } from "./consts";
+import { DEFAULT_SETTINGS, DEVELOPER_OPTIONS_OFF, STORAGE_KEY } from "./consts";
 import type { Settings, SettingsContextValue } from "./types";
 import { isPersistedSettings } from "./types";
 
@@ -71,19 +71,20 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     () => loadSettings().centerCropFrames,
   );
 
-  // The three developer options report their DEFAULT_SETTINGS value whenever
-  // developerOptions is off, so a tweak left enabled (unthrottled inference,
-  // squished frames) stops taking effect the moment the master switch goes off.
-  // The stored value is untouched, so turning it back on restores the tweak.
+  // The three developer options report their DEVELOPER_OPTIONS_OFF value
+  // whenever developerOptions is off, so a tweak left enabled (the debug
+  // overlay, unthrottled inference, squished frames) stops taking effect the
+  // moment the master switch goes off. The stored value is untouched, so
+  // turning it back on restores the tweak.
   const showDebug = developerOptions
     ? storedShowDebug
-    : DEFAULT_SETTINGS.showDebug;
+    : DEVELOPER_OPTIONS_OFF.showDebug;
   const throttleInference = developerOptions
     ? storedThrottleInference
-    : DEFAULT_SETTINGS.throttleInference;
+    : DEVELOPER_OPTIONS_OFF.throttleInference;
   const centerCropFrames = developerOptions
     ? storedCenterCropFrames
-    : DEFAULT_SETTINGS.centerCropFrames;
+    : DEVELOPER_OPTIONS_OFF.centerCropFrames;
 
   useEffect(() => {
     const next: Settings = {

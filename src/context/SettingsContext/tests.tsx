@@ -16,20 +16,26 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 );
 
 describe("SettingsContext", () => {
-  it("defaults showDebug to false when storage is empty", () => {
+  it("keeps showDebug off out of the box, since developerOptions starts off", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     expect(result.current.showDebug).toBe(false);
+  });
+
+  it("turns showDebug on with developerOptions, with nothing else to tap", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleDeveloperOptions());
+    expect(result.current.showDebug).toBe(true);
   });
 
   it("toggling flips showDebug and persists it to localStorage", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     act(() => result.current.toggleDeveloperOptions());
     act(() => result.current.toggleShowDebug());
-    expect(result.current.showDebug).toBe(true);
+    expect(result.current.showDebug).toBe(false);
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
         developerOptions: true,
-        showDebug: true,
+        showDebug: false,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
@@ -84,7 +90,7 @@ describe("SettingsContext", () => {
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
         developerOptions: false,
-        showDebug: false,
+        showDebug: true,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
@@ -104,7 +110,7 @@ describe("SettingsContext", () => {
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
         developerOptions: false,
-        showDebug: false,
+        showDebug: true,
         radarAudio: false,
         throttleInference: true,
         centerCropFrames: true,
@@ -125,7 +131,7 @@ describe("SettingsContext", () => {
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
         developerOptions: true,
-        showDebug: false,
+        showDebug: true,
         radarAudio: true,
         throttleInference: false,
         centerCropFrames: true,
@@ -155,7 +161,7 @@ describe("SettingsContext", () => {
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
         developerOptions: true,
-        showDebug: false,
+        showDebug: true,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: false,
@@ -177,7 +183,7 @@ describe("SettingsContext", () => {
     expect(result.current.developerOptions).toBe(false);
   });
 
-  it("reports every developer option at its default while developerOptions is off", () => {
+  it("reports every developer option at its off-switch value while developerOptions is off", () => {
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
@@ -197,16 +203,15 @@ describe("SettingsContext", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     act(() => result.current.toggleDeveloperOptions());
     act(() => result.current.toggleThrottleInference());
-    act(() => result.current.toggleShowDebug());
     expect(result.current.throttleInference).toBe(false);
     expect(result.current.showDebug).toBe(true);
 
-    // Off: both revert to their defaults for the rest of the drive.
+    // Off: both revert to their off-switch values for the rest of the drive.
     act(() => result.current.toggleDeveloperOptions());
     expect(result.current.throttleInference).toBe(true);
     expect(result.current.showDebug).toBe(false);
 
-    // Back on: the tweaks come back rather than having been reset.
+    // Back on: the tweak comes back rather than having been reset.
     act(() => result.current.toggleDeveloperOptions());
     expect(result.current.throttleInference).toBe(false);
     expect(result.current.showDebug).toBe(true);
@@ -220,7 +225,7 @@ describe("SettingsContext", () => {
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
         developerOptions: false,
-        showDebug: false,
+        showDebug: true,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: false,
