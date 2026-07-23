@@ -37,9 +37,12 @@ import {
   FPS_SAMPLE_SIZE,
   FRAME_RETRY_MS,
   INITIAL_DEBUG,
+  MAX_RECONNECT_ATTEMPTS,
   MIN_FRAME_INTERVAL_MS,
   PACING_REST_RATIO,
   POLICE_EVENT_DEBOUNCE_MS,
+  RECOVERY_HEALTHY_FRAMES,
+  STALE_FRAME_THRESHOLD,
   SW_CONTROL_TIMEOUT_MS,
   WORKER_RECYCLE_AFTER_MS,
 } from "./consts";
@@ -115,6 +118,31 @@ export const DetectionProvider = ({
   // handlers without a side effect inside a setState updater (StrictMode
   // double-invokes updaters; see statusRef above).
   const contactRef = useRef<Contact | undefined>(undefined);
+  const [recovering, setRecovering] = useState(false);
+  // Mirrors `recovering` so beginRecovery's re-entrancy guard and the pump can
+  // branch on it outside a setState updater (StrictMode double-invokes those).
+  const recoveringRef = useRef(false);
+  // Bumped once per recovery; App keys <CameraView> on it, so incrementing it
+  // remounts the camera element and re-runs getUserMedia.
+  const [cameraEpoch, setCameraEpoch] = useState(0);
+  // Fingerprint of the previous detection frame and the count of consecutive
+  // byte-identical frames since. STALE_FRAME_THRESHOLD identical frames means
+  // a frozen or black feed (a live feed always varies), triggering recovery.
+  const lastFingerprintRef = useRef<number | undefined>(undefined);
+  const staleFrameCountRef = useRef(0);
+  // Consecutive changing frames since the last stall; RECOVERY_HEALTHY_FRAMES
+  // of them prove a recovery worked and reset the reconnect-attempt counter.
+  const healthyFrameCountRef = useRef(0);
+  // Consecutive recoveries that re-stalled before proving healthy. At
+  // MAX_RECONNECT_ATTEMPTS the next stall reloads the page instead of
+  // remounting.
+  const reconnectAttemptsRef = useRef(0);
+  // Pending watchdog timeout (Task 3): fires when no result arrives in time.
+  const watchdogTimerRef = useRef<number | undefined>(undefined);
+  // Holds the latest beginRecovery so the message handler and watchdog
+  // (defined inside the worker effect, before beginRecovery's declaration)
+  // can call it, mirroring the sendFrameRef idiom already used for sendFrame.
+  const beginRecoveryRef = useRef<() => void>(() => {});
 
   /** Swap in the next contact (or none), closing the previous crop bitmap. */
   const replaceContact = useCallback((next: Contact | undefined) => {
@@ -517,6 +545,35 @@ export const DetectionProvider = ({
             pacingRule: debugRef.current.pacingRule,
           };
           recordResultTime();
+          // Camera-health check. Only while the pump is live: a late in-flight
+          // result arriving after stop() (e.g. mid-recovery) has runningRef
+          // false and must not touch the detectors. A byte-identical
+          // fingerprint means a frozen or black feed; a changing one is a
+          // healthy frame and, after enough of them, proves a prior recovery
+          // worked.
+          if (runningRef.current) {
+            const { fingerprint } = message;
+            if (
+              fingerprint !== undefined &&
+              fingerprint === lastFingerprintRef.current
+            ) {
+              staleFrameCountRef.current += 1;
+              healthyFrameCountRef.current = 0;
+            } else {
+              staleFrameCountRef.current = 0;
+              healthyFrameCountRef.current += 1;
+              if (healthyFrameCountRef.current >= RECOVERY_HEALTHY_FRAMES) {
+                reconnectAttemptsRef.current = 0;
+              }
+            }
+            lastFingerprintRef.current = fingerprint;
+            if (staleFrameCountRef.current >= STALE_FRAME_THRESHOLD) {
+              beginRecoveryRef.current();
+              // Recovery owns the pump now (stop() ran); skip the re-prime
+              // below.
+              break;
+            }
+          }
           // Recycle the worker once it has been running long enough, at this
           // result boundary where nothing is in flight (inFlightRef was just
           // decremented to 0), so no frame is lost. Terminating and recreating
@@ -616,6 +673,16 @@ export const DetectionProvider = ({
         return;
       }
       runningRef.current = true;
+      // A fresh stream (initial or post-recovery) clears the recovering flag
+      // and resets the frozen-feed detectors for a clean measurement window.
+      // The reconnect-attempt counter is deliberately NOT reset here; only a
+      // run of healthy frames (in the detections handler) proves a recovery
+      // worked.
+      recoveringRef.current = false;
+      setRecovering(false);
+      lastFingerprintRef.current = undefined;
+      staleFrameCountRef.current = 0;
+      healthyFrameCountRef.current = 0;
       // Branch on statusRef outside the setStatus updater: StrictMode
       // double-invokes updater functions, so a side effect (the frame pump)
       // inside one would post two frames per start().
@@ -635,6 +702,7 @@ export const DetectionProvider = ({
     pumpGenerationRef.current += 1;
     window.clearTimeout(retryTimerRef.current);
     window.clearTimeout(paceTimerRef.current);
+    window.clearTimeout(watchdogTimerRef.current);
     // Confirmation is wall-clock-age based, so a track left pending across a
     // long stop() would otherwise confirm on the first matched frame after
     // restart. A resumed session must re-earn confirmation from scratch.
@@ -644,6 +712,36 @@ export const DetectionProvider = ({
       setStatus("ready");
     }
   }, []);
+
+  /**
+   * Recover a dead camera feed in place. Stops the pump, resets the
+   * frozen-feed detectors, and remounts the camera by bumping cameraEpoch
+   * (App keys CameraView on it). After MAX_RECONNECT_ATTEMPTS consecutive
+   * recoveries that never proved healthy, reloads the page instead as a last
+   * resort. The re-entrancy guard means a second trigger while already
+   * recovering is a no-op; the fresh stream's start() clears it.
+   */
+  const beginRecovery = useCallback(() => {
+    if (recoveringRef.current) {
+      return;
+    }
+    recoveringRef.current = true;
+    window.clearTimeout(watchdogTimerRef.current);
+    lastFingerprintRef.current = undefined;
+    staleFrameCountRef.current = 0;
+    healthyFrameCountRef.current = 0;
+    stop();
+    if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+      window.location.reload();
+      return;
+    }
+    reconnectAttemptsRef.current += 1;
+    setRecovering(true);
+    setCameraEpoch((epoch) => epoch + 1);
+  }, [stop]);
+  useEffect(() => {
+    beginRecoveryRef.current = beginRecovery;
+  }, [beginRecovery]);
 
   // Pause the pump while the page is hidden (app switched away, screen off).
   // rAF loops throttle on their own, but the pump is driven by worker results,
@@ -778,6 +876,8 @@ export const DetectionProvider = ({
       getDebugSnapshot,
       error,
       contact,
+      recovering,
+      cameraEpoch,
       start,
       stop,
     }),
@@ -793,6 +893,8 @@ export const DetectionProvider = ({
       getDebugSnapshot,
       error,
       contact,
+      recovering,
+      cameraEpoch,
       start,
       stop,
     ],

@@ -123,6 +123,13 @@ export type DetectionContextValue = {
    * tail. Cleared on worker errors and teardown.
    */
   contact: Contact | undefined;
+  /** True while the camera feed is being re-acquired after a detected stall. */
+  recovering: boolean;
+  /**
+   * Increments once per camera recovery. App keys the CameraView element on
+   * it, so a bump remounts the camera and re-runs getUserMedia.
+   */
+  cameraEpoch: number;
   start: (video: HTMLVideoElement) => void;
   stop: () => void;
 };

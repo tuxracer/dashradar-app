@@ -79,3 +79,35 @@ export const SW_CONTROL_TIMEOUT_MS = 3_000;
  * re-loads from CacheStorage without a network download or visible loading UI.
  */
 export const WORKER_RECYCLE_AFTER_MS = 900_000;
+
+/**
+ * Consecutive byte-identical inference frames that mark a frozen or black
+ * camera feed and trigger camera recovery. At the ~1 fps pacing floor this is
+ * about five seconds of a dead feed. Conservative on purpose: a spurious
+ * reconnect while driving is worse than a few seconds of delay before
+ * recovering.
+ */
+export const STALE_FRAME_THRESHOLD = 5;
+
+/**
+ * Consecutive in-place camera recoveries that each re-stall before the feed
+ * proves healthy, after which a full page reload is the last resort instead
+ * of another remount. Reset once a recovery yields RECOVERY_HEALTHY_FRAMES
+ * good frames.
+ */
+export const MAX_RECONNECT_ATTEMPTS = 3;
+
+/**
+ * Changing (non-identical) frames after a recovery that mark it successful
+ * and reset the reconnect-attempt counter, so an isolated takeover long ago
+ * does not push a later, unrelated stall straight to a reload.
+ */
+export const RECOVERY_HEALTHY_FRAMES = 5;
+
+/**
+ * Maximum time the pump may go without a detection result while it is live
+ * before the camera is assumed fully stalled (requestVideoFrameCallback
+ * stopped firing, so the pump is hung waiting for a new frame) and recovery
+ * runs. Used by the watchdog timer.
+ */
+export const WATCHDOG_MS = 5_000;

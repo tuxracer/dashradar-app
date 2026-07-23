@@ -8,6 +8,7 @@ import {
   FRAME_RETRY_MS,
   MIN_FRAME_INTERVAL_MS,
   POLICE_EVENT_DEBOUNCE_MS,
+  STALE_FRAME_THRESHOLD,
   useDetection,
   WORKER_RECYCLE_AFTER_MS,
 } from "@/context/DetectionContext";
@@ -155,6 +156,19 @@ const StartStopWithVideo = ({ video }: { video: HTMLVideoElement }) => {
   );
 };
 
+const RecoveryProbe = ({ video }: { video: HTMLVideoElement }) => {
+  const { recovering, cameraEpoch, start } = useDetection();
+  return (
+    <>
+      <button onClick={() => start(video)} data-testid="start">
+        start
+      </button>
+      <span data-testid="recovering">{String(recovering)}</span>
+      <span data-testid="camera-epoch">{cameraEpoch}</span>
+    </>
+  );
+};
+
 const SettingsToggle = () => {
   const { openSettings, closeSettings } = useSettings();
   return (
@@ -185,6 +199,21 @@ const fakeBitmap = () => {
     height: 720,
     close: () => {},
   } as unknown as ImageBitmap;
+};
+
+/**
+ * Emit one detections result with the given fingerprint. Assumes the pump has
+ * already posted a detect frame (a prior present + prime). Real timers are
+ * used by these tests, so callers await the pump between rounds via
+ * presentFrame.
+ */
+const emitDetections = (worker: FakeWorker, fingerprint: number) => {
+  worker.emit({
+    type: "detections",
+    detections: [],
+    timing: { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 },
+    fingerprint,
+  });
 };
 
 /**
@@ -1997,5 +2026,117 @@ describe("DetectionProvider contact", () => {
     });
     expect(screen.getByTestId("contact-direction")).toHaveTextContent("left");
     expect(screen.getByTestId("contact-frame")).toHaveTextContent("none");
+  });
+});
+
+describe("DetectionProvider camera recovery", () => {
+  // Real timers plus MIN_FRAME_INTERVAL_MS-scale sleeps would run these tests
+  // past vitest's default 5 s test timeout (STALE_FRAME_THRESHOLD-plus rounds
+  // at just over a second each). Fake timers keep them fast and deterministic
+  // while exercising the exact same pump path as the real-timer paced-frame
+  // tests above (presentFrame to flush the camera wait, then advance past
+  // MIN_FRAME_INTERVAL_MS to fire the paced re-prime).
+  it("recovers the camera after a run of identical frames", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const { video, presentFrame } = videoWithControlledFrames();
+    const worker = renderWithProvider(<RecoveryProbe video={video} />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "webgpu" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+
+    expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
+
+    // Drive STALE_FRAME_THRESHOLD + 1 results all carrying the same fingerprint.
+    // The first sets the baseline; each equal one after increments the streak.
+    for (let i = 0; i <= STALE_FRAME_THRESHOLD; i += 1) {
+      await act(async () => {
+        presentFrame();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      act(() => {
+        emitDetections(worker, 42);
+      });
+      // Let the paced re-prime schedule the next frame.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+      });
+    }
+
+    expect(screen.getByTestId("recovering").textContent).toBe("true");
+    expect(screen.getByTestId("camera-epoch").textContent).toBe("1");
+  });
+
+  it("does not recover while frames keep changing", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const { video, presentFrame } = videoWithControlledFrames();
+    const worker = renderWithProvider(<RecoveryProbe video={video} />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "webgpu" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+
+    for (let i = 0; i <= STALE_FRAME_THRESHOLD + 2; i += 1) {
+      await act(async () => {
+        presentFrame();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      act(() => {
+        emitDetections(worker, i); // distinct fingerprint each round
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+      });
+    }
+
+    expect(screen.getByTestId("recovering").textContent).toBe("false");
+    expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
+  });
+
+  it("clears recovering when the fresh stream starts", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const { video, presentFrame } = videoWithControlledFrames();
+    const worker = renderWithProvider(<RecoveryProbe video={video} />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "webgpu" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    for (let i = 0; i <= STALE_FRAME_THRESHOLD; i += 1) {
+      await act(async () => {
+        presentFrame();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      act(() => {
+        emitDetections(worker, 7);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+      });
+    }
+    expect(screen.getByTestId("recovering").textContent).toBe("true");
+
+    // Simulate CameraView remounting and delivering a fresh stream.
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    expect(screen.getByTestId("recovering").textContent).toBe("false");
   });
 });
