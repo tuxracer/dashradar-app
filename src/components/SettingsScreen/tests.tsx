@@ -39,6 +39,7 @@ describe("SettingsScreen", () => {
     await user.click(screen.getByText("Audio alerts"));
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
+        developerOptions: false,
         showDebug: false,
         radarAudio: false,
         throttleInference: true,
@@ -48,18 +49,58 @@ describe("SettingsScreen", () => {
   });
 
   it("toggles and persists the debug setting from the Debug overlay row", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true }),
+    );
     const user = userEvent.setup();
     renderScreen();
     await open(user);
     await user.click(screen.getByText("Debug overlay"));
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
+        developerOptions: true,
         showDebug: true,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
       }),
     );
+  });
+
+  it("toggles and persists developer options from its row", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    await user.click(screen.getByText("Developer options"));
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({
+        developerOptions: true,
+        showDebug: false,
+        radarAudio: true,
+        throttleInference: true,
+        centerCropFrames: true,
+      }),
+    );
+  });
+
+  it("hides every developer row while developer options are off", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    expect(screen.queryByText("Debug overlay")).not.toBeInTheDocument();
+    expect(screen.queryByText("Throttle inference")).not.toBeInTheDocument();
+    expect(screen.queryByText("Center crop")).not.toBeInTheDocument();
+  });
+
+  it("reveals every developer row once developer options are on", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    await user.click(screen.getByText("Developer options"));
+    expect(screen.getByText("Debug overlay")).toBeInTheDocument();
+    expect(screen.getByText("Throttle inference")).toBeInTheDocument();
+    expect(screen.getByText("Center crop")).toBeInTheDocument();
   });
 
   it("closes on the close button", async () => {
@@ -118,28 +159,10 @@ describe("SettingsScreen", () => {
     ).toBeInTheDocument();
   });
 
-  it("hides the throttle row while debug mode is off", async () => {
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    expect(screen.queryByText("Throttle inference")).not.toBeInTheDocument();
-  });
-
-  it("shows the throttle row once debug mode is on", async () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ showDebug: true }),
-    );
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    expect(screen.getByText("Throttle inference")).toBeInTheDocument();
-  });
-
   it("toggles and persists the throttle setting from its row", async () => {
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ showDebug: true }),
+      JSON.stringify({ developerOptions: true }),
     );
     const user = userEvent.setup();
     renderScreen();
@@ -147,7 +170,8 @@ describe("SettingsScreen", () => {
     await user.click(screen.getByText("Throttle inference"));
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
-        showDebug: true,
+        developerOptions: true,
+        showDebug: false,
         radarAudio: true,
         throttleInference: false,
         centerCropFrames: true,
@@ -155,17 +179,10 @@ describe("SettingsScreen", () => {
     );
   });
 
-  it("hides the center crop row while debug mode is off", async () => {
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    expect(screen.queryByText("Center crop")).not.toBeInTheDocument();
-  });
-
   it("toggles and persists the center crop setting from its row", async () => {
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ showDebug: true }),
+      JSON.stringify({ developerOptions: true }),
     );
     const user = userEvent.setup();
     renderScreen();
@@ -173,7 +190,8 @@ describe("SettingsScreen", () => {
     await user.click(screen.getByText("Center crop"));
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
-        showDebug: true,
+        developerOptions: true,
+        showDebug: false,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: false,

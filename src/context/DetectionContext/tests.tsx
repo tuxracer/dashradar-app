@@ -1053,10 +1053,10 @@ describe("DetectionProvider", () => {
     expect(pacingDelay).toBeLessThanOrEqual(MIN_FRAME_INTERVAL_MS);
   });
 
-  it("runs unthrottled (zero pacing delay) when debug is on and throttling is off", async () => {
+  it("runs unthrottled (zero pacing delay) when developer options are on and throttling is off", async () => {
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ showDebug: true, throttleInference: false }),
+      JSON.stringify({ developerOptions: true, throttleInference: false }),
     );
     vi.useFakeTimers();
     vi.stubGlobal(
@@ -1092,15 +1092,16 @@ describe("DetectionProvider", () => {
     expect(pacingDelay).toBe(0);
   });
 
-  it("keeps the pacing floor when throttling is off but debug is also off", async () => {
-    // The unthrottle escape hatch is gated on the debug overlay: a stored
-    // throttleInference=false must NOT remove the floor while showDebug is off,
-    // so a phone can never run flat-out without the debug overlay visible. This
-    // pins the showDebug&& half of the effective-throttle expression; without
-    // it a refactor to a bare !throttleInference would pass every other test.
+  it("keeps the pacing floor when throttling is off but developer options are off", async () => {
+    // The unthrottle escape hatch is gated on the Developer options master
+    // switch: a stored throttleInference=false must NOT remove the floor while
+    // developerOptions is off, so a phone can never run flat-out on a normal
+    // drive. This pins the gate SettingsProvider applies; without it a
+    // provider that passed the stored value straight through would pass every
+    // other test.
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ showDebug: false, throttleInference: false }),
+      JSON.stringify({ developerOptions: false, throttleInference: false }),
     );
     vi.useFakeTimers();
     vi.stubGlobal(
@@ -1259,7 +1260,7 @@ describe("DetectionProvider", () => {
   it("posts includeFrame true while the debug setting is on", async () => {
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ showDebug: true }),
+      JSON.stringify({ developerOptions: true, showDebug: true }),
     );
     vi.stubGlobal(
       "createImageBitmap",
@@ -1304,10 +1305,10 @@ describe("DetectionProvider", () => {
     ).toMatchObject({ centerCrop: true });
   });
 
-  it("posts centerCrop false when debug is on and center crop is toggled off", async () => {
+  it("posts centerCrop false when developer options are on and center crop is toggled off", async () => {
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ showDebug: true, centerCropFrames: false }),
+      JSON.stringify({ developerOptions: true, centerCropFrames: false }),
     );
     vi.stubGlobal(
       "createImageBitmap",
@@ -1330,14 +1331,15 @@ describe("DetectionProvider", () => {
     ).toMatchObject({ centerCrop: false });
   });
 
-  it("posts centerCrop true when center crop is off but debug is also off", async () => {
-    // The squish comparison mode is gated on the debug overlay: a stored
-    // centerCropFrames=false must NOT switch preprocessing while showDebug is
-    // off, so normal use can never silently mismatch the model's center-crop
-    // training. This pins the || !showDebug half of the effective expression.
+  it("posts centerCrop true when center crop is off but developer options are off", async () => {
+    // The squish comparison mode is gated on the Developer options master
+    // switch: a stored centerCropFrames=false must NOT switch preprocessing
+    // while developerOptions is off, so normal use can never silently mismatch
+    // the model's center-crop training. This pins the gate SettingsProvider
+    // applies to the stored value.
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ showDebug: false, centerCropFrames: false }),
+      JSON.stringify({ developerOptions: false, centerCropFrames: false }),
     );
     vi.stubGlobal(
       "createImageBitmap",

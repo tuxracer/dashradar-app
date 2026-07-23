@@ -3,8 +3,18 @@ import { isBoolean, isPlainObject } from "remeda";
 /** User-controlled display options for the HUD. Serialized to localStorage. */
 export type Settings = {
   /**
+   * Master switch for the development-only settings (showDebug,
+   * throttleInference, centerCropFrames). Off by default. While it is off,
+   * SettingsProvider reports each of those three at its DEFAULT_SETTINGS value
+   * no matter what is stored, so a development tweak left enabled cannot alter
+   * a normal drive. Their stored values survive, so turning this back on
+   * restores the tweaks rather than resetting them.
+   */
+  developerOptions: boolean;
+  /**
    * When true, an on-screen debug overlay renders performance and development
-   * diagnostics (timing, detection counts, system info). Off by default.
+   * diagnostics (timing, detection counts, system info). Off by default. A
+   * developer option, so it only takes effect while developerOptions is on.
    */
   showDebug: boolean;
   /**
@@ -15,9 +25,9 @@ export type Settings = {
   radarAudio: boolean;
   /**
    * When false, the detection pump runs inference flat-out with no pacing
-   * floor. Takes effect only while showDebug is on (DetectionContext gates it),
-   * so a phone can never run unthrottled without the debug overlay visible. On
-   * by default: the 2s pacing floor is the app's thermal/battery safeguard.
+   * floor. A developer option, so it only takes effect while developerOptions
+   * is on and a phone can never run unthrottled otherwise. On by default: the
+   * 2s pacing floor is the app's thermal/battery safeguard.
    */
   throttleInference: boolean;
   /**
@@ -25,15 +35,22 @@ export type Settings = {
    * square crop of the camera frame, matching the Fill-with-center-crop
    * preprocessing the model trains with. When false, the frame is squished
    * onto the square input instead, a comparison mode for models trained on
-   * stretched data. Squish takes effect only while showDebug is on
-   * (DetectionContext gates it), so normal use always runs the default
-   * center-crop path even if a stale false was left persisted.
+   * stretched data. A developer option, so squish only takes effect while
+   * developerOptions is on and normal use always runs the center-crop path
+   * that matches the model's training even if a stale false was left persisted.
    */
   centerCropFrames: boolean;
 };
 
-/** Value exposed by the settings context via useSettings(). */
+/**
+ * Value exposed by the settings context via useSettings(). The three developer
+ * options (showDebug, throttleInference, centerCropFrames) are the *effective*
+ * values, already gated on developerOptions, so consumers never have to repeat
+ * the gate. Each toggle still writes the stored value underneath.
+ */
 export type SettingsContextValue = {
+  developerOptions: boolean;
+  toggleDeveloperOptions: () => void;
   showDebug: boolean;
   toggleShowDebug: () => void;
   radarAudio: boolean;
@@ -62,6 +79,8 @@ export const isPersistedSettings = (
 ): value is Partial<Settings> => {
   return (
     isPlainObject(value) &&
+    (value.developerOptions === undefined ||
+      isBoolean(value.developerOptions)) &&
     (value.showDebug === undefined || isBoolean(value.showDebug)) &&
     (value.radarAudio === undefined || isBoolean(value.radarAudio)) &&
     (value.throttleInference === undefined ||

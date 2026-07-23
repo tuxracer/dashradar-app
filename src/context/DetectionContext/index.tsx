@@ -110,24 +110,24 @@ export const DetectionProvider = ({
   useEffect(() => {
     includeFrameRef.current = showDebug;
   }, [showDebug]);
-  // Mirrors the effective throttle flag for schedulePacedFrame, a stable
-  // callback that reads it per result instead of re-subscribing. Inference is
-  // unthrottled only while the debug overlay is on and its throttle toggle is
-  // off, so turning debug off restores the pacing floor no matter the stored
-  // throttleInference value.
-  const throttledRef = useRef(!(showDebug && !throttleInference));
+  // Mirrors the throttle flag for schedulePacedFrame, a stable callback that
+  // reads it per result instead of re-subscribing. useSettings() already
+  // reports the effective value: throttleInference can only be false while the
+  // Developer options master switch is on, so the pacing floor comes back on
+  // its own when that switch goes off, whatever is stored.
+  const throttledRef = useRef(throttleInference);
   useEffect(() => {
-    throttledRef.current = !(showDebug && !throttleInference);
-  }, [showDebug, throttleInference]);
-  // Mirrors the effective center-crop mode for sendFrame, same idiom as the
-  // two refs above. Squish (false) is a debug-only comparison mode: it applies
-  // only while the debug overlay is on, so a stale persisted false can never
-  // silently mismatch the model's center-crop training preprocessing in
-  // normal use.
-  const centerCropRef = useRef(centerCropFrames || !showDebug);
+    throttledRef.current = throttleInference;
+  }, [throttleInference]);
+  // Mirrors the center-crop mode for sendFrame, same idiom as the two refs
+  // above and likewise already gated on Developer options: squish (false) is a
+  // development-only comparison mode, so a stale persisted false can never
+  // silently mismatch the model's center-crop training preprocessing in normal
+  // use.
+  const centerCropRef = useRef(centerCropFrames);
   useEffect(() => {
-    centerCropRef.current = centerCropFrames || !showDebug;
-  }, [centerCropFrames, showDebug]);
+    centerCropRef.current = centerCropFrames;
+  }, [centerCropFrames]);
 
   const [status, setStatus] = useState<DetectionStatus>("loading-model");
   const [backend, setBackend] = useState<DetectionBackend>();

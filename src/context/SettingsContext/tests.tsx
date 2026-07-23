@@ -23,10 +23,12 @@ describe("SettingsContext", () => {
 
   it("toggling flips showDebug and persists it to localStorage", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleDeveloperOptions());
     act(() => result.current.toggleShowDebug());
     expect(result.current.showDebug).toBe(true);
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
+        developerOptions: true,
         showDebug: true,
         radarAudio: true,
         throttleInference: true,
@@ -81,6 +83,7 @@ describe("SettingsContext", () => {
     act(() => result.current.openSettings());
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
+        developerOptions: false,
         showDebug: false,
         radarAudio: true,
         throttleInference: true,
@@ -100,6 +103,7 @@ describe("SettingsContext", () => {
     expect(result.current.radarAudio).toBe(false);
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
+        developerOptions: false,
         showDebug: false,
         radarAudio: false,
         throttleInference: true,
@@ -115,10 +119,12 @@ describe("SettingsContext", () => {
 
   it("toggling flips throttleInference and persists it to localStorage", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleDeveloperOptions());
     act(() => result.current.toggleThrottleInference());
     expect(result.current.throttleInference).toBe(false);
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
+        developerOptions: true,
         showDebug: false,
         radarAudio: true,
         throttleInference: false,
@@ -143,10 +149,12 @@ describe("SettingsContext", () => {
 
   it("toggling flips centerCropFrames and persists it to localStorage", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleDeveloperOptions());
     act(() => result.current.toggleCenterCropFrames());
     expect(result.current.centerCropFrames).toBe(false);
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
+        developerOptions: true,
         showDebug: false,
         radarAudio: true,
         throttleInference: true,
@@ -162,5 +170,61 @@ describe("SettingsContext", () => {
     );
     const { result } = renderHook(() => useSettings(), { wrapper });
     expect(result.current.centerCropFrames).toBe(true);
+  });
+
+  it("defaults developerOptions to false when storage is empty", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.developerOptions).toBe(false);
+  });
+
+  it("reports every developer option at its default while developerOptions is off", () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        developerOptions: false,
+        showDebug: true,
+        throttleInference: false,
+        centerCropFrames: false,
+      }),
+    );
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.showDebug).toBe(false);
+    expect(result.current.throttleInference).toBe(true);
+    expect(result.current.centerCropFrames).toBe(true);
+  });
+
+  it("restores the stored developer options when developerOptions is turned back on", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleDeveloperOptions());
+    act(() => result.current.toggleThrottleInference());
+    act(() => result.current.toggleShowDebug());
+    expect(result.current.throttleInference).toBe(false);
+    expect(result.current.showDebug).toBe(true);
+
+    // Off: both revert to their defaults for the rest of the drive.
+    act(() => result.current.toggleDeveloperOptions());
+    expect(result.current.throttleInference).toBe(true);
+    expect(result.current.showDebug).toBe(false);
+
+    // Back on: the tweaks come back rather than having been reset.
+    act(() => result.current.toggleDeveloperOptions());
+    expect(result.current.throttleInference).toBe(false);
+    expect(result.current.showDebug).toBe(true);
+  });
+
+  it("keeps persisting the stored developer options while developerOptions is off", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleDeveloperOptions());
+    act(() => result.current.toggleCenterCropFrames());
+    act(() => result.current.toggleDeveloperOptions());
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({
+        developerOptions: false,
+        showDebug: false,
+        radarAudio: true,
+        throttleInference: true,
+        centerCropFrames: false,
+      }),
+    );
   });
 });

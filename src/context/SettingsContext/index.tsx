@@ -57,28 +57,58 @@ type SettingsProviderProps = {
 
 /** Provider component for settings state management and persistence. */
 export const SettingsProvider = ({ children }: SettingsProviderProps) => {
-  const [showDebug, setShowDebug] = useState(() => loadSettings().showDebug);
+  const [developerOptions, setDeveloperOptions] = useState(
+    () => loadSettings().developerOptions,
+  );
+  const [storedShowDebug, setShowDebug] = useState(
+    () => loadSettings().showDebug,
+  );
   const [radarAudio, setRadarAudio] = useState(() => loadSettings().radarAudio);
-  const [throttleInference, setThrottleInference] = useState(
+  const [storedThrottleInference, setThrottleInference] = useState(
     () => loadSettings().throttleInference,
   );
-  const [centerCropFrames, setCenterCropFrames] = useState(
+  const [storedCenterCropFrames, setCenterCropFrames] = useState(
     () => loadSettings().centerCropFrames,
   );
 
+  // The three developer options report their DEFAULT_SETTINGS value whenever
+  // developerOptions is off, so a tweak left enabled (unthrottled inference,
+  // squished frames) stops taking effect the moment the master switch goes off.
+  // The stored value is untouched, so turning it back on restores the tweak.
+  const showDebug = developerOptions
+    ? storedShowDebug
+    : DEFAULT_SETTINGS.showDebug;
+  const throttleInference = developerOptions
+    ? storedThrottleInference
+    : DEFAULT_SETTINGS.throttleInference;
+  const centerCropFrames = developerOptions
+    ? storedCenterCropFrames
+    : DEFAULT_SETTINGS.centerCropFrames;
+
   useEffect(() => {
     const next: Settings = {
-      showDebug,
+      developerOptions,
+      showDebug: storedShowDebug,
       radarAudio,
-      throttleInference,
-      centerCropFrames,
+      throttleInference: storedThrottleInference,
+      centerCropFrames: storedCenterCropFrames,
     };
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     } catch {
       // Storage unavailable (private mode / quota); keep the in-memory value.
     }
-  }, [showDebug, radarAudio, throttleInference, centerCropFrames]);
+  }, [
+    developerOptions,
+    storedShowDebug,
+    radarAudio,
+    storedThrottleInference,
+    storedCenterCropFrames,
+  ]);
+
+  const toggleDeveloperOptions = useCallback(() => {
+    setDeveloperOptions((prev) => !prev);
+  }, []);
 
   const toggleShowDebug = useCallback(() => {
     setShowDebug((prev) => !prev);
@@ -108,6 +138,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
 
   const value = useMemo(
     () => ({
+      developerOptions,
+      toggleDeveloperOptions,
       showDebug,
       toggleShowDebug,
       radarAudio,
@@ -121,6 +153,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       closeSettings,
     }),
     [
+      developerOptions,
+      toggleDeveloperOptions,
       showDebug,
       toggleShowDebug,
       radarAudio,

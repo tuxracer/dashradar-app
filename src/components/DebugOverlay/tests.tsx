@@ -10,7 +10,10 @@ afterEach(() => {
 });
 
 const enableDebug = () =>
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ showDebug: true }));
+  window.localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({ developerOptions: true, showDebug: true }),
+  );
 
 const debug: DebugSnapshot = {
   captureMs: 1.2,
@@ -159,7 +162,11 @@ describe("DebugOverlay", () => {
   it("shows the throttle row as off when throttling is disabled", () => {
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ showDebug: true, throttleInference: false }),
+      JSON.stringify({
+        developerOptions: true,
+        showDebug: true,
+        throttleInference: false,
+      }),
     );
     renderOverlay();
     expect(screen.getByText("throttle")).toBeInTheDocument();

@@ -31,9 +31,10 @@ const Toggle = ({ on }: { on: boolean }) => (
 /**
  * Full-screen settings panel built for driver-first use on a dash mount, in
  * landscape. Renders nothing until the panel is opened. Large, full-width rows
- * with big tap targets: Audio alerts and Debug overlay toggles plus read-only
- * Detection engine, Model, and About rows. Closes on the large close button or
- * Escape. While it is open the detection pump is paused (DetectionContext
+ * with big tap targets: Audio alerts and Developer options toggles, the three
+ * development-only toggles Developer options reveals (Debug overlay, Throttle
+ * inference, Center crop), plus read-only Detection engine, Model, and About
+ * rows. Closes on the large close button or Escape. While it is open the detection pump is paused (DetectionContext
  * watches `settingsOpen`) and resumes on close. Reads the backend as a prop
  * (the same way StatusBar used to) so it stays testable without the worker.
  */
@@ -41,6 +42,8 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
   const {
     settingsOpen,
     closeSettings,
+    developerOptions,
+    toggleDeveloperOptions,
     showDebug,
     toggleShowDebug,
     radarAudio,
@@ -112,17 +115,33 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
 
           <button
             type="button"
-            onClick={toggleShowDebug}
+            onClick={toggleDeveloperOptions}
             className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
           >
-            <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-              Debug overlay
+            <span className="flex flex-col gap-1">
+              <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                Developer options
+              </span>
+              <span className="text-sm font-medium text-white/45">
+                Diagnostics and tuning for development.
+              </span>
             </span>
-            <Toggle on={showDebug} />
+            <Toggle on={developerOptions} />
           </button>
 
-          {showDebug && (
+          {developerOptions && (
             <>
+              <button
+                type="button"
+                onClick={toggleShowDebug}
+                className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
+              >
+                <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                  Debug overlay
+                </span>
+                <Toggle on={showDebug} />
+              </button>
+
               <button
                 type="button"
                 onClick={toggleThrottleInference}
