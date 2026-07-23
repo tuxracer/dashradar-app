@@ -129,6 +129,21 @@ export const DetectionProvider = ({
     setContact(next);
   }, []);
 
+  // Mirror backend and the probe's graph-capture flag into refs so the crash
+  // sentinel heartbeat effect below can key on [status] alone. Keying it on
+  // backend/backendProbe too would tear the effect down and restart it every
+  // time a recycled worker re-reports them, resetting startedAt and the frames
+  // baseline mid-session and destroying the uptime the sentinel exists to
+  // collect. The heartbeat reads these refs inside its interval instead.
+  const backendRef = useRef(backend);
+  useEffect(() => {
+    backendRef.current = backend;
+  }, [backend]);
+  const graphCaptureRef = useRef(backendProbe?.graphCapture);
+  useEffect(() => {
+    graphCaptureRef.current = backendProbe?.graphCapture;
+  }, [backendProbe]);
+
   // React 19 useRef requires an initial value; undefined unions cover "not yet set".
   const workerRef = useRef<DetectionWorkerLike | undefined>(undefined);
   // performance.now() at the moment the current worker was created, so the
@@ -136,6 +151,16 @@ export const DetectionProvider = ({
   // elapsed. Only same-load comparisons are made, so performance.now (which is
   // monotonic within a page load) is the correct clock here.
   const workerCreatedAtRef = useRef(0);
+  // False from the moment a worker is spawned until it reports `ready`, then
+  // false again if it errors. The pump bails while it is false so a detect
+  // frame is never posted to a worker whose model has not loaded (the worker
+  // silently drops it, which would strand inFlightRef at 1 and deadlock the
+  // pump forever). Before the periodic recycle, statusRef === "ready" always
+  // implied a loaded worker; a recycle can leave the pump in "running"/"ready"
+  // with a fresh, still-loading worker, so this ref makes the load state
+  // explicit rather than inferred from status. Set in spawnWorker and the
+  // `ready`/error handlers.
+  const workerLoadedRef = useRef(false);
   // Guards the one-time ready analytics (backend_resolved/model_ready) so a
   // recycled worker's `ready` does not re-fire them, which would otherwise
   // inflate the counts every WORKER_RECYCLE_AFTER_MS of a scanning session.
@@ -216,6 +241,12 @@ export const DetectionProvider = ({
     const video = videoRef.current;
     const worker = workerRef.current;
     if (!runningRef.current || !video || !worker) {
+      return;
+    }
+    if (!workerLoadedRef.current) {
+      // A recycle (or the initial load) left a worker that has not reported
+      // `ready` yet; it would silently drop this frame and strand the in-flight
+      // count, deadlocking the pump. The worker's `ready` handler re-primes.
       return;
     }
     if (inFlightRef.current > 0) {
@@ -414,6 +445,9 @@ export const DetectionProvider = ({
           break;
         }
         case "ready": {
+          // Mark the worker loaded before priming the pump below, so the
+          // sendFrame() call in the running branch is not itself bailed.
+          workerLoadedRef.current = true;
           setBackend(message.backend);
           // Report which execution provider this device resolved to and how
           // the weights loaded. The two are the app's core health signals: with
@@ -514,7 +548,7 @@ export const DetectionProvider = ({
           // Recycle the worker once it has been running long enough, at this
           // result boundary where nothing is in flight (inFlightRef was just
           // decremented to 0), so no frame is lost. Terminating and recreating
-          // the worker resets the native memory ORT and the GPU stack leak
+          // the worker resets the native memory that ORT and the GPU stack leak
           // across thousands of runs; see WORKER_RECYCLE_AFTER_MS. Status stays
           // "running" throughout, so the new worker's `ready` re-primes the
           // pump through the handler above (runningRef is true). The recycle
@@ -545,6 +579,7 @@ export const DetectionProvider = ({
           statusRef.current = "error";
           setStatus("error");
           runningRef.current = false;
+          workerLoadedRef.current = false;
           pumpGenerationRef.current += 1;
           inFlightRef.current = 0;
           window.clearTimeout(retryTimerRef.current);
@@ -561,6 +596,7 @@ export const DetectionProvider = ({
       statusRef.current = "error";
       setStatus("error");
       runningRef.current = false;
+      workerLoadedRef.current = false;
       pumpGenerationRef.current += 1;
       inFlightRef.current = 0;
       window.clearTimeout(retryTimerRef.current);
@@ -575,6 +611,8 @@ export const DetectionProvider = ({
       const worker = createWorker();
       workerRef.current = worker;
       workerCreatedAtRef.current = performance.now();
+      // Fresh worker: its model is not loaded until it reports `ready`.
+      workerLoadedRef.current = false;
       worker.onmessage = handleMessage;
       worker.onerror = handleError;
       return worker;
@@ -697,6 +735,11 @@ export const DetectionProvider = ({
   // cleanup running on any of those exits clears the sentinel; only an
   // OS-level kill mid-scan (no JS runs, so nothing else can react) leaves the
   // last heartbeat in place for the next launch to read and report to Sentry.
+  // Keyed on [status] alone so startedAt and the frames baseline span the whole
+  // running session: backend and graphCapture are read from refs inside the
+  // interval instead of being deps, because a periodic worker recycle re-posts
+  // backend-probe and would otherwise restart this effect every recycle,
+  // resetting the uptime the sentinel exists to collect.
   useEffect(() => {
     if (status !== "running") {
       return;
@@ -708,8 +751,8 @@ export const DetectionProvider = ({
         startedAt,
         lastBeatAt: Date.now(),
         framesProcessed: framesTotalRef.current - baseline,
-        backend,
-        graphCapture: backendProbe?.graphCapture,
+        backend: backendRef.current,
+        graphCapture: graphCaptureRef.current,
       });
     };
     beat();
@@ -718,7 +761,7 @@ export const DetectionProvider = ({
       window.clearInterval(intervalId);
       clearSentinel();
     };
-  }, [status, backend, backendProbe]);
+  }, [status]);
 
   const getFps = useCallback(() => fpsRef.current, []);
 

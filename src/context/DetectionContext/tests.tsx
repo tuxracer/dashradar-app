@@ -1345,6 +1345,61 @@ describe("crash sentinel heartbeat", () => {
     });
     expect(readSentinel()).toMatchObject({ framesProcessed: 1 });
   });
+
+  const backendProbe = () => ({
+    workerGpu: false,
+    adapter: false,
+    device: false,
+    shaderF16: false,
+    graphCapture: false,
+    chosen: "wasm" as const,
+    crossOriginIsolated: true,
+    threads: 4,
+  });
+
+  it("does not reset startedAt or framesProcessed when a recycled worker re-reports its probe", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    // Capture the initial startedAt written when the running span began.
+    const startedAt = readSentinel()?.startedAt;
+    expect(startedAt).toEqual(expect.any(Number));
+    // A frame result grows framesProcessed, and time advances so a restart of
+    // the heartbeat effect would capture a later startedAt.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+    });
+    expect(readSentinel()).toMatchObject({ startedAt, framesProcessed: 1 });
+    // A recycled worker re-reports its backend probe (fresh object identity).
+    // The heartbeat effect must not tear down and restart: startedAt and the
+    // frames baseline must survive.
+    act(() => {
+      worker.emit({ type: "backend-probe", probe: backendProbe() });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+    });
+    expect(readSentinel()).toMatchObject({ startedAt, framesProcessed: 1 });
+  });
 });
 
 describe("worker recycle", () => {
@@ -1540,6 +1595,57 @@ describe("worker recycle", () => {
     });
     // runningRef is false, so the new worker's ready must not re-prime the pump.
     expect(detectCount(workers[1])).toBe(0);
+  });
+
+  it("re-primes exactly once when stop then start land during the recycle-load window", async () => {
+    vi.useFakeTimers();
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const workers = renderWithWorkerFactory(<StartStop />);
+    act(() => {
+      workers[0].emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(detectCount(workers[0])).toBe(1);
+    // The worker crosses the recycle age; its next result recycles it, leaving
+    // a fresh worker that has not reported ready yet.
+    now = WORKER_RECYCLE_AFTER_MS;
+    act(() => {
+      workers[0].emit(emptyResult);
+    });
+    expect(workers).toHaveLength(2);
+    // stop() then start() both land inside the recycle-load window (settings
+    // open/close or a visibility bounce). start() sees statusRef "ready" and
+    // calls sendFrame() directly, but the still-loading worker must not receive
+    // a frame (it would silently drop it and strand the in-flight count).
+    act(() => {
+      screen.getByTestId("stop").click();
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(detectCount(workers[1])).toBe(0);
+    // The new worker finishes loading: its ready re-primes the pump exactly
+    // once (not zero: the pump would otherwise be dead; not two).
+    act(() => {
+      workers[1].emit({ type: "ready", backend: "wasm" });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(detectCount(workers[1])).toBe(1);
   });
 });
 
