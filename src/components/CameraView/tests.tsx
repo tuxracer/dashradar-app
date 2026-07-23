@@ -82,7 +82,7 @@ describe("CameraView", () => {
     expect(isCameraError(error) && error.code).toBe("PERMISSION_DENIED");
   });
 
-  it("keeps the video mounted but hidden when visible is false", async () => {
+  it("always keeps the video mounted but visually hidden", async () => {
     const fakeStream = {
       getTracks: () => [{ stop: () => {} }],
     } as unknown as MediaStream;
@@ -93,7 +93,7 @@ describe("CameraView", () => {
 
     const onStream = vi.fn();
     const { container } = render(
-      <CameraView onStream={onStream} onError={() => {}} visible={false} />,
+      <CameraView onStream={onStream} onError={() => {}} />,
     );
     await waitFor(() => expect(onStream).toHaveBeenCalled());
     const video = container.querySelector("video");

@@ -27,29 +27,9 @@ describe("SettingsScreen", () => {
   it("renders nothing until the panel is opened", async () => {
     const user = userEvent.setup();
     renderScreen();
-    expect(screen.queryByText("Radar detector mode")).not.toBeInTheDocument();
-    await open(user);
-    expect(screen.getByText("Radar detector mode")).toBeInTheDocument();
-  });
-
-  it("hides the video and motion rows while radar detector mode is on", async () => {
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    expect(screen.queryByText("Video feed")).not.toBeInTheDocument();
-    expect(screen.queryByText("Motion stabilization")).not.toBeInTheDocument();
-    await user.click(screen.getByText("Radar detector mode"));
-    expect(screen.getByText("Video feed")).toBeInTheDocument();
-    expect(screen.getByText("Motion stabilization")).toBeInTheDocument();
-  });
-
-  it("shows the audio row only while radar detector mode is on", async () => {
-    const user = userEvent.setup();
-    renderScreen();
+    expect(screen.queryByText("Audio alerts")).not.toBeInTheDocument();
     await open(user);
     expect(screen.getByText("Audio alerts")).toBeInTheDocument();
-    await user.click(screen.getByText("Radar detector mode"));
-    expect(screen.queryByText("Audio alerts")).not.toBeInTheDocument();
   });
 
   it("toggles and persists the audio setting from the Audio alerts row", async () => {
@@ -64,26 +44,6 @@ describe("SettingsScreen", () => {
         stabilizeMotion: false,
         radarDetectorMode: true,
         radarAudio: false,
-      }),
-    );
-  });
-
-  it("toggles and persists the video setting from the Video feed row", async () => {
-    const user = userEvent.setup();
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ radarDetectorMode: false }),
-    );
-    renderScreen();
-    await open(user);
-    await user.click(screen.getByText("Video feed"));
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        showVideo: false,
-        showDebug: false,
-        stabilizeMotion: false,
-        radarDetectorMode: false,
-        radarAudio: true,
       }),
     );
   });
@@ -104,32 +64,12 @@ describe("SettingsScreen", () => {
     );
   });
 
-  it("toggles and persists the motion setting from the Motion stabilization row", async () => {
-    const user = userEvent.setup();
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ radarDetectorMode: false }),
-    );
-    renderScreen();
-    await open(user);
-    await user.click(screen.getByText("Motion stabilization"));
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        showVideo: true,
-        showDebug: false,
-        stabilizeMotion: true,
-        radarDetectorMode: false,
-        radarAudio: true,
-      }),
-    );
-  });
-
   it("closes on the close button", async () => {
     const user = userEvent.setup();
     renderScreen();
     await open(user);
     await user.click(screen.getByRole("button", { name: /close settings/i }));
-    expect(screen.queryByText("Radar detector mode")).not.toBeInTheDocument();
+    expect(screen.queryByText("Audio alerts")).not.toBeInTheDocument();
   });
 
   it("closes on Escape", async () => {
@@ -137,7 +77,7 @@ describe("SettingsScreen", () => {
     renderScreen();
     await open(user);
     await user.keyboard("{Escape}");
-    expect(screen.queryByText("Radar detector mode")).not.toBeInTheDocument();
+    expect(screen.queryByText("Audio alerts")).not.toBeInTheDocument();
   });
 
   it("shows the GPU engine readout without an fps figure", async () => {

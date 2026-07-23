@@ -3,7 +3,6 @@ import { track } from "@vercel/analytics";
 import { CameraView } from "@/components/CameraView";
 import { DebugOverlay } from "@/components/DebugOverlay";
 import { ErrorScreen } from "@/components/ErrorScreen";
-import { HudOverlay } from "@/components/HudOverlay";
 import {
   IntroScreen,
   markIntroSeen,
@@ -12,9 +11,7 @@ import {
 import { ModelLoadScreen } from "@/components/ModelLoadScreen";
 import { RadarBackdrop } from "@/components/RadarBackdrop";
 import { RadarDetectorScreen } from "@/components/RadarDetectorScreen";
-import { RadarStrip } from "@/components/RadarStrip";
 import { SettingsScreen } from "@/components/SettingsScreen";
-import { StartGate, shouldShowStartGate } from "@/components/StartGate";
 import { StatusBar } from "@/components/StatusBar";
 import { DetectionProvider, useDetection } from "@/context/DetectionContext";
 import { SettingsProvider, useSettings } from "@/context/SettingsContext";
@@ -53,17 +50,8 @@ const RadarScreen = () => {
     error,
     start,
     getMotionDelta,
-    motionPermission,
-    requestMotionPermission,
   } = useDetection();
-  const {
-    showVideo,
-    showDebug,
-    stabilizeMotion,
-    radarDetectorMode,
-    radarAudio,
-    settingsOpen,
-  } = useSettings();
+  const { showDebug, radarAudio } = useSettings();
   const [showIntro, setShowIntro] = useState(shouldShowIntro);
   const [cameraError, setCameraError] = useState<CameraError>();
   const [videoSize, setVideoSize] = useState<Size>();
@@ -134,31 +122,15 @@ const RadarScreen = () => {
         onStream={handleStream}
         onError={setCameraError}
         onVideoResize={updateVideoSize}
-        visible={showVideo && !modelLoading}
       />
-      {!modelLoading &&
-        (radarDetectorMode ? (
-          <RadarDetectorScreen
-            confidence={hudSignal(hud)}
-            audioEnabled={radarAudio}
-            contact={contact}
-            debug={showDebug}
-          />
-        ) : (
-          <>
-            {hud && videoSize && (
-              <HudOverlay
-                hud={hud}
-                videoSize={videoSize}
-                viewportSize={viewportSize}
-                getMotionDelta={getMotionDelta}
-                stabilize={stabilizeMotion}
-                debug={showDebug}
-              />
-            )}
-            {hud && <RadarStrip blips={hud.blips} />}
-          </>
-        ))}
+      {!modelLoading && (
+        <RadarDetectorScreen
+          confidence={hudSignal(hud)}
+          audioEnabled={radarAudio}
+          contact={contact}
+          debug={showDebug}
+        />
+      )}
       <StatusBar />
       <DebugOverlay
         backend={backend}
@@ -175,11 +147,6 @@ const RadarScreen = () => {
       {status === "loading-model" && downloadingModel && (
         <ModelLoadScreen progress={modelProgress} />
       )}
-      {stabilizeMotion &&
-        !settingsOpen &&
-        shouldShowStartGate(motionPermission) && (
-          <StartGate onStart={() => void requestMotionPermission()} />
-        )}
     </main>
   );
 };

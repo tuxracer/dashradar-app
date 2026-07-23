@@ -16,7 +16,7 @@ type SettingsScreenProps = {
 /**
  * Full-screen settings panel built for driver-first use on a dash mount, in
  * landscape. Renders nothing until the panel is opened. Large, full-width rows
- * with big tap targets: Video feed and Debug overlay toggles plus read-only
+ * with big tap targets: Audio alerts and Debug overlay toggles plus read-only
  * Detection engine, Model, and About rows. Closes on the large close button or
  * Escape. While it is open the detection pump is paused (DetectionContext
  * watches `settingsOpen`) and resumes on close. Reads the backend as a prop
@@ -26,14 +26,8 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
   const {
     settingsOpen,
     closeSettings,
-    showVideo,
-    toggleShowVideo,
     showDebug,
     toggleShowDebug,
-    stabilizeMotion,
-    toggleStabilizeMotion,
-    radarDetectorMode,
-    toggleRadarDetectorMode,
     radarAudio,
     toggleRadarAudio,
   } = useSettings();
@@ -83,120 +77,29 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
         <div className="mx-auto flex w-full max-w-2xl flex-col divide-y divide-white/10">
           <button
             type="button"
-            onClick={toggleRadarDetectorMode}
+            onClick={toggleRadarAudio}
             className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
           >
             <span className="flex flex-col gap-1">
               <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-                Radar detector mode
+                Audio alerts
               </span>
               <span className="text-sm font-medium text-white/45">
-                Fullscreen police signal meter, no boxes.
+                Beeps faster as the signal climbs.
               </span>
             </span>
             <span
               className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors ${
-                radarDetectorMode ? "bg-hud-amber" : "bg-white/25"
+                radarAudio ? "bg-hud-amber" : "bg-white/25"
               }`}
             >
               <span
                 className={`inline-block h-6 w-6 rounded-full bg-surface transition-transform ${
-                  radarDetectorMode
-                    ? "translate-x-[1.75rem]"
-                    : "translate-x-[0.25rem]"
+                  radarAudio ? "translate-x-[1.75rem]" : "translate-x-[0.25rem]"
                 }`}
               />
             </span>
           </button>
-
-          {/* The beeping indicator only exists in radar detector mode, so the
-              row hides alongside the mode itself. */}
-          {radarDetectorMode && (
-            <button
-              type="button"
-              onClick={toggleRadarAudio}
-              className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
-            >
-              <span className="flex flex-col gap-1">
-                <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-                  Audio alerts
-                </span>
-                <span className="text-sm font-medium text-white/45">
-                  Beeps faster as the signal climbs.
-                </span>
-              </span>
-              <span
-                className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors ${
-                  radarAudio ? "bg-hud-amber" : "bg-white/25"
-                }`}
-              >
-                <span
-                  className={`inline-block h-6 w-6 rounded-full bg-surface transition-transform ${
-                    radarAudio
-                      ? "translate-x-[1.75rem]"
-                      : "translate-x-[0.25rem]"
-                  }`}
-                />
-              </span>
-            </button>
-          )}
-
-          {/* Video feed and motion stabilization only matter for the
-              box-drawing HUD, so hide them while radar detector mode is on. */}
-          {!radarDetectorMode && (
-            <>
-              <button
-                type="button"
-                onClick={toggleShowVideo}
-                className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
-              >
-                <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-                  Video feed
-                </span>
-                <span
-                  className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors ${
-                    showVideo ? "bg-hud-amber" : "bg-white/25"
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-6 w-6 rounded-full bg-surface transition-transform ${
-                      showVideo
-                        ? "translate-x-[1.75rem]"
-                        : "translate-x-[0.25rem]"
-                    }`}
-                  />
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={toggleStabilizeMotion}
-                className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
-              >
-                <span className="flex flex-col gap-1">
-                  <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-                    Motion stabilization
-                  </span>
-                  <span className="text-sm font-medium text-white/45">
-                    Keep boxes locked on as you turn.
-                  </span>
-                </span>
-                <span
-                  className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors ${
-                    stabilizeMotion ? "bg-hud-amber" : "bg-white/25"
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-6 w-6 rounded-full bg-surface transition-transform ${
-                      stabilizeMotion
-                        ? "translate-x-[1.75rem]"
-                        : "translate-x-[0.25rem]"
-                    }`}
-                  />
-                </span>
-              </button>
-            </>
-          )}
 
           <button
             type="button"
