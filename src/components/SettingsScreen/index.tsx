@@ -118,13 +118,8 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
             onClick={toggleDeveloperOptions}
             className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
           >
-            <span className="flex flex-col gap-1">
-              <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-                Developer options
-              </span>
-              <span className="text-sm font-medium text-white/45">
-                Diagnostics and tuning for development.
-              </span>
+            <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+              Developer options
             </span>
             <Toggle on={developerOptions} />
           </button>
@@ -136,8 +131,13 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
                 onClick={toggleShowDebug}
                 className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
               >
-                <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-                  Debug overlay
+                <span className="flex flex-col gap-1">
+                  <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                    Debug overlay
+                  </span>
+                  <span className="text-sm font-medium text-white/45">
+                    Shows timing and detection diagnostics.
+                  </span>
                 </span>
                 <Toggle on={showDebug} />
               </button>
