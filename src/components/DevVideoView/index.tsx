@@ -9,6 +9,12 @@ type DevVideoViewProps = {
   onError: (error: CameraError) => void;
   /** Fires when the video's intrinsic dimensions change; mirrors CameraView. */
   onVideoResize?: (video: HTMLVideoElement) => void;
+  /**
+   * True while detection is running. The first rising edge starts playback;
+   * later transitions never auto-play or auto-pause, since the video is the
+   * user's to control by then.
+   */
+  scanning: boolean;
 };
 
 /**
@@ -19,15 +25,19 @@ type DevVideoViewProps = {
  * This mode only ever runs on a desktop browser, so the player is sized for
  * mouse use, not for the dash-mount touch-target rules. Pausing legitimately
  * stops new frames; DetectionContext disables the camera-stall machinery in
- * dev video mode so that never triggers recovery.
+ * dev video mode so that never triggers recovery. Playback does not start on
+ * mount: it waits for the first `scanning` transition so the clip's opening
+ * seconds aren't consumed while the model is still downloading or compiling.
  */
 export const DevVideoView = ({
   src,
   onStream,
   onError,
   onVideoResize,
+  scanning,
 }: DevVideoViewProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const startedRef = useRef(false);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -36,16 +46,31 @@ export const DevVideoView = ({
     }
     let cancelled = false;
     const handleVideoResize = () => {
-      onVideoResize?.(video);
+      if (!cancelled) {
+        onVideoResize?.(video);
+      }
     };
+    video.addEventListener("resize", handleVideoResize);
+    onStream(video);
+    return () => {
+      cancelled = true;
+      video.removeEventListener("resize", handleVideoResize);
+    };
+  }, [onStream, onVideoResize]);
+
+  // One-shot: start playback on the first rising edge of `scanning` only.
+  // Later transitions (settings panel pausing the pump, page hidden, etc.)
+  // must never auto-play or auto-pause a clip the user is now controlling.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !scanning || startedRef.current) {
+      return;
+    }
+    startedRef.current = true;
+    let cancelled = false;
     const startPlayback = async () => {
       try {
         await video.play();
-        if (cancelled) {
-          return;
-        }
-        onStream(video);
-        video.addEventListener("resize", handleVideoResize);
       } catch {
         if (!cancelled) {
           onError(new CameraErrorClass("NO_CAMERA"));
@@ -55,9 +80,8 @@ export const DevVideoView = ({
     void startPlayback();
     return () => {
       cancelled = true;
-      video.removeEventListener("resize", handleVideoResize);
     };
-  }, [onStream, onError, onVideoResize]);
+  }, [scanning, onError]);
 
   return (
     <video
@@ -66,7 +90,7 @@ export const DevVideoView = ({
       controls
       loop
       muted
-      autoPlay
+      preload="auto"
       playsInline
       className="fixed bottom-4 left-4 z-20 w-[480px] max-w-[40vw] rounded-lg border border-white/20 shadow-lg"
     />

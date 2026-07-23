@@ -143,6 +143,7 @@ const RadarScreen = () => {
       {DEV_VIDEO_URL ? (
         <DevVideoView
           src={DEV_VIDEO_URL}
+          scanning={status === "running"}
           onStream={handleStream}
           onError={setCameraError}
           onVideoResize={updateVideoSize}
