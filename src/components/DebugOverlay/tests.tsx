@@ -34,6 +34,7 @@ const probe = (overrides: Partial<BackendProbe> = {}): BackendProbe => ({
   shaderF16: false,
   graphCapture: false,
   chosen: "wasm",
+  safeMode: false,
   crossOriginIsolated: true,
   threads: 4,
   ...overrides,
@@ -78,6 +79,12 @@ describe("DebugOverlay", () => {
     renderOverlay(probe());
     expect(screen.getByText(/no-f16/)).toBeInTheDocument();
     expect(screen.getByText(/\bgpu\b/)).toBeInTheDocument();
+  });
+
+  it("marks the engine row when safe mode forced the wasm backend", () => {
+    enableDebug();
+    renderOverlay(probe({ safeMode: true }));
+    expect(screen.getByText(/safe mode/)).toBeInTheDocument();
   });
 
   it("reports shader-f16 support from the probe", () => {

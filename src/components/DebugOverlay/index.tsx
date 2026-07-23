@@ -164,7 +164,10 @@ export const DebugOverlay = ({
       <div className="mb-1 font-semibold tracking-[0.2em] text-white/60">
         DEBUG
       </div>
-      <Row label="engine" value={`${backendLabel} · ${fps} FPS`} />
+      <Row
+        label="engine"
+        value={`${backendLabel}${backendProbe?.safeMode ? " (safe mode)" : ""} · ${fps} FPS`}
+      />
       {backendProbe && (
         <Row label="wgpu probe" value={probeStages(backendProbe)} />
       )}

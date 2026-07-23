@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/react";
+import { armWasmSafeMode } from "@/lib/backendSafeMode";
 import { readPreviousSessionEnd } from "@/lib/crashSentinel";
 import { isDoNotTrackEnabled } from "@/lib/doNotTrack";
 
@@ -23,6 +24,19 @@ const RELEASE = `dashradar@${__APP_VERSION__}+${__COMMIT_SHA__}`;
  * only chance the NEXT launch gets to notice and report it.
  */
 const previousSessionEnd = readPreviousSessionEnd();
+
+/**
+ * A crash on the WebGPU backend arms the WASM safe mode: this release's
+ * remaining sessions run detection on the CPU instead of the GPU path that
+ * (by the strongest available signal) just took the page down. A local
+ * stability decision, not telemetry, so it sits outside the DNT gate below.
+ */
+if (
+  previousSessionEnd?.outcome === "crash" &&
+  previousSessionEnd.backend === "webgpu"
+) {
+  armWasmSafeMode();
+}
 
 /**
  * Initialize Sentry as a side effect at import time, so instrumentation is in

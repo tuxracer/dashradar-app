@@ -45,6 +45,8 @@ The `shader-f16` gate is load-bearing for the shipped fp16 build: its fp16 tenso
 
 No usable WebGPU is not treated as an error: the backend badge in `StatusBar` (`GPU` vs `CPU`) is the only place this is surfaced. There is no manual override.
 
+**WASM safe mode** (`src/lib/backendSafeMode`): when the crash sentinel (§8) classifies the previous session as a crash that happened on the WebGPU backend, `src/instrument.ts` arms a release-keyed localStorage flag (outside the DNT gate; a local stability decision, not telemetry). While armed, every `load` message carries `forceWasm: true`, `resolveBackend(true)` returns wasm without touching the GPU, and the backend probe reports `safeMode: true` (the debug overlay's engine row shows "(safe mode)"). The flag is not consumed by reading: it holds for the rest of the release so a crashing GPU path cannot alternate crash/clean on every other drive, and a new deploy disarms it so each build retries WebGPU once. Note the wasm weights may not be cached yet on a device that had been running WebGPU, so the first safe-mode launch can show the download screen.
+
 Real camera video, sustained frame rates against real-world objects, and on-device battery/thermal behavior are verified on-device by the user after merge; jsdom and headless Chrome cannot exercise a real camera or a real driving scene (see §9).
 
 ---
@@ -99,6 +101,7 @@ src/
     DetectionContext/           # worker lifecycle, frame pump, status machine; consume via useDetection()
     SettingsContext/            # display options (showDebug, radarAudio) + ephemeral settings-open state; consume via useSettings()
   lib/
+    backendSafeMode/            # release-keyed WASM safe mode armed after a WebGPU crash; read per load post, disarmed by the next deploy
     branding/                   # WORDMARK, the uppercase display wordmark shared by StatusBar, ErrorScreen, and the intro eyebrow
     browserEngine/              # isWebKitUa: engine detection from a UA string; gates WebGPU graph capture off on WebKit (pure)
     camera/                     # getUserMedia wrapper; typed CameraError; rear-camera constraints
@@ -177,7 +180,7 @@ These invariants (one frame in flight, the generation guard, and keeping frame-s
 
 | Message | Payload | Purpose |
 | --- | --- | --- |
-| `load` | none | Download the ONNX weights and create the `InferenceSession`; posted once, deferred until the service worker controls the page in production (see §7) |
+| `load` | `forceWasm?: boolean` | Download the ONNX weights and create the `InferenceSession`; posted once per worker (mount and each recycle), deferred until the service worker controls the page in production (see §7). `forceWasm: true` (the WASM safe mode, §2) skips the WebGPU probe and loads the int8 wasm build; carried on the message because the worker cannot read localStorage |
 | `detect` | `frame: ImageBitmap` (transferred), `includeFrame?: boolean` | Run one frame through the model; `includeFrame` asks for the full frame back on the response for debug-mode saving |
 
 `WorkerResponse` (worker → main thread):

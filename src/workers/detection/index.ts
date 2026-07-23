@@ -117,15 +117,21 @@ type BackendChoice = {
  * The returned `probe` records how far each stage got so the debug overlay can
  * report why an apparently WebGPU-capable device fell back to wasm.
  */
-const resolveBackend = async (): Promise<BackendChoice> => {
+const resolveBackend = async (forceWasm: boolean): Promise<BackendChoice> => {
   const probe = {
     workerGpu: false,
     adapter: false,
     device: false,
     shaderF16: false,
+    safeMode: forceWasm,
     crossOriginIsolated: self.crossOriginIsolated,
     threads: wasmThreads,
   };
+  // WASM safe mode: a previous session crashed on WebGPU (crash sentinel),
+  // so skip the GPU probe entirely rather than record misleading failures.
+  if (forceWasm) {
+    return { backend: "wasm", probe };
+  }
   if (!("gpu" in navigator) || !navigator.gpu) {
     return { backend: "wasm", probe };
   }
@@ -329,8 +335,8 @@ const loadForBackend = async (backend: DetectionBackend): Promise<ModelIo> => {
   return { session, ...resolveIoNames(session), captureError };
 };
 
-const loadModel = async () => {
-  const { backend: preferredBackend, probe } = await resolveBackend();
+const loadModel = async (forceWasm: boolean) => {
+  const { backend: preferredBackend, probe } = await resolveBackend(forceWasm);
   let sessionError: string | undefined;
   try {
     model = await loadForBackend(preferredBackend);
@@ -506,7 +512,7 @@ self.onmessage = (event: MessageEvent<unknown>) => {
     return;
   }
   if (request.type === "load") {
-    void loadModel();
+    void loadModel(request.forceWasm ?? false);
     return;
   }
   void detect(request.frame, request.includeFrame ?? false);

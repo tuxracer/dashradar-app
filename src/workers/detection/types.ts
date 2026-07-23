@@ -49,7 +49,16 @@ export const isDetectionError = (error: unknown): error is DetectionError => {
 };
 
 export type WorkerRequest =
-  | { type: "load" }
+  | {
+      type: "load";
+      /**
+       * When true, skip the WebGPU probe entirely and load the wasm backend.
+       * Set by the WASM safe mode (src/lib/backendSafeMode) after the crash
+       * sentinel attributes the previous session's crash to WebGPU. Carried
+       * on the message because the worker cannot read localStorage itself.
+       */
+      forceWasm?: boolean;
+    }
   | {
       type: "detect";
       frame: ImageBitmap;
@@ -65,7 +74,7 @@ export const isWorkerRequest = (value: unknown): value is WorkerRequest => {
     return false;
   }
   if (value.type === "load") {
-    return true;
+    return value.forceWasm === undefined || isBoolean(value.forceWasm);
   }
   return (
     value.type === "detect" &&
@@ -161,6 +170,12 @@ export type BackendProbe = {
   /** Backend actually selected after probing and any fallback. */
   chosen: DetectionBackend;
   /**
+   * The load request forced the wasm backend (WASM safe mode after a WebGPU
+   * crash; see src/lib/backendSafeMode). When true the WebGPU probe stages
+   * above were skipped, not failed.
+   */
+  safeMode: boolean;
+  /**
    * `self.crossOriginIsolated` in the worker. False here means SharedArrayBuffer
    * is unavailable, so the WASM backend is stuck at one thread regardless of
    * `threads` below.
@@ -182,6 +197,7 @@ const isBackendProbe = (value: unknown): value is BackendProbe => {
     (value.graphCaptureError === undefined ||
       isString(value.graphCaptureError)) &&
     isDetectionBackend(value.chosen) &&
+    isBoolean(value.safeMode) &&
     isBoolean(value.crossOriginIsolated) &&
     isNumber(value.threads)
   );

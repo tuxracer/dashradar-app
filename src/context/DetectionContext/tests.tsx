@@ -16,6 +16,7 @@ import {
   STORAGE_KEY,
   useSettings,
 } from "@/context/SettingsContext";
+import { armWasmSafeMode } from "@/lib/backendSafeMode";
 import {
   HEARTBEAT_INTERVAL_MS,
   SENTINEL_STORAGE_KEY,
@@ -232,7 +233,15 @@ describe("DetectionProvider", () => {
     // The load message is deferred to a microtask (Promise.resolve in tests),
     // so wait for it rather than asserting synchronously.
     await waitFor(() => {
-      expect(worker.posted).toContainEqual({ type: "load" });
+      expect(worker.posted).toContainEqual({ type: "load", forceWasm: false });
+    });
+  });
+
+  it("requests the wasm backend when the safe mode is armed", async () => {
+    armWasmSafeMode();
+    const worker = renderWithProvider(<Probe />);
+    await waitFor(() => {
+      expect(worker.posted).toContainEqual({ type: "load", forceWasm: true });
     });
   });
 
@@ -1333,6 +1342,7 @@ describe("crash sentinel heartbeat", () => {
     shaderF16: false,
     graphCapture: false,
     chosen: "wasm" as const,
+    safeMode: false,
     crossOriginIsolated: true,
     threads: 4,
   });
@@ -1476,7 +1486,10 @@ describe("worker recycle", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(workers[1].posted).toContainEqual({ type: "load" });
+    expect(workers[1].posted).toContainEqual({
+      type: "load",
+      forceWasm: false,
+    });
     // The old worker was mid-run at recycle, so no paced frame was scheduled on
     // it: the pump only resumes once the new worker reports ready.
     expect(detectCount(workers[1])).toBe(0);

@@ -10,6 +10,7 @@ import {
 import type { ReactNode } from "react";
 import { track } from "@vercel/analytics";
 import { useSettings } from "@/context/SettingsContext";
+import { isWasmSafeModeArmed } from "@/lib/backendSafeMode";
 import { waitForNextVideoFrame } from "@/lib/camera";
 import {
   clearSentinel,
@@ -366,7 +367,9 @@ export const DetectionProvider = ({
         if (cancelled) {
           return;
         }
-        worker.postMessage({ type: "load" });
+        // forceWasm re-reads per load post (mount and each recycle), so a
+        // safe mode armed at startup governs every session of this page load.
+        worker.postMessage({ type: "load", forceWasm: isWasmSafeModeArmed() });
       });
     };
 
