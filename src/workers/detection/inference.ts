@@ -12,6 +12,42 @@ import {
 } from "./consts";
 
 /**
+ * The largest centered square source region of a frame: the region the worker
+ * draws onto the model input under center-crop preprocessing, matching the
+ * Fill-with-center-crop resize the model trains with. A square frame yields
+ * the whole frame (sx/sy 0).
+ */
+export const centerCropRegion = (
+  width: number,
+  height: number,
+): { sx: number; sy: number; side: number } => {
+  const side = Math.min(width, height);
+  return { sx: (width - side) / 2, sy: (height - side) / 2, side };
+};
+
+/**
+ * Map a box normalized to the centered square crop of a frame back into
+ * coordinates normalized to the full frame. Under center-crop preprocessing
+ * the model's boxes describe the crop, but every downstream consumer (the
+ * contact-card cutout, direction shaping, HUD area math) works in full-frame
+ * coordinates, so the worker remaps each detection through this before
+ * posting it.
+ */
+export const mapCropBoxToFrame = (
+  box: NormalizedBox,
+  frameWidth: number,
+  frameHeight: number,
+): NormalizedBox => {
+  const { sx, sy, side } = centerCropRegion(frameWidth, frameHeight);
+  return {
+    xmin: (sx + box.xmin * side) / frameWidth,
+    ymin: (sy + box.ymin * side) / frameHeight,
+    xmax: (sx + box.xmax * side) / frameWidth,
+    ymax: (sy + box.ymax * side) / frameHeight,
+  };
+};
+
+/**
  * Convert a 512x512 RGBA frame into the model's `[1,3,512,512]` NCHW float32
  * input: per-channel ImageNet normalization laid out as all R values, then all
  * G, then all B.

@@ -42,6 +42,7 @@ describe("SettingsScreen", () => {
         showDebug: false,
         radarAudio: false,
         throttleInference: true,
+        centerCropFrames: true,
       }),
     );
   });
@@ -56,6 +57,7 @@ describe("SettingsScreen", () => {
         showDebug: true,
         radarAudio: true,
         throttleInference: true,
+        centerCropFrames: true,
       }),
     );
   });
@@ -148,6 +150,33 @@ describe("SettingsScreen", () => {
         showDebug: true,
         radarAudio: true,
         throttleInference: false,
+        centerCropFrames: true,
+      }),
+    );
+  });
+
+  it("hides the center crop row while debug mode is off", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    expect(screen.queryByText("Center crop")).not.toBeInTheDocument();
+  });
+
+  it("toggles and persists the center crop setting from its row", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ showDebug: true }),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    await user.click(screen.getByText("Center crop"));
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({
+        showDebug: true,
+        radarAudio: true,
+        throttleInference: true,
+        centerCropFrames: false,
       }),
     );
   });

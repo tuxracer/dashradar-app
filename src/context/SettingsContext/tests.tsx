@@ -30,6 +30,7 @@ describe("SettingsContext", () => {
         showDebug: true,
         radarAudio: true,
         throttleInference: true,
+        centerCropFrames: true,
       }),
     );
   });
@@ -83,6 +84,7 @@ describe("SettingsContext", () => {
         showDebug: false,
         radarAudio: true,
         throttleInference: true,
+        centerCropFrames: true,
       }),
     );
   });
@@ -101,6 +103,7 @@ describe("SettingsContext", () => {
         showDebug: false,
         radarAudio: false,
         throttleInference: true,
+        centerCropFrames: true,
       }),
     );
   });
@@ -119,6 +122,7 @@ describe("SettingsContext", () => {
         showDebug: false,
         radarAudio: true,
         throttleInference: false,
+        centerCropFrames: true,
       }),
     );
   });
@@ -130,5 +134,33 @@ describe("SettingsContext", () => {
     );
     const { result } = renderHook(() => useSettings(), { wrapper });
     expect(result.current.throttleInference).toBe(true);
+  });
+
+  it("defaults centerCropFrames to true when storage is empty", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.centerCropFrames).toBe(true);
+  });
+
+  it("toggling flips centerCropFrames and persists it to localStorage", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleCenterCropFrames());
+    expect(result.current.centerCropFrames).toBe(false);
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({
+        showDebug: false,
+        radarAudio: true,
+        throttleInference: true,
+        centerCropFrames: false,
+      }),
+    );
+  });
+
+  it("tolerates a stored blob missing centerCropFrames, defaulting it to true", () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ showDebug: true }),
+    );
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.centerCropFrames).toBe(true);
   });
 });

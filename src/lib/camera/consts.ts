@@ -1,8 +1,10 @@
 /**
- * Back camera preferred. The detector squashes each frame onto a 512x512 square
- * (`INPUT_SIZE`), so 512 on each axis is all inference ever reads. We request a
- * 512-tall landscape stream rather than 720p+ to avoid capturing pixels the
- * model immediately throws away.
+ * Back camera preferred. The detector feeds the model the largest centered
+ * 512x512 square of each frame (`INPUT_SIZE`; a debug-only toggle can squish
+ * the full frame instead), so 512 on each axis is all inference ever reads.
+ * We request a 512-tall landscape stream rather than 720p+ to avoid capturing
+ * pixels the model immediately throws away; at 512 tall the center crop comes
+ * out at native resolution with no resampling.
  */
 export const CAMERA_CONSTRAINTS: MediaStreamConstraints = {
   audio: false,

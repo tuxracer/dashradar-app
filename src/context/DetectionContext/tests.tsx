@@ -1281,6 +1281,84 @@ describe("DetectionProvider", () => {
       worker.posted.find((message) => message.type === "detect"),
     ).toMatchObject({ includeFrame: true });
   });
+
+  it("posts centerCrop true by default", async () => {
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    expect(
+      worker.posted.find((message) => message.type === "detect"),
+    ).toMatchObject({ centerCrop: true });
+  });
+
+  it("posts centerCrop false when debug is on and center crop is toggled off", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ showDebug: true, centerCropFrames: false }),
+    );
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    expect(
+      worker.posted.find((message) => message.type === "detect"),
+    ).toMatchObject({ centerCrop: false });
+  });
+
+  it("posts centerCrop true when center crop is off but debug is also off", async () => {
+    // The squish comparison mode is gated on the debug overlay: a stored
+    // centerCropFrames=false must NOT switch preprocessing while showDebug is
+    // off, so normal use can never silently mismatch the model's center-crop
+    // training. This pins the || !showDebug half of the effective expression.
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ showDebug: false, centerCropFrames: false }),
+    );
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    expect(
+      worker.posted.find((message) => message.type === "detect"),
+    ).toMatchObject({ centerCrop: true });
+  });
 });
 
 describe("visibility pause", () => {

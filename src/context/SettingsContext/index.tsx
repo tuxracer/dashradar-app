@@ -62,15 +62,23 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const [throttleInference, setThrottleInference] = useState(
     () => loadSettings().throttleInference,
   );
+  const [centerCropFrames, setCenterCropFrames] = useState(
+    () => loadSettings().centerCropFrames,
+  );
 
   useEffect(() => {
-    const next: Settings = { showDebug, radarAudio, throttleInference };
+    const next: Settings = {
+      showDebug,
+      radarAudio,
+      throttleInference,
+      centerCropFrames,
+    };
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     } catch {
       // Storage unavailable (private mode / quota); keep the in-memory value.
     }
-  }, [showDebug, radarAudio, throttleInference]);
+  }, [showDebug, radarAudio, throttleInference, centerCropFrames]);
 
   const toggleShowDebug = useCallback(() => {
     setShowDebug((prev) => !prev);
@@ -82,6 +90,10 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
 
   const toggleThrottleInference = useCallback(() => {
     setThrottleInference((prev) => !prev);
+  }, []);
+
+  const toggleCenterCropFrames = useCallback(() => {
+    setCenterCropFrames((prev) => !prev);
   }, []);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -102,6 +114,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleRadarAudio,
       throttleInference,
       toggleThrottleInference,
+      centerCropFrames,
+      toggleCenterCropFrames,
       settingsOpen,
       openSettings,
       closeSettings,
@@ -113,6 +127,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleRadarAudio,
       throttleInference,
       toggleThrottleInference,
+      centerCropFrames,
+      toggleCenterCropFrames,
       settingsOpen,
       openSettings,
       closeSettings,

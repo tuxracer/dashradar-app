@@ -8,4 +8,5 @@ export const DEFAULT_SETTINGS: Settings = {
   showDebug: false,
   radarAudio: true,
   throttleInference: true,
+  centerCropFrames: true,
 };

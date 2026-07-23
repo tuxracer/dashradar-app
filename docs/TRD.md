@@ -167,7 +167,7 @@ Status transitions: the provider posts `{ type: "load" }` to the worker once, re
 
 1. `App`'s `RadarScreen` calls `start(video)` once the feed component reports a live `<video>` element: `CameraView` normally, or `DevVideoView` in dev video mode (§4.3).
 2. The pump (`sendFrame`, in `DetectionContext`) bails if detection isn't running, there's no video/worker, the current worker hasn't reported `ready` yet (`workerLoadedRef`, false from spawn until the ready message, so a frame is never posted to a model-less worker mid-recycle), or a frame is already in flight (`inFlightRef.current > 0`). Otherwise it waits for the camera to present a new frame (`waitForNextVideoFrame` in `src/lib/camera`, built on `video.requestVideoFrameCallback`; resolves immediately on browsers without rVFC), re-checks the guards (the wait can outlive a `stop()`, and rVFC never fires while the page is hidden), then captures `createImageBitmap(video)`, increments `inFlightRef`, and posts `{ type: "detect", frame, includeFrame }` with the bitmap **transferred** (zero-copy) to the worker; `includeFrame` mirrors the `showDebug` setting (read from a ref so the pump doesn't resubscribe on toggle), asking the worker to also return the full frame for debug-mode saving. Gating the capture on a new camera frame guarantees inference never runs twice on the same frame, even if the detection rate outpaces the camera (e.g. very low light dropping the camera's frame rate below the pacing floor).
-3. The worker draws the bitmap onto a 512x512 `OffscreenCanvas`, reads back `ImageData`, and `preprocess`es it (`src/workers/detection/inference.ts`) into the model's `[1,3,512,512]` NCHW ImageNet-normalized float32 input tensor. It runs `session.run`, then `decodeDetections` applies a per-query sigmoid, thresholds at `CONFIDENCE_THRESHOLD`, and converts the cxcywh boxes to normalized xyxy `RawDetection[]`. The bitmap is `close()`d in a `finally` regardless of outcome.
+3. The worker draws the frame onto a 512x512 `OffscreenCanvas`: by default the largest centered square of the bitmap (`centerCropRegion`, matching the Fill-with-center-crop resize the model trains with), or the whole bitmap squished onto the square when the request set `centerCrop: false` (the debug-only comparison mode for models trained on stretched data). It reads back `ImageData` and `preprocess`es it (`src/workers/detection/inference.ts`) into the model's `[1,3,512,512]` NCHW ImageNet-normalized float32 input tensor. It runs `session.run`, then `decodeDetections` applies a per-query sigmoid, thresholds at `CONFIDENCE_THRESHOLD`, and converts the cxcywh boxes to normalized xyxy `RawDetection[]`; under center crop each box is then remapped from crop coordinates to full-frame coordinates (`mapCropBoxToFrame`), so every downstream consumer works in one coordinate space regardless of mode. The bitmap is `close()`d in a `finally` regardless of outcome.
 4. On the `detections` reply, `DetectionContext` decrements `inFlightRef`, runs `toRoadDetections` (`src/lib/detection`), passes the result through the `detectionTracker` coasting smoother (§5), then `buildHudModel` (`src/lib/detection`) to produce the `HudModel` the UI renders, records a result timestamp for the FPS estimate, and either recycles the worker (§6a) or re-primes the pump via `schedulePacedFrame`.
 5. **Backpressure**: only one frame is ever in flight; the next capture is sent only once the previous result returns (latest-wins, no queue), so detection never runs faster than the device can sustain and never blocks the video element.
 6. **Pacing**: `schedulePacedFrame` keeps captures at least `MIN_FRAME_INTERVAL_MS` (2000 ms, so detection runs at most once every two seconds) apart and always rests at least `PACING_REST_RATIO` (0.5) of the last result's round trip before the next capture. The interval between captures is therefore `max(2000 ms, 1.5 x round trip)`. On devices whose round trip is under about two thirds of the floor, the floor dominates: the result schedules the next capture on a timeout for the remainder of the interval, so the GPU idles between frames rather than running inference back-to-back and thermal-throttling a dash-mounted phone. On slower devices the rest ratio takes over: a 3 s round trip is followed by at least 1.5 s of idle, capping the inference duty cycle at roughly two thirds instead of letting slow phones run the GPU flat out (which compounds, since sustained throttling makes inference slower still). The two-second floor is set conservatively on purpose: thermal throttling and battery drain are the app's dominant operational risk, since it runs continuous heavy inference on a phone often clamped to a windshield in direct sun for a whole drive, and a device cooked into throttling or an early shutdown fails the driver exactly when they are relying on it. The coasting tracker (§5) and the peak-hold meter cover the gaps between results, keeping a detection's signal alive on screen without needing every frame confirmed, which is what makes the slower scan rate acceptable. Do not lower the floor to chase detection latency without on-device heat and battery testing on a real dash-mounted phone. A debug-only escape hatch (the `throttleInference` setting off, effective only while `showDebug` is also on) drives this delay to 0 instead of the floor or the rest ratio, so a plugged-in desktop can run inference flat-out; turning debug off always restores the floor, so the phone thermal defaults above are never silently removed. The pacing timer is cleared on `stop()`, worker errors, and provider teardown so a stale timer can't pump a stopped session.
@@ -188,7 +188,7 @@ These invariants (one frame in flight, the generation guard, and keeping frame-s
 | Message | Payload | Purpose |
 | --- | --- | --- |
 | `load` | `forceWasm?: boolean` | Download the ONNX weights and create the `InferenceSession`; posted once per worker (mount and each recycle), deferred until the service worker controls the page in production (see §7). `forceWasm: true` (the WASM safe mode, §2) skips the WebGPU probe and loads the int8 wasm build; carried on the message because the worker cannot read localStorage |
-| `detect` | `frame: ImageBitmap` (transferred), `includeFrame?: boolean` | Run one frame through the model; `includeFrame` asks for the full frame back on the response for debug-mode saving |
+| `detect` | `frame: ImageBitmap` (transferred), `includeFrame?: boolean`, `centerCrop?: boolean` | Run one frame through the model; `includeFrame` asks for the full frame back on the response for debug-mode saving; `centerCrop` (default true when omitted) selects center-crop vs squish preprocessing (§4 step 3) |
 
 `WorkerResponse` (worker → main thread):
 
@@ -219,7 +219,7 @@ Every message crossing the boundary is validated by a type guard (`isWorkerReque
 
 The detection model is a custom **RF-DETR Small** checkpoint fine-tuned to detect Las Vegas Metro police vehicles, published as ONNX at [`tuxracer/las-vegas-metro-rfdetr-small-t1`](https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1) and trained/exported from the sibling repo `~/Development/las-vegas-metro-rfdetr-small-t1` (its `CLAUDE.md` documents the export and quantization recipes). `MODEL_URL_BY_BACKEND` (`consts.ts`) streams `onnx/model_fp16.onnx` (mixed precision, ~57 MB) on WebGPU and `onnx/model_int8.onnx` (~31 MB) on WASM, directly from Hugging Face at runtime. All builds share one signature:
 
-- **Input** `input`: `[1,3,512,512]` fp32 NCHW. Fixed 512x512, ImageNet-normalized (`mean=[0.485,0.456,0.406]`, `std=[0.229,0.224,0.225]`), bilinear resize.
+- **Input** `input`: `[1,3,512,512]` fp32 NCHW. Fixed 512x512, ImageNet-normalized (`mean=[0.485,0.456,0.406]`, `std=[0.229,0.224,0.225]`); the app fills it with the frame's centered square crop by default (§4 step 3).
 - **Output** `dets`: `[1,300,4]` fp32, boxes in cxcywh normalized 0..1.
 - **Output** `labels`: `[1,300,2]` fp32, raw class logits (apply sigmoid).
 
@@ -281,6 +281,8 @@ type SettingsContextValue = {
   toggleRadarAudio: () => void;
   throttleInference: boolean;
   toggleThrottleInference: () => void;
+  centerCropFrames: boolean;
+  toggleCenterCropFrames: () => void;
   settingsOpen: boolean; // ephemeral, not persisted
   openSettings: () => void;
   closeSettings: () => void;
@@ -300,7 +302,16 @@ ALERT. `throttleInference` (default on) is inert on its own: `DetectionContext`
 only drops the pacing floor when `showDebug && !throttleInference`, so this
 setting only ever matters while the debug overlay is also on, and turning
 debug off always restores the floor regardless of the stored value (§4,
-Pacing). `SettingsProvider` wraps the app outside `DetectionProvider`;
+Pacing). `centerCropFrames` (default on) selects the worker's preprocessing:
+on sends the model the frame's largest centered square crop, matching the
+Fill-with-center-crop resize the model trains with; off squishes the whole
+frame onto the square input instead, a comparison mode for models trained on
+stretched data. Like the throttle escape hatch it is gated on debug:
+`DetectionContext` sends `centerCrop: centerCropFrames || !showDebug`, so
+squish only ever applies while the debug overlay is on and normal use always
+runs the center-crop default regardless of a stale stored value (§4 step 3).
+Its row in `SettingsScreen`, like Throttle inference, renders only while
+`showDebug` is on. `SettingsProvider` wraps the app outside `DetectionProvider`;
 `SettingsButton` (a gear in `StatusBar`) opens the full-screen
 `SettingsScreen`, which is the only UI that writes any of these options.
 

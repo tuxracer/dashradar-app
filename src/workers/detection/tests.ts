@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  centerCropRegion,
   cropRect,
   decodeDetections,
   ensureCapacity,
   frameBrightFraction,
   frameFingerprint,
+  mapCropBoxToFrame,
   preprocess,
   topDetectionIndex,
 } from "@/workers/detection/inference";
@@ -346,6 +348,58 @@ describe("decodeDetections", () => {
       sigmoid(4),
       sigmoid(5),
     ]);
+  });
+});
+
+describe("centerCropRegion", () => {
+  it("crops the width of a landscape frame, centered", () => {
+    expect(centerCropRegion(1024, 512)).toEqual({ sx: 256, sy: 0, side: 512 });
+  });
+
+  it("crops the height of a portrait frame, centered", () => {
+    expect(centerCropRegion(480, 640)).toEqual({ sx: 0, sy: 80, side: 480 });
+  });
+
+  it("covers a square frame exactly", () => {
+    expect(centerCropRegion(512, 512)).toEqual({ sx: 0, sy: 0, side: 512 });
+  });
+});
+
+describe("mapCropBoxToFrame", () => {
+  it("maps the full crop onto the centered square of the frame", () => {
+    const box = mapCropBoxToFrame(
+      { xmin: 0, ymin: 0, xmax: 1, ymax: 1 },
+      1024,
+      512,
+    );
+    expect(box).toEqual({ xmin: 0.25, ymin: 0, xmax: 0.75, ymax: 1 });
+  });
+
+  it("keeps a centered box centered", () => {
+    const box = mapCropBoxToFrame(
+      { xmin: 0.25, ymin: 0.25, xmax: 0.75, ymax: 0.75 },
+      1024,
+      512,
+    );
+    expect(box.xmin + box.xmax).toBeCloseTo(1);
+    expect(box.ymin + box.ymax).toBeCloseTo(1);
+    // Half the crop's 512px side is 256px, an eighth of the 1024px frame.
+    expect(box.xmax - box.xmin).toBeCloseTo(0.25);
+    expect(box.ymax - box.ymin).toBeCloseTo(0.5);
+  });
+
+  it("is the identity on a square frame", () => {
+    const box = { xmin: 0.1, ymin: 0.2, xmax: 0.6, ymax: 0.9 };
+    expect(mapCropBoxToFrame(box, 512, 512)).toEqual(box);
+  });
+
+  it("maps a portrait frame's crop onto its vertical center", () => {
+    const box = mapCropBoxToFrame(
+      { xmin: 0, ymin: 0, xmax: 1, ymax: 1 },
+      480,
+      640,
+    );
+    expect(box).toEqual({ xmin: 0, ymin: 0.125, xmax: 1, ymax: 0.875 });
   });
 });
 

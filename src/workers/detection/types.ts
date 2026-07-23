@@ -67,6 +67,15 @@ export type WorkerRequest =
        * on the detections response (debug-mode frame saving).
        */
       includeFrame?: boolean;
+      /**
+       * When true (the default when omitted), the worker feeds the model the
+       * largest centered square crop of the frame, matching the
+       * Fill-with-center-crop preprocessing the model trains with; boxes are
+       * remapped to full-frame coordinates before posting. When false, the
+       * frame is squished onto the square input instead (legacy behavior for
+       * models trained on stretched data; debug-only comparison mode).
+       */
+      centerCrop?: boolean;
     };
 
 export const isWorkerRequest = (value: unknown): value is WorkerRequest => {
@@ -80,7 +89,8 @@ export const isWorkerRequest = (value: unknown): value is WorkerRequest => {
     value.type === "detect" &&
     typeof ImageBitmap !== "undefined" &&
     value.frame instanceof ImageBitmap &&
-    (value.includeFrame === undefined || isBoolean(value.includeFrame))
+    (value.includeFrame === undefined || isBoolean(value.includeFrame)) &&
+    (value.centerCrop === undefined || isBoolean(value.centerCrop))
   );
 };
 

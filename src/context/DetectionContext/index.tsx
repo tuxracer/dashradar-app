@@ -102,7 +102,8 @@ export const DetectionProvider = ({
   createWorker = createDetectionWorker,
   devVideoMode = DEV_VIDEO_URL !== null,
 }: DetectionProviderProps) => {
-  const { showDebug, throttleInference, settingsOpen } = useSettings();
+  const { showDebug, throttleInference, centerCropFrames, settingsOpen } =
+    useSettings();
   // Mirrors showDebug for sendFrame, which is a stable callback: the pump
   // reads the current value per capture instead of re-subscribing on toggles.
   const includeFrameRef = useRef(showDebug);
@@ -118,6 +119,15 @@ export const DetectionProvider = ({
   useEffect(() => {
     throttledRef.current = !(showDebug && !throttleInference);
   }, [showDebug, throttleInference]);
+  // Mirrors the effective center-crop mode for sendFrame, same idiom as the
+  // two refs above. Squish (false) is a debug-only comparison mode: it applies
+  // only while the debug overlay is on, so a stale persisted false can never
+  // silently mismatch the model's center-crop training preprocessing in
+  // normal use.
+  const centerCropRef = useRef(centerCropFrames || !showDebug);
+  useEffect(() => {
+    centerCropRef.current = centerCropFrames || !showDebug;
+  }, [centerCropFrames, showDebug]);
 
   const [status, setStatus] = useState<DetectionStatus>("loading-model");
   const [backend, setBackend] = useState<DetectionBackend>();
@@ -340,7 +350,12 @@ export const DetectionProvider = ({
       postTimeRef.current = performance.now();
       inFlightRef.current += 1;
       worker.postMessage(
-        { type: "detect", frame, includeFrame: includeFrameRef.current },
+        {
+          type: "detect",
+          frame,
+          includeFrame: includeFrameRef.current,
+          centerCrop: centerCropRef.current,
+        },
         [frame],
       );
     } catch {

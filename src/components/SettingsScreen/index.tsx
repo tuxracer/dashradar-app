@@ -47,6 +47,8 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
     toggleRadarAudio,
     throttleInference,
     toggleThrottleInference,
+    centerCropFrames,
+    toggleCenterCropFrames,
   } = useSettings();
 
   useEffect(() => {
@@ -120,21 +122,40 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
           </button>
 
           {showDebug && (
-            <button
-              type="button"
-              onClick={toggleThrottleInference}
-              className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
-            >
-              <span className="flex flex-col gap-1">
-                <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-                  Throttle inference
+            <>
+              <button
+                type="button"
+                onClick={toggleThrottleInference}
+                className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
+              >
+                <span className="flex flex-col gap-1">
+                  <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                    Throttle inference
+                  </span>
+                  <span className="text-sm font-medium text-white/45">
+                    Paces detection to limit heat and battery.
+                  </span>
                 </span>
-                <span className="text-sm font-medium text-white/45">
-                  Paces detection to limit heat and battery.
+                <Toggle on={throttleInference} />
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleCenterCropFrames}
+                className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
+              >
+                <span className="flex flex-col gap-1">
+                  <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                    Center crop
+                  </span>
+                  <span className="text-sm font-medium text-white/45">
+                    Crops the feed square for the model; off squishes it
+                    instead.
+                  </span>
                 </span>
-              </span>
-              <Toggle on={throttleInference} />
-            </button>
+                <Toggle on={centerCropFrames} />
+              </button>
+            </>
           )}
 
           <div className="flex min-h-16 items-center justify-between gap-6 py-4">

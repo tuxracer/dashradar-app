@@ -20,6 +20,16 @@ export type Settings = {
    * by default: the 2s pacing floor is the app's thermal/battery safeguard.
    */
   throttleInference: boolean;
+  /**
+   * When true (the default), the worker feeds the model the largest centered
+   * square crop of the camera frame, matching the Fill-with-center-crop
+   * preprocessing the model trains with. When false, the frame is squished
+   * onto the square input instead, a comparison mode for models trained on
+   * stretched data. Squish takes effect only while showDebug is on
+   * (DetectionContext gates it), so normal use always runs the default
+   * center-crop path even if a stale false was left persisted.
+   */
+  centerCropFrames: boolean;
 };
 
 /** Value exposed by the settings context via useSettings(). */
@@ -30,6 +40,8 @@ export type SettingsContextValue = {
   toggleRadarAudio: () => void;
   throttleInference: boolean;
   toggleThrottleInference: () => void;
+  centerCropFrames: boolean;
+  toggleCenterCropFrames: () => void;
   /** Whether the full-screen settings panel is open. Ephemeral, not persisted. */
   settingsOpen: boolean;
   /** Opens the full-screen settings panel. */
@@ -53,6 +65,7 @@ export const isPersistedSettings = (
     (value.showDebug === undefined || isBoolean(value.showDebug)) &&
     (value.radarAudio === undefined || isBoolean(value.radarAudio)) &&
     (value.throttleInference === undefined ||
-      isBoolean(value.throttleInference))
+      isBoolean(value.throttleInference)) &&
+    (value.centerCropFrames === undefined || isBoolean(value.centerCropFrames))
   );
 };

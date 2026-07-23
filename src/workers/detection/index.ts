@@ -17,11 +17,13 @@ import {
   WEBGPU_GRAPH_CAPTURE,
 } from "./consts";
 import {
+  centerCropRegion,
   cropRect,
   decodeDetections,
   ensureCapacity,
   frameBrightFraction,
   frameFingerprint,
+  mapCropBoxToFrame,
   preprocess,
   topDetectionIndex,
 } from "./inference";
@@ -426,9 +428,9 @@ const loadModel = async (forceWasm: boolean) => {
  * Downscale the model's square input canvas to a thumbnail bitmap for the
  * debug contact card, shown on scans that had no detection to crop. Sourced
  * from the input canvas rather than the original frame so the card shows
- * exactly what the model saw, including the aspect-ratio squish of the
- * stretch-to-square preprocessing; the SAVE path (encodeFrame) still saves the
- * unsquished original. The edge is capped at CROP_MAX_EDGE (never upscaled),
+ * exactly what the model saw: the centered square crop by default, or the
+ * squished full frame in the debug squish mode; the SAVE path (encodeFrame)
+ * still saves the full original. The edge is capped at CROP_MAX_EDGE (never upscaled),
  * matching the detection crop's sizing. Best-effort like the crop: any
  * failure returns undefined and never blocks the detection result.
  */
@@ -466,7 +468,11 @@ const encodeFrame = async (frame: ImageBitmap): Promise<Blob | undefined> => {
   }
 };
 
-const detect = async (frame: ImageBitmap, includeFrame: boolean) => {
+const detect = async (
+  frame: ImageBitmap,
+  includeFrame: boolean,
+  centerCrop: boolean,
+) => {
   if (!model) {
     frame.close();
     return;
@@ -476,7 +482,22 @@ const detect = async (frame: ImageBitmap, includeFrame: boolean) => {
     if (!inputContext) {
       throw new DetectionError("INFERENCE_FAILED");
     }
-    inputContext.drawImage(frame, 0, 0, INPUT_SIZE, INPUT_SIZE);
+    if (centerCrop) {
+      const region = centerCropRegion(frame.width, frame.height);
+      inputContext.drawImage(
+        frame,
+        region.sx,
+        region.sy,
+        region.side,
+        region.side,
+        0,
+        0,
+        INPUT_SIZE,
+        INPUT_SIZE,
+      );
+    } else {
+      inputContext.drawImage(frame, 0, 0, INPUT_SIZE, INPUT_SIZE);
+    }
     const imageData = inputContext.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
     const fingerprint = frameFingerprint(imageData);
     const brightFraction = frameBrightFraction(imageData);
@@ -513,7 +534,16 @@ const detect = async (frame: ImageBitmap, includeFrame: boolean) => {
     const inferenceMs = performance.now() - inferenceStart;
 
     const decodeStart = performance.now();
-    const detections = decodeDetections(dets, labels, CONFIDENCE_THRESHOLD);
+    const decoded = decodeDetections(dets, labels, CONFIDENCE_THRESHOLD);
+    // Under center crop the model's boxes describe the cropped square; remap
+    // them to full-frame coordinates so every consumer downstream (cropRect
+    // below, direction and HUD shaping in the context) keeps one space.
+    const detections = centerCrop
+      ? decoded.map((detection) => ({
+          ...detection,
+          box: mapCropBoxToFrame(detection.box, frame.width, frame.height),
+        }))
+      : decoded;
     const decodeMs = performance.now() - decodeStart;
 
     // Cut the highest-scoring detection out of the full-resolution frame so
@@ -598,5 +628,9 @@ self.onmessage = (event: MessageEvent<unknown>) => {
     void loadModel(request.forceWasm ?? false);
     return;
   }
-  void detect(request.frame, request.includeFrame ?? false);
+  void detect(
+    request.frame,
+    request.includeFrame ?? false,
+    request.centerCrop ?? true,
+  );
 };
