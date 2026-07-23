@@ -6,10 +6,21 @@ describe("ErrorScreen", () => {
   it("explains a denied camera permission", () => {
     render(<ErrorScreen code="PERMISSION_DENIED" />);
     expect(
+      screen.getByRole("heading", { name: /camera access needed/i }),
+    ).toBeInTheDocument();
+    expect(
       screen.getByText(/spots patrol vehicles by watching the road/),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /try again/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("reassures on privacy when permission is denied", () => {
+    render(<ErrorScreen code="PERMISSION_DENIED" />);
+    expect(screen.getByText("ON-DEVICE")).toBeInTheDocument();
+    expect(
+      screen.getByText(/no images ever leave your device/i),
     ).toBeInTheDocument();
   });
 
@@ -20,7 +31,7 @@ describe("ErrorScreen", () => {
     ).toBeInTheDocument();
   });
 
-  it("covers every error code with copy", () => {
+  it("covers every error code with a headline, copy, and a glyph", () => {
     const codes = [
       "PERMISSION_DENIED",
       "NO_CAMERA",
@@ -32,8 +43,10 @@ describe("ErrorScreen", () => {
       "CAMERA_STALLED",
     ] as const;
     for (const code of codes) {
-      const { unmount } = render(<ErrorScreen code={code} />);
+      const { container, unmount } = render(<ErrorScreen code={code} />);
+      expect(screen.getByRole("heading").textContent).not.toBe("");
       expect(screen.getByTestId("error-message").textContent).not.toBe("");
+      expect(container.querySelector("svg")).toBeInTheDocument();
       unmount();
     }
   });
@@ -43,12 +56,5 @@ describe("ErrorScreen", () => {
     expect(
       screen.getByText(/make sure nothing is blocking the camera/i),
     ).toBeInTheDocument();
-  });
-
-  it("renders a supplied icon above the copy", () => {
-    render(
-      <ErrorScreen code="CAMERA_STALLED" icon={<svg data-testid="icon" />} />,
-    );
-    expect(screen.getByTestId("icon")).toBeInTheDocument();
   });
 });
