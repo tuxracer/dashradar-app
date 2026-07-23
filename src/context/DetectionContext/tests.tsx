@@ -1274,6 +1274,42 @@ describe("crash sentinel heartbeat", () => {
     expect(readSentinel()).toBeNull();
   });
 
+  it("clears the sentinel record on pagehide so a reload is not read as a crash", () => {
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    expect(readSentinel()).not.toBeNull();
+    act(() => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+    expect(readSentinel()).toBeNull();
+  });
+
+  it("rewrites the sentinel on the next beat after a bfcache-style pagehide", async () => {
+    vi.useFakeTimers();
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    act(() => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+    expect(readSentinel()).toBeNull();
+    // The page came back from the bfcache instead of unloading: the interval
+    // is still alive, so the next tick restores crash coverage.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+    });
+    expect(readSentinel()).not.toBeNull();
+  });
+
   it("clears the sentinel record on unmount", () => {
     const worker = new FakeWorker();
     const { unmount } = render(

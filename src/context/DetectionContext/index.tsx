@@ -710,9 +710,22 @@ export const DetectionProvider = ({
         graphCapture: graphCaptureRef.current,
       });
     };
+    // A reload or navigation away mid-scan unloads the page without ever
+    // running this effect's cleanup (React does not flush cleanups during
+    // unload), which would orphan the record and make the next launch read a
+    // plain reload as a crash, wrongly arming the WASM safe mode. pagehide is
+    // the last synchronous chance to clear it, and a real crash never fires
+    // pagehide, so genuine kills still leave the record behind. If the page
+    // returns from the bfcache instead of unloading, the still-running
+    // interval rewrites the record on its next tick, restoring coverage.
+    const handlePageHide = () => {
+      clearSentinel();
+    };
+    window.addEventListener("pagehide", handlePageHide);
     beat();
     const intervalId = window.setInterval(beat, HEARTBEAT_INTERVAL_MS);
     return () => {
+      window.removeEventListener("pagehide", handlePageHide);
       window.clearInterval(intervalId);
       clearSentinel();
     };
