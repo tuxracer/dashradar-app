@@ -2062,18 +2062,18 @@ describe("DetectionProvider contact", () => {
         </DetectionProvider>
       </SettingsProvider>,
     );
-    // score 0.85 with SIGNAL_FLOOR 0.7 remaps to 0.5; center-x 0.2 is left.
+    // score 0.75 with SIGNAL_FLOOR 0.5 remaps to 0.5; center-x 0.2 is left.
     act(() => {
       worker.emit({
         type: "detections",
-        detections: [policeDetection(0.85, 0.15, 0.25)],
+        detections: [policeDetection(0.75, 0.15, 0.25)],
         timing,
         crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
       });
     });
     expect(screen.getByTestId("contact-direction")).toHaveTextContent("left");
     expect(screen.getByTestId("contact-signal")).toHaveTextContent("0.5");
-    expect(screen.getByTestId("contact-score")).toHaveTextContent("0.85");
+    expect(screen.getByTestId("contact-score")).toHaveTextContent("0.75");
   });
 
   it("closes the previous contact's bitmap when a new crop arrives", () => {
