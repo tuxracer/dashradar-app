@@ -3,6 +3,7 @@ import {
   cropRect,
   decodeDetections,
   ensureCapacity,
+  frameBrightFraction,
   frameFingerprint,
   preprocess,
   topDetectionIndex,
@@ -208,6 +209,53 @@ describe("frameFingerprint", () => {
     expect(Number.isInteger(hash)).toBe(true);
     expect(hash).toBeGreaterThanOrEqual(0);
     expect(hash).toBeLessThanOrEqual(0xffffffff);
+  });
+});
+
+describe("frameBrightFraction", () => {
+  const pixels = INPUT_SIZE * INPUT_SIZE;
+
+  /**
+   * Structural full-size RGBA ImageData filled with one gray level, so every
+   * pixel's luma is that level. frameBrightFraction only reads `.data`.
+   */
+  const solidFrame = (level: number): ImageData => {
+    const data = new Uint8ClampedArray(pixels * 4);
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = level;
+      data[i + 1] = level;
+      data[i + 2] = level;
+      data[i + 3] = 255;
+    }
+    return { data, width: INPUT_SIZE, height: INPUT_SIZE, colorSpace: "srgb" };
+  };
+
+  it("returns zero for an all-dark frame", () => {
+    expect(frameBrightFraction(solidFrame(8))).toBe(0);
+  });
+
+  it("returns zero for a near-black frame just under the threshold", () => {
+    // Every pixel at luma ~24 (below BRIGHT_LUMA_THRESHOLD 48): the noisy-black
+    // obscured case, where no pixel is bright even though it is not pure black.
+    expect(frameBrightFraction(solidFrame(24))).toBe(0);
+  });
+
+  it("returns ~1 for a fully bright frame", () => {
+    expect(frameBrightFraction(solidFrame(200))).toBeGreaterThan(0.99);
+  });
+
+  it("returns a small nonzero fraction for a mostly-dark frame with a bright patch", () => {
+    // Dark everywhere except the first 2000 pixels set bright: a lit region in
+    // an otherwise dark scene, which must read as nonzero (do not recover).
+    const frame = solidFrame(8);
+    for (let p = 0; p < 2_000; p += 1) {
+      frame.data[p * 4] = 255;
+      frame.data[p * 4 + 1] = 255;
+      frame.data[p * 4 + 2] = 255;
+    }
+    const fraction = frameBrightFraction(frame);
+    expect(fraction).toBeGreaterThan(0);
+    expect(fraction).toBeLessThan(0.05);
   });
 });
 

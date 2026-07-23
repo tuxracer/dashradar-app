@@ -1,5 +1,7 @@
 import type { NormalizedBox, RawDetection } from "@/types";
 import {
+  BRIGHT_FRACTION_STRIDE,
+  BRIGHT_LUMA_THRESHOLD,
   CROP_MAX_EDGE,
   CROP_PADDING,
   FINGERPRINT_STRIDE,
@@ -54,6 +56,34 @@ export const frameFingerprint = (imageData: ImageData): number => {
     hash = Math.imul(hash, 0x01000193);
   }
   return hash >>> 0;
+};
+
+/**
+ * Fraction (0..1) of a strided subsample of the frame whose luma exceeds
+ * BRIGHT_LUMA_THRESHOLD, for obscured-lens detection. A physically covered lens
+ * presents a noisy near-black frame that the byte-identical fingerprint check
+ * cannot catch (sensor noise perturbs every frame), but it has no bright pixels
+ * anywhere, so this fraction is essentially zero. A night driving scene keeps
+ * some bright region (the road lit by the car's own headlights, oncoming
+ * lights, a streetlight), so its fraction stays well above zero. Luma is
+ * computed from all three channels so a scene lit by a pure blue or green
+ * source is not misread as dark. The pixels are already in hand from
+ * preprocessing, so the strided pass adds negligible cost.
+ */
+export const frameBrightFraction = (imageData: ImageData): number => {
+  const { data } = imageData;
+  const pixels = data.length / 4;
+  let sampled = 0;
+  let bright = 0;
+  for (let p = 0; p < pixels; p += BRIGHT_FRACTION_STRIDE) {
+    const i = p * 4;
+    const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    sampled += 1;
+    if (luma > BRIGHT_LUMA_THRESHOLD) {
+      bright += 1;
+    }
+  }
+  return sampled === 0 ? 0 : bright / sampled;
 };
 
 const sigmoid = (x: number): number => 1 / (1 + Math.exp(-x));
