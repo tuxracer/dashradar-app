@@ -22,3 +22,9 @@ declare const __APP_VERSION__: string;
  * vite.config.ts `define`). "unknown" when git/Vercel provided no SHA.
  */
 declare const __COMMIT_SHA__: string;
+
+/**
+ * URL of the dev video file served by the devVideo plugin (vite.config.ts),
+ * or null outside dev-video mode. Always null in production builds.
+ */
+declare const __DEV_VIDEO_URL__: string | null;

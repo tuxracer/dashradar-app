@@ -4,7 +4,9 @@ import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { extname, join, resolve } from "node:path";
 import type { Plugin } from "vite";
 
 // Headers that make the page cross-origin isolated. Without these,
@@ -98,6 +100,97 @@ const ortRuntime = (): Plugin => ({
         source: readFileSync(ortRuntimePath(file)),
       });
     }
+  },
+});
+
+/** Dev-server route the devVideo plugin serves the DASHRADAR_VIDEO file at. */
+const DEV_VIDEO_ROUTE = "/__dev-video";
+
+/** Content types for the video containers a browser will actually play. */
+const VIDEO_CONTENT_TYPES: Record<string, string> = {
+  ".mp4": "video/mp4",
+  ".m4v": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
+};
+
+/**
+ * Absolute path of the dev video file named by DASHRADAR_VIDEO, or undefined
+ * when the env var is unset. A set-but-unreadable path fails config load, so
+ * a typo'd path stops the dev server at startup instead of 404ing later.
+ */
+const resolveDevVideoPath = (): string | undefined => {
+  const raw = process.env.DASHRADAR_VIDEO;
+  if (!raw) {
+    return undefined;
+  }
+  const expanded = raw.startsWith("~") ? join(homedir(), raw.slice(1)) : raw;
+  const absolute = resolve(expanded);
+  if (!existsSync(absolute) || !statSync(absolute).isFile()) {
+    throw new Error(
+      `DASHRADAR_VIDEO does not point to a readable file: ${absolute}`,
+    );
+  }
+  return absolute;
+};
+
+/** Resolved dev video path for this run, or undefined outside dev-video mode. */
+const DEV_VIDEO_PATH: string | undefined = resolveDevVideoPath();
+
+/**
+ * Dev-only: serve the DASHRADAR_VIDEO file at /__dev-video so a local video
+ * can substitute for the camera feed (see src/components/DevVideoView). Range
+ * requests are honored with 206 responses because <video> seeking (scrubbing)
+ * only works against a server that supports them. Serve-only: production
+ * builds never include the route, and __DEV_VIDEO_URL__ compiles to null.
+ */
+const devVideo = (): Plugin => ({
+  name: "dev-video",
+  apply: "serve",
+  configureServer(server) {
+    const path = DEV_VIDEO_PATH;
+    if (!path) {
+      return;
+    }
+    server.middlewares.use((req, res, next) => {
+      const [pathname] = (req.url ?? "").split("?");
+      if (pathname !== DEV_VIDEO_ROUTE) {
+        next();
+        return;
+      }
+      const { size } = statSync(path);
+      res.setHeader(
+        "Content-Type",
+        VIDEO_CONTENT_TYPES[extname(path).toLowerCase()] ??
+          "application/octet-stream",
+      );
+      res.setHeader("Accept-Ranges", "bytes");
+      const match = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? "");
+      if (match && (match[1] !== "" || match[2] !== "")) {
+        // "bytes=a-b", "bytes=a-" (open end), or "bytes=-n" (suffix).
+        const start =
+          match[1] === ""
+            ? Math.max(0, size - Number(match[2]))
+            : Number(match[1]);
+        const end =
+          match[1] === "" || match[2] === ""
+            ? size - 1
+            : Math.min(Number(match[2]), size - 1);
+        if (start >= size || start > end) {
+          res.statusCode = 416;
+          res.setHeader("Content-Range", `bytes */${size}`);
+          res.end();
+          return;
+        }
+        res.statusCode = 206;
+        res.setHeader("Content-Range", `bytes ${start}-${end}/${size}`);
+        res.setHeader("Content-Length", end - start + 1);
+        createReadStream(path, { start, end }).pipe(res);
+        return;
+      }
+      res.setHeader("Content-Length", size);
+      createReadStream(path).pipe(res);
+    });
   },
 });
 
@@ -231,10 +324,15 @@ const sentrySourceMaps = (): Plugin[] =>
       })
     : [];
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
     __COMMIT_SHA__: JSON.stringify(SHORT_COMMIT_SHA),
+    // Non-null only for a dev-server run with DASHRADAR_VIDEO set, so every
+    // production branch keyed on it is statically dead and minified away.
+    __DEV_VIDEO_URL__: JSON.stringify(
+      command === "serve" && DEV_VIDEO_PATH ? DEV_VIDEO_ROUTE : null,
+    ),
   },
   // "hidden" emits source maps but strips the sourceMappingURL comment, so
   // browsers never load them; the Sentry plugin uploads them and deletes the
@@ -245,6 +343,7 @@ export default defineConfig({
     tailwindcss(),
     commitShaMeta(),
     ortRuntime(),
+    devVideo(),
     pwa(),
     ...sentrySourceMaps(),
   ],
@@ -257,4 +356,4 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     include: ["**/*.{test,spec}.?(c|m)[jt]s?(x)", "**/tests.[jt]s?(x)"],
   },
-});
+}));
