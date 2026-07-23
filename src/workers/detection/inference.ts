@@ -2,6 +2,7 @@ import type { NormalizedBox, RawDetection } from "@/types";
 import {
   CROP_MAX_EDGE,
   CROP_PADDING,
+  FINGERPRINT_STRIDE,
   IMAGENET_MEAN,
   IMAGENET_STD,
   INPUT_SIZE,
@@ -35,6 +36,24 @@ export const preprocess = (
     tensor[2 * pixels + i] = (b - IMAGENET_MEAN[2]) / IMAGENET_STD[2];
   }
   return tensor;
+};
+
+/**
+ * Cheap content fingerprint of a decoded frame, for camera-stall detection.
+ * A 32-bit FNV-1a hash over a strided subsample of the RGBA buffer (see
+ * FINGERPRINT_STRIDE). Two live camera frames practically never collide because
+ * sensor noise perturbs every frame, while a frozen or black feed produces a
+ * byte-identical buffer and thus an identical fingerprint. The pixels are
+ * already in hand from preprocessing, so this adds negligible cost.
+ */
+export const frameFingerprint = (imageData: ImageData): number => {
+  const { data } = imageData;
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < data.length; i += FINGERPRINT_STRIDE) {
+    hash ^= data[i];
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
 };
 
 const sigmoid = (x: number): number => 1 / (1 + Math.exp(-x));

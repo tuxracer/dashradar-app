@@ -3,6 +3,7 @@ import {
   cropRect,
   decodeDetections,
   ensureCapacity,
+  frameFingerprint,
   preprocess,
   topDetectionIndex,
 } from "@/workers/detection/inference";
@@ -117,6 +118,28 @@ describe("isWorkerResponse", () => {
       }),
     ).toBe(false);
   });
+
+  it("accepts a detections message carrying a fingerprint", () => {
+    expect(
+      isWorkerResponse({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 },
+        fingerprint: 12345,
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects a detections message with a non-number fingerprint", () => {
+    expect(
+      isWorkerResponse({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 },
+        fingerprint: "nope",
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("preprocess", () => {
@@ -151,6 +174,40 @@ describe("preprocess", () => {
 
     expect(tensor).toBe(out);
     expect(out[0]).toBeCloseTo(normalized(255, 0), 6);
+  });
+});
+
+describe("frameFingerprint", () => {
+  const pixels = INPUT_SIZE * INPUT_SIZE;
+
+  /** Structural full-size RGBA ImageData; frameFingerprint only reads `.data`. */
+  const imageDataFrom = (
+    mutate?: (data: Uint8ClampedArray) => void,
+  ): ImageData => {
+    const data = new Uint8ClampedArray(pixels * 4);
+    data.fill(120);
+    mutate?.(data);
+    return { data, width: INPUT_SIZE, height: INPUT_SIZE, colorSpace: "srgb" };
+  };
+
+  it("hashes byte-identical frames to the same value", () => {
+    expect(frameFingerprint(imageDataFrom())).toBe(
+      frameFingerprint(imageDataFrom()),
+    );
+  });
+
+  it("hashes differing frames to different values", () => {
+    const base = frameFingerprint(imageDataFrom());
+    // Change a sampled byte (index 0 is on the stride) so the hash must differ.
+    const changed = frameFingerprint(imageDataFrom((data) => (data[0] = 250)));
+    expect(changed).not.toBe(base);
+  });
+
+  it("returns an unsigned 32-bit integer", () => {
+    const hash = frameFingerprint(imageDataFrom());
+    expect(Number.isInteger(hash)).toBe(true);
+    expect(hash).toBeGreaterThanOrEqual(0);
+    expect(hash).toBeLessThanOrEqual(0xffffffff);
   });
 });
 

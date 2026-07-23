@@ -219,6 +219,13 @@ export type WorkerResponse =
        * exact image the crop was cut from, for saving as training data.
        */
       frame?: Blob;
+      /**
+       * Cheap content hash of the inference frame (frameFingerprint). The
+       * context compares it across frames to detect a frozen or black camera
+       * feed. Always present in production; optional only so existing test
+       * emits and any best-effort omission stay valid.
+       */
+      fingerprint?: number;
     }
   | { type: "worker-error"; code: DetectionErrorCode };
 
@@ -241,7 +248,8 @@ export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
         value.detections.every(isRawDetection) &&
         isFrameTiming(value.timing) &&
         (value.crop === undefined || isDetectionCrop(value.crop)) &&
-        (value.frame === undefined || value.frame instanceof Blob)
+        (value.frame === undefined || value.frame instanceof Blob) &&
+        (value.fingerprint === undefined || isNumber(value.fingerprint))
       );
     case "worker-error":
       return isDetectionErrorCode(value.code);

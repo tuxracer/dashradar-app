@@ -18,6 +18,7 @@ import {
   cropRect,
   decodeDetections,
   ensureCapacity,
+  frameFingerprint,
   preprocess,
   topDetectionIndex,
 } from "./inference";
@@ -417,6 +418,7 @@ const detect = async (frame: ImageBitmap, includeFrame: boolean) => {
     }
     inputContext.drawImage(frame, 0, 0, INPUT_SIZE, INPUT_SIZE);
     const imageData = inputContext.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
+    const fingerprint = frameFingerprint(imageData);
     const inputData = preprocess(imageData, inputBuffer);
     const preprocessMs = performance.now() - preprocessStart;
 
@@ -496,6 +498,7 @@ const detect = async (frame: ImageBitmap, includeFrame: boolean) => {
         timing: { preprocessMs, inferenceMs, decodeMs },
         crop,
         frame: fullFrame,
+        fingerprint,
       },
       crop ? [crop.image] : [],
     );
