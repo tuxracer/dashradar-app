@@ -2163,6 +2163,44 @@ describe("DetectionProvider camera recovery", () => {
     expect(track).toHaveBeenCalledWith("camera_stall", { reason: "obscured" });
   });
 
+  it("tags a byte-identical dark feed as frozen, not obscured", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const { video, presentFrame } = videoWithControlledFrames();
+    const worker = renderWithProvider(<RecoveryProbe video={video} />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "webgpu" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+
+    // A solid-black frozen feed is both byte-identical AND dark, so the stale
+    // and dark streaks reach their (equal) thresholds on the same frame. The
+    // frozen check runs first, so it must win the reason tag.
+    for (let i = 0; i <= STALE_FRAME_THRESHOLD; i += 1) {
+      await act(async () => {
+        presentFrame();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      act(() => {
+        emitDetections(worker, 42, 0);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+      });
+    }
+
+    expect(screen.getByTestId("recovering").textContent).toBe("true");
+    expect(track).toHaveBeenCalledWith("camera_stall", { reason: "frozen" });
+    expect(track).not.toHaveBeenCalledWith("camera_stall", {
+      reason: "obscured",
+    });
+  });
+
   it("does not recover when a bright frame interrupts the dark run", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(

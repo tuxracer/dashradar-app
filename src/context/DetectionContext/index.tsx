@@ -600,54 +600,59 @@ export const DetectionProvider = ({
           // worked.
           if (runningRef.current) {
             armWatchdog();
-            const { fingerprint } = message;
+            const { fingerprint, brightFraction } = message;
             if (
               fingerprint !== undefined &&
               fingerprint === lastFingerprintRef.current
             ) {
+              // Byte-identical frame: a frozen or camera-takeover stall, the
+              // frozen detector's territory. Clearing the dark streak here is
+              // what makes a solid-black frozen feed tag "frozen" rather than
+              // "obscured": the obscured detector only ever counts changing
+              // frames (its real signature, see the else branch), so a stall
+              // whose frames repeat byte for byte can only ever be frozen.
               staleFrameCountRef.current += 1;
               healthyFrameCountRef.current = 0;
+              darkFrameCountRef.current = 0;
             } else {
+              // Changing frame. The obscured-lens detector looks only at these:
+              // a covered lens presents a noisy near-black feed (sensor noise
+              // changes every frame, so the frozen check never fires for it)
+              // with no bright pixels anywhere. brightFraction below the dark
+              // threshold for OBSCURED_FRAME_THRESHOLD consecutive changing
+              // frames means the lens is blocked. A night scene keeps some
+              // bright region, so it stays above and both streaks reset.
               staleFrameCountRef.current = 0;
-              healthyFrameCountRef.current += 1;
-              if (healthyFrameCountRef.current >= RECOVERY_HEALTHY_FRAMES) {
-                reconnectAttemptsRef.current = 0;
+              if (
+                brightFraction !== undefined &&
+                brightFraction < DARK_BRIGHT_FRACTION
+              ) {
+                // A dark frame is not a healthy frame. Counting it as healthy
+                // would drive healthyFrameCountRef to RECOVERY_HEALTHY_FRAMES
+                // and zero reconnectAttemptsRef on the same frame the obscured
+                // detector fires, so reconnectAttemptsRef could never reach
+                // MAX_RECONNECT_ATTEMPTS and a covered lens would never escalate
+                // to the terminal CAMERA_STALLED alert.
+                darkFrameCountRef.current += 1;
+                healthyFrameCountRef.current = 0;
+              } else {
+                darkFrameCountRef.current = 0;
+                healthyFrameCountRef.current += 1;
+                if (healthyFrameCountRef.current >= RECOVERY_HEALTHY_FRAMES) {
+                  reconnectAttemptsRef.current = 0;
+                }
               }
             }
             lastFingerprintRef.current = fingerprint;
-            // Obscured-lens detector: a covered lens presents a noisy near-black
-            // frame (changing fingerprints, so the frozen check below never
-            // fires) with no bright pixels anywhere. brightFraction below the
-            // dark threshold for OBSCURED_FRAME_THRESHOLD consecutive frames
-            // means the lens is blocked. A night scene keeps some bright region,
-            // so it stays above and this streak resets.
-            const { brightFraction } = message;
-            if (
-              brightFraction !== undefined &&
-              brightFraction < DARK_BRIGHT_FRACTION
-            ) {
-              darkFrameCountRef.current += 1;
-              // A dark frame is not a healthy frame. Without this reset, a
-              // noisy obscured lens (changing fingerprints, so the
-              // fingerprint block above counts each frame as healthy) would
-              // drive healthyFrameCountRef to RECOVERY_HEALTHY_FRAMES and
-              // zero reconnectAttemptsRef on the same frame the obscured
-              // detector fires, so reconnectAttemptsRef could never reach
-              // MAX_RECONNECT_ATTEMPTS and the feed would never escalate to
-              // the terminal CAMERA_STALLED alert.
-              healthyFrameCountRef.current = 0;
-            } else {
-              darkFrameCountRef.current = 0;
-            }
-            if (darkFrameCountRef.current >= OBSCURED_FRAME_THRESHOLD) {
-              beginRecoveryRef.current("obscured");
-              // Recovery owns the pump now (stop() ran); skip the re-prime.
-              break;
-            }
             if (staleFrameCountRef.current >= STALE_FRAME_THRESHOLD) {
               beginRecoveryRef.current("frozen");
               // Recovery owns the pump now (stop() ran); skip the re-prime
               // below.
+              break;
+            }
+            if (darkFrameCountRef.current >= OBSCURED_FRAME_THRESHOLD) {
+              beginRecoveryRef.current("obscured");
+              // Recovery owns the pump now (stop() ran); skip the re-prime.
               break;
             }
           }
