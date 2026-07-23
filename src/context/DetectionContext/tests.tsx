@@ -1092,6 +1092,50 @@ describe("DetectionProvider", () => {
     expect(pacingDelay).toBe(0);
   });
 
+  it("keeps the pacing floor when throttling is off but debug is also off", async () => {
+    // The unthrottle escape hatch is gated on the debug overlay: a stored
+    // throttleInference=false must NOT remove the floor while showDebug is off,
+    // so a phone can never run flat-out without the debug overlay visible. This
+    // pins the showDebug&& half of the effective-throttle expression; without
+    // it a refactor to a bare !throttleInference would pass every other test.
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ showDebug: false, throttleInference: false }),
+    );
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(
+      <>
+        <DebugProbe />
+        <StartOnReady />
+      </>,
+    );
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 },
+      });
+    });
+    act(() => {
+      screen.getByTestId("read-debug").click();
+    });
+    const pacingDelay = Number(screen.getByTestId("pacing-delay").textContent);
+    expect(pacingDelay).toBeGreaterThan(0);
+  });
+
   it("records brightFraction from the detections message in the debug snapshot", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(
