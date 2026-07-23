@@ -284,7 +284,7 @@ export const RadarDetectorScreen = ({
             <button
               data-testid="contact-save"
               onClick={() => downloadBlob(frameBlob, frameFilename(new Date()))}
-              className="mx-3 mb-3 rounded-md border border-hud-amber/40 bg-hud-amber/10 py-4 text-sm font-semibold tracking-[0.3em] text-hud-amber"
+              className="mx-3 mb-3 rounded-md border border-hud-amber/40 bg-hud-amber/10 py-4 text-sm font-semibold tracking-[0.3em] text-hud-amber transition-colors active:border-hud-amber active:bg-hud-amber active:text-surface"
             >
               SAVE
             </button>
