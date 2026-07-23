@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CameraError } from "@/lib/camera";
 import { CameraError as CameraErrorClass } from "@/lib/camera";
 
@@ -28,6 +28,8 @@ type DevVideoViewProps = {
  * dev video mode so that never triggers recovery. Playback does not start on
  * mount: it waits for the first `scanning` transition so the clip's opening
  * seconds aren't consumed while the model is still downloading or compiling.
+ * The player is also kept invisible until that same transition, so the load
+ * and compile phase shows only the radar backdrop, matching the camera path.
  */
 export const DevVideoView = ({
   src,
@@ -38,6 +40,9 @@ export const DevVideoView = ({
 }: DevVideoViewProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const startedRef = useRef(false);
+  // Render-facing mirror of startedRef: the player stays invisible until the
+  // first scanning transition, the same edge that starts playback.
+  const [started, setStarted] = useState(false);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -67,6 +72,7 @@ export const DevVideoView = ({
       return;
     }
     startedRef.current = true;
+    setStarted(true);
     let cancelled = false;
     const startPlayback = async () => {
       try {
@@ -92,7 +98,9 @@ export const DevVideoView = ({
       muted
       preload="auto"
       playsInline
-      className="fixed bottom-4 left-4 z-20 w-[480px] max-w-[40vw] rounded-lg border border-white/20 shadow-lg"
+      className={`fixed bottom-4 left-4 z-20 w-[480px] max-w-[40vw] rounded-lg border border-white/20 shadow-lg ${
+        started ? "" : "invisible"
+      }`}
     />
   );
 };

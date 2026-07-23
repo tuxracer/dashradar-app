@@ -100,9 +100,9 @@ describe("DevVideoView", () => {
     expect(isCameraError(error) && error.code).toBe("NO_CAMERA");
   });
 
-  it("stays visible with player controls, unlike the hidden camera feed", () => {
+  it("hides the player until scanning starts, then shows it with controls", async () => {
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
-    const { container } = render(
+    const { container, rerender } = render(
       <DevVideoView
         src="/__dev-video"
         scanning={false}
@@ -112,12 +112,36 @@ describe("DevVideoView", () => {
     );
     const video = container.querySelector("video");
     expect(video).not.toBeNull();
-    expect(video).not.toHaveClass("opacity-0");
+    // Mounted (the pump needs the element) but not shown during model load.
+    expect(video).toHaveClass("invisible");
     expect(video?.getAttribute("src")).toBe("/__dev-video");
     expect(video?.muted).toBe(true);
     expect(video?.loop).toBe(true);
     expect(video?.controls).toBe(true);
     expect(video?.hasAttribute("autoplay")).toBe(false);
+
+    rerender(
+      <DevVideoView
+        src="/__dev-video"
+        scanning={true}
+        onStream={() => {}}
+        onError={() => {}}
+      />,
+    );
+    await waitFor(() => expect(video).not.toHaveClass("invisible"));
+    expect(video).not.toHaveClass("opacity-0");
+
+    // Once shown, the player stays visible through later scanning flips (it
+    // belongs to the user then, like the one-shot playback start).
+    rerender(
+      <DevVideoView
+        src="/__dev-video"
+        scanning={false}
+        onStream={() => {}}
+        onError={() => {}}
+      />,
+    );
+    expect(video).not.toHaveClass("invisible");
   });
 
   it("reports updated dimensions when the video fires resize", () => {
