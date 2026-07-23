@@ -6,8 +6,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DetectionProvider,
   FRAME_RETRY_MS,
+  MAX_RECONNECT_ATTEMPTS,
   MIN_FRAME_INTERVAL_MS,
   POLICE_EVENT_DEBOUNCE_MS,
+  RECOVERY_HEALTHY_FRAMES,
   STALE_FRAME_THRESHOLD,
   useDetection,
   WATCHDOG_MS,
@@ -2198,5 +2200,125 @@ describe("DetectionProvider camera recovery", () => {
     });
     expect(screen.getByTestId("recovering").textContent).toBe("false");
     expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
+  });
+
+  /** Drive one frozen-feed recovery: repeat an identical fingerprint to the
+   *  threshold, then simulate the remounted CameraView delivering a stream. */
+  const driveFrozenRecovery = async (
+    worker: FakeWorker,
+    present: () => void,
+  ) => {
+    for (let i = 0; i <= STALE_FRAME_THRESHOLD; i += 1) {
+      await act(async () => {
+        present();
+        await Promise.resolve();
+      });
+      act(() => {
+        emitDetections(worker, 99);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS + 20);
+      });
+    }
+    // Fresh stream from the remount resumes the pump.
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+  };
+
+  it("reloads the page after MAX_RECONNECT_ATTEMPTS failed recoveries", async () => {
+    vi.useFakeTimers();
+    const reload = vi.fn();
+    // jsdom's window.location.reload is a non-configurable own property, so
+    // neither vi.spyOn nor Object.defineProperty can override it in place;
+    // stub the whole location global instead (vi.unstubAllGlobals in the
+    // file's afterEach restores the real one for later tests).
+    vi.stubGlobal("location", { ...window.location, reload });
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(async () => fakeBitmap()),
+    );
+    const { video, presentFrame } = videoWithControlledFrames();
+    const worker = renderWithProvider(<RecoveryProbe video={video} />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "webgpu" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+
+    // Each frozen recovery re-stalls immediately (identical fingerprint again),
+    // never reaching RECOVERY_HEALTHY_FRAMES healthy frames, so attempts stack.
+    for (let attempt = 0; attempt < MAX_RECONNECT_ATTEMPTS; attempt += 1) {
+      await driveFrozenRecovery(worker, presentFrame);
+    }
+    expect(reload).not.toHaveBeenCalled();
+
+    // One more frozen run: attempts now equal MAX, so this recovery reloads.
+    await driveFrozenRecovery(worker, presentFrame);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  /** Drive `count` pump rounds with a distinct (changing) fingerprint each
+   *  round, simulating a healthy feed that grows the recovery's healthy-frame
+   *  streak instead of its stale-frame streak. Mirrors driveFrozenRecovery's
+   *  present -> emit -> advance cycle, but never calls start(): the pump is
+   *  already running (resumed by a prior recovery), and a healthy run alone
+   *  must not touch cameraEpoch. */
+  const driveHealthyFrames = async (
+    worker: FakeWorker,
+    present: () => void,
+    count: number,
+  ) => {
+    for (let i = 0; i < count; i += 1) {
+      await act(async () => {
+        present();
+        await Promise.resolve();
+      });
+      act(() => {
+        emitDetections(worker, 1_000 + i);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS + 20);
+      });
+    }
+  };
+
+  it("a healthy run resets the reconnect counter so a later stall does not reload", async () => {
+    vi.useFakeTimers();
+    const reload = vi.fn();
+    // jsdom's window.location.reload is a non-configurable own property, so
+    // neither vi.spyOn nor Object.defineProperty can override it in place;
+    // stub the whole location global instead (vi.unstubAllGlobals in the
+    // file's afterEach restores the real one for later tests).
+    vi.stubGlobal("location", { ...window.location, reload });
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(async () => fakeBitmap()),
+    );
+    const { video, presentFrame } = videoWithControlledFrames();
+    const worker = renderWithProvider(<RecoveryProbe video={video} />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "webgpu" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+
+    // Stack attempts to the brink of reload, exactly as the reload test above.
+    for (let attempt = 0; attempt < MAX_RECONNECT_ATTEMPTS; attempt += 1) {
+      await driveFrozenRecovery(worker, presentFrame);
+    }
+    expect(reload).not.toHaveBeenCalled();
+
+    // A healthy run on the resumed pump proves the feed recovered, resetting
+    // the reconnect counter back to 0.
+    await driveHealthyFrames(worker, presentFrame, RECOVERY_HEALTHY_FRAMES);
+
+    // One more frozen run: without the reset, attempts would already equal
+    // MAX and this recovery would reload; the healthy run zeroed the
+    // counter, so this recovery only bumps it back to 1.
+    await driveFrozenRecovery(worker, presentFrame);
+    expect(reload).not.toHaveBeenCalled();
   });
 });
