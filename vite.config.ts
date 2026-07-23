@@ -4,7 +4,14 @@ import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { execFileSync } from "node:child_process";
-import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
+import {
+  accessSync,
+  constants as fsConstants,
+  createReadStream,
+  existsSync,
+  readFileSync,
+  statSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { extname, join, resolve } from "node:path";
 import type { Plugin } from "vite";
@@ -116,8 +123,9 @@ const VIDEO_CONTENT_TYPES: Record<string, string> = {
 
 /**
  * Absolute path of the dev video file named by DASHRADAR_VIDEO, or undefined
- * when the env var is unset. A set-but-unreadable path fails config load, so
- * a typo'd path stops the dev server at startup instead of 404ing later.
+ * when the env var is unset. A set-but-unreadable path (missing, not a file,
+ * or lacking read permission) fails config load, so a bad path stops the dev
+ * server at startup instead of crashing mid-request.
  */
 const resolveDevVideoPath = (): string | undefined => {
   const raw = process.env.DASHRADAR_VIDEO;
@@ -126,16 +134,19 @@ const resolveDevVideoPath = (): string | undefined => {
   }
   const expanded = raw.startsWith("~") ? join(homedir(), raw.slice(1)) : raw;
   const absolute = resolve(expanded);
+  const unreadable = new Error(
+    `DASHRADAR_VIDEO does not point to a readable file: ${absolute}`,
+  );
   if (!existsSync(absolute) || !statSync(absolute).isFile()) {
-    throw new Error(
-      `DASHRADAR_VIDEO does not point to a readable file: ${absolute}`,
-    );
+    throw unreadable;
+  }
+  try {
+    accessSync(absolute, fsConstants.R_OK);
+  } catch {
+    throw unreadable;
   }
   return absolute;
 };
-
-/** Resolved dev video path for this run, or undefined outside dev-video mode. */
-const DEV_VIDEO_PATH: string | undefined = resolveDevVideoPath();
 
 /**
  * Dev-only: serve the DASHRADAR_VIDEO file at /__dev-video so a local video
@@ -143,12 +154,14 @@ const DEV_VIDEO_PATH: string | undefined = resolveDevVideoPath();
  * requests are honored with 206 responses because <video> seeking (scrubbing)
  * only works against a server that supports them. Serve-only: production
  * builds never include the route, and __DEV_VIDEO_URL__ compiles to null.
+ * Takes the resolved path rather than resolving it itself, so the resolution
+ * (and the config-load-time throw on a bad path) only ever runs for a
+ * `pnpm dev` run, never for a build or test run with DASHRADAR_VIDEO set.
  */
-const devVideo = (): Plugin => ({
+const devVideo = (path: string | undefined): Plugin => ({
   name: "dev-video",
   apply: "serve",
   configureServer(server) {
-    const path = DEV_VIDEO_PATH;
     if (!path) {
       return;
     }
@@ -165,6 +178,18 @@ const devVideo = (): Plugin => ({
           "application/octet-stream",
       );
       res.setHeader("Accept-Ranges", "bytes");
+      // A read failure mid-stream (file deleted or permissions changed after
+      // startup) must end the response, not crash the dev server: pipe() does
+      // not forward 'error' events from its source.
+      const pipeOrFail = (stream: ReturnType<typeof createReadStream>) => {
+        stream.on("error", () => {
+          if (!res.headersSent) {
+            res.statusCode = 500;
+          }
+          res.end();
+        });
+        stream.pipe(res);
+      };
       const match = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? "");
       if (match && (match[1] !== "" || match[2] !== "")) {
         // "bytes=a-b", "bytes=a-" (open end), or "bytes=-n" (suffix).
@@ -185,11 +210,11 @@ const devVideo = (): Plugin => ({
         res.statusCode = 206;
         res.setHeader("Content-Range", `bytes ${start}-${end}/${size}`);
         res.setHeader("Content-Length", end - start + 1);
-        createReadStream(path, { start, end }).pipe(res);
+        pipeOrFail(createReadStream(path, { start, end }));
         return;
       }
       res.setHeader("Content-Length", size);
-      createReadStream(path).pipe(res);
+      pipeOrFail(createReadStream(path));
     });
   },
 });
@@ -324,36 +349,41 @@ const sentrySourceMaps = (): Plugin[] =>
       })
     : [];
 
-export default defineConfig(({ command }) => ({
-  define: {
-    __APP_VERSION__: JSON.stringify(APP_VERSION),
-    __COMMIT_SHA__: JSON.stringify(SHORT_COMMIT_SHA),
-    // Non-null only for a dev-server run with DASHRADAR_VIDEO set, so every
-    // production branch keyed on it is statically dead and minified away.
-    __DEV_VIDEO_URL__: JSON.stringify(
-      command === "serve" && DEV_VIDEO_PATH ? DEV_VIDEO_ROUTE : null,
-    ),
-  },
-  // "hidden" emits source maps but strips the sourceMappingURL comment, so
-  // browsers never load them; the Sentry plugin uploads them and deletes the
-  // .map files from dist afterward. Off entirely when the token is absent.
-  build: { sourcemap: SENTRY_SOURCE_MAPS_ENABLED ? "hidden" : false },
-  plugins: [
-    react(),
-    tailwindcss(),
-    commitShaMeta(),
-    ortRuntime(),
-    devVideo(),
-    pwa(),
-    ...sentrySourceMaps(),
-  ],
-  resolve: { tsconfigPaths: true },
-  server: { headers: CROSS_ORIGIN_ISOLATION_HEADERS },
-  preview: { headers: CROSS_ORIGIN_ISOLATION_HEADERS },
-  test: {
-    environment: "jsdom",
-    globals: true,
-    setupFiles: ["./vitest.setup.ts"],
-    include: ["**/*.{test,spec}.?(c|m)[jt]s?(x)", "**/tests.[jt]s?(x)"],
-  },
-}));
+export default defineConfig(({ command }) => {
+  // Resolved (and validated) only for an actual dev-server run: a build or
+  // test run with a stale/invalid DASHRADAR_VIDEO left over in the
+  // environment must still degrade to the null define below, not throw at
+  // config load.
+  const devVideoPath = command === "serve" ? resolveDevVideoPath() : undefined;
+  return {
+    define: {
+      __APP_VERSION__: JSON.stringify(APP_VERSION),
+      __COMMIT_SHA__: JSON.stringify(SHORT_COMMIT_SHA),
+      // Non-null only for a dev-server run with DASHRADAR_VIDEO set, so every
+      // production branch keyed on it is statically dead and minified away.
+      __DEV_VIDEO_URL__: JSON.stringify(devVideoPath ? DEV_VIDEO_ROUTE : null),
+    },
+    // "hidden" emits source maps but strips the sourceMappingURL comment, so
+    // browsers never load them; the Sentry plugin uploads them and deletes the
+    // .map files from dist afterward. Off entirely when the token is absent.
+    build: { sourcemap: SENTRY_SOURCE_MAPS_ENABLED ? "hidden" : false },
+    plugins: [
+      react(),
+      tailwindcss(),
+      commitShaMeta(),
+      ortRuntime(),
+      devVideo(devVideoPath),
+      pwa(),
+      ...sentrySourceMaps(),
+    ],
+    resolve: { tsconfigPaths: true },
+    server: { headers: CROSS_ORIGIN_ISOLATION_HEADERS },
+    preview: { headers: CROSS_ORIGIN_ISOLATION_HEADERS },
+    test: {
+      environment: "jsdom",
+      globals: true,
+      setupFiles: ["./vitest.setup.ts"],
+      include: ["**/*.{test,spec}.?(c|m)[jt]s?(x)", "**/tests.[jt]s?(x)"],
+    },
+  };
+});
