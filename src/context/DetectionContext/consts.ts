@@ -108,6 +108,12 @@ export const RECOVERY_HEALTHY_FRAMES = 5;
  * Maximum time the pump may go without a detection result while it is live
  * before the camera is assumed fully stalled (requestVideoFrameCallback
  * stopped firing, so the pump is hung waiting for a new frame) and recovery
- * runs. Used by the watchdog timer.
+ * runs. Set well above the worst-case interval between two legitimate results
+ * on a slow device: pacing rests PACING_REST_RATIO of each round trip and a
+ * slow phone's inference round trip can be a few seconds, so real results can
+ * legitimately be 6-8 seconds apart. It is also deliberately larger than the
+ * crash-sentinel HEARTBEAT_INTERVAL_MS so a heartbeat-length gap never trips
+ * the watchdog. A truly stalled feed never recovers, so a longer detection
+ * latency here is a safe trade for not false-firing on a slow-but-alive device.
  */
-export const WATCHDOG_MS = 5_000;
+export const WATCHDOG_MS = 15_000;

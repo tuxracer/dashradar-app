@@ -44,6 +44,7 @@ import {
   RECOVERY_HEALTHY_FRAMES,
   STALE_FRAME_THRESHOLD,
   SW_CONTROL_TIMEOUT_MS,
+  WATCHDOG_MS,
   WORKER_RECYCLE_AFTER_MS,
 } from "./consts";
 import type {
@@ -143,6 +144,10 @@ export const DetectionProvider = ({
   // (defined inside the worker effect, before beginRecovery's declaration)
   // can call it, mirroring the sendFrameRef idiom already used for sendFrame.
   const beginRecoveryRef = useRef<() => void>(() => {});
+  // Holds the latest armWatchdog (a closure inside the worker effect) so start()
+  // can arm the watchdog when it primes the pump, not only the ready/detections
+  // handlers inside the effect. Mirrors the beginRecoveryRef idiom.
+  const armWatchdogRef = useRef<() => void>(() => {});
 
   /** Swap in the next contact (or none), closing the previous crop bitmap. */
   const replaceContact = useCallback((next: Contact | undefined) => {
@@ -411,6 +416,22 @@ export const DetectionProvider = ({
       });
     };
 
+    /**
+     * (Re)start the stalled-feed watchdog. Armed on ready and on every result
+     * while the pump is live; if it lapses (rVFC stopped firing, so no result
+     * came back) it recovers the camera. Gated on runningRef + workerLoadedRef
+     * so it never fires during a paused pump or the recycle load window.
+     */
+    const armWatchdog = () => {
+      window.clearTimeout(watchdogTimerRef.current);
+      watchdogTimerRef.current = window.setTimeout(() => {
+        if (runningRef.current && workerLoadedRef.current) {
+          beginRecoveryRef.current();
+        }
+      }, WATCHDOG_MS);
+    };
+    armWatchdogRef.current = armWatchdog;
+
     const handleMessage = (event: MessageEvent) => {
       const message: unknown = event.data;
       if (!isWorkerResponse(message)) {
@@ -471,6 +492,7 @@ export const DetectionProvider = ({
           if (runningRef.current) {
             statusRef.current = "running";
             setStatus("running");
+            armWatchdog();
             void sendFrame();
           } else {
             statusRef.current = "ready";
@@ -552,6 +574,7 @@ export const DetectionProvider = ({
           // healthy frame and, after enough of them, proves a prior recovery
           // worked.
           if (runningRef.current) {
+            armWatchdog();
             const { fingerprint } = message;
             if (
               fingerprint !== undefined &&
@@ -595,6 +618,7 @@ export const DetectionProvider = ({
             inFlightRef.current = 0;
             window.clearTimeout(retryTimerRef.current);
             window.clearTimeout(paceTimerRef.current);
+            window.clearTimeout(watchdogTimerRef.current);
             const next = spawnWorker();
             requestLoad(next);
           } else {
@@ -613,6 +637,7 @@ export const DetectionProvider = ({
           inFlightRef.current = 0;
           window.clearTimeout(retryTimerRef.current);
           window.clearTimeout(paceTimerRef.current);
+          window.clearTimeout(watchdogTimerRef.current);
           replaceContact(undefined);
           break;
         }
@@ -630,6 +655,7 @@ export const DetectionProvider = ({
       inFlightRef.current = 0;
       window.clearTimeout(retryTimerRef.current);
       window.clearTimeout(paceTimerRef.current);
+      window.clearTimeout(watchdogTimerRef.current);
       replaceContact(undefined);
     };
 
@@ -653,6 +679,7 @@ export const DetectionProvider = ({
       cancelled = true;
       window.clearTimeout(retryTimerRef.current);
       window.clearTimeout(paceTimerRef.current);
+      window.clearTimeout(watchdogTimerRef.current);
       replaceContact(undefined);
       // Terminate whichever worker is current, which is the recycled one if a
       // recycle has happened, not the one spawned at mount.
@@ -689,6 +716,7 @@ export const DetectionProvider = ({
       if (statusRef.current === "ready") {
         statusRef.current = "running";
         setStatus("running");
+        armWatchdogRef.current();
         void sendFrame();
       }
       // Otherwise stay as-is; the "ready" handler starts the pump via

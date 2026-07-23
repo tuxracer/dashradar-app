@@ -10,6 +10,7 @@ import {
   POLICE_EVENT_DEBOUNCE_MS,
   STALE_FRAME_THRESHOLD,
   useDetection,
+  WATCHDOG_MS,
   WORKER_RECYCLE_AFTER_MS,
 } from "@/context/DetectionContext";
 import {
@@ -2138,5 +2139,64 @@ describe("DetectionProvider camera recovery", () => {
       screen.getByTestId("start").click();
     });
     expect(screen.getByTestId("recovering").textContent).toBe("false");
+  });
+
+  it("recovers when no result arrives within the watchdog window", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(async () => fakeBitmap()),
+    );
+    const { video, presentFrame } = videoWithControlledFrames();
+    const worker = renderWithProvider(<RecoveryProbe video={video} />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "webgpu" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    // Present one frame so the pump posts and the watchdog is armed, but never
+    // emit a result: the feed is fully stalled.
+    await act(async () => {
+      presentFrame();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
+    act(() => {
+      vi.advanceTimersByTime(WATCHDOG_MS + 50);
+    });
+    expect(screen.getByTestId("recovering").textContent).toBe("true");
+    expect(screen.getByTestId("camera-epoch").textContent).toBe("1");
+  });
+
+  it("does not fire the watchdog after the pump is stopped", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(async () => fakeBitmap()),
+    );
+    const { video, presentFrame } = videoWithControlledFrames();
+    const worker = renderWithProvider(<RecoveryProbe video={video} />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "webgpu" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      presentFrame();
+      await Promise.resolve();
+    });
+    // Hide the page: the visibility handler stops the pump, which clears the
+    // watchdog. Advancing past the window must not trigger recovery.
+    act(() => {
+      setDocumentVisibility("hidden");
+    });
+    act(() => {
+      vi.advanceTimersByTime(WATCHDOG_MS + 50);
+    });
+    expect(screen.getByTestId("recovering").textContent).toBe("false");
+    expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
   });
 });
