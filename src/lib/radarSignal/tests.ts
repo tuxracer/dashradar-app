@@ -24,7 +24,7 @@ const det = (score: number): Detection => ({
 const hudOf = (
   nearest: Detection | undefined,
   others: Detection[] = [],
-): HudModel => ({ nearest, near: false, others, blips: [] });
+): HudModel => ({ nearest, near: false, others });
 
 const rgbChannels = (color: string): [number, number, number] => {
   const match = color.match(/rgb\((\d+), (\d+), (\d+)\)/);

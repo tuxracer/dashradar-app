@@ -17,21 +17,14 @@ export type PixelBox = {
   height: number;
 };
 
-export type Blip = { x: number; near: boolean };
-
 export type HudModel = {
   nearest: Detection | undefined;
   near: boolean;
   others: Detection[];
-  blips: Blip[];
 };
 
 const boxArea = (box: NormalizedBox): number => {
   return Math.max(0, box.xmax - box.xmin) * Math.max(0, box.ymax - box.ymin);
-};
-
-const boxCenterX = (box: NormalizedBox): number => {
-  return (box.xmin + box.xmax) / 2;
 };
 
 /** Validate raw worker output and keep road-relevant, confident detections. */
@@ -68,11 +61,7 @@ export const buildHudModel = (detections: Detection[]): HudModel => {
   const near =
     nearest !== undefined && boxArea(nearest.box) >= NEAR_AREA_FRACTION;
   const others = detections.filter((candidate) => candidate !== nearest);
-  const blips = detections.map((candidate) => ({
-    x: boxCenterX(candidate.box),
-    near: near && candidate === nearest,
-  }));
-  return { nearest, near, others, blips };
+  return { nearest, near, others };
 };
 
 /** Scale factor for a video rendered `object-fit: cover` in the viewport. */

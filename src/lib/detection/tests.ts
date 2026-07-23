@@ -90,36 +90,11 @@ describe("buildHudModel", () => {
     expect(buildHudModel([farCar]).near).toBe(false);
   });
 
-  it("emits one blip per detection at the box center x", () => {
-    const left = detection({ box: box(0.0, 0.5, 0.2, 0.7) });
-    const right = detection({ box: box(0.6, 0.3, 1.0, 0.9) });
-    const hud = buildHudModel([left, right]);
-    expect(hud.blips).toHaveLength(2);
-    expect(hud.blips.map((blip) => blip.x)).toContain(0.1);
-    expect(hud.blips.map((blip) => blip.x)).toContain(0.8);
-  });
-
-  it("marks only the nearest blip as near, and only when NEAR", () => {
-    const nearCar = detection({ box: box(0.3, 0.3, 0.7, 0.9) });
-    const farBike = detection({
-      label: "bicycle",
-      displayLabel: "BIKE",
-      category: "bike",
-      box: box(0.0, 0.5, 0.1, 0.6),
-    });
-    const hud = buildHudModel([nearCar, farBike]);
-    expect(hud.blips.filter((blip) => blip.near)).toHaveLength(1);
-
-    const allFar = buildHudModel([farBike]);
-    expect(allFar.blips.every((blip) => !blip.near)).toBe(true);
-  });
-
   it("handles the empty frame", () => {
     const hud = buildHudModel([]);
     expect(hud.nearest).toBeUndefined();
     expect(hud.near).toBe(false);
     expect(hud.others).toEqual([]);
-    expect(hud.blips).toEqual([]);
   });
 });
 
