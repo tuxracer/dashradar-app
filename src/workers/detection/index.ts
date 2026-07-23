@@ -387,23 +387,21 @@ const loadModel = async (forceWasm: boolean) => {
 };
 
 /**
- * Downscale the full inference frame to a thumbnail bitmap for the debug
- * contact card, shown on scans that had no detection to crop. The long edge is
- * capped at CROP_MAX_EDGE (never upscaled), matching the detection crop's
- * sizing. Best-effort like the crop: any failure returns undefined and never
- * blocks the detection result.
+ * Downscale the model's square input canvas to a thumbnail bitmap for the
+ * debug contact card, shown on scans that had no detection to crop. Sourced
+ * from the input canvas rather than the original frame so the card shows
+ * exactly what the model saw, including the aspect-ratio squish of the
+ * stretch-to-square preprocessing; the SAVE path (encodeFrame) still saves the
+ * unsquished original. The edge is capped at CROP_MAX_EDGE (never upscaled),
+ * matching the detection crop's sizing. Best-effort like the crop: any
+ * failure returns undefined and never blocks the detection result.
  */
-const createFrameThumbnail = async (
-  frame: ImageBitmap,
-): Promise<ImageBitmap | undefined> => {
-  const scale = Math.min(
-    1,
-    CROP_MAX_EDGE / Math.max(frame.width, frame.height),
-  );
+const createFrameThumbnail = async (): Promise<ImageBitmap | undefined> => {
+  const edge = Math.min(CROP_MAX_EDGE, INPUT_SIZE);
   try {
-    return await createImageBitmap(frame, {
-      resizeWidth: Math.max(1, Math.round(frame.width * scale)),
-      resizeHeight: Math.max(1, Math.round(frame.height * scale)),
+    return await createImageBitmap(inputCanvas, {
+      resizeWidth: edge,
+      resizeHeight: edge,
     });
   } catch {
     return undefined;
@@ -511,12 +509,12 @@ const detect = async (frame: ImageBitmap, includeFrame: boolean) => {
     }
 
     // In debug mode (includeFrame), when there is no detection to crop, send a
-    // downscaled full-frame thumbnail so the contact card still shows what the
-    // scan saw. A frame with a top detection sends the crop instead, so the two
-    // are mutually exclusive.
+    // downscaled model-input thumbnail so the contact card still shows what
+    // the scan saw. A frame with a top detection sends the crop instead, so
+    // the two are mutually exclusive.
     let frameThumbnail: ImageBitmap | undefined;
     if (includeFrame && topIndex === undefined) {
-      frameThumbnail = await createFrameThumbnail(frame);
+      frameThumbnail = await createFrameThumbnail();
     }
 
     // Full-frame JPEG for debug-mode saving, sent whenever debug asked for it
