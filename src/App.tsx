@@ -11,6 +11,7 @@ import {
 import { ModelLoadScreen } from "@/components/ModelLoadScreen";
 import { RadarBackdrop } from "@/components/RadarBackdrop";
 import { RadarDetectorScreen } from "@/components/RadarDetectorScreen";
+import { RecoveryOverlay } from "@/components/RecoveryOverlay";
 import { SettingsScreen } from "@/components/SettingsScreen";
 import { StatusBar } from "@/components/StatusBar";
 import { DetectionProvider, useDetection } from "@/context/DetectionContext";
@@ -49,6 +50,8 @@ const RadarScreen = () => {
     getDebugSnapshot,
     error,
     start,
+    recovering,
+    cameraEpoch,
   } = useDetection();
   const { showDebug, radarAudio } = useSettings();
   const [showIntro, setShowIntro] = useState(shouldShowIntro);
@@ -118,6 +121,7 @@ const RadarScreen = () => {
     <main className="fixed inset-0 bg-surface">
       <RadarBackdrop />
       <CameraView
+        key={cameraEpoch}
         onStream={handleStream}
         onError={setCameraError}
         onVideoResize={updateVideoSize}
@@ -130,6 +134,7 @@ const RadarScreen = () => {
           debug={showDebug}
         />
       )}
+      <RecoveryOverlay visible={recovering} />
       <StatusBar />
       <DebugOverlay
         backend={backend}
