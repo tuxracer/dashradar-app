@@ -3,6 +3,7 @@ import { track } from "@vercel/analytics";
 import { CameraOff } from "lucide-react";
 import { CameraView } from "@/components/CameraView";
 import { DebugOverlay } from "@/components/DebugOverlay";
+import { DevVideoView } from "@/components/DevVideoView";
 import { ErrorScreen } from "@/components/ErrorScreen";
 import {
   IntroScreen,
@@ -19,6 +20,7 @@ import { DetectionProvider, useDetection } from "@/context/DetectionContext";
 import { SettingsProvider, useSettings } from "@/context/SettingsContext";
 import type { CameraError } from "@/lib/camera";
 import type { Size } from "@/lib/detection";
+import { DEV_VIDEO_URL } from "@/lib/devVideo";
 import { hudSignal } from "@/lib/radarSignal";
 import { createWakeLockManager } from "@/lib/wakeLock";
 
@@ -138,12 +140,21 @@ const RadarScreen = () => {
   return (
     <main className="fixed inset-0 bg-surface">
       <RadarBackdrop />
-      <CameraView
-        key={cameraEpoch}
-        onStream={handleStream}
-        onError={setCameraError}
-        onVideoResize={updateVideoSize}
-      />
+      {DEV_VIDEO_URL ? (
+        <DevVideoView
+          src={DEV_VIDEO_URL}
+          onStream={handleStream}
+          onError={setCameraError}
+          onVideoResize={updateVideoSize}
+        />
+      ) : (
+        <CameraView
+          key={cameraEpoch}
+          onStream={handleStream}
+          onError={setCameraError}
+          onVideoResize={updateVideoSize}
+        />
+      )}
       {!modelLoading && (
         <RadarDetectorScreen
           confidence={hudSignal(hud)}
