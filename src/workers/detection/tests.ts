@@ -141,6 +141,28 @@ describe("isWorkerResponse", () => {
       }),
     ).toBe(false);
   });
+
+  it("accepts a detections message carrying a brightFraction", () => {
+    expect(
+      isWorkerResponse({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 },
+        brightFraction: 0.42,
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects a detections message with a non-number brightFraction", () => {
+    expect(
+      isWorkerResponse({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 },
+        brightFraction: "nope",
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("preprocess", () => {

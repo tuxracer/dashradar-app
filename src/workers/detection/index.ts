@@ -19,6 +19,7 @@ import {
   cropRect,
   decodeDetections,
   ensureCapacity,
+  frameBrightFraction,
   frameFingerprint,
   preprocess,
   topDetectionIndex,
@@ -444,6 +445,7 @@ const detect = async (frame: ImageBitmap, includeFrame: boolean) => {
     inputContext.drawImage(frame, 0, 0, INPUT_SIZE, INPUT_SIZE);
     const imageData = inputContext.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
     const fingerprint = frameFingerprint(imageData);
+    const brightFraction = frameBrightFraction(imageData);
     const inputData = preprocess(imageData, inputBuffer);
     const preprocessMs = performance.now() - preprocessStart;
 
@@ -542,6 +544,7 @@ const detect = async (frame: ImageBitmap, includeFrame: boolean) => {
         frameThumbnail,
         frame: fullFrame,
         fingerprint,
+        brightFraction,
       },
       transfer,
     );

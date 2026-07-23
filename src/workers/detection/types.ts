@@ -236,6 +236,15 @@ export type WorkerResponse =
        * validates.
        */
       fingerprint?: number;
+      /**
+       * Fraction (0..1) of the inference frame's subsampled pixels bright
+       * enough to rule out an obscured lens (frameBrightFraction). The context
+       * counts consecutive near-zero values to detect a physically covered
+       * camera that the byte-identical fingerprint check cannot. Always present
+       * in production; optional in the type only so a hand-built test message
+       * or a future best-effort omission still validates.
+       */
+      brightFraction?: number;
     }
   | { type: "worker-error"; code: DetectionErrorCode };
 
@@ -262,7 +271,8 @@ export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
           (typeof ImageBitmap !== "undefined" &&
             value.frameThumbnail instanceof ImageBitmap)) &&
         (value.frame === undefined || value.frame instanceof Blob) &&
-        (value.fingerprint === undefined || isNumber(value.fingerprint))
+        (value.fingerprint === undefined || isNumber(value.fingerprint)) &&
+        (value.brightFraction === undefined || isNumber(value.brightFraction))
       );
     case "worker-error":
       return isDetectionErrorCode(value.code);
