@@ -44,6 +44,16 @@ export const MODEL_URL_BY_BACKEND: Readonly<Record<DetectionBackend, string>> =
   };
 
 /**
+ * CacheStorage cache the worker writes downloaded weights into on the dev
+ * server, where no service worker (and so no Workbox "model-cache" route)
+ * exists to cache them. Entries are keyed on the revision-pinned model URL,
+ * so an unchanged MODEL_REVISION loads locally across dev launches while a
+ * bump misses and re-downloads. Unused in production builds, where the
+ * service worker owns model caching.
+ */
+export const DEV_MODEL_CACHE_NAME = "model-cache-dev";
+
+/**
  * Attempt a WebGPU session with graph capture (`enableGraphCapture`) before
  * falling back to a plain session. Requires the native C++ WebGPU EP (the
  * worker's "onnxruntime-web/webgpu" import with the asyncify runtime): the

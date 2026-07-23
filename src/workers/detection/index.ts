@@ -9,6 +9,7 @@ import { isWebKitUa } from "@/lib/browserEngine";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 import {
   CROP_MAX_EDGE,
+  DEV_MODEL_CACHE_NAME,
   FRAME_JPEG_QUALITY,
   INPUT_SIZE,
   MODEL_URL_BY_BACKEND,
@@ -172,13 +173,14 @@ const EXPECTED_DETS_NAME = "dets";
 const EXPECTED_LABELS_NAME = "labels";
 
 /**
- * Look up an already-cached copy of the model weights in CacheStorage. The
- * Workbox "model-cache" route (see vite.config.ts) stores the weights the first
- * time they are fetched, keyed on the stable request URL, and CacheStorage is
- * shared between the service worker and this worker. A hit here means the bytes
- * are already local: the load is not a network download, so the UI should skip
- * the download-progress screen entirely. Returns undefined in dev (no service
- * worker, so nothing is cached) and on any CacheStorage error.
+ * Look up an already-cached copy of the model weights in CacheStorage. In
+ * production the Workbox "model-cache" route (see vite.config.ts) stores the
+ * weights the first time they are fetched, keyed on the stable request URL,
+ * and CacheStorage is shared between the service worker and this worker. On
+ * the dev server, where no service worker exists, cacheModelInDev below fills
+ * the same role. A hit here means the bytes are already local: the load is
+ * not a network download, so the UI should skip the download-progress screen
+ * entirely. Returns undefined on any CacheStorage error.
  */
 const matchCachedModel = async (url: string): Promise<Response | undefined> => {
   if (!("caches" in self)) {
@@ -204,7 +206,7 @@ const matchCachedModel = async (url: string): Promise<Response | undefined> => {
  * transfer), ensureCapacity grows the buffer instead, so the copy-free path
  * is an optimization, not a correctness requirement.
  */
-const fetchModel = async (url: string): Promise<Uint8Array> => {
+const fetchModel = async (url: string): Promise<Uint8Array<ArrayBuffer>> => {
   const file = url.slice(url.lastIndexOf("/") + 1);
   const response = await fetch(url);
   if (!response.ok || !response.body) {
@@ -227,6 +229,37 @@ const fetchModel = async (url: string): Promise<Uint8Array> => {
   // A subarray, not a slice: a slice would copy and recreate the exact
   // double-buffer peak this preallocation exists to avoid.
   return loaded === buffer.byteLength ? buffer : buffer.subarray(0, loaded);
+};
+
+/**
+ * Store freshly downloaded weights in CacheStorage on the dev server, where
+ * no service worker exists to cache them, so later dev launches load the
+ * model locally through matchCachedModel instead of re-downloading tens of
+ * megabytes per reload. The entry is keyed on the revision-pinned URL, so a
+ * MODEL_REVISION bump misses and re-downloads; entries for URLs no longer in
+ * MODEL_URL_BY_BACKEND (old revisions) are evicted so stale weights don't
+ * accumulate. No-op in production builds and best-effort in dev: any failure
+ * just means a re-download on the next launch.
+ */
+const cacheModelInDev = async (
+  url: string,
+  weights: Uint8Array<ArrayBuffer>,
+) => {
+  if (!import.meta.env.DEV || !("caches" in self)) {
+    return;
+  }
+  try {
+    const cache = await caches.open(DEV_MODEL_CACHE_NAME);
+    const currentUrls = Object.values(MODEL_URL_BY_BACKEND);
+    for (const request of await cache.keys()) {
+      if (!currentUrls.includes(request.url)) {
+        await cache.delete(request);
+      }
+    }
+    await cache.put(url, new Response(weights));
+  } catch {
+    // Dev convenience only; never let a cache failure affect the load.
+  }
 };
 
 /** Resolve the graph's input/output names from a freshly created session. */
@@ -314,6 +347,9 @@ const loadForBackend = async (backend: DetectionBackend): Promise<ModelIo> => {
   const weights = cached
     ? new Uint8Array(await cached.arrayBuffer())
     : await fetchModel(url);
+  if (!cached) {
+    await cacheModelInDev(url, weights);
+  }
   let captureError: string | undefined;
   // Never attempt graph capture on WebKit: crash telemetry (DASHRADAR-2)
   // shows iOS Safari killing the page within seconds of scanning with
