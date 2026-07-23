@@ -63,8 +63,10 @@ const f16Support = (probe: BackendProbe | undefined): string => {
 
 /**
  * Whether the WebGPU session runs with graph capture (recorded kernel
- * dispatches replayed per frame). "disabled" means the `WEBGPU_GRAPH_CAPTURE`
- * flag is off so no attempt was made; "failed" means the attempt was made and
+ * dispatches replayed per frame). "disabled" means no attempt was made: the
+ * `WEBGPU_GRAPH_CAPTURE` flag is off, or the browser is WebKit, where capture
+ * is excluded pending crash telemetry (see the flag's doc in the worker's
+ * consts.ts); "failed" means the attempt was made and
  * the worker fell back to a plain session, with the probe's `graphCaptureError`
  * block below the rows saying why. Not applicable on the wasm backend, which
  * has no capture concept.

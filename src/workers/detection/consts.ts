@@ -52,6 +52,13 @@ export const MODEL_URL_BY_BACKEND: Readonly<Record<DetectionBackend, string>> =
  * every device. On devices where capture still cannot initialize or run, the
  * worker falls back to a plain WebGPU session and the debug overlay's
  * "graph capture" row reads "failed" with the reason.
+ *
+ * WebKit is excluded regardless of this flag (`isWebKitUa` in
+ * `src/lib/browserEngine`, checked in `loadForBackend`): crash telemetry
+ * (Sentry DASHRADAR-2) showed iOS Safari 26 killing the page within seconds
+ * of scanning with capture on, and capture has only ever been verified on
+ * Chrome. WebKit runs a plain WebGPU session and the overlay row reads
+ * "disabled" there. Re-verify on a real iPhone before lifting the exclusion.
  */
 export const WEBGPU_GRAPH_CAPTURE = true;
 

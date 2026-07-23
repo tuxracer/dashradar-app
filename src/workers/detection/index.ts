@@ -5,6 +5,7 @@
 // makes graph capture impossible; the native EP has one. Its WASM EP also runs
 // the int8 build, so this one import covers both backends.
 import { env, InferenceSession, Tensor } from "onnxruntime-web/webgpu";
+import { isWebKitUa } from "@/lib/browserEngine";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 import {
   FRAME_JPEG_QUALITY,
@@ -305,7 +306,15 @@ const loadForBackend = async (backend: DetectionBackend): Promise<ModelIo> => {
     ? new Uint8Array(await cached.arrayBuffer())
     : await fetchModel(url);
   let captureError: string | undefined;
-  if (backend === "webgpu" && WEBGPU_GRAPH_CAPTURE) {
+  // Never attempt graph capture on WebKit: crash telemetry (DASHRADAR-2)
+  // shows iOS Safari killing the page within seconds of scanning with
+  // capture on, and capture was only ever verified on Chrome. The plain
+  // WebGPU session below is the WebKit path until telemetry clears capture.
+  if (
+    backend === "webgpu" &&
+    WEBGPU_GRAPH_CAPTURE &&
+    !isWebKitUa(navigator.userAgent)
+  ) {
     try {
       return await createCaptureModel(weights);
     } catch (error) {
