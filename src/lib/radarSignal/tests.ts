@@ -76,12 +76,12 @@ describe("decayPeak", () => {
     expect(decayPeak(0.1, 0, 1)).toBe(0);
   });
 
-  it("holds most of a peak across a one-second gap between detection results", () => {
-    // Detection runs at most once per second (MIN_FRAME_INTERVAL_MS), so one
-    // low-scoring result must not let the meter collapse before the next
+  it("holds most of a peak across a two-second gap between detection results", () => {
+    // Detection runs at most once every two seconds (MIN_FRAME_INTERVAL_MS), so
+    // one low-scoring result must not let the meter collapse before the next
     // result can correct it. Guards against re-tuning DECAY_PER_SEC so fast
     // that the peak-hold stops bridging consecutive results.
-    expect(decayPeak(0.8, 0.2, 1)).toBeGreaterThan(0.6);
+    expect(decayPeak(0.8, 0.2, 2)).toBeGreaterThan(0.45);
   });
 });
 

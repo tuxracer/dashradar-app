@@ -558,22 +558,22 @@ describe("DetectionProvider", () => {
     expect(
       worker.posted.filter((message) => message.type === "detect"),
     ).toHaveLength(1);
-    // Simulate a slow device: the result lands 1000 ms after the frame was
-    // posted, well past the pacing floor.
+    // Simulate a slow device: the result lands 3000 ms after the frame was
+    // posted, well past the pacing floor, so the rest ratio governs instead.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(3_000);
     });
     act(() => {
       worker.emit({
         type: "detections",
         detections: [],
-        timing: { preprocessMs: 5, inferenceMs: 990, decodeMs: 5 },
+        timing: { preprocessMs: 5, inferenceMs: 2_990, decodeMs: 5 },
       });
     });
     // The pump must not re-prime immediately: it rests PACING_REST_RATIO of
-    // the round trip (500 ms here), so 400 ms in nothing new is posted.
+    // the round trip (1500 ms here), so 1400 ms in nothing new is posted.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(400);
+      await vi.advanceTimersByTimeAsync(1_400);
     });
     expect(
       worker.posted.filter((message) => message.type === "detect"),

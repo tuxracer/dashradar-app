@@ -4,18 +4,18 @@ import type { DebugSnapshot } from "./types";
 export const FRAME_RETRY_MS = 100;
 
 /**
- * Minimum interval between frame captures: detection runs at most once per
- * second. Without a floor the pump sends the next frame the instant a result
- * returns, so detection runs at whatever rate the device manages: fast WebGPU
- * phones end up running inference back-to-back, pegging the GPU continuously
- * and thermal-throttling a dash-mounted phone. A once-per-second sweep is
- * enough for spotting police vehicles ahead, and the coasting tracker plus
- * motion stabilization keep the HUD steady between results; anything faster
- * mostly spends battery and heat. Devices whose adaptive rest (see
- * PACING_REST_RATIO below) already spaces captures wider than this are
- * unaffected.
+ * Minimum interval between frame captures: detection runs at most once every
+ * two seconds. Without a floor the pump sends the next frame the instant a
+ * result returns, so detection runs at whatever rate the device manages: fast
+ * WebGPU phones end up running inference back-to-back, pegging the GPU
+ * continuously and thermal-throttling a dash-mounted phone (or draining the
+ * battery hard enough to shut down). A once-every-two-seconds sweep is enough
+ * for spotting police vehicles ahead, and the coasting tracker plus motion
+ * stabilization keep the HUD steady between results; anything faster mostly
+ * spends battery and heat. Devices whose adaptive rest (see PACING_REST_RATIO
+ * below) already spaces captures wider than this are unaffected.
  */
-export const MIN_FRAME_INTERVAL_MS = 1_000;
+export const MIN_FRAME_INTERVAL_MS = 2_000;
 
 /**
  * Fraction of a result's round-trip time the pump idles before starting the
@@ -39,8 +39,8 @@ export const FPS_SAMPLE_SIZE = 10;
  * event fires only on the leading edge of a sighting: once reported, further
  * detections are treated as the same encounter and suppressed until police
  * have been absent for at least this long, so tailing a car continuously (a
- * detection roughly once a second) collapses into one event instead of a
- * flood. A sighting after this much absence counts as a fresh encounter.
+ * detection at most once every two seconds) collapses into one event instead
+ * of a flood. A sighting after this much absence counts as a fresh encounter.
  */
 export const POLICE_EVENT_DEBOUNCE_MS = 30_000;
 
