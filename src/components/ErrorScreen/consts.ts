@@ -27,6 +27,5 @@ export const ERROR_COPY: Readonly<Record<AppErrorCode, string>> = {
     "The detection model couldn't be downloaded. Check your connection, then try again.",
   INFERENCE_FAILED: "Detection stopped unexpectedly. Reload to restart it.",
   WORKER_CRASHED: "Detection stopped unexpectedly. Reload to restart it.",
-  CAMERA_STALLED:
-    "Camera view lost. Make sure nothing is blocking the camera, then reload.",
+  CAMERA_STALLED: "Camera view lost. Make sure nothing is blocking the camera.",
 };

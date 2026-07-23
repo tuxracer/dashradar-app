@@ -437,7 +437,7 @@ Typed error classes with a machine-readable `code` (`CLAUDE.md`'s "Typed errors 
 | `MODEL_LOAD_FAILED` | "The detection model couldn't be downloaded. Check your connection, then try again." |
 | `INFERENCE_FAILED` | "Detection stopped unexpectedly. Reload to restart it." |
 | `WORKER_CRASHED` | "Detection stopped unexpectedly. Reload to restart it." |
-| `CAMERA_STALLED` | "Camera view lost. Make sure nothing is blocking the camera, then reload." |
+| `CAMERA_STALLED` | "Camera view lost. Make sure nothing is blocking the camera." |
 
 `CAMERA_STALLED` is an `AppLevelErrorCode`: not thrown by the camera lib or the worker, but raised by `DetectionContext` when automatic recovery gives up (see §6b), and rendered with a `CameraOff` icon passed to `ErrorScreen`'s optional `icon` prop. Every code renders a "TRY AGAIN" button that does a full `window.location.reload()`; there is no soft, in-app retry path.
 
