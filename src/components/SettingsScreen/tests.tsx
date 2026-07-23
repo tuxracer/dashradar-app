@@ -115,4 +115,40 @@ describe("SettingsScreen", () => {
       screen.getByText(new RegExp(`^${__COMMIT_SHA__} ↗$`)),
     ).toBeInTheDocument();
   });
+
+  it("hides the throttle row while debug mode is off", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    expect(screen.queryByText("Throttle inference")).not.toBeInTheDocument();
+  });
+
+  it("shows the throttle row once debug mode is on", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ showDebug: true }),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    expect(screen.getByText("Throttle inference")).toBeInTheDocument();
+  });
+
+  it("toggles and persists the throttle setting from its row", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ showDebug: true }),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    await user.click(screen.getByText("Throttle inference"));
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({
+        showDebug: true,
+        radarAudio: true,
+        throttleInference: false,
+      }),
+    );
+  });
 });

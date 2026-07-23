@@ -13,6 +13,21 @@ type SettingsScreenProps = {
   backend: DetectionBackend | undefined;
 };
 
+/** The pill switch used by every toggle row. `on` drives the track and knob. */
+const Toggle = ({ on }: { on: boolean }) => (
+  <span
+    className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors ${
+      on ? "bg-hud-amber" : "bg-white/25"
+    }`}
+  >
+    <span
+      className={`inline-block h-6 w-6 rounded-full bg-surface transition-transform ${
+        on ? "translate-x-[1.75rem]" : "translate-x-[0.25rem]"
+      }`}
+    />
+  </span>
+);
+
 /**
  * Full-screen settings panel built for driver-first use on a dash mount, in
  * landscape. Renders nothing until the panel is opened. Large, full-width rows
@@ -30,6 +45,8 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
     toggleShowDebug,
     radarAudio,
     toggleRadarAudio,
+    throttleInference,
+    toggleThrottleInference,
   } = useSettings();
 
   useEffect(() => {
@@ -88,17 +105,7 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
                 Beeps faster as the signal climbs.
               </span>
             </span>
-            <span
-              className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors ${
-                radarAudio ? "bg-hud-amber" : "bg-white/25"
-              }`}
-            >
-              <span
-                className={`inline-block h-6 w-6 rounded-full bg-surface transition-transform ${
-                  radarAudio ? "translate-x-[1.75rem]" : "translate-x-[0.25rem]"
-                }`}
-              />
-            </span>
+            <Toggle on={radarAudio} />
           </button>
 
           <button
@@ -109,18 +116,27 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
             <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
               Debug overlay
             </span>
-            <span
-              className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors ${
-                showDebug ? "bg-hud-amber" : "bg-white/25"
-              }`}
-            >
-              <span
-                className={`inline-block h-6 w-6 rounded-full bg-surface transition-transform ${
-                  showDebug ? "translate-x-[1.75rem]" : "translate-x-[0.25rem]"
-                }`}
-              />
-            </span>
+            <Toggle on={showDebug} />
           </button>
+
+          {showDebug && (
+            <button
+              type="button"
+              onClick={toggleThrottleInference}
+              className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
+            >
+              <span className="flex flex-col gap-1">
+                <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                  Throttle inference
+                </span>
+                <span className="text-sm font-medium text-white/45">
+                  Cap detection to once every 2s. Off runs inference flat-out
+                  (desktop only).
+                </span>
+              </span>
+              <Toggle on={throttleInference} />
+            </button>
+          )}
 
           <div className="flex min-h-16 items-center justify-between gap-6 py-4">
             <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
