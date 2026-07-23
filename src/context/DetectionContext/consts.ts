@@ -82,10 +82,10 @@ export const WORKER_RECYCLE_AFTER_MS = 900_000;
 
 /**
  * Consecutive byte-identical inference frames that mark a frozen or black
- * camera feed and trigger camera recovery. At the ~1 fps pacing floor this is
- * about five seconds of a dead feed. Conservative on purpose: a spurious
- * reconnect while driving is worse than a few seconds of delay before
- * recovering.
+ * camera feed and trigger camera recovery. At the ~0.5 fps pacing floor (a
+ * capture at most once every two seconds) this is about ten seconds of a dead
+ * feed. Conservative on purpose: a spurious reconnect while driving is worse
+ * than a few seconds of delay before recovering.
  */
 export const STALE_FRAME_THRESHOLD = 5;
 

@@ -206,9 +206,10 @@ const fakeBitmap = () => {
 
 /**
  * Emit one detections result with the given fingerprint. Assumes the pump has
- * already posted a detect frame (a prior present + prime). Real timers are
- * used by these tests, so callers await the pump between rounds via
- * presentFrame.
+ * already posted a detect frame (a prior present + prime). These tests run
+ * under `vi.useFakeTimers()`, so callers step the pump between rounds by
+ * calling `presentFrame()` and advancing the fake timers, not by awaiting
+ * real elapsed time.
  */
 const emitDetections = (worker: FakeWorker, fingerprint: number) => {
   worker.emit({
@@ -2211,7 +2212,7 @@ describe("DetectionProvider camera recovery", () => {
     for (let i = 0; i <= STALE_FRAME_THRESHOLD; i += 1) {
       await act(async () => {
         present();
-        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(0);
       });
       act(() => {
         emitDetections(worker, 99);
@@ -2320,5 +2321,10 @@ describe("DetectionProvider camera recovery", () => {
     // counter, so this recovery only bumps it back to 1.
     await driveFrozenRecovery(worker, presentFrame);
     expect(reload).not.toHaveBeenCalled();
+    // Confirms the final recovery actually engaged (rather than reload being
+    // skipped for some other reason): the first loop's 3 recoveries bump
+    // cameraEpoch to 3, the healthy run leaves it untouched, and this last
+    // recovery bumps it to 4.
+    expect(screen.getByTestId("camera-epoch").textContent).toBe("4");
   });
 });

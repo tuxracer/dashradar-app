@@ -16,7 +16,7 @@ export const RecoveryOverlay = ({ visible }: RecoveryOverlayProps) => {
   }
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-surface/90">
-      <p className="px-8 text-center text-2xl font-semibold uppercase tracking-widest text-white">
+      <p className="px-8 text-center text-2xl font-semibold uppercase tracking-widest text-white/85">
         Reconnecting camera...
       </p>
     </div>

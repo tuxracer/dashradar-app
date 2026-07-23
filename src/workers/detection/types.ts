@@ -222,8 +222,9 @@ export type WorkerResponse =
       /**
        * Cheap content hash of the inference frame (frameFingerprint). The
        * context compares it across frames to detect a frozen or black camera
-       * feed. Always present in production; optional only so existing test
-       * emits and any best-effort omission stay valid.
+       * feed. Always present in production. It is optional in the type only
+       * so a hand-built test message or a future best-effort omission still
+       * validates.
        */
       fingerprint?: number;
     }

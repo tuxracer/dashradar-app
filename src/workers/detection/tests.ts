@@ -125,7 +125,7 @@ describe("isWorkerResponse", () => {
         type: "detections",
         detections: [],
         timing: { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 },
-        fingerprint: 12345,
+        fingerprint: 12_345,
       }),
     ).toBe(true);
   });
