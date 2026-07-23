@@ -83,7 +83,7 @@ export const DetectionProvider = ({
   createWorker = createDetectionWorker,
   createMotionManager = createMotionSensorManager,
 }: DetectionProviderProps) => {
-  const { showDebug } = useSettings();
+  const { showDebug, settingsOpen } = useSettings();
   // Mirrors showDebug for sendFrame, which is a stable callback: the pump
   // reads the current value per capture instead of re-subscribing on toggles.
   const includeFrameRef = useRef(showDebug);
@@ -158,6 +158,9 @@ export const DetectionProvider = ({
   // True when the pump was stopped because the page went hidden, so the
   // visibility handler knows to restart it (and only it) on return.
   const pausedByVisibilityRef = useRef(false);
+  // True when the pump was stopped because the settings panel opened, so the
+  // settings effect knows to restart it (and only it) when the panel closes.
+  const pausedBySettingsRef = useRef(false);
   const fileProgressRef = useRef(new Map<string, ModelProgress>());
   // Whether the model loaded from the runtime cache, captured from
   // `model-load-start` so the `model_ready` analytics event fired on `ready`
@@ -586,6 +589,32 @@ export const DetectionProvider = ({
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [start, stop]);
+
+  // Pause the pump while the full-screen settings panel is open. Settings is a
+  // same-page overlay, so it never triggers visibilitychange; without this the
+  // pump keeps capturing and running inference behind the panel, burning
+  // battery and thermal budget the user can't see any result from. Mirrors the
+  // visibility pause: the ref restricts the resume to sessions this effect
+  // paused, so closing the panel never starts a pump the user hadn't started
+  // (e.g. one still on the model-load screen). The `runningRef` guard makes it
+  // idempotent, so the effect re-running on a `start`/`stop` identity change
+  // while the panel is open never double-stops or re-pauses.
+  useEffect(() => {
+    if (settingsOpen) {
+      if (runningRef.current) {
+        pausedBySettingsRef.current = true;
+        stop();
+      }
+      return;
+    }
+    if (pausedBySettingsRef.current) {
+      pausedBySettingsRef.current = false;
+      const video = videoRef.current;
+      if (video) {
+        start(video);
+      }
+    }
+  }, [settingsOpen, start, stop]);
 
   const getFps = useCallback(() => fpsRef.current, []);
 

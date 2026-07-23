@@ -18,9 +18,9 @@ type SettingsScreenProps = {
  * landscape. Renders nothing until the panel is opened. Large, full-width rows
  * with big tap targets: Video feed and Debug overlay toggles plus read-only
  * Detection engine, Model, and About rows. Closes on the large close button or
- * Escape. Detection keeps running underneath while this is open. Reads the
- * backend as a prop (the same way StatusBar used to) so it stays testable
- * without the worker.
+ * Escape. While it is open the detection pump is paused (DetectionContext
+ * watches `settingsOpen`) and resumes on close. Reads the backend as a prop
+ * (the same way StatusBar used to) so it stays testable without the worker.
  */
 export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
   const {

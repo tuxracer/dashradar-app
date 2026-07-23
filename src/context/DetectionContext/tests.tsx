@@ -10,7 +10,11 @@ import {
   POLICE_EVENT_DEBOUNCE_MS,
   useDetection,
 } from "@/context/DetectionContext";
-import { SettingsProvider, STORAGE_KEY } from "@/context/SettingsContext";
+import {
+  SettingsProvider,
+  STORAGE_KEY,
+  useSettings,
+} from "@/context/SettingsContext";
 
 vi.mock("@vercel/analytics", () => ({ track: vi.fn() }));
 import type {
@@ -127,6 +131,20 @@ const StartStopWithVideo = ({ video }: { video: HTMLVideoElement }) => {
       </button>
       <button onClick={() => stop()} data-testid="stop">
         stop
+      </button>
+    </>
+  );
+};
+
+const SettingsToggle = () => {
+  const { openSettings, closeSettings } = useSettings();
+  return (
+    <>
+      <button data-testid="open-settings" onClick={() => openSettings()}>
+        open
+      </button>
+      <button data-testid="close-settings" onClick={() => closeSettings()}>
+        close
       </button>
     </>
   );
@@ -1130,6 +1148,91 @@ describe("visibility pause", () => {
     });
     act(() => {
       setDocumentVisibility("visible");
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId("status").textContent).toBe("ready");
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(0);
+  });
+});
+
+describe("settings pause", () => {
+  it("pauses the pump while settings are open and resumes on close", async () => {
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(
+      <>
+        <Probe />
+        <StartOnReady />
+        <SettingsToggle />
+      </>,
+    );
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    act(() => {
+      screen.getByTestId("open-settings").click();
+    });
+    expect(screen.getByTestId("status").textContent).toBe("ready");
+    // The in-flight frame's result lands while paused: it must not re-prime
+    // the stopped pump.
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+      });
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(1);
+    // Closing the panel restarts the pump with the same video.
+    act(() => {
+      screen.getByTestId("close-settings").click();
+    });
+    expect(screen.getByTestId("status").textContent).toBe("running");
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(2);
+    });
+  });
+
+  it("does not start the pump on close when it was never started", async () => {
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(
+      <>
+        <Probe />
+        <SettingsToggle />
+      </>,
+    );
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("open-settings").click();
+    });
+    act(() => {
+      screen.getByTestId("close-settings").click();
     });
     await act(async () => {
       await Promise.resolve();
