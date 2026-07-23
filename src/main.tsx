@@ -34,7 +34,13 @@ createRoot(rootElement, {
     <App />
     {/* Honor Do Not Track / Global Privacy Control: beforeSend gates both page
         views and every custom track() call, so returning null when the user has
-        opted out suppresses all analytics from one place. */}
-    <Analytics beforeSend={(event) => (isDoNotTrackEnabled() ? null : event)} />
+        opted out suppresses all analytics from one place. Dev builds are
+        treated the same as an active DNT signal, so a dev session never emits
+        analytics events. */}
+    <Analytics
+      beforeSend={(event) =>
+        import.meta.env.DEV || isDoNotTrackEnabled() ? null : event
+      }
+    />
   </StrictMode>,
 );

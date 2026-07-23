@@ -41,10 +41,12 @@ if (shouldCountWebGpuCrash(previousSessionEnd)) {
  * first). Reporting is skipped entirely when the user has asked not to be
  * tracked: dashradar's principle is that no data leaves the device, so error
  * reporting honors Do Not Track / Global Privacy Control the same way
- * src/main.tsx already gates Vercel Analytics. An empty VITE_SENTRY_DSN also
- * disables the SDK, so a build without it configured stays silent.
+ * src/main.tsx already gates Vercel Analytics. Dev builds are treated the same
+ * as an active DNT signal, so a dev session never reports to Sentry either.
+ * An empty VITE_SENTRY_DSN also disables the SDK, so a build without it
+ * configured stays silent.
  */
-if (!isDoNotTrackEnabled()) {
+if (!import.meta.env.DEV && !isDoNotTrackEnabled()) {
   Sentry.init({
     dsn: import.meta.env.VITE_SENTRY_DSN,
     environment: import.meta.env.MODE,

@@ -243,7 +243,7 @@ Capture requires every graph node partitioned onto the WebGPU EP, and that is wh
 
 ### 4.2 Analytics events
 
-All analytics is anonymous and carries no camera, location, or detection-geometry data (§3). Since the app has no backend, these events are its only telemetry, and the operational ones below are the only view into whether it works on real devices.
+All analytics is anonymous and carries no camera, location, or detection-geometry data (§3). Since the app has no backend, these events are its only telemetry, and the operational ones below are the only view into whether it works on real devices. Dev sessions emit nothing: both the Vercel Analytics `beforeSend` gate (`src/main.tsx`) and the Sentry init gate (`src/instrument.ts`) treat `import.meta.env.DEV` the same as an active Do Not Track signal, so desk testing never pollutes the production event stream.
 
 **Health events**, emitted from `DetectionContext`'s worker-message handlers so they fire once at their source (not from React render or state updaters, which StrictMode double-invokes):
 
