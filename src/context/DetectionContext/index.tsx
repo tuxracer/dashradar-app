@@ -48,6 +48,7 @@ import {
   WORKER_RECYCLE_AFTER_MS,
 } from "./consts";
 import type {
+  CameraStallReason,
   Contact,
   DebugSnapshot,
   DetectionContextValue,
@@ -147,7 +148,10 @@ export const DetectionProvider = ({
   // Holds the latest beginRecovery so the message handler and watchdog
   // (defined inside the worker effect, before beginRecovery's declaration)
   // can call it, mirroring the sendFrameRef idiom already used for sendFrame.
-  const beginRecoveryRef = useRef<() => void>(() => {});
+  // The argument tags which detector tripped, for the camera_stall analytics.
+  const beginRecoveryRef = useRef<(reason: CameraStallReason) => void>(
+    () => {},
+  );
   // Holds the latest armWatchdog (a closure inside the worker effect) so start()
   // can arm the watchdog when it primes the pump, not only the ready/detections
   // handlers inside the effect. Mirrors the beginRecoveryRef idiom.
@@ -430,7 +434,7 @@ export const DetectionProvider = ({
       window.clearTimeout(watchdogTimerRef.current);
       watchdogTimerRef.current = window.setTimeout(() => {
         if (runningRef.current && workerLoadedRef.current) {
-          beginRecoveryRef.current();
+          beginRecoveryRef.current("watchdog");
         }
       }, WATCHDOG_MS);
     };
@@ -604,7 +608,7 @@ export const DetectionProvider = ({
             }
             lastFingerprintRef.current = fingerprint;
             if (staleFrameCountRef.current >= STALE_FRAME_THRESHOLD) {
-              beginRecoveryRef.current();
+              beginRecoveryRef.current("frozen");
               // Recovery owns the pump now (stop() ran); skip the re-prime
               // below.
               break;
@@ -766,29 +770,38 @@ export const DetectionProvider = ({
    * second trigger while already recovering is a no-op; the fresh stream's
    * start() clears it.
    */
-  const beginRecovery = useCallback(() => {
-    if (recoveringRef.current) {
-      return;
-    }
-    recoveringRef.current = true;
-    window.clearTimeout(watchdogTimerRef.current);
-    lastFingerprintRef.current = undefined;
-    staleFrameCountRef.current = 0;
-    healthyFrameCountRef.current = 0;
-    stop();
-    if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
-      // Automatic recovery is out of attempts; hand off to the driver. Track it
-      // so the fleet-wide rate of unrecoverable camera stalls is visible (the
-      // old silent reload left no signal). recovering stays false, so the
-      // "Reconnecting camera..." overlay never shows for this terminal state.
-      track("error", { code: "CAMERA_STALLED" });
-      setCameraStalled(true);
-      return;
-    }
-    reconnectAttemptsRef.current += 1;
-    setRecovering(true);
-    setCameraEpoch((epoch) => epoch + 1);
-  }, [stop]);
+  const beginRecovery = useCallback(
+    (reason: CameraStallReason) => {
+      if (recoveringRef.current) {
+        return;
+      }
+      recoveringRef.current = true;
+      // Report every detected stall, past the re-entrancy guard so a burst of
+      // triggers counts once, tagged with which detector tripped. This covers
+      // both the transient stalls a remount fixes and the terminal give-up below
+      // (which also fires the CAMERA_STALLED error), so the fleet-wide stall rate
+      // and its cause are visible even when recovery succeeds silently.
+      track("camera_stall", { reason });
+      window.clearTimeout(watchdogTimerRef.current);
+      lastFingerprintRef.current = undefined;
+      staleFrameCountRef.current = 0;
+      healthyFrameCountRef.current = 0;
+      stop();
+      if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+        // Automatic recovery is out of attempts; hand off to the driver. Track it
+        // so the fleet-wide rate of unrecoverable camera stalls is visible (the
+        // old silent reload left no signal). recovering stays false, so the
+        // "Reconnecting camera..." overlay never shows for this terminal state.
+        track("error", { code: "CAMERA_STALLED" });
+        setCameraStalled(true);
+        return;
+      }
+      reconnectAttemptsRef.current += 1;
+      setRecovering(true);
+      setCameraEpoch((epoch) => epoch + 1);
+    },
+    [stop],
+  );
   useEffect(() => {
     beginRecoveryRef.current = beginRecovery;
   }, [beginRecovery]);

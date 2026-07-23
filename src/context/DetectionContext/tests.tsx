@@ -608,6 +608,13 @@ describe("DetectionProvider", () => {
     // Ready emits backend_resolved/model_ready; drop those so the assertions
     // below count only the police event.
     vi.mocked(track).mockClear();
+    // Count police sightings specifically, not every track call: the long
+    // debounce-window advance below outlasts the watchdog, which fires its own
+    // camera_stall event that is irrelevant to this test.
+    const policeSightings = () =>
+      vi
+        .mocked(track)
+        .mock.calls.filter(([event]) => event === "police_detected");
 
     const police = {
       label: "police",
@@ -620,8 +627,7 @@ describe("DetectionProvider", () => {
     act(() => {
       worker.emit({ type: "detections", detections: [police], timing });
     });
-    expect(track).toHaveBeenCalledTimes(1);
-    expect(track).toHaveBeenCalledWith("police_detected");
+    expect(policeSightings()).toHaveLength(1);
 
     // A second sighting within the debounce window is the same encounter.
     await act(async () => {
@@ -630,7 +636,7 @@ describe("DetectionProvider", () => {
     act(() => {
       worker.emit({ type: "detections", detections: [police], timing });
     });
-    expect(track).toHaveBeenCalledTimes(1);
+    expect(policeSightings()).toHaveLength(1);
 
     // After police are absent past the debounce window, a sighting re-fires.
     await act(async () => {
@@ -639,7 +645,7 @@ describe("DetectionProvider", () => {
     act(() => {
       worker.emit({ type: "detections", detections: [police], timing });
     });
-    expect(track).toHaveBeenCalledTimes(2);
+    expect(policeSightings()).toHaveLength(2);
   });
 
   it("does not report an event when no police are detected", async () => {
@@ -2076,6 +2082,8 @@ describe("DetectionProvider camera recovery", () => {
 
     expect(screen.getByTestId("recovering").textContent).toBe("true");
     expect(screen.getByTestId("camera-epoch").textContent).toBe("1");
+    // The detected stall is reported to analytics, tagged as a frozen feed.
+    expect(track).toHaveBeenCalledWith("camera_stall", { reason: "frozen" });
   });
 
   it("does not recover while frames keep changing", async () => {
@@ -2108,6 +2116,8 @@ describe("DetectionProvider camera recovery", () => {
 
     expect(screen.getByTestId("recovering").textContent).toBe("false");
     expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
+    // A healthy feed reports no stall.
+    expect(track).not.toHaveBeenCalledWith("camera_stall", expect.anything());
   });
 
   it("clears recovering when the fresh stream starts", async () => {
@@ -2172,6 +2182,8 @@ describe("DetectionProvider camera recovery", () => {
     });
     expect(screen.getByTestId("recovering").textContent).toBe("true");
     expect(screen.getByTestId("camera-epoch").textContent).toBe("1");
+    // A full stall reports the same event, tagged as a watchdog trip.
+    expect(track).toHaveBeenCalledWith("camera_stall", { reason: "watchdog" });
   });
 
   it("does not fire the watchdog after the pump is stopped", async () => {
@@ -2202,6 +2214,8 @@ describe("DetectionProvider camera recovery", () => {
     });
     expect(screen.getByTestId("recovering").textContent).toBe("false");
     expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
+    // A stopped pump reports no stall.
+    expect(track).not.toHaveBeenCalledWith("camera_stall", expect.anything());
   });
 
   /** Drive one frozen-feed stall: repeat an identical fingerprint to the

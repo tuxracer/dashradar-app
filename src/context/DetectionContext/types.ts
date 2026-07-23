@@ -25,6 +25,14 @@ export type MainThreadWebGpu =
 export type ModelProgress = { loadedBytes: number; totalBytes: number };
 
 /**
+ * Which detector tripped a camera-stall recovery, reported on the `camera_stall`
+ * analytics event: `frozen` is the streak of byte-identical frames (a frozen or
+ * black feed), `watchdog` is no detection result arriving within the watchdog
+ * window (the feed fully stalled, so no result comes back at all).
+ */
+export type CameraStallReason = "frozen" | "watchdog";
+
+/**
  * Latest cutout the radar detector mode renders on its contact card. Usually a
  * detection crop with its score, signal, box, and direction. In debug mode a
  * scan with no detection instead produces a bare frame preview (image and
