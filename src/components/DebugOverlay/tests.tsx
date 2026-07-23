@@ -114,8 +114,8 @@ describe("DebugOverlay", () => {
     renderOverlay(
       probe({ shaderF16: true, graphCapture: true, chosen: "webgpu" }),
     );
-    expect(screen.getByText("graph capture")).toBeInTheDocument();
-    expect(screen.getByText("on")).toBeInTheDocument();
+    const row = screen.getByText("graph capture").closest("div");
+    expect(row).toHaveTextContent("on");
   });
 
   it("shows the graph capture error when the capture attempt fell back", () => {
@@ -147,6 +147,23 @@ describe("DebugOverlay", () => {
     enableDebug();
     renderOverlay(probe({ adapter: false, device: false }));
     expect(screen.getByText(/4T · isolated/)).toBeInTheDocument();
+  });
+
+  it("shows the throttle row as on by default", () => {
+    enableDebug();
+    renderOverlay();
+    expect(screen.getByText("throttle")).toBeInTheDocument();
+    expect(screen.getByText("on")).toBeInTheDocument();
+  });
+
+  it("shows the throttle row as off when throttling is disabled", () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ showDebug: true, throttleInference: false }),
+    );
+    renderOverlay();
+    expect(screen.getByText("throttle")).toBeInTheDocument();
+    expect(screen.getByText("off")).toBeInTheDocument();
   });
 });
 

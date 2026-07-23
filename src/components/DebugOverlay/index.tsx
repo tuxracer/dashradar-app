@@ -112,7 +112,7 @@ export const DebugOverlay = ({
   videoSize,
   viewportSize,
 }: DebugOverlayProps) => {
-  const { showDebug } = useSettings();
+  const { showDebug, throttleInference } = useSettings();
 
   const [readout, setReadout] = useState<DebugReadout>(() => ({
     debug: getDebug(),
@@ -199,6 +199,7 @@ export const DebugOverlay = ({
         </div>
       )}
       <Row label="round-trip" value={ms(debug.roundTripMs)} />
+      <Row label="throttle" value={throttleInference ? "on" : "off"} />
       <Row
         label="pacing"
         value={`${ms(debug.pacingDelayMs)} · ${debug.pacingRule}`}
