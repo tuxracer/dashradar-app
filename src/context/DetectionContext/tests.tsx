@@ -162,13 +162,12 @@ const StartStopWithVideo = ({ video }: { video: HTMLVideoElement }) => {
 };
 
 const RecoveryProbe = ({ video }: { video: HTMLVideoElement }) => {
-  const { recovering, cameraStalled, cameraEpoch, start } = useDetection();
+  const { cameraStalled, cameraEpoch, start } = useDetection();
   return (
     <>
       <button onClick={() => start(video)} data-testid="start">
         start
       </button>
-      <span data-testid="recovering">{String(recovering)}</span>
       <span data-testid="camera-stalled">{String(cameraStalled)}</span>
       <span data-testid="camera-epoch">{cameraEpoch}</span>
     </>
@@ -2290,7 +2289,6 @@ describe("DetectionProvider camera recovery", () => {
       });
     }
 
-    expect(screen.getByTestId("recovering").textContent).toBe("true");
     expect(screen.getByTestId("camera-epoch").textContent).toBe("1");
     // The detected stall is reported to analytics, tagged as a frozen feed.
     expect(track).toHaveBeenCalledWith("camera_stall", { reason: "frozen" });
@@ -2328,7 +2326,6 @@ describe("DetectionProvider camera recovery", () => {
       });
     }
 
-    expect(screen.getByTestId("recovering").textContent).toBe("true");
     expect(screen.getByTestId("camera-epoch").textContent).toBe("1");
     // The detected stall is reported to analytics, tagged as an obscured lens.
     expect(track).toHaveBeenCalledWith("camera_stall", { reason: "obscured" });
@@ -2365,7 +2362,7 @@ describe("DetectionProvider camera recovery", () => {
       });
     }
 
-    expect(screen.getByTestId("recovering").textContent).toBe("true");
+    expect(screen.getByTestId("camera-epoch").textContent).toBe("1");
     expect(track).toHaveBeenCalledWith("camera_stall", { reason: "frozen" });
     expect(track).not.toHaveBeenCalledWith("camera_stall", {
       reason: "obscured",
@@ -2403,7 +2400,6 @@ describe("DetectionProvider camera recovery", () => {
       });
     }
 
-    expect(screen.getByTestId("recovering").textContent).toBe("false");
     expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
     expect(track).not.toHaveBeenCalledWith("camera_stall", {
       reason: "obscured",
@@ -2438,13 +2434,12 @@ describe("DetectionProvider camera recovery", () => {
       });
     }
 
-    expect(screen.getByTestId("recovering").textContent).toBe("false");
     expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
     // A healthy feed reports no stall.
     expect(track).not.toHaveBeenCalledWith("camera_stall", expect.anything());
   });
 
-  it("clears recovering when the fresh stream starts", async () => {
+  it("clears the recovery guard when the fresh stream starts", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(
       "createImageBitmap",
@@ -2458,25 +2453,31 @@ describe("DetectionProvider camera recovery", () => {
     act(() => {
       screen.getByTestId("start").click();
     });
-    for (let i = 0; i <= STALE_FRAME_THRESHOLD; i += 1) {
-      await act(async () => {
-        presentFrame();
-        await vi.advanceTimersByTimeAsync(0);
-      });
-      act(() => {
-        emitDetections(worker, 7);
-      });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
-      });
-    }
-    expect(screen.getByTestId("recovering").textContent).toBe("true");
+    const driveStall = async (fingerprint: number) => {
+      for (let i = 0; i <= STALE_FRAME_THRESHOLD; i += 1) {
+        await act(async () => {
+          presentFrame();
+          await vi.advanceTimersByTimeAsync(0);
+        });
+        act(() => {
+          emitDetections(worker, fingerprint);
+        });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+        });
+      }
+    };
+    await driveStall(7);
+    expect(screen.getByTestId("camera-epoch").textContent).toBe("1");
 
-    // Simulate CameraView remounting and delivering a fresh stream.
+    // Simulate CameraView remounting and delivering a fresh stream, then stall
+    // it again: the second recovery only engages if start() released the
+    // re-entrancy guard the first one took.
     act(() => {
       screen.getByTestId("start").click();
     });
-    expect(screen.getByTestId("recovering").textContent).toBe("false");
+    await driveStall(8);
+    expect(screen.getByTestId("camera-epoch").textContent).toBe("2");
   });
 
   it("recovers when no result arrives within the watchdog window", async () => {
@@ -2504,7 +2505,6 @@ describe("DetectionProvider camera recovery", () => {
     act(() => {
       vi.advanceTimersByTime(WATCHDOG_MS + 50);
     });
-    expect(screen.getByTestId("recovering").textContent).toBe("true");
     expect(screen.getByTestId("camera-epoch").textContent).toBe("1");
     // A full stall reports the same event, tagged as a watchdog trip.
     expect(track).toHaveBeenCalledWith("camera_stall", { reason: "watchdog" });
@@ -2536,7 +2536,6 @@ describe("DetectionProvider camera recovery", () => {
     act(() => {
       vi.advanceTimersByTime(WATCHDOG_MS + 50);
     });
-    expect(screen.getByTestId("recovering").textContent).toBe("false");
     expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
     // A stopped pump reports no stall.
     expect(track).not.toHaveBeenCalledWith("camera_stall", expect.anything());
@@ -2597,11 +2596,13 @@ describe("DetectionProvider camera recovery", () => {
     expect(screen.getByTestId("camera-stalled").textContent).toBe("false");
 
     // One more frozen stall: attempts now equal MAX, so recovery gives up and
-    // surfaces the terminal alert instead of remounting. The overlay's
-    // "recovering" flag stays false; only cameraStalled flips.
+    // surfaces the terminal alert instead of remounting, leaving cameraEpoch
+    // where the third remount left it.
     await driveFrozenStall(worker, presentFrame);
     expect(screen.getByTestId("camera-stalled").textContent).toBe("true");
-    expect(screen.getByTestId("recovering").textContent).toBe("false");
+    expect(screen.getByTestId("camera-epoch").textContent).toBe(
+      String(MAX_RECONNECT_ATTEMPTS),
+    );
 
     // The unrecoverable stall is reported to analytics exactly once: it is the
     // only signal of a fleet-wide camera failure the old silent reload erased,
@@ -2748,7 +2749,9 @@ describe("DetectionProvider camera recovery", () => {
     // and surfaces the terminal alert instead of remounting.
     await driveObscuredStall(worker, presentFrame);
     expect(screen.getByTestId("camera-stalled").textContent).toBe("true");
-    expect(screen.getByTestId("recovering").textContent).toBe("false");
+    expect(screen.getByTestId("camera-epoch").textContent).toBe(
+      String(MAX_RECONNECT_ATTEMPTS),
+    );
 
     // The unrecoverable stall is reported to analytics exactly once.
     const stalledReports = vi
@@ -2786,7 +2789,6 @@ describe("dev video mode", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(WATCHDOG_MS * 2);
     });
-    expect(screen.getByTestId("recovering").textContent).toBe("false");
     expect(screen.getByTestId("camera-stalled").textContent).toBe("false");
     expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
     expect(track).not.toHaveBeenCalledWith("camera_stall", {
@@ -2827,7 +2829,6 @@ describe("dev video mode", () => {
         await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
       });
     }
-    expect(screen.getByTestId("recovering").textContent).toBe("false");
     expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
     expect(track).not.toHaveBeenCalledWith("camera_stall", expect.anything());
     // Every loop round posted a fresh detect frame: the pump stayed alive.

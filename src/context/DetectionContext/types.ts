@@ -152,8 +152,6 @@ export type DetectionContextValue = {
    * and teardown.
    */
   contact: Contact | undefined;
-  /** True while the camera feed is being re-acquired after a detected stall. */
-  recovering: boolean;
   /**
    * True once automatic camera recovery has exhausted its remount attempts on a
    * frozen or black feed. Terminal: the pump is stopped and the app shows the

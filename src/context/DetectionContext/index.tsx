@@ -151,13 +151,14 @@ export const DetectionProvider = ({
   // handlers without a side effect inside a setState updater (StrictMode
   // double-invokes updaters; see statusRef above).
   const contactRef = useRef<Contact | undefined>(undefined);
-  const [recovering, setRecovering] = useState(false);
   // Terminal flag: automatic recovery gave up after MAX_RECONNECT_ATTEMPTS on a
   // frozen or black feed. App renders the CAMERA_STALLED alert; a reload (the
   // alert's button) is the only exit, so no ref mirror is needed.
   const [cameraStalled, setCameraStalled] = useState(false);
-  // Mirrors `recovering` so beginRecovery's re-entrancy guard and the pump can
-  // branch on it outside a setState updater (StrictMode double-invokes those).
+  // True while a camera recovery is in flight. Recovery is silent (nothing is
+  // shown to the driver), so this is a ref, not state: it exists only for
+  // beginRecovery's re-entrancy guard, which branches on it outside a setState
+  // updater (StrictMode double-invokes those).
   const recoveringRef = useRef(false);
   // Bumped once per recovery; App keys <CameraView> on it, so incrementing it
   // remounts the camera element and re-runs getUserMedia.
@@ -806,13 +807,12 @@ export const DetectionProvider = ({
         return;
       }
       runningRef.current = true;
-      // A fresh stream (initial or post-recovery) clears the recovering flag
+      // A fresh stream (initial or post-recovery) clears the recovery guard
       // and resets the frozen-feed detectors for a clean measurement window.
       // The reconnect-attempt counter is deliberately NOT reset here; only a
       // run of healthy frames (in the detections handler) proves a recovery
       // worked.
       recoveringRef.current = false;
-      setRecovering(false);
       lastFingerprintRef.current = undefined;
       staleFrameCountRef.current = 0;
       darkFrameCountRef.current = 0;
@@ -849,9 +849,12 @@ export const DetectionProvider = ({
   }, []);
 
   /**
-   * Recover a dead camera feed in place. Stops the pump, resets the
-   * frozen-feed detectors, and remounts the camera by bumping cameraEpoch
-   * (App keys CameraView on it). After MAX_RECONNECT_ATTEMPTS consecutive
+   * Recover a dead camera feed in place, silently: nothing is shown to the
+   * driver while it happens, since the meter's own pause is the only thing
+   * worth their attention and an overlay would just take the glass away from
+   * it. Stops the pump, resets the frozen-feed detectors, and remounts the
+   * camera by bumping cameraEpoch (App keys CameraView on it). After
+   * MAX_RECONNECT_ATTEMPTS consecutive
    * recoveries that never proved healthy, gives up and surfaces the
    * CAMERA_STALLED alert (via setCameraStalled) instead of another remount: a
    * feed still black after several remounts is likely an obscured or failed
@@ -883,14 +886,12 @@ export const DetectionProvider = ({
       if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
         // Automatic recovery is out of attempts; hand off to the driver. Track it
         // so the fleet-wide rate of unrecoverable camera stalls is visible (the
-        // old silent reload left no signal). recovering stays false, so the
-        // "Reconnecting camera..." overlay never shows for this terminal state.
+        // old silent reload left no signal).
         track("error", { code: "CAMERA_STALLED" });
         setCameraStalled(true);
         return;
       }
       reconnectAttemptsRef.current += 1;
-      setRecovering(true);
       setCameraEpoch((epoch) => epoch + 1);
     },
     [devVideoMode, stop],
@@ -1032,7 +1033,6 @@ export const DetectionProvider = ({
       getDebugSnapshot,
       error,
       contact,
-      recovering,
       cameraStalled,
       cameraEpoch,
       start,
@@ -1050,7 +1050,6 @@ export const DetectionProvider = ({
       getDebugSnapshot,
       error,
       contact,
-      recovering,
       cameraStalled,
       cameraEpoch,
       start,
