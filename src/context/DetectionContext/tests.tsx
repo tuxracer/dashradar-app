@@ -15,6 +15,10 @@ import {
   STORAGE_KEY,
   useSettings,
 } from "@/context/SettingsContext";
+import {
+  HEARTBEAT_INTERVAL_MS,
+  SENTINEL_STORAGE_KEY,
+} from "@/lib/crashSentinel";
 
 vi.mock("@vercel/analytics", () => ({ track: vi.fn() }));
 import type {
@@ -1241,6 +1245,104 @@ describe("settings pause", () => {
     expect(
       worker.posted.filter((message) => message.type === "detect"),
     ).toHaveLength(0);
+  });
+});
+
+describe("crash sentinel heartbeat", () => {
+  const readSentinel = (): Record<string, unknown> | null => {
+    const raw = window.localStorage.getItem(SENTINEL_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
+  };
+
+  it("writes a sentinel record once detection starts running", () => {
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    expect(readSentinel()).toBeNull();
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    expect(readSentinel()).toMatchObject({
+      framesProcessed: 0,
+      backend: "wasm",
+    });
+  });
+
+  it("clears the sentinel record when stop() leaves the running state", () => {
+    const worker = renderWithProvider(<StartStop />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    expect(readSentinel()).not.toBeNull();
+    act(() => {
+      screen.getByTestId("stop").click();
+    });
+    expect(readSentinel()).toBeNull();
+  });
+
+  it("clears the sentinel record on unmount", () => {
+    const worker = new FakeWorker();
+    const { unmount } = render(
+      <SettingsProvider>
+        <DetectionProvider createWorker={() => worker}>
+          <StartOnReady />
+        </DetectionProvider>
+      </SettingsProvider>,
+    );
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    expect(readSentinel()).not.toBeNull();
+    unmount();
+    expect(readSentinel()).toBeNull();
+  });
+
+  it("does not write a sentinel record while only ready (not running)", () => {
+    const worker = renderWithProvider(<Probe />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    expect(readSentinel()).toBeNull();
+  });
+
+  it("grows framesProcessed as detections results arrive between heartbeats", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    // The immediate heartbeat on entering "running" is written before any
+    // detections result, so framesProcessed starts at 0.
+    expect(readSentinel()).toMatchObject({ framesProcessed: 0 });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+      });
+    });
+    // The next interval tick picks up the frame counted by the result above.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+    });
+    expect(readSentinel()).toMatchObject({ framesProcessed: 1 });
   });
 });
 

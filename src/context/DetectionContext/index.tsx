@@ -11,6 +11,11 @@ import type { ReactNode } from "react";
 import { track } from "@vercel/analytics";
 import { useSettings } from "@/context/SettingsContext";
 import { waitForNextVideoFrame } from "@/lib/camera";
+import {
+  clearSentinel,
+  HEARTBEAT_INTERVAL_MS,
+  writeHeartbeat,
+} from "@/lib/crashSentinel";
 import type { HudModel } from "@/lib/detection";
 import { buildHudModel, toRoadDetections } from "@/lib/detection";
 import { createDetectionTracker } from "@/lib/detectionTracker";
@@ -166,6 +171,12 @@ export const DetectionProvider = ({
   // `model-load-start` so the `model_ready` analytics event fired on `ready`
   // can report cache hits against fresh downloads.
   const modelFromCacheRef = useRef(false);
+  // Running total of detections results received this page load, incremented
+  // in the "detections" handler body (never a setState updater, which
+  // StrictMode double-invokes). The heartbeat effect below reads this against
+  // a baseline captured when it starts, so framesProcessed in the sentinel
+  // record counts only frames from the current running span.
+  const framesTotalRef = useRef(0);
   const resultTimesRef = useRef<number[]>([]);
   // Capture duration of the most recently posted frame and the timestamp it was
   // posted, paired with the next detections result for the debug snapshot.
@@ -399,6 +410,7 @@ export const DetectionProvider = ({
         }
         case "detections": {
           inFlightRef.current = Math.max(0, inFlightRef.current - 1);
+          framesTotalRef.current += 1;
           // The returned boxes correspond to the pose the frame was captured at,
           // not the pose now. Anchor compensation to that capture pose.
           referenceOrientationRef.current = captureOrientationRef.current;
@@ -615,6 +627,36 @@ export const DetectionProvider = ({
       }
     }
   }, [settingsOpen, start, stop]);
+
+  // Crash sentinel heartbeat: while detection is running, write a timestamped
+  // record to localStorage on a fixed cadence so the NEXT launch can tell
+  // whether this session ended cleanly. The pump already leaves "running" via
+  // stop() on page-hidden, settings-open, and user stop, so this effect's
+  // cleanup running on any of those exits clears the sentinel; only an
+  // OS-level kill mid-scan (no JS runs, so nothing else can react) leaves the
+  // last heartbeat in place for the next launch to read and report to Sentry.
+  useEffect(() => {
+    if (status !== "running") {
+      return;
+    }
+    const startedAt = Date.now();
+    const baseline = framesTotalRef.current;
+    const beat = () => {
+      writeHeartbeat({
+        startedAt,
+        lastBeatAt: Date.now(),
+        framesProcessed: framesTotalRef.current - baseline,
+        backend,
+        graphCapture: backendProbe?.graphCapture,
+      });
+    };
+    beat();
+    const intervalId = window.setInterval(beat, HEARTBEAT_INTERVAL_MS);
+    return () => {
+      window.clearInterval(intervalId);
+      clearSentinel();
+    };
+  }, [status, backend, backendProbe]);
 
   const getFps = useCallback(() => fpsRef.current, []);
 

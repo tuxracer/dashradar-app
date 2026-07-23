@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/react";
+import { readPreviousSessionEnd } from "@/lib/crashSentinel";
 import { isDoNotTrackEnabled } from "@/lib/doNotTrack";
 
 /**
@@ -13,6 +14,15 @@ const TRACES_SAMPLE_RATE = 1.0;
  * build. __APP_VERSION__ and __COMMIT_SHA__ are injected by vite.config.ts.
  */
 const RELEASE = `dashradar@${__APP_VERSION__}+${__COMMIT_SHA__}`;
+
+/**
+ * Consume the previous session's crash sentinel, if any, before the DNT gate
+ * below so a dirty record is always read and cleared regardless of whether
+ * this session reports it. iOS sometimes kills the page mid-scan with no JS
+ * running at kill time, so Sentry never sees the crash itself; this is the
+ * only chance the NEXT launch gets to notice and report it.
+ */
+const previousSessionEnd = readPreviousSessionEnd();
 
 /**
  * Initialize Sentry as a side effect at import time, so instrumentation is in
@@ -43,4 +53,23 @@ if (!isDoNotTrackEnabled()) {
     // Never attach IP addresses or other PII to events.
     sendDefaultPii: false,
   });
+
+  // Report a dirty previous session now that Sentry is initialized. Level
+  // distinguishes an OS-level kill ("crash", the page relaunched almost
+  // immediately) from a longer gap ("unclean": battery death, manual
+  // restart, deliberate shutdown), which cannot be told apart from a genuine
+  // crash by gap alone but is far less likely to be one.
+  if (previousSessionEnd) {
+    const { outcome, gapMs, uptimeMs, framesProcessed, backend, graphCapture } =
+      previousSessionEnd;
+    Sentry.captureMessage("Previous session terminated while scanning", {
+      level: outcome === "crash" ? "error" : "warning",
+      tags: {
+        sessionEnd: outcome,
+        backend: backend ?? "unknown",
+        graphCapture: String(graphCapture ?? "unknown"),
+      },
+      extra: { gapMs, uptimeMs, framesProcessed },
+    });
+  }
 }
