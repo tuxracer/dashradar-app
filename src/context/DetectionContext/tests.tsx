@@ -1053,6 +1053,45 @@ describe("DetectionProvider", () => {
     expect(pacingDelay).toBeLessThanOrEqual(MIN_FRAME_INTERVAL_MS);
   });
 
+  it("runs unthrottled (zero pacing delay) when debug is on and throttling is off", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ showDebug: true, throttleInference: false }),
+    );
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(
+      <>
+        <DebugProbe />
+        <StartOnReady />
+      </>,
+    );
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 },
+      });
+    });
+    act(() => {
+      screen.getByTestId("read-debug").click();
+    });
+    const pacingDelay = Number(screen.getByTestId("pacing-delay").textContent);
+    expect(pacingDelay).toBe(0);
+  });
+
   it("records brightFraction from the detections message in the debug snapshot", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(

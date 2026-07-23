@@ -102,13 +102,22 @@ export const DetectionProvider = ({
   createWorker = createDetectionWorker,
   devVideoMode = DEV_VIDEO_URL !== null,
 }: DetectionProviderProps) => {
-  const { showDebug, settingsOpen } = useSettings();
+  const { showDebug, throttleInference, settingsOpen } = useSettings();
   // Mirrors showDebug for sendFrame, which is a stable callback: the pump
   // reads the current value per capture instead of re-subscribing on toggles.
   const includeFrameRef = useRef(showDebug);
   useEffect(() => {
     includeFrameRef.current = showDebug;
   }, [showDebug]);
+  // Mirrors the effective throttle flag for schedulePacedFrame, a stable
+  // callback that reads it per result instead of re-subscribing. Inference is
+  // unthrottled only while the debug overlay is on and its throttle toggle is
+  // off, so turning debug off restores the pacing floor no matter the stored
+  // throttleInference value.
+  const throttledRef = useRef(!(showDebug && !throttleInference));
+  useEffect(() => {
+    throttledRef.current = !(showDebug && !throttleInference);
+  }, [showDebug, throttleInference]);
 
   const [status, setStatus] = useState<DetectionStatus>("loading-model");
   const [backend, setBackend] = useState<DetectionBackend>();
@@ -360,7 +369,8 @@ export const DetectionProvider = ({
   const schedulePacedFrame = useCallback((elapsedSincePostMs: number) => {
     const floorDelay = Math.max(0, MIN_FRAME_INTERVAL_MS - elapsedSincePostMs);
     const restDelay = PACING_REST_RATIO * elapsedSincePostMs;
-    const delay = Math.max(floorDelay, restDelay);
+    // Unthrottled (debug-only escape hatch): re-prime immediately, no floor.
+    const delay = throttledRef.current ? Math.max(floorDelay, restDelay) : 0;
     // Record the decision for the debug overlay's pacing row. The result
     // handler has already written this frame's snapshot, so merge onto it.
     debugRef.current = {
