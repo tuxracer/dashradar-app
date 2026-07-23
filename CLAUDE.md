@@ -174,6 +174,7 @@ pnpm format      # Auto-fix formatting (prettier --write)
 - **Avoid barrel-only files**: Don't create `index.ts` files that only re-export from child modules. Import directly from the specific module instead (e.g., `import { getCameraStream } from '@/lib/camera'` not `from '@/lib'`).
 - **JSDoc**: Skip `@param`/`@returns` tags (TypeScript provides types); use inline comments if needed
 - **Loading indicators**: Delay by ~1 second to avoid flash for fast operations
+- **Settings row descriptions are one sentence**: The secondary description line under a `SettingsScreen` toggle must be a single sentence. These are glanced at from the driver's seat, so keep them to one short sentence and move any detail elsewhere
 - **Intl API**: Prefer `Intl.DateTimeFormat`, `Intl.NumberFormat`, etc. over manual formatting for dates, numbers, and currencies
 - **Explicit conditionals for derived values**: When a value like `dtype` is derived from another value like `backend`, branch on the source value, not the derived one. This makes the logic clearer and avoids confusion:
 
