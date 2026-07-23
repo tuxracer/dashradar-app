@@ -149,8 +149,7 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
                     Center crop
                   </span>
                   <span className="text-sm font-medium text-white/45">
-                    Crops the feed square for the model; off squishes it
-                    instead.
+                    Crops the feed square for the model.
                   </span>
                 </span>
                 <Toggle on={centerCropFrames} />
