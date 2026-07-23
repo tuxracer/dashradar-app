@@ -16,45 +16,40 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 );
 
 describe("SettingsContext", () => {
-  it("defaults showVideo to true when storage is empty", () => {
+  it("defaults showDebug to false when storage is empty", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
-    expect(result.current.showVideo).toBe(true);
+    expect(result.current.showDebug).toBe(false);
   });
 
-  it("toggling flips showVideo and persists it to localStorage", () => {
+  it("toggling flips showDebug and persists it to localStorage", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
-    act(() => result.current.toggleShowVideo());
-    expect(result.current.showVideo).toBe(false);
+    act(() => result.current.toggleShowDebug());
+    expect(result.current.showDebug).toBe(true);
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        showVideo: false,
-        showDebug: false,
-        stabilizeMotion: false,
-        radarDetectorMode: true,
-        radarAudio: true,
-      }),
+      JSON.stringify({ showDebug: true, radarAudio: true }),
     );
   });
 
-  it("restores the persisted value on a fresh mount", () => {
+  it("tolerates a partial stored blob, defaulting missing fields", () => {
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ showVideo: false }),
+      JSON.stringify({ radarAudio: false }),
     );
     const { result } = renderHook(() => useSettings(), { wrapper });
-    expect(result.current.showVideo).toBe(false);
+    expect(result.current.radarAudio).toBe(false);
+    expect(result.current.showDebug).toBe(false);
   });
 
   it("falls back to defaults when stored JSON is corrupt", () => {
     window.localStorage.setItem(STORAGE_KEY, "not json {");
     const { result } = renderHook(() => useSettings(), { wrapper });
-    expect(result.current.showVideo).toBe(true);
+    expect(result.current.showDebug).toBe(false);
   });
 
   it("falls back to defaults when stored shape is wrong", () => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ showVideo: 1 }));
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ showDebug: 1 }));
     const { result } = renderHook(() => useSettings(), { wrapper });
-    expect(result.current.showVideo).toBe(true);
+    expect(result.current.showDebug).toBe(false);
   });
 
   it("throws when useSettings is used without a provider", () => {
@@ -80,69 +75,8 @@ describe("SettingsContext", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     act(() => result.current.openSettings());
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        showVideo: true,
-        showDebug: false,
-        stabilizeMotion: false,
-        radarDetectorMode: true,
-        radarAudio: true,
-      }),
+      JSON.stringify({ showDebug: false, radarAudio: true }),
     );
-  });
-
-  it("defaults showDebug to false when storage is empty", () => {
-    const { result } = renderHook(() => useSettings(), { wrapper });
-    expect(result.current.showDebug).toBe(false);
-  });
-
-  it("toggling flips showDebug and persists it to localStorage", () => {
-    const { result } = renderHook(() => useSettings(), { wrapper });
-    act(() => result.current.toggleShowDebug());
-    expect(result.current.showDebug).toBe(true);
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        showVideo: true,
-        showDebug: true,
-        stabilizeMotion: false,
-        radarDetectorMode: true,
-        radarAudio: true,
-      }),
-    );
-  });
-
-  it("defaults stabilizeMotion to false when storage is empty", () => {
-    const { result } = renderHook(() => useSettings(), { wrapper });
-    expect(result.current.stabilizeMotion).toBe(false);
-  });
-
-  it("toggling flips stabilizeMotion and persists it to localStorage", () => {
-    const { result } = renderHook(() => useSettings(), { wrapper });
-    act(() => result.current.toggleStabilizeMotion());
-    expect(result.current.stabilizeMotion).toBe(true);
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        showVideo: true,
-        showDebug: false,
-        stabilizeMotion: true,
-        radarDetectorMode: true,
-        radarAudio: true,
-      }),
-    );
-  });
-
-  it("keeps showVideo when loading a pre-showDebug stored blob", () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ showVideo: false }),
-    );
-    const { result } = renderHook(() => useSettings(), { wrapper });
-    expect(result.current.showVideo).toBe(false);
-    expect(result.current.showDebug).toBe(false);
-  });
-
-  it("defaults radarDetectorMode to true when storage is empty", () => {
-    const { result } = renderHook(() => useSettings(), { wrapper });
-    expect(result.current.radarDetectorMode).toBe(true);
   });
 
   it("defaults radarAudio to true when storage is empty", () => {
@@ -155,28 +89,7 @@ describe("SettingsContext", () => {
     act(() => result.current.toggleRadarAudio());
     expect(result.current.radarAudio).toBe(false);
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        showVideo: true,
-        showDebug: false,
-        stabilizeMotion: false,
-        radarDetectorMode: true,
-        radarAudio: false,
-      }),
-    );
-  });
-
-  it("toggling flips radarDetectorMode and persists it to localStorage", () => {
-    const { result } = renderHook(() => useSettings(), { wrapper });
-    act(() => result.current.toggleRadarDetectorMode());
-    expect(result.current.radarDetectorMode).toBe(false);
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        showVideo: true,
-        showDebug: false,
-        stabilizeMotion: false,
-        radarDetectorMode: false,
-        radarAudio: true,
-      }),
+      JSON.stringify({ showDebug: false, radarAudio: false }),
     );
   });
 });

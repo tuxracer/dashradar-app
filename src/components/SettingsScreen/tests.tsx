@@ -38,13 +38,7 @@ describe("SettingsScreen", () => {
     await open(user);
     await user.click(screen.getByText("Audio alerts"));
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        showVideo: true,
-        showDebug: false,
-        stabilizeMotion: false,
-        radarDetectorMode: true,
-        radarAudio: false,
-      }),
+      JSON.stringify({ showDebug: false, radarAudio: false }),
     );
   });
 
@@ -54,13 +48,7 @@ describe("SettingsScreen", () => {
     await open(user);
     await user.click(screen.getByText("Debug overlay"));
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        showVideo: true,
-        showDebug: true,
-        stabilizeMotion: false,
-        radarDetectorMode: true,
-        radarAudio: true,
-      }),
+      JSON.stringify({ showDebug: true, radarAudio: true }),
     );
   });
 

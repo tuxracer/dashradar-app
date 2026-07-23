@@ -3,47 +3,22 @@ import { isBoolean, isPlainObject } from "remeda";
 /** User-controlled display options for the HUD. Serialized to localStorage. */
 export type Settings = {
   /**
-   * When false, the camera feed is visually hidden and only the radar
-   * backdrop plus detections are shown. Detection keeps running either way.
-   */
-  showVideo: boolean;
-  /**
    * When true, an on-screen debug overlay renders performance and development
    * diagnostics (timing, detection counts, system info). Off by default.
    */
   showDebug: boolean;
   /**
-   * When true, HUD boxes are gyro-stabilized: a device-orientation offset keeps
-   * a detection aligned with its object as the phone turns between inference
-   * results. Off by default. On iOS this needs motion permission, requested via
-   * the tap-to-start gate once enabled.
-   */
-  stabilizeMotion: boolean;
-  /**
-   * When true, the HUD is replaced by a fullscreen radar-detector meter: a
-   * segmented ladder showing how strongly a police vehicle is detected, with no
-   * bounding boxes and no camera feed. On by default.
-   */
-  radarDetectorMode: boolean;
-  /**
    * When true, radar detector mode beeps as a police vehicle is detected:
    * the beeps pulse faster (and higher-pitched) the stronger the signal, and
-   * stop entirely when nothing is detected. On by default; only applies in
-   * radar detector mode.
+   * stop entirely when nothing is detected. On by default.
    */
   radarAudio: boolean;
 };
 
 /** Value exposed by the settings context via useSettings(). */
 export type SettingsContextValue = {
-  showVideo: boolean;
-  toggleShowVideo: () => void;
   showDebug: boolean;
   toggleShowDebug: () => void;
-  stabilizeMotion: boolean;
-  toggleStabilizeMotion: () => void;
-  radarDetectorMode: boolean;
-  toggleRadarDetectorMode: () => void;
   radarAudio: boolean;
   toggleRadarAudio: () => void;
   /** Whether the full-screen settings panel is open. Ephemeral, not persisted. */
@@ -66,11 +41,7 @@ export const isPersistedSettings = (
 ): value is Partial<Settings> => {
   return (
     isPlainObject(value) &&
-    (value.showVideo === undefined || isBoolean(value.showVideo)) &&
     (value.showDebug === undefined || isBoolean(value.showDebug)) &&
-    (value.stabilizeMotion === undefined || isBoolean(value.stabilizeMotion)) &&
-    (value.radarDetectorMode === undefined ||
-      isBoolean(value.radarDetectorMode)) &&
     (value.radarAudio === undefined || isBoolean(value.radarAudio))
   );
 };

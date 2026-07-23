@@ -57,45 +57,20 @@ type SettingsProviderProps = {
 
 /** Provider component for settings state management and persistence. */
 export const SettingsProvider = ({ children }: SettingsProviderProps) => {
-  const [showVideo, setShowVideo] = useState(() => loadSettings().showVideo);
   const [showDebug, setShowDebug] = useState(() => loadSettings().showDebug);
-  const [stabilizeMotion, setStabilizeMotion] = useState(
-    () => loadSettings().stabilizeMotion,
-  );
-  const [radarDetectorMode, setRadarDetectorMode] = useState(
-    () => loadSettings().radarDetectorMode,
-  );
   const [radarAudio, setRadarAudio] = useState(() => loadSettings().radarAudio);
 
   useEffect(() => {
-    const next: Settings = {
-      showVideo,
-      showDebug,
-      stabilizeMotion,
-      radarDetectorMode,
-      radarAudio,
-    };
+    const next: Settings = { showDebug, radarAudio };
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     } catch {
       // Storage unavailable (private mode / quota); keep the in-memory value.
     }
-  }, [showVideo, showDebug, stabilizeMotion, radarDetectorMode, radarAudio]);
-
-  const toggleShowVideo = useCallback(() => {
-    setShowVideo((prev) => !prev);
-  }, []);
+  }, [showDebug, radarAudio]);
 
   const toggleShowDebug = useCallback(() => {
     setShowDebug((prev) => !prev);
-  }, []);
-
-  const toggleStabilizeMotion = useCallback(() => {
-    setStabilizeMotion((prev) => !prev);
-  }, []);
-
-  const toggleRadarDetectorMode = useCallback(() => {
-    setRadarDetectorMode((prev) => !prev);
   }, []);
 
   const toggleRadarAudio = useCallback(() => {
@@ -114,14 +89,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
 
   const value = useMemo(
     () => ({
-      showVideo,
-      toggleShowVideo,
       showDebug,
       toggleShowDebug,
-      stabilizeMotion,
-      toggleStabilizeMotion,
-      radarDetectorMode,
-      toggleRadarDetectorMode,
       radarAudio,
       toggleRadarAudio,
       settingsOpen,
@@ -129,14 +98,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       closeSettings,
     }),
     [
-      showVideo,
-      toggleShowVideo,
       showDebug,
       toggleShowDebug,
-      stabilizeMotion,
-      toggleStabilizeMotion,
-      radarDetectorMode,
-      toggleRadarDetectorMode,
       radarAudio,
       toggleRadarAudio,
       settingsOpen,
