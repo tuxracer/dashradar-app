@@ -285,12 +285,14 @@ export const createIntroScene = (
     crossGroup.position.z =
       (crossGroup.position.z + dt * GRID_SCROLL_SPEED) % GRID_SPACING;
 
-    // Cars recycle well before they reach the camera plane: a glow sprite
-    // passing right by the lens balloons across the frame otherwise, and a
-    // receding car respawning too near does the same in reverse.
+    // Oncoming cars run until they are fully behind the camera plane, so
+    // their streaks slide off the bottom edge of the frame instead of
+    // vanishing mid-screen; they respawn at the far end of the grid.
+    // Receding cars respawn at a moderate depth (never right at the lens,
+    // where a glow sprite would balloon across the frame).
     for (const car of cars) {
       car.group.position.z += dt * car.speed;
-      if (car.group.position.z > -7) car.group.position.z = -GRID_DEPTH;
+      if (car.group.position.z > 6) car.group.position.z = -GRID_DEPTH;
       if (car.group.position.z < -GRID_DEPTH) car.group.position.z = -12;
     }
 
