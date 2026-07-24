@@ -76,6 +76,14 @@ export type WorkerRequest =
        * models trained on stretched data; debug-only comparison mode).
        */
       centerCrop?: boolean;
+      /**
+       * Minimum detection confidence for this frame's decode. When omitted the
+       * worker uses the CONFIDENCE_THRESHOLD default (the production floor).
+       * Set from the developer confidence-threshold setting so a lowered value
+       * reaches decodeDetections, which filters before anything leaves the
+       * worker.
+       */
+      confidenceThreshold?: number;
     };
 
 export const isWorkerRequest = (value: unknown): value is WorkerRequest => {
@@ -90,7 +98,9 @@ export const isWorkerRequest = (value: unknown): value is WorkerRequest => {
     typeof ImageBitmap !== "undefined" &&
     value.frame instanceof ImageBitmap &&
     (value.includeFrame === undefined || isBoolean(value.includeFrame)) &&
-    (value.centerCrop === undefined || isBoolean(value.centerCrop))
+    (value.centerCrop === undefined || isBoolean(value.centerCrop)) &&
+    (value.confidenceThreshold === undefined ||
+      isNumber(value.confidenceThreshold))
   );
 };
 

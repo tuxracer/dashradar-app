@@ -472,6 +472,7 @@ const detect = async (
   frame: ImageBitmap,
   includeFrame: boolean,
   centerCrop: boolean,
+  confidenceThreshold: number,
 ) => {
   if (!model) {
     frame.close();
@@ -534,7 +535,7 @@ const detect = async (
     const inferenceMs = performance.now() - inferenceStart;
 
     const decodeStart = performance.now();
-    const decoded = decodeDetections(dets, labels, CONFIDENCE_THRESHOLD);
+    const decoded = decodeDetections(dets, labels, confidenceThreshold);
     // Under center crop the model's boxes describe the cropped square; remap
     // them to full-frame coordinates so every consumer downstream (cropRect
     // below, direction and HUD shaping in the context) keeps one space.
@@ -632,5 +633,6 @@ self.onmessage = (event: MessageEvent<unknown>) => {
     request.frame,
     request.includeFrame ?? false,
     request.centerCrop ?? true,
+    request.confidenceThreshold ?? CONFIDENCE_THRESHOLD,
   );
 };

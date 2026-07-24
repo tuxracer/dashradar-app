@@ -61,6 +61,22 @@ describe("isWorkerRequest", () => {
       isWorkerRequest({ type: "detect", frame, includeFrame: "yes" }),
     ).toBe(false);
   });
+
+  it("accepts a detect message carrying a numeric confidenceThreshold", () => {
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const frame = new FakeImageBitmap();
+    expect(
+      isWorkerRequest({ type: "detect", frame, confidenceThreshold: 0.3 }),
+    ).toBe(true);
+  });
+
+  it("rejects a non-number confidenceThreshold", () => {
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const frame = new FakeImageBitmap();
+    expect(
+      isWorkerRequest({ type: "detect", frame, confidenceThreshold: "0.3" }),
+    ).toBe(false);
+  });
 });
 
 describe("isWorkerResponse", () => {
