@@ -32,22 +32,6 @@ export const markIntroSeen = () => {
   }
 };
 
-type IntroPointProps = {
-  label: string;
-  text: string;
-};
-
-const IntroPoint = ({ label, text }: IntroPointProps) => (
-  <div className="flex items-baseline gap-3 text-left">
-    <span className="w-24 shrink-0 text-xs font-semibold tracking-[0.18em] text-hud-amber">
-      {label}
-    </span>
-    <span className="text-sm font-medium leading-snug text-white/70">
-      {text}
-    </span>
-  </div>
-);
-
 type IntroScreenProps = {
   /** Invoked when the start button is tapped; dismisses the intro. */
   onStart: () => void;
@@ -84,26 +68,12 @@ export const IntroScreen = ({ onStart }: IntroScreenProps) => {
             {WORDMARK}
           </span>
           <h1 className="text-3xl font-bold leading-[1.05] tracking-wide text-white/90">
-            POLICE DETECTION ON YOUR DASH
+            <span>POLICE DETECTION</span>{" "}
+            <span className="portrait:block">ON YOUR DASH</span>
           </h1>
           <p className="text-base font-medium leading-snug text-white/70">
-            Mount it on the dash, camera facing the road. The signal meter
-            climbs when a police vehicle comes into view.
+            On-device computer vision. Nothing leaves your phone.
           </p>
-          <div className="flex flex-col gap-2">
-            <IntroPoint
-              label="ON-DEVICE"
-              text="Runs entirely on your phone. Nothing leaves the device."
-            />
-            <IntroPoint
-              label="OFFLINE"
-              text="Cached after the first load. Works with no signal."
-            />
-            <IntroPoint
-              label="CAMERA"
-              text="Access is requested next. The feed stays on your phone."
-            />
-          </div>
           {desktop ? (
             <div className="mt-1 flex flex-col items-center gap-3 landscape:items-start">
               <p className="text-sm font-semibold tracking-[0.06em] text-white/80">
