@@ -20,7 +20,9 @@ const prefersReducedMotion = (): boolean =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /**
- * Full-screen three.js wireframe night-drive scene behind the intro copy.
+ * Full-screen three.js wireframe night-drive scene behind the intro copy,
+ * including the center legibility scrim, which must paint above the canvas
+ * but below the lock-on bracket (DOM order inside this component).
  * Owns the rAF loop, pauses while the page is hidden, renders one static
  * frame under reduced motion, and disposes GPU resources on unmount. When
  * WebGL is unavailable it renders nothing so the static RadarBackdrop
@@ -108,6 +110,13 @@ export const IntroScene = ({
       className="pointer-events-none absolute inset-0 overflow-hidden"
     >
       <canvas ref={canvasRef} className="absolute inset-0 size-full" />
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse 80% 52% at 50% 52%, rgba(5,6,10,0.85) 0%, rgba(5,6,10,0.4) 58%, transparent 80%)",
+        }}
+      />
       <div
         ref={bracketRef}
         className="absolute left-0 top-0 opacity-0 transition-opacity duration-150 will-change-transform"

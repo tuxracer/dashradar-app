@@ -21,7 +21,7 @@ import {
   BLIP_COUNT,
   CONTACT_APPEAR_MS,
   CONTACT_EXIT_MS,
-  CONTACT_LANE_X,
+  CONTACT_LANE_X_PER_ASPECT,
   CONTACT_PASS_Z,
   CONTACT_SPAWN_Z,
   DPR_CAP,
@@ -35,12 +35,14 @@ import {
   SCENE_BACKGROUND,
 } from "./consts";
 
-/** Where the police contact is (if anywhere) at a given time within the loop. */
+/**
+ * Where the police contact is (if anywhere) at a given time within the loop.
+ * Depth only; the lateral lane is aspect-dependent and applied by the scene.
+ */
 export type ContactState =
   | { present: false }
   | {
       present: true;
-      x: number;
       z: number;
       lockOn: boolean;
       /** ms since the lock window opened this pass; drives the snap animation. */
@@ -61,7 +63,6 @@ export const contactStateAt = (loopMs: number): ContactState => {
     CONTACT_APPEAR_MS + lockProgress * (CONTACT_EXIT_MS - CONTACT_APPEAR_MS);
   return {
     present: true,
-    x: CONTACT_LANE_X,
     z,
     lockOn,
     sinceLockMs: lockOn ? t - lockOpensAtMs : 0,
@@ -167,8 +168,11 @@ export const createIntroScene = (
   scene.fog = new FogExp2(SCENE_BACKGROUND, FOG_DENSITY);
 
   const camera = new PerspectiveCamera(58, width / height, 0.1, 300);
+  // The look-at point sits well below the ground plane so the camera pitches
+  // down and the horizon rises to the upper third of a portrait frame,
+  // keeping the grid (and the detection beat) out of the centered copy.
   camera.position.set(0, 1.5, 4);
-  camera.lookAt(0, 0.6, -40);
+  camera.lookAt(0, -8.2, -40);
 
   const gridMaterial = new LineBasicMaterial({
     color: AMBER,
@@ -226,11 +230,12 @@ export const createIntroScene = (
     contactGroup.visible = contact.present;
     let projection: ContactProjection = null;
     if (contact.present) {
-      contactGroup.position.set(contact.x, 0.1, contact.z);
+      const laneX = CONTACT_LANE_X_PER_ASPECT * camera.aspect;
+      contactGroup.position.set(laneX, 0.1, contact.z);
       const strobe = Math.floor(nowMs / 130) % 2 === 0;
       lightRed.material.opacity = strobe ? 1 : 0.15;
       lightBlue.material.opacity = strobe ? 0.15 : 1;
-      projected.set(contact.x, 0.55, contact.z).project(camera);
+      projected.set(laneX, 0.55, contact.z).project(camera);
       projection = {
         x: (projected.x * 0.5 + 0.5) * viewWidth,
         y: (-projected.y * 0.5 + 0.5) * viewHeight,

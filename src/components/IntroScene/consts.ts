@@ -13,14 +13,22 @@ export const CONTACT_SPAWN_Z = -70;
 /** Contact depth as it passes out of frame. */
 export const CONTACT_PASS_Z = -3;
 
-/** Lane offset keeping the contact clear of the centered copy. */
-export const CONTACT_LANE_X = 2.6;
+/**
+ * Contact lane offset per unit of camera aspect ratio. Scaling the lane by
+ * aspect pins the bracket to the same upper-right screen region in portrait
+ * and landscape, clear of the centered copy column.
+ */
+export const CONTACT_LANE_X_PER_ASPECT = 15.5;
 
 /** Far edge of the depth window in which the lock-on bracket engages. */
 export const LOCK_FAR_Z = -46;
 
-/** Near edge of the depth window in which the lock-on bracket engages. */
-export const LOCK_NEAR_Z = -6;
+/**
+ * Near edge of the lock window. The lock releases here, while the bracket is
+ * still riding the sky band above the copy and before the wide lane carries
+ * the contact off the right edge of the frame.
+ */
+export const LOCK_NEAR_Z = -30;
 
 /** Scene clear color, matching the app's near-black surface. */
 export const SCENE_BACKGROUND = 0x05060a;

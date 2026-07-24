@@ -1,3 +1,4 @@
+import { IntroScene } from "@/components/IntroScene";
 import { RadarBackdrop } from "@/components/RadarBackdrop";
 import { ShareQr } from "@/components/ShareCard";
 import { WORDMARK } from "@/lib/branding";
@@ -30,30 +31,6 @@ export const markIntroSeen = () => {
     // Storage unavailable; the intro will show again next visit.
   }
 };
-
-/**
- * Animated radar scope: concentric rings, a crosshair, two pulsing blips, and
- * a slow conic-gradient sweep. Purely decorative; the sweep stops under
- * prefers-reduced-motion.
- */
-const RadarScope = () => (
-  <div className="relative aspect-square w-40 shrink-0 landscape:w-56">
-    <div className="absolute inset-0 rounded-full border border-hud-amber/30" />
-    <div className="absolute inset-[18%] rounded-full border border-hud-amber/20" />
-    <div className="absolute inset-[36%] rounded-full border border-hud-amber/15" />
-    <div className="absolute inset-x-0 top-1/2 h-px bg-hud-amber/15" />
-    <div className="absolute inset-y-0 left-1/2 w-px bg-hud-amber/15" />
-    <div
-      className="absolute inset-0 animate-spin rounded-full [animation-duration:4s] motion-reduce:animate-none"
-      style={{
-        background:
-          "conic-gradient(from 0deg, rgba(255,179,64,0.4) 0deg, rgba(255,179,64,0.05) 55deg, transparent 60deg)",
-      }}
-    />
-    <div className="absolute left-[30%] top-[24%] size-2 animate-pulse rounded-full bg-hud-amber shadow-[0_0_8px_#ffb340]" />
-    <div className="absolute left-[62%] top-[58%] size-1.5 animate-pulse rounded-full bg-hud-amber/80 shadow-[0_0_6px_#ffb340] [animation-delay:0.8s]" />
-  </div>
-);
 
 type IntroPointProps = {
   label: string;
@@ -99,10 +76,10 @@ export const IntroScreen = ({ onStart }: IntroScreenProps) => {
 
   return (
     <main className="fixed inset-0 overflow-y-auto bg-surface">
-      <div className="relative flex min-h-full flex-col items-center justify-center gap-6 px-8 py-6 landscape:flex-row landscape:gap-14">
+      <div className="relative flex min-h-full flex-col items-center justify-center px-8 py-6 portrait:justify-start portrait:pt-[36vh]">
         <RadarBackdrop />
-        <RadarScope />
-        <div className="flex max-w-md flex-col items-center gap-4 text-center landscape:items-start landscape:text-left">
+        <IntroScene />
+        <div className="relative flex max-w-md flex-col items-center gap-4 text-center landscape:max-w-lg">
           <span className="text-[13px] font-semibold tracking-[0.34em] text-white/85">
             {WORDMARK}
           </span>
