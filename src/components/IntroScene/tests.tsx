@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { BEAT_LOOP_MS, CONTACT_APPEAR_MS, CONTACT_EXIT_MS } from "./consts";
-import { contactStateAt } from "./scene";
+import { contactStateAt, createIntroScene } from "./scene";
+
+describe("createIntroScene", () => {
+  it("returns null when a WebGL context cannot be created (jsdom)", () => {
+    const canvas = document.createElement("canvas");
+    expect(createIntroScene(canvas, 400, 800)).toBeNull();
+  });
+});
 
 describe("contactStateAt", () => {
   it("has no contact during the ambient phase", () => {
