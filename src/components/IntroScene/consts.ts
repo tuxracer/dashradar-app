@@ -19,6 +19,12 @@ export const AMBER_RGB = "255,179,64";
 /** Cool white-blue of the police contact's body glow. */
 export const CONTACT_BODY_RGB = "180,190,220";
 
+/** Warm white of the oncoming headlights and their streak trails. */
+export const HEADLIGHT_RGB = "255,235,200";
+
+/** Red of the receding taillights. */
+export const TAILLIGHT_RGB = "255,62,48";
+
 /** Red half of the contact's alternating light bar. */
 export const LIGHT_BAR_RED_RGB = "255,40,40";
 
@@ -70,8 +76,8 @@ export const ONCOMING_CAR_COUNT = 3;
 /** Oncoming blip speed toward the camera, road units per second. */
 export const ONCOMING_SPEED = 16;
 
-/** Depth of the motion trail dragged behind each oncoming blip. */
-export const ONCOMING_TRAIL_Z = 2.2;
+/** Depth of the motion trail dragged behind each traffic light. */
+export const TRAFFIC_TRAIL_Z = 2.2;
 
 /** Ambient bokeh glows drifting in the sky band. */
 export const BOKEH_COUNT = 16;
@@ -113,10 +119,14 @@ export type SceneTuning = {
   lockNearZ: number;
   /** Lock-snap ripple max radius as a fraction of the frame width. */
   rippleWidthFrac: number;
-  /** Alternating lateral lanes for receding traffic blips. */
+  /** Alternating lateral lanes for receding taillight pairs. */
   recedingLanes: readonly [number, number];
-  /** Alternating lateral lanes for oncoming traffic blips. */
+  /** Alternating lateral lanes for oncoming headlight pairs. */
   oncomingLanes: readonly [number, number];
+  /** Half the distance between a receding car's two taillights. */
+  recedingPairOffset: number;
+  /** Half the distance between an oncoming car's two headlights. */
+  oncomingPairOffset: number;
 };
 
 /** Portrait tuning: shallower beat and tighter lanes for a narrow frame. */
@@ -129,8 +139,10 @@ export const PORTRAIT_TUNING: SceneTuning = {
   lockFarZ: 24,
   lockNearZ: 4.2,
   rippleWidthFrac: 0.45,
-  recedingLanes: [0.35, 1.0],
+  recedingLanes: [0.95, 1.7],
   oncomingLanes: [-1.3, -1.9],
+  recedingPairOffset: 0.34,
+  oncomingPairOffset: 0.3,
 };
 
 /** Landscape tuning: deeper beat and wider lanes for a wide frame. */
@@ -143,6 +155,8 @@ export const LANDSCAPE_TUNING: SceneTuning = {
   lockFarZ: 26,
   lockNearZ: 4.5,
   rippleWidthFrac: 0.3,
-  recedingLanes: [0.4, 1.1],
+  recedingLanes: [1.15, 2.0],
   oncomingLanes: [-1.5, -2.2],
+  recedingPairOffset: 0.4,
+  oncomingPairOffset: 0.35,
 };

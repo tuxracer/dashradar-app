@@ -1,5 +1,7 @@
 import {
   AMBER_RGB,
+  HEADLIGHT_RGB,
+  TAILLIGHT_RGB,
   BEAT_LOOP_MS,
   BOKEH_COUNT,
   BOKEH_SKY_FRAC,
@@ -22,7 +24,6 @@ import {
   LONGITUDINAL_SPACING,
   ONCOMING_CAR_COUNT,
   ONCOMING_SPEED,
-  ONCOMING_TRAIL_Z,
   PORTRAIT_TUNING,
   RECEDING_CAR_COUNT,
   RECEDING_RESET_Z,
@@ -30,6 +31,7 @@ import {
   RIPPLE_MS,
   STROBE_INTERVAL_MS,
   TRAFFIC_FAR_Z,
+  TRAFFIC_TRAIL_Z,
 } from "./consts";
 import type { SceneTuning } from "./consts";
 
@@ -96,9 +98,10 @@ export type IntroSceneHandle = {
 
 /**
  * Builds the Canvas 2D wireframe night-drive scene: an amber grid highway in
- * one-point perspective, traffic as amber glow blips, and the looping
- * detection beat with a red/blue light-bar contact. Returns null when a 2D
- * context is unavailable so the caller can fall back to the static backdrop.
+ * one-point perspective, headlight and taillight pairs streaking through it,
+ * and the looping detection beat with a red/blue light-bar contact. Returns
+ * null when a 2D context is unavailable so the caller can fall back to the
+ * static backdrop.
  */
 export const createIntroScene = (
   canvas: HTMLCanvasElement,
@@ -245,42 +248,66 @@ export const createIntroScene = (
       ctx.stroke();
     }
 
-    // Receding traffic: amber blips shrinking toward the horizon.
+    // Receding traffic: red taillight pairs shrinking toward the horizon,
+    // each dragging a motion trail back toward the camera.
     for (const car of receding) {
       car.z += dt * RECEDING_SPEED;
       if (car.z > TRAFFIC_FAR_Z) car.z = RECEDING_RESET_Z;
       const fade = Math.max(0.12, 1 - car.z / TRAFFIC_FAR_Z);
-      const p = project(tuning.recedingLanes[car.laneIndex], car.z, tuning);
-      glow(
-        p.x,
-        p.y - p.s * 0.28,
-        Math.max(2.5, p.s * 0.16),
-        AMBER_RGB,
-        0.75 * fade,
-      );
+      const lane = tuning.recedingLanes[car.laneIndex];
+      for (const side of [
+        -tuning.recedingPairOffset,
+        tuning.recedingPairOffset,
+      ]) {
+        const p = project(lane + side, car.z, tuning);
+        const trail = project(
+          lane + side,
+          Math.max(tuning.nearZ, car.z - TRAFFIC_TRAIL_Z),
+          tuning,
+        );
+        ctx.strokeStyle = `rgba(${TAILLIGHT_RGB},${0.35 * fade})`;
+        ctx.lineWidth = Math.max(1, p.s * 0.05);
+        ctx.beginPath();
+        ctx.moveTo(trail.x, trail.y - trail.s * 0.22);
+        ctx.lineTo(p.x, p.y - p.s * 0.22);
+        ctx.stroke();
+        glow(
+          p.x,
+          p.y - p.s * 0.22,
+          Math.max(2, p.s * 0.11),
+          TAILLIGHT_RGB,
+          0.8 * fade,
+        );
+      }
     }
 
-    // Oncoming traffic: amber blips streaking toward the camera with trails.
+    // Oncoming traffic: warm-white headlight pairs streaking toward the
+    // camera, each dragging a motion trail.
     for (const car of oncoming) {
       car.z -= dt * ONCOMING_SPEED;
       if (car.z < tuning.nearZ) car.z = TRAFFIC_FAR_Z;
       const fade = Math.max(0.1, 1 - car.z / TRAFFIC_FAR_Z);
       const lane = tuning.oncomingLanes[car.laneIndex];
-      const p = project(lane, car.z, tuning);
-      const trail = project(lane, car.z + ONCOMING_TRAIL_Z, tuning);
-      ctx.strokeStyle = `rgba(${AMBER_RGB},${0.35 * fade})`;
-      ctx.lineWidth = Math.max(1, p.s * 0.05);
-      ctx.beginPath();
-      ctx.moveTo(trail.x, trail.y - trail.s * 0.22);
-      ctx.lineTo(p.x, p.y - p.s * 0.22);
-      ctx.stroke();
-      glow(
-        p.x,
-        p.y - p.s * 0.22,
-        Math.max(2.5, p.s * 0.13),
-        AMBER_RGB,
-        0.85 * fade,
-      );
+      for (const side of [
+        -tuning.oncomingPairOffset,
+        tuning.oncomingPairOffset,
+      ]) {
+        const p = project(lane + side, car.z, tuning);
+        const trail = project(lane + side, car.z + TRAFFIC_TRAIL_Z, tuning);
+        ctx.strokeStyle = `rgba(${HEADLIGHT_RGB},${0.35 * fade})`;
+        ctx.lineWidth = Math.max(1, p.s * 0.05);
+        ctx.beginPath();
+        ctx.moveTo(trail.x, trail.y - trail.s * 0.22);
+        ctx.lineTo(p.x, p.y - p.s * 0.22);
+        ctx.stroke();
+        glow(
+          p.x,
+          p.y - p.s * 0.22,
+          Math.max(2.5, p.s * 0.13),
+          HEADLIGHT_RGB,
+          0.85 * fade,
+        );
+      }
     }
 
     // Detection beat: the contact sweeps up the right shoulder.

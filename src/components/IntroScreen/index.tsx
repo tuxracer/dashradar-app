@@ -75,7 +75,7 @@ export const IntroScreen = ({ onStart }: IntroScreenProps) => {
             On-device computer vision. Nothing leaves your phone.
           </p>
           {desktop ? (
-            <div className="mt-1 flex flex-col items-center gap-3 landscape:items-start">
+            <div className="mt-1 flex flex-col items-center gap-3">
               <p className="text-sm font-semibold tracking-[0.06em] text-white/80">
                 Scan with your phone to continue on mobile.
               </p>
