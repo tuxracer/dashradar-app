@@ -102,8 +102,13 @@ export const DetectionProvider = ({
   createWorker = createDetectionWorker,
   devVideoMode = DEV_VIDEO_URL !== null,
 }: DetectionProviderProps) => {
-  const { showDebug, throttleInference, centerCropFrames, settingsOpen } =
-    useSettings();
+  const {
+    showDebug,
+    throttleInference,
+    centerCropFrames,
+    confidenceThreshold,
+    settingsOpen,
+  } = useSettings();
   // Mirrors showDebug for sendFrame, which is a stable callback: the pump
   // reads the current value per capture instead of re-subscribing on toggles.
   const includeFrameRef = useRef(showDebug);
@@ -128,6 +133,14 @@ export const DetectionProvider = ({
   useEffect(() => {
     centerCropRef.current = centerCropFrames;
   }, [centerCropFrames]);
+  // Mirrors the effective minimum confidence for sendFrame and the detections
+  // handler, both of which read it per result rather than re-subscribing.
+  // useSettings() already gates it: it can only differ from the 0.5 floor while
+  // developerOptions is on, so a normal drive always filters at 0.5.
+  const confidenceThresholdRef = useRef(confidenceThreshold);
+  useEffect(() => {
+    confidenceThresholdRef.current = confidenceThreshold;
+  }, [confidenceThreshold]);
 
   const [status, setStatus] = useState<DetectionStatus>("loading-model");
   const [backend, setBackend] = useState<DetectionBackend>();
@@ -356,6 +369,7 @@ export const DetectionProvider = ({
           frame,
           includeFrame: includeFrameRef.current,
           centerCrop: centerCropRef.current,
+          confidenceThreshold: confidenceThresholdRef.current,
         },
         [frame],
       );
@@ -559,16 +573,20 @@ export const DetectionProvider = ({
         case "detections": {
           inFlightRef.current = Math.max(0, inFlightRef.current - 1);
           framesTotalRef.current += 1;
-          const roadDetections = toRoadDetections(message.detections);
+          const roadDetections = toRoadDetections(
+            message.detections,
+            confidenceThresholdRef.current,
+          );
           const tracked = trackerRef.current?.update(roadDetections) ?? [];
           setHud(buildHudModel(tracked));
           // Pair the crop with its detection. Validation mirrors the road
           // filter; a crop whose detection is dropped is discarded so the
           // card never shows evidence the HUD pipeline would not count.
           if (message.crop) {
-            const [cropDetection] = toRoadDetections([
-              message.detections[message.crop.detectionIndex],
-            ]);
+            const [cropDetection] = toRoadDetections(
+              [message.detections[message.crop.detectionIndex]],
+              confidenceThresholdRef.current,
+            );
             if (cropDetection) {
               replaceContact({
                 image: message.crop.image,
