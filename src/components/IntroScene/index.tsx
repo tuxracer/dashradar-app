@@ -4,6 +4,7 @@ import { INTRO_FRAGMENT_SHADER, INTRO_VERTEX_SHADER } from "./shaders";
 import type { IntroSceneRenderer } from "./types";
 
 export * from "./consts";
+export * from "./shaders";
 export * from "./types";
 
 /**
@@ -109,6 +110,9 @@ export const createIntroSceneRenderer = (
   return { render, resize, dispose };
 };
 
+/**
+ * Props for the IntroScene component.
+ */
 type IntroSceneProps = {
   /** Renderer factory seam for tests; defaults to the real WebGL factory. */
   createRenderer?: typeof createIntroSceneRenderer;
