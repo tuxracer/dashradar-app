@@ -1,85 +1,78 @@
 import {
-  AdditiveBlending,
-  BoxGeometry,
-  BufferGeometry,
-  CanvasTexture,
-  Color,
-  Float32BufferAttribute,
-  FogExp2,
-  Group,
-  LineBasicMaterial,
-  LineSegments,
-  Mesh,
-  MeshBasicMaterial,
-  PerspectiveCamera,
-  Scene,
-  Sprite,
-  SpriteMaterial,
-  Vector2,
-  Vector3,
-  WebGLRenderer,
-} from "three";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
-import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
-import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
-import {
-  AMBER,
+  AMBER_RGB,
   BEAT_LOOP_MS,
-  BLOOM_RADIUS,
-  BLOOM_STRENGTH,
-  BLOOM_THRESHOLD,
+  BOKEH_COUNT,
+  BOKEH_SKY_FRAC,
   CONTACT_APPEAR_MS,
+  CONTACT_BODY_RGB,
   CONTACT_EXIT_MS,
-  CONTACT_LANE_NDC_LANDSCAPE,
-  CONTACT_LANE_NDC_PORTRAIT,
-  CONTACT_LANE_REF_DEPTH,
-  CONTACT_PASS_Z,
-  CONTACT_SPAWN_Z,
+  CROSS_LINE_COUNT,
+  CROSS_SPACING,
   DPR_CAP,
-  FOG_DENSITY,
-  GRID_DEPTH,
+  FOCAL_SCALE,
+  FOCAL_WIDTH_FACTOR,
+  GRID_ALPHA,
+  GRID_FAR_Z,
   GRID_HALF_WIDTH,
   GRID_SCROLL_SPEED,
-  GRID_SPACING,
-  HEADLIGHT_COLOR,
-  HEADLIGHT_TRAIL_LENGTH,
-  LOCK_FAR_Z,
-  LOCK_NEAR_Z,
+  GROUND_DROP_FACTOR,
+  LANDSCAPE_TUNING,
+  LIGHT_BAR_BLUE_RGB,
+  LIGHT_BAR_RED_RGB,
+  LONGITUDINAL_SPACING,
   ONCOMING_CAR_COUNT,
+  ONCOMING_SPEED,
+  ONCOMING_TRAIL_Z,
+  PORTRAIT_TUNING,
   RECEDING_CAR_COUNT,
-  SCENE_BACKGROUND,
-  TAILLIGHT_COLOR,
+  RECEDING_RESET_Z,
+  RECEDING_SPEED,
+  RIPPLE_MS,
+  STROBE_INTERVAL_MS,
+  TRAFFIC_FAR_Z,
 } from "./consts";
+import type { SceneTuning } from "./consts";
+
+const TAU = Math.PI * 2;
 
 /**
  * Where the police contact is (if anywhere) at a given time within the loop.
- * Depth only; the lateral lane is aspect-dependent and applied by the scene.
+ * z is the distance ahead of the camera in road units (smaller is closer).
  */
 export type ContactState =
   | { present: false }
   | {
       present: true;
       z: number;
+      /** 0 at spawn, 1 as it passes out of frame; drives the fade-in. */
+      progress: number;
       lockOn: boolean;
       /** ms since the lock window opened this pass; drives the snap animation. */
       sinceLockMs: number;
     };
 
 /** Pure timeline: contact position and lock status for a loop-relative time. */
-export const contactStateAt = (loopMs: number): ContactState => {
+export const contactStateAt = (
+  loopMs: number,
+  tuning: SceneTuning,
+): ContactState => {
   const t = ((loopMs % BEAT_LOOP_MS) + BEAT_LOOP_MS) % BEAT_LOOP_MS;
   if (t < CONTACT_APPEAR_MS || t > CONTACT_EXIT_MS) return { present: false };
   const progress =
     (t - CONTACT_APPEAR_MS) / (CONTACT_EXIT_MS - CONTACT_APPEAR_MS);
-  const z = CONTACT_SPAWN_Z + progress * (CONTACT_PASS_Z - CONTACT_SPAWN_Z);
-  const lockOn = z >= LOCK_FAR_Z && z <= LOCK_NEAR_Z;
+  const z =
+    tuning.contactSpawnZ +
+    progress * (tuning.contactPassZ - tuning.contactSpawnZ);
+  const lockOn = z < tuning.lockFarZ && z > tuning.lockNearZ;
   const lockProgress =
-    (LOCK_FAR_Z - CONTACT_SPAWN_Z) / (CONTACT_PASS_Z - CONTACT_SPAWN_Z);
+    (tuning.contactSpawnZ - tuning.lockFarZ) /
+    (tuning.contactSpawnZ - tuning.contactPassZ);
   const lockOpensAtMs =
     CONTACT_APPEAR_MS + lockProgress * (CONTACT_EXIT_MS - CONTACT_APPEAR_MS);
   return {
     present: true,
     z,
+    progress,
     lockOn,
     sinceLockMs: lockOn ? t - lockOpensAtMs : 0,
   };
@@ -101,258 +94,262 @@ export type IntroSceneHandle = {
   dispose: () => void;
 };
 
-/** Soft radial glow texture shared by every blip sprite. */
-const createGlowTexture = (): CanvasTexture => {
-  const size = 64;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  if (ctx) {
-    const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    g.addColorStop(0, "rgba(255,255,255,1)");
-    g.addColorStop(0.35, "rgba(255,255,255,0.4)");
-    g.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, size, size);
-  }
-  return new CanvasTexture(canvas);
-};
-
-/** Line segments for the fixed lines converging on the vanishing point. */
-const createLongitudinalLines = (material: LineBasicMaterial): LineSegments => {
-  const positions: number[] = [];
-  for (let x = -GRID_HALF_WIDTH; x <= GRID_HALF_WIDTH; x += 1.5) {
-    positions.push(x, 0, 2, x, 0, -GRID_DEPTH);
-  }
-  const geometry = new BufferGeometry();
-  geometry.setAttribute("position", new Float32BufferAttribute(positions, 3));
-  return new LineSegments(geometry, material);
-};
-
-/** Cross lines whose parent group's z-shift animates the forward scroll. */
-const createCrossLines = (material: LineBasicMaterial): LineSegments => {
-  const positions: number[] = [];
-  for (let z = 0; z >= -GRID_DEPTH; z -= GRID_SPACING) {
-    positions.push(-GRID_HALF_WIDTH, 0, z, GRID_HALF_WIDTH, 0, z);
-  }
-  const geometry = new BufferGeometry();
-  geometry.setAttribute("position", new Float32BufferAttribute(positions, 3));
-  return new LineSegments(geometry, material);
-};
-
-/** A pair of glow lights (plus trails when oncoming) moving as one vehicle. */
-type TrafficCar = { group: Group; speed: number };
-
-const createGlowSprite = (
-  texture: CanvasTexture,
-  color: number,
-  scale: number,
-): Sprite => {
-  const sprite = new Sprite(
-    new SpriteMaterial({
-      map: texture,
-      color,
-      blending: AdditiveBlending,
-      transparent: true,
-      depthWrite: false,
-    }),
-  );
-  sprite.scale.setScalar(scale);
-  return sprite;
-};
-
 /**
- * Builds the wireframe night-drive scene. Returns null when WebGL is
- * unavailable so the caller can fall back to the static backdrop.
+ * Builds the Canvas 2D wireframe night-drive scene: an amber grid highway in
+ * one-point perspective, traffic as amber glow blips, and the looping
+ * detection beat with a red/blue light-bar contact. Returns null when a 2D
+ * context is unavailable so the caller can fall back to the static backdrop.
  */
 export const createIntroScene = (
   canvas: HTMLCanvasElement,
   width: number,
   height: number,
 ): IntroSceneHandle | null => {
-  let renderer: WebGLRenderer;
-  try {
-    renderer = new WebGLRenderer({ canvas, antialias: true, alpha: false });
-  } catch {
-    return null;
-  }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, DPR_CAP));
-  renderer.setSize(width, height, false);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
 
-  const scene = new Scene();
-  scene.background = new Color(SCENE_BACKGROUND);
-  scene.fog = new FogExp2(SCENE_BACKGROUND, FOG_DENSITY);
+  let frameWidth = width;
+  let frameHeight = height;
 
-  const camera = new PerspectiveCamera(58, width / height, 0.1, 300);
-  // The look-at point sits well below the ground plane so the camera pitches
-  // down and the horizon rises to the upper third of a portrait frame,
-  // keeping the grid (and the detection beat) out of the centered copy.
-  camera.position.set(0, 1.5, 4);
-  camera.lookAt(0, -8.2, -40);
+  const applySize = () => {
+    const dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP);
+    canvas.width = Math.max(1, Math.round(frameWidth * dpr));
+    canvas.height = Math.max(1, Math.round(frameHeight * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  };
+  applySize();
 
-  const gridMaterial = new LineBasicMaterial({
-    color: AMBER,
-    transparent: true,
-    opacity: 0.32,
-    fog: true,
-  });
-  const longitudinal = createLongitudinalLines(gridMaterial);
-  const cross = createCrossLines(gridMaterial);
-  const crossGroup = new Group();
-  crossGroup.add(cross);
-  scene.add(longitudinal, crossGroup);
+  const activeTuning = (): SceneTuning =>
+    frameHeight >= frameWidth ? PORTRAIT_TUNING : LANDSCAPE_TUNING;
 
-  const glowTexture = createGlowTexture();
+  const focal = () =>
+    Math.min(frameHeight, frameWidth * FOCAL_WIDTH_FACTOR) * FOCAL_SCALE;
 
-  // Highway-at-night traffic: red taillight pairs recede on the right side
-  // of the grid while white headlight pairs streak toward the camera on the
-  // left, each headlight dragging a motion trail (a thin additive box along
-  // Z that perspective stretches into the streak).
-  const trailGeometry = new BoxGeometry(0.07, 0.02, HEADLIGHT_TRAIL_LENGTH);
-  const trailMaterial = new MeshBasicMaterial({
-    color: HEADLIGHT_COLOR,
-    transparent: true,
-    opacity: 0.3,
-    blending: AdditiveBlending,
-    depthWrite: false,
-  });
+  /** One-point perspective: road (x, z) to screen position and scale. */
+  const project = (x: number, z: number, tuning: SceneTuning) => {
+    const f = focal();
+    return {
+      x: frameWidth / 2 + (f * x) / z,
+      y: tuning.horizonFrac * frameHeight + (f * GROUND_DROP_FACTOR) / z,
+      s: f / z,
+    };
+  };
 
-  const cars: TrafficCar[] = [];
-  for (let i = 0; i < RECEDING_CAR_COUNT; i++) {
-    const group = new Group();
-    for (const side of [-0.32, 0.32]) {
-      const light = createGlowSprite(glowTexture, TAILLIGHT_COLOR, 0.36);
-      light.position.set(side, 0.35, 0);
-      group.add(light);
-    }
-    group.position.set(1.0 + (i % 2), 0, -14 - i * 30);
-    scene.add(group);
-    cars.push({ group, speed: -6.5 });
-  }
-  for (let i = 0; i < ONCOMING_CAR_COUNT; i++) {
-    const group = new Group();
-    for (const side of [-0.3, 0.3]) {
-      const light = createGlowSprite(glowTexture, HEADLIGHT_COLOR, 0.42);
-      light.position.set(side, 0.35, 0);
-      group.add(light);
-      const trail = new Mesh(trailGeometry, trailMaterial);
-      trail.position.set(side, 0.35, -HEADLIGHT_TRAIL_LENGTH / 2);
-      group.add(trail);
-    }
-    group.position.set(-1.3 - (i % 2), 0, -20 - i * 15);
-    scene.add(group);
-    cars.push({ group, speed: 14 });
-  }
-  const carLights = cars.flatMap((car) =>
-    car.group.children.filter(
-      (child): child is Sprite => child instanceof Sprite,
-    ),
-  );
+  const glow = (
+    x: number,
+    y: number,
+    radius: number,
+    rgb: string,
+    alpha: number,
+  ) => {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    g.addColorStop(0, `rgba(${rgb},${alpha})`);
+    g.addColorStop(0.4, `rgba(${rgb},${alpha * 0.35})`);
+    g.addColorStop(1, `rgba(${rgb},0)`);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, TAU);
+    ctx.fill();
+  };
 
-  const contactGroup = new Group();
-  const contactBody = createGlowSprite(glowTexture, 0xb4bedd, 1.4);
-  const lightRed = createGlowSprite(glowTexture, 0xff2828, 0.7);
-  const lightBlue = createGlowSprite(glowTexture, 0x4a6eff, 0.7);
-  lightRed.position.set(-0.35, 0.75, 0);
-  lightBlue.position.set(0.35, 0.75, 0);
-  contactGroup.add(contactBody, lightRed, lightBlue);
-  contactGroup.visible = false;
-  scene.add(contactGroup);
+  const receding = Array.from({ length: RECEDING_CAR_COUNT }, (_, i) => ({
+    z: 4 + i * 9,
+    laneIndex: i % 2,
+  }));
+  const oncoming = Array.from({ length: ONCOMING_CAR_COUNT }, (_, i) => ({
+    z: 8 + i * 12,
+    laneIndex: i % 2,
+  }));
+  const bokeh = Array.from({ length: BOKEH_COUNT }, () => ({
+    x: Math.random(),
+    y: Math.random() * BOKEH_SKY_FRAC,
+    radius: 1 + Math.random() * 2.5,
+    phase: Math.random() * TAU,
+  }));
 
-  const composer = new EffectComposer(renderer);
-  composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(
-    new Vector2(width / 2, height / 2),
-    BLOOM_STRENGTH,
-    BLOOM_RADIUS,
-    BLOOM_THRESHOLD,
-  );
-  composer.addPass(bloom);
-
-  let viewWidth = width;
-  let viewHeight = height;
   let startMs: number | null = null;
   let lastMs: number | null = null;
-  const projected = new Vector3();
+  let scroll = 0;
 
   const step = (nowMs: number): ContactProjection => {
     startMs ??= nowMs;
     const dt = lastMs === null ? 0 : Math.min(nowMs - lastMs, 50) / 1000;
     lastMs = nowMs;
     const loopMs = (nowMs - startMs) % BEAT_LOOP_MS;
+    const tuning = activeTuning();
+    const w = frameWidth;
+    const h = frameHeight;
+    scroll += dt * GRID_SCROLL_SPEED;
 
-    crossGroup.position.z =
-      (crossGroup.position.z + dt * GRID_SCROLL_SPEED) % GRID_SPACING;
+    // Sky, brightest in the band just below the horizon.
+    const bg = ctx.createLinearGradient(0, 0, 0, h);
+    bg.addColorStop(0, "#04050a");
+    bg.addColorStop(tuning.horizonFrac, "#0a0c14");
+    bg.addColorStop(1, "#05060a");
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, w, h);
 
-    // Both directions cross the full frame edge to edge. Oncoming cars run
-    // until they are fully behind the camera plane, so their streaks slide
-    // off the frame edge instead of vanishing mid-screen, then respawn at
-    // the far end of the grid. Receding cars do the reverse: they respawn
-    // behind the camera plane and overtake into frame from the near edge,
-    // shrinking toward the horizon until the fog swallows them.
-    for (const car of cars) {
-      car.group.position.z += dt * car.speed;
-      if (car.speed > 0 && car.group.position.z > 6) {
-        car.group.position.z = -GRID_DEPTH;
-      }
-      if (car.speed < 0 && car.group.position.z < -GRID_DEPTH) {
-        car.group.position.z = 6;
-      }
+    // Everything luminous stacks additively from here on.
+    ctx.globalCompositeOperation = "lighter";
+    const horizonGlow = ctx.createRadialGradient(
+      w / 2,
+      tuning.horizonFrac * h,
+      0,
+      w / 2,
+      tuning.horizonFrac * h,
+      w * 0.7,
+    );
+    horizonGlow.addColorStop(0, "rgba(255,170,80,0.11)");
+    horizonGlow.addColorStop(0.5, "rgba(255,150,60,0.035)");
+    horizonGlow.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = horizonGlow;
+    ctx.fillRect(0, 0, w, h * 0.85);
+
+    for (const b of bokeh) {
+      const alpha = 0.05 + 0.04 * Math.sin(nowMs / 900 + b.phase);
+      glow(b.x * w, b.y * h, b.radius * 3, AMBER_RGB, alpha);
     }
 
-    const contact = contactStateAt(loopMs);
-    contactGroup.visible = contact.present;
+    // Fixed lines converging on the vanishing point.
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = `rgba(${AMBER_RGB},${GRID_ALPHA})`;
+    for (
+      let x = -GRID_HALF_WIDTH;
+      x <= GRID_HALF_WIDTH;
+      x += LONGITUDINAL_SPACING
+    ) {
+      const near = project(x, tuning.nearZ, tuning);
+      const far = project(x, GRID_FAR_Z, tuning);
+      ctx.beginPath();
+      ctx.moveTo(near.x, near.y);
+      ctx.lineTo(far.x, far.y);
+      ctx.stroke();
+    }
+
+    // Cross lines scrolling toward the viewer.
+    const crossRange = CROSS_LINE_COUNT * CROSS_SPACING;
+    for (let i = 0; i < CROSS_LINE_COUNT; i++) {
+      const z =
+        tuning.nearZ +
+        ((((i * CROSS_SPACING - scroll) % crossRange) + crossRange) %
+          crossRange);
+      if (z > GRID_FAR_Z) continue;
+      const left = project(-GRID_HALF_WIDTH, z, tuning);
+      const right = project(GRID_HALF_WIDTH, z, tuning);
+      const fade = Math.max(0, 1 - z / TRAFFIC_FAR_Z);
+      ctx.strokeStyle = `rgba(${AMBER_RGB},${GRID_ALPHA * fade})`;
+      ctx.beginPath();
+      ctx.moveTo(left.x, left.y);
+      ctx.lineTo(right.x, right.y);
+      ctx.stroke();
+    }
+
+    // Receding traffic: amber blips shrinking toward the horizon.
+    for (const car of receding) {
+      car.z += dt * RECEDING_SPEED;
+      if (car.z > TRAFFIC_FAR_Z) car.z = RECEDING_RESET_Z;
+      const fade = Math.max(0.12, 1 - car.z / TRAFFIC_FAR_Z);
+      const p = project(tuning.recedingLanes[car.laneIndex], car.z, tuning);
+      glow(
+        p.x,
+        p.y - p.s * 0.28,
+        Math.max(2.5, p.s * 0.16),
+        AMBER_RGB,
+        0.75 * fade,
+      );
+    }
+
+    // Oncoming traffic: amber blips streaking toward the camera with trails.
+    for (const car of oncoming) {
+      car.z -= dt * ONCOMING_SPEED;
+      if (car.z < tuning.nearZ) car.z = TRAFFIC_FAR_Z;
+      const fade = Math.max(0.1, 1 - car.z / TRAFFIC_FAR_Z);
+      const lane = tuning.oncomingLanes[car.laneIndex];
+      const p = project(lane, car.z, tuning);
+      const trail = project(lane, car.z + ONCOMING_TRAIL_Z, tuning);
+      ctx.strokeStyle = `rgba(${AMBER_RGB},${0.35 * fade})`;
+      ctx.lineWidth = Math.max(1, p.s * 0.05);
+      ctx.beginPath();
+      ctx.moveTo(trail.x, trail.y - trail.s * 0.22);
+      ctx.lineTo(p.x, p.y - p.s * 0.22);
+      ctx.stroke();
+      glow(
+        p.x,
+        p.y - p.s * 0.22,
+        Math.max(2.5, p.s * 0.13),
+        AMBER_RGB,
+        0.85 * fade,
+      );
+    }
+
+    // Detection beat: the contact sweeps up the right shoulder.
+    const contact = contactStateAt(loopMs, tuning);
     let projection: ContactProjection = null;
     if (contact.present) {
-      const laneNdc =
-        camera.aspect > 1
-          ? CONTACT_LANE_NDC_LANDSCAPE
-          : CONTACT_LANE_NDC_PORTRAIT;
-      const halfFovTan = Math.tan((camera.fov * Math.PI) / 360);
-      const laneX =
-        laneNdc * halfFovTan * CONTACT_LANE_REF_DEPTH * camera.aspect;
-      contactGroup.position.set(laneX, 0.1, contact.z);
-      const strobe = Math.floor(nowMs / 130) % 2 === 0;
-      lightRed.material.opacity = strobe ? 1 : 0.15;
-      lightBlue.material.opacity = strobe ? 0.15 : 1;
-      projected.set(laneX, 0.55, contact.z).project(camera);
+      const p = project(tuning.shoulderX, contact.z, tuning);
+      const fade = Math.min(1, contact.progress * 4);
+      glow(
+        p.x,
+        p.y - p.s * 0.3,
+        Math.max(3, p.s * 0.24),
+        CONTACT_BODY_RGB,
+        0.35 * fade,
+      );
+      const redLeads = Math.floor(nowMs / STROBE_INTERVAL_MS) % 2 === 0;
+      const barOffset = Math.max(2, p.s * 0.12);
+      const barRadius = Math.max(2.5, p.s * 0.1);
+      glow(
+        p.x - barOffset,
+        p.y - p.s * 0.52,
+        barRadius,
+        redLeads ? LIGHT_BAR_RED_RGB : LIGHT_BAR_BLUE_RGB,
+        0.9 * fade,
+      );
+      glow(
+        p.x + barOffset,
+        p.y - p.s * 0.52,
+        barRadius,
+        redLeads ? LIGHT_BAR_BLUE_RGB : LIGHT_BAR_RED_RGB,
+        0.9 * fade,
+      );
+
+      // Amber ripple right as the lock snaps on.
+      if (contact.lockOn && contact.sinceLockMs < RIPPLE_MS) {
+        const rippleProgress = contact.sinceLockMs / RIPPLE_MS;
+        ctx.strokeStyle = `rgba(${AMBER_RGB},${0.35 * (1 - rippleProgress)})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(
+          p.x,
+          p.y - p.s * 0.3,
+          20 + rippleProgress * w * tuning.rippleWidthFrac,
+          0,
+          TAU,
+        );
+        ctx.stroke();
+      }
+
       projection = {
-        x: (projected.x * 0.5 + 0.5) * viewWidth,
-        y: (-projected.y * 0.5 + 0.5) * viewHeight,
-        size: Math.max(28, (viewHeight * 2.2) / Math.abs(contact.z)),
+        x: p.x,
+        y: p.y - p.s * 0.42,
+        size: Math.max(26, p.s * 0.6),
         lockOn: contact.lockOn,
         sinceLockMs: contact.sinceLockMs,
       };
     }
 
-    composer.render();
     return projection;
   };
 
   const resize = (nextWidth: number, nextHeight: number) => {
-    viewWidth = nextWidth;
-    viewHeight = nextHeight;
-    camera.aspect = nextWidth / nextHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(nextWidth, nextHeight, false);
-    composer.setSize(nextWidth, nextHeight);
+    frameWidth = nextWidth;
+    frameHeight = nextHeight;
+    applySize();
   };
 
   const dispose = () => {
-    for (const light of carLights) light.material.dispose();
-    trailGeometry.dispose();
-    trailMaterial.dispose();
-    contactBody.material.dispose();
-    lightRed.material.dispose();
-    lightBlue.material.dispose();
-    glowTexture.dispose();
-    gridMaterial.dispose();
-    longitudinal.geometry.dispose();
-    cross.geometry.dispose();
-    bloom.dispose();
-    composer.dispose();
-    renderer.dispose();
+    // Canvas 2D holds no GPU resources of its own; nothing to release.
   };
 
   return { step, resize, dispose };

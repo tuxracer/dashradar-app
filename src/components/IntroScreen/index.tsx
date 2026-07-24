@@ -60,7 +60,7 @@ export const IntroScreen = ({ onStart }: IntroScreenProps) => {
 
   return (
     <main className="fixed inset-0 overflow-y-auto bg-surface">
-      <div className="relative flex min-h-full flex-col items-center justify-center px-8 py-6 portrait:justify-start portrait:pt-[36vh]">
+      <div className="relative flex min-h-full flex-col items-center justify-center px-8 py-6">
         <RadarBackdrop />
         <IntroScene />
         <div className="relative flex max-w-md flex-col items-center gap-4 text-center landscape:max-w-lg">
@@ -69,7 +69,7 @@ export const IntroScreen = ({ onStart }: IntroScreenProps) => {
           </span>
           <h1 className="text-3xl font-bold leading-[1.05] tracking-wide text-white/90">
             <span>POLICE DETECTION</span>{" "}
-            <span className="portrait:block">ON YOUR DASH</span>
+            <span className="block">ON YOUR DASH</span>
           </h1>
           <p className="text-base font-medium leading-snug text-white/70">
             On-device computer vision. Nothing leaves your phone.

@@ -10,7 +10,7 @@ export type {
 } from "./scene";
 
 type IntroSceneProps = {
-  /** Scene factory seam so jsdom tests can inject a fake (WebGL cannot run there). */
+  /** Scene factory seam so jsdom tests can inject a fake (no 2D canvas there). */
   createScene?: typeof createIntroScene;
 };
 
@@ -20,15 +20,14 @@ const prefersReducedMotion = (): boolean =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /**
- * Full-screen three.js wireframe night-drive scene behind the intro copy,
+ * Full-screen Canvas 2D wireframe night-drive scene behind the intro copy,
  * including the center legibility scrim, which must paint above the canvas
  * but below the lock-on bracket (DOM order inside this component).
- * Owns the rAF loop, pauses while the page is hidden, renders one static
- * frame under reduced motion, and disposes GPU resources on unmount. When
- * WebGL is unavailable it renders nothing so the static RadarBackdrop
- * beneath stays visible. The lock-on bracket is a DOM overlay positioned
- * imperatively from the scene's per-frame contact projection (no React
- * state per frame).
+ * Owns the rAF loop, pauses while the page is hidden, and renders one static
+ * frame under reduced motion. When a 2D context is unavailable it renders
+ * nothing so the static RadarBackdrop beneath stays visible. The lock-on
+ * bracket is a DOM overlay positioned imperatively from the scene's
+ * per-frame contact projection (no React state per frame).
  */
 export const IntroScene = ({
   createScene = createIntroScene,
@@ -111,10 +110,17 @@ export const IntroScene = ({
     >
       <canvas ref={canvasRef} className="absolute inset-0 size-full" />
       <div
-        className="absolute inset-0"
+        className="absolute inset-0 landscape:hidden"
         style={{
           background:
-            "radial-gradient(ellipse 80% 52% at 50% 52%, rgba(5,6,10,0.85) 0%, rgba(5,6,10,0.4) 58%, transparent 80%)",
+            "radial-gradient(ellipse 80% 46% at 50% 52%, rgba(5,6,10,0.85) 0%, rgba(5,6,10,0.4) 58%, transparent 80%)",
+        }}
+      />
+      <div
+        className="absolute inset-0 portrait:hidden"
+        style={{
+          background:
+            "radial-gradient(ellipse 62% 75% at 50% 55%, rgba(5,6,10,0.82) 0%, rgba(5,6,10,0.35) 55%, transparent 78%)",
         }}
       />
       <div
