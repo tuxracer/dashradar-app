@@ -9,7 +9,7 @@ import {
 import type { ReactNode } from "react";
 import { DEFAULT_SETTINGS, DEVELOPER_OPTIONS_OFF, STORAGE_KEY } from "./consts";
 import type { Settings, SettingsContextValue } from "./types";
-import { isPersistedSettings } from "./types";
+import { isPersistedSettings, snapConfidence } from "./types";
 
 export * from "./consts";
 export * from "./types";
@@ -42,9 +42,14 @@ const loadSettings = (): Settings => {
       return DEFAULT_SETTINGS;
     }
     const parsed: unknown = JSON.parse(raw);
-    return isPersistedSettings(parsed)
-      ? { ...DEFAULT_SETTINGS, ...parsed }
-      : DEFAULT_SETTINGS;
+    if (!isPersistedSettings(parsed)) {
+      return DEFAULT_SETTINGS;
+    }
+    const merged = { ...DEFAULT_SETTINGS, ...parsed };
+    return {
+      ...merged,
+      confidenceThreshold: snapConfidence(merged.confidenceThreshold),
+    };
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -70,12 +75,15 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const [storedCenterCropFrames, setCenterCropFrames] = useState(
     () => loadSettings().centerCropFrames,
   );
+  const [storedConfidenceThreshold, setStoredConfidenceThreshold] = useState(
+    () => loadSettings().confidenceThreshold,
+  );
 
-  // The three developer options report their DEVELOPER_OPTIONS_OFF value
+  // The four developer options report their DEVELOPER_OPTIONS_OFF value
   // whenever developerOptions is off, so a tweak left enabled (the debug
-  // overlay, unthrottled inference, squished frames) stops taking effect the
-  // moment the master switch goes off. The stored value is untouched, so
-  // turning it back on restores the tweak.
+  // overlay, unthrottled inference, squished frames, a lowered confidence
+  // floor) stops taking effect the moment the master switch goes off. The
+  // stored value is untouched, so turning it back on restores the tweak.
   const showDebug = developerOptions
     ? storedShowDebug
     : DEVELOPER_OPTIONS_OFF.showDebug;
@@ -85,6 +93,9 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const centerCropFrames = developerOptions
     ? storedCenterCropFrames
     : DEVELOPER_OPTIONS_OFF.centerCropFrames;
+  const confidenceThreshold = developerOptions
+    ? storedConfidenceThreshold
+    : DEVELOPER_OPTIONS_OFF.confidenceThreshold;
 
   useEffect(() => {
     const next: Settings = {
@@ -93,6 +104,7 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       radarAudio,
       throttleInference: storedThrottleInference,
       centerCropFrames: storedCenterCropFrames,
+      confidenceThreshold: storedConfidenceThreshold,
     };
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -105,6 +117,7 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     radarAudio,
     storedThrottleInference,
     storedCenterCropFrames,
+    storedConfidenceThreshold,
   ]);
 
   const toggleDeveloperOptions = useCallback(() => {
@@ -125,6 +138,10 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
 
   const toggleCenterCropFrames = useCallback(() => {
     setCenterCropFrames((prev) => !prev);
+  }, []);
+
+  const setConfidenceThreshold = useCallback((level: number) => {
+    setStoredConfidenceThreshold(snapConfidence(level));
   }, []);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -149,6 +166,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleThrottleInference,
       centerCropFrames,
       toggleCenterCropFrames,
+      confidenceThreshold,
+      setConfidenceThreshold,
       settingsOpen,
       openSettings,
       closeSettings,
@@ -164,6 +183,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleThrottleInference,
       centerCropFrames,
       toggleCenterCropFrames,
+      confidenceThreshold,
+      setConfidenceThreshold,
       settingsOpen,
       openSettings,
       closeSettings,

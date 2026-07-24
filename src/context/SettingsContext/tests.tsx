@@ -2,6 +2,7 @@ import { act, render, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  CONFIDENCE_LEVELS,
   SettingsProvider,
   STORAGE_KEY,
   useSettings,
@@ -39,6 +40,7 @@ describe("SettingsContext", () => {
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
+        confidenceThreshold: 0.5,
       }),
     );
   });
@@ -94,6 +96,7 @@ describe("SettingsContext", () => {
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
+        confidenceThreshold: 0.5,
       }),
     );
   });
@@ -114,6 +117,7 @@ describe("SettingsContext", () => {
         radarAudio: false,
         throttleInference: true,
         centerCropFrames: true,
+        confidenceThreshold: 0.5,
       }),
     );
   });
@@ -135,6 +139,7 @@ describe("SettingsContext", () => {
         radarAudio: true,
         throttleInference: false,
         centerCropFrames: true,
+        confidenceThreshold: 0.5,
       }),
     );
   });
@@ -165,6 +170,7 @@ describe("SettingsContext", () => {
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: false,
+        confidenceThreshold: 0.5,
       }),
     );
   });
@@ -229,7 +235,57 @@ describe("SettingsContext", () => {
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: false,
+        confidenceThreshold: 0.5,
       }),
     );
+  });
+
+  it("defaults minimum confidence to 0.5", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.confidenceThreshold).toBe(0.5);
+  });
+
+  it("forces confidence to 0.5 while developer options are off", () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: false, confidenceThreshold: 0.2 }),
+    );
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.confidenceThreshold).toBe(0.5);
+  });
+
+  it("reports the stored confidence once developer options are on", () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true, confidenceThreshold: 0.2 }),
+    );
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.confidenceThreshold).toBe(0.2);
+  });
+
+  it("setConfidenceThreshold snaps an off-step value to the nearest level", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleDeveloperOptions());
+    act(() => result.current.setConfidenceThreshold(0.27));
+    expect(result.current.confidenceThreshold).toBe(0.3);
+  });
+
+  it("snaps a corrupt stored confidence to a valid level", () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true, confidenceThreshold: 5 }),
+    );
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(CONFIDENCE_LEVELS).toContain(result.current.confidenceThreshold);
+  });
+
+  it("persists confidence and leaves the stored value when developer options go off", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleDeveloperOptions());
+    act(() => result.current.setConfidenceThreshold(0.3));
+    act(() => result.current.toggleDeveloperOptions());
+    expect(result.current.confidenceThreshold).toBe(0.5);
+    act(() => result.current.toggleDeveloperOptions());
+    expect(result.current.confidenceThreshold).toBe(0.3);
   });
 });

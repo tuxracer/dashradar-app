@@ -1,14 +1,16 @@
-import { isBoolean, isPlainObject } from "remeda";
+import { isBoolean, isNumber, isPlainObject } from "remeda";
+import { CONFIDENCE_LEVELS } from "./consts";
 
 /** User-controlled display options for the HUD. Serialized to localStorage. */
 export type Settings = {
   /**
    * Master switch for the development-only settings (showDebug,
-   * throttleInference, centerCropFrames). Off by default. While it is off,
-   * SettingsProvider reports each of those three at its DEVELOPER_OPTIONS_OFF
-   * value no matter what is stored, so a development tweak left enabled cannot
-   * alter a normal drive. Their stored values survive, so turning this back on
-   * restores the tweaks rather than resetting them.
+   * throttleInference, centerCropFrames, confidenceThreshold). Off by default.
+   * While it is off, SettingsProvider reports each of those four at its
+   * DEVELOPER_OPTIONS_OFF value no matter what is stored, so a development
+   * tweak left enabled cannot alter a normal drive. Their stored values
+   * survive, so turning this back on restores the tweaks rather than
+   * resetting them.
    */
   developerOptions: boolean;
   /**
@@ -41,22 +43,31 @@ export type Settings = {
    * that matches the model's training even if a stale false was left persisted.
    */
   centerCropFrames: boolean;
+  /**
+   * Minimum detection confidence. Detections scoring below this are discarded.
+   * A developer option, so it only takes effect while developerOptions is on and
+   * reports the 0.5 production floor (DEVELOPER_OPTIONS_OFF.confidenceThreshold)
+   * otherwise, so a lowered value cannot loosen a normal drive. Constrained to
+   * CONFIDENCE_LEVELS (0.1 to 0.9).
+   */
+  confidenceThreshold: number;
 };
 
 /**
- * The three development-only settings, the ones gated behind the
+ * The four development-only settings, the ones gated behind the
  * developerOptions master switch.
  */
 export type DeveloperOptions = Pick<
   Settings,
-  "showDebug" | "throttleInference" | "centerCropFrames"
+  "showDebug" | "throttleInference" | "centerCropFrames" | "confidenceThreshold"
 >;
 
 /**
- * Value exposed by the settings context via useSettings(). The three developer
- * options (showDebug, throttleInference, centerCropFrames) are the *effective*
- * values, already gated on developerOptions, so consumers never have to repeat
- * the gate. Each toggle still writes the stored value underneath.
+ * Value exposed by the settings context via useSettings(). The four developer
+ * options (showDebug, throttleInference, centerCropFrames,
+ * confidenceThreshold) are the *effective* values, already gated on
+ * developerOptions, so consumers never have to repeat the gate. Each toggle
+ * (or setter) still writes the stored value underneath.
  */
 export type SettingsContextValue = {
   developerOptions: boolean;
@@ -69,6 +80,9 @@ export type SettingsContextValue = {
   toggleThrottleInference: () => void;
   centerCropFrames: boolean;
   toggleCenterCropFrames: () => void;
+  confidenceThreshold: number;
+  /** Sets the minimum-confidence level, snapping to the nearest allowed step. */
+  setConfidenceThreshold: (level: number) => void;
   /** Whether the full-screen settings panel is open. Ephemeral, not persisted. */
   settingsOpen: boolean;
   /** Opens the full-screen settings panel. */
@@ -95,6 +109,23 @@ export const isPersistedSettings = (
     (value.radarAudio === undefined || isBoolean(value.radarAudio)) &&
     (value.throttleInference === undefined ||
       isBoolean(value.throttleInference)) &&
-    (value.centerCropFrames === undefined || isBoolean(value.centerCropFrames))
+    (value.centerCropFrames === undefined ||
+      isBoolean(value.centerCropFrames)) &&
+    (value.confidenceThreshold === undefined ||
+      isNumber(value.confidenceThreshold))
+  );
+};
+
+/**
+ * Normalizes any number to the nearest allowed confidence step. A non-finite
+ * input (NaN, Infinity) resolves to the 0.5 default rather than an arbitrary
+ * end of the range.
+ */
+export const snapConfidence = (value: number): number => {
+  if (!Number.isFinite(value)) {
+    return 0.5;
+  }
+  return CONFIDENCE_LEVELS.reduce((best, level) =>
+    Math.abs(level - value) < Math.abs(best - value) ? level : best,
   );
 };

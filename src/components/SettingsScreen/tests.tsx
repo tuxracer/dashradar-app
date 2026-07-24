@@ -44,6 +44,7 @@ describe("SettingsScreen", () => {
         radarAudio: false,
         throttleInference: true,
         centerCropFrames: true,
+        confidenceThreshold: 0.5,
       }),
     );
   });
@@ -66,6 +67,7 @@ describe("SettingsScreen", () => {
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
+        confidenceThreshold: 0.5,
       }),
     );
   });
@@ -82,6 +84,7 @@ describe("SettingsScreen", () => {
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
+        confidenceThreshold: 0.5,
       }),
     );
   });
@@ -177,6 +180,7 @@ describe("SettingsScreen", () => {
         radarAudio: true,
         throttleInference: false,
         centerCropFrames: true,
+        confidenceThreshold: 0.5,
       }),
     );
   });
@@ -197,6 +201,7 @@ describe("SettingsScreen", () => {
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: false,
+        confidenceThreshold: 0.5,
       }),
     );
   });
