@@ -28,13 +28,16 @@ const boxArea = (box: NormalizedBox): number => {
 };
 
 /** Validate raw worker output and keep road-relevant, confident detections. */
-export const toRoadDetections = (raw: unknown): Detection[] => {
+export const toRoadDetections = (
+  raw: unknown,
+  threshold: number = CONFIDENCE_THRESHOLD,
+): Detection[] => {
   if (!Array.isArray(raw)) {
     return [];
   }
   return raw.filter(isRawDetection).flatMap((candidate) => {
     const roadClass = ROAD_CLASSES[candidate.label];
-    if (!roadClass || candidate.score < CONFIDENCE_THRESHOLD) {
+    if (!roadClass || candidate.score < threshold) {
       return [];
     }
     return [

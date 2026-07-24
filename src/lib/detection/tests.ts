@@ -69,6 +69,29 @@ describe("toRoadDetections", () => {
       toRoadDetections([{ label: "car", score: "high", box: {} }, 42]),
     ).toEqual([]);
   });
+
+  it("keeps a detection below 0.5 when given a lower threshold", () => {
+    const result = toRoadDetections(
+      [{ label: "car", score: 0.3, box: box(0.1, 0.1, 0.3, 0.3) }],
+      0.2,
+    );
+    expect(result).toHaveLength(1);
+  });
+
+  it("drops a detection below the explicit threshold", () => {
+    const result = toRoadDetections(
+      [{ label: "car", score: 0.3, box: box(0.1, 0.1, 0.3, 0.3) }],
+      0.4,
+    );
+    expect(result).toHaveLength(0);
+  });
+
+  it("still filters at 0.5 with no threshold argument", () => {
+    const result = toRoadDetections([
+      { label: "car", score: 0.4, box: box(0.1, 0.1, 0.3, 0.3) },
+    ]);
+    expect(result).toHaveLength(0);
+  });
 });
 
 describe("buildHudModel", () => {
