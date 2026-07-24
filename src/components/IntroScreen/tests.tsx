@@ -77,4 +77,13 @@ describe("IntroScreen", () => {
     fireEvent.click(getByRole("button", { name: "Continue on this device" }));
     expect(onStart).not.toHaveBeenCalled();
   });
+
+  it("renders the headline hook and the three trust points", () => {
+    stubPointer(false);
+    const { getByText } = render(<IntroScreen onStart={vi.fn()} />);
+    expect(getByText("SEES POLICE BEFORE YOU DO")).toBeInTheDocument();
+    expect(getByText("ON-DEVICE")).toBeInTheDocument();
+    expect(getByText("OFFLINE")).toBeInTheDocument();
+    expect(getByText("CAMERA")).toBeInTheDocument();
+  });
 });

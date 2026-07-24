@@ -4,6 +4,31 @@
   --font-sans: "Rajdhani", ui-sans-serif, system-ui, sans-serif;
   --color-hud-amber: #ffb340;
   --color-surface: #0b0a10;
+
+  --animate-intro-fade: intro-fade 0.9s ease-out both;
+  --animate-intro-rise: intro-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+
+  @keyframes intro-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes intro-rise {
+    from {
+      opacity: 0;
+      transform: translateY(14px);
+      filter: blur(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+      filter: blur(0);
+    }
+  }
 }
 
 html,
