@@ -226,7 +226,7 @@ export const createIntroScene = (
       light.position.set(side, 0.35, 0);
       group.add(light);
     }
-    group.position.set(1.0 + (i % 2), 0, -14 - i * 12);
+    group.position.set(1.0 + (i % 2), 0, -14 - i * 30);
     scene.add(group);
     cars.push({ group, speed: -6.5 });
   }
@@ -285,15 +285,20 @@ export const createIntroScene = (
     crossGroup.position.z =
       (crossGroup.position.z + dt * GRID_SCROLL_SPEED) % GRID_SPACING;
 
-    // Oncoming cars run until they are fully behind the camera plane, so
-    // their streaks slide off the bottom edge of the frame instead of
-    // vanishing mid-screen; they respawn at the far end of the grid.
-    // Receding cars respawn at a moderate depth (never right at the lens,
-    // where a glow sprite would balloon across the frame).
+    // Both directions cross the full frame edge to edge. Oncoming cars run
+    // until they are fully behind the camera plane, so their streaks slide
+    // off the frame edge instead of vanishing mid-screen, then respawn at
+    // the far end of the grid. Receding cars do the reverse: they respawn
+    // behind the camera plane and overtake into frame from the near edge,
+    // shrinking toward the horizon until the fog swallows them.
     for (const car of cars) {
       car.group.position.z += dt * car.speed;
-      if (car.group.position.z > 6) car.group.position.z = -GRID_DEPTH;
-      if (car.group.position.z < -GRID_DEPTH) car.group.position.z = -12;
+      if (car.speed > 0 && car.group.position.z > 6) {
+        car.group.position.z = -GRID_DEPTH;
+      }
+      if (car.speed < 0 && car.group.position.z < -GRID_DEPTH) {
+        car.group.position.z = 6;
+      }
     }
 
     const contact = contactStateAt(loopMs);
