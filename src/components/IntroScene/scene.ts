@@ -28,7 +28,9 @@ import {
   BLOOM_THRESHOLD,
   CONTACT_APPEAR_MS,
   CONTACT_EXIT_MS,
-  CONTACT_LANE_X_PER_ASPECT,
+  CONTACT_LANE_NDC_LANDSCAPE,
+  CONTACT_LANE_NDC_PORTRAIT,
+  CONTACT_LANE_REF_DEPTH,
   CONTACT_PASS_Z,
   CONTACT_SPAWN_Z,
   DPR_CAP,
@@ -247,7 +249,13 @@ export const createIntroScene = (
     contactGroup.visible = contact.present;
     let projection: ContactProjection = null;
     if (contact.present) {
-      const laneX = CONTACT_LANE_X_PER_ASPECT * camera.aspect;
+      const laneNdc =
+        camera.aspect > 1
+          ? CONTACT_LANE_NDC_LANDSCAPE
+          : CONTACT_LANE_NDC_PORTRAIT;
+      const halfFovTan = Math.tan((camera.fov * Math.PI) / 360);
+      const laneX =
+        laneNdc * halfFovTan * CONTACT_LANE_REF_DEPTH * camera.aspect;
       contactGroup.position.set(laneX, 0.1, contact.z);
       const strobe = Math.floor(nowMs / 130) % 2 === 0;
       lightRed.material.opacity = strobe ? 1 : 0.15;

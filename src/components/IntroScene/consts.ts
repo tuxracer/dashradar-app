@@ -14,21 +14,30 @@ export const CONTACT_SPAWN_Z = -70;
 export const CONTACT_PASS_Z = -3;
 
 /**
- * Contact lane offset per unit of camera aspect ratio. Scaling the lane by
- * aspect pins the bracket to the same upper-right screen region in portrait
- * and landscape, clear of the centered copy column.
+ * Horizontal NDC position (0 center, 1 right edge) the contact rides at the
+ * calibration depth in a portrait frame: just right of center, in the sky
+ * band above the copy column.
  */
-export const CONTACT_LANE_X_PER_ASPECT = 15.5;
+export const CONTACT_LANE_NDC_PORTRAIT = 0.2;
+
+/**
+ * Landscape counterpart to CONTACT_LANE_NDC_PORTRAIT. Landscape centers the
+ * copy higher, so the contact rides further right to clear the wordmark.
+ */
+export const CONTACT_LANE_NDC_LANDSCAPE = 0.38;
+
+/** Camera distance at which the lane NDC targets are calibrated. */
+export const CONTACT_LANE_REF_DEPTH = 45;
 
 /** Far edge of the depth window in which the lock-on bracket engages. */
-export const LOCK_FAR_Z = -46;
+export const LOCK_FAR_Z = -56;
 
 /**
  * Near edge of the lock window. The lock releases here, while the bracket is
- * still riding the sky band above the copy and before the wide lane carries
- * the contact off the right edge of the frame.
+ * still riding the sky band above the copy and before the contact sweeps off
+ * the right edge of the frame as it passes.
  */
-export const LOCK_NEAR_Z = -30;
+export const LOCK_NEAR_Z = -18;
 
 /** Scene clear color, matching the app's near-black surface. */
 export const SCENE_BACKGROUND = 0x05060a;
