@@ -55,7 +55,11 @@ const RadarScreen = () => {
     cameraEpoch,
   } = useDetection();
   const { showDebug, radarAudio } = useSettings();
-  const [showIntro, setShowIntro] = useState(shouldShowIntro);
+  // Dev video mode has no camera to introduce or ask permission for, so the
+  // intro is skipped outright and the radar view loads immediately.
+  const [showIntro, setShowIntro] = useState(
+    () => DEV_VIDEO_URL === null && shouldShowIntro(),
+  );
   const [cameraError, setCameraError] = useState<CameraError>();
   const [videoSize, setVideoSize] = useState<Size>();
   const viewportSize = useViewportSize();
@@ -131,7 +135,6 @@ const RadarScreen = () => {
           src={DEV_VIDEO_URL}
           scanning={status === "running"}
           onStream={handleStream}
-          onError={setCameraError}
           onVideoResize={updateVideoSize}
         />
       ) : (

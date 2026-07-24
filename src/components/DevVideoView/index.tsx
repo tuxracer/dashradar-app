@@ -1,12 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { CameraError } from "@/lib/camera";
-import { CameraError as CameraErrorClass } from "@/lib/camera";
 
 type DevVideoViewProps = {
   /** URL of the dev clip served by the devVideo Vite plugin. */
   src: string;
   onStream: (video: HTMLVideoElement) => void;
-  onError: (error: CameraError) => void;
   /** Fires when the video's intrinsic dimensions change; mirrors CameraView. */
   onVideoResize?: (video: HTMLVideoElement) => void;
   /**
@@ -30,11 +27,12 @@ type DevVideoViewProps = {
  * seconds aren't consumed while the model is still downloading or compiling.
  * The player is also kept invisible until that same transition, so the load
  * and compile phase shows only the radar backdrop, matching the camera path.
+ * Camera errors do not exist in this mode: a rejected play() just logs to the
+ * console, and the already-visible native controls are the manual recovery.
  */
 export const DevVideoView = ({
   src,
   onStream,
-  onError,
   onVideoResize,
   scanning,
 }: DevVideoViewProps) => {
@@ -73,21 +71,10 @@ export const DevVideoView = ({
     }
     startedRef.current = true;
     setStarted(true);
-    let cancelled = false;
-    const startPlayback = async () => {
-      try {
-        await video.play();
-      } catch {
-        if (!cancelled) {
-          onError(new CameraErrorClass("NO_CAMERA"));
-        }
-      }
-    };
-    void startPlayback();
-    return () => {
-      cancelled = true;
-    };
-  }, [scanning, onError]);
+    video.play().catch((error: unknown) => {
+      console.error("dev video playback failed", error);
+    });
+  }, [scanning]);
 
   return (
     <video
