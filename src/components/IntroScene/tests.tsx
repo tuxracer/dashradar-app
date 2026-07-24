@@ -1,6 +1,57 @@
-import { describe, expect, it } from "vitest";
+import { cleanup, render, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BEAT_LOOP_MS, CONTACT_APPEAR_MS, CONTACT_EXIT_MS } from "./consts";
+import { IntroScene } from "./index";
+import type { IntroSceneHandle } from "./scene";
 import { contactStateAt, createIntroScene } from "./scene";
+
+afterEach(cleanup);
+
+beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  return () => vi.unstubAllGlobals();
+});
+
+const fakeScene = (): IntroSceneHandle => ({
+  step: vi.fn(() => null),
+  resize: vi.fn(),
+  dispose: vi.fn(),
+});
+
+describe("IntroScene component", () => {
+  it("renders nothing after scene creation fails, leaving the backdrop visible", async () => {
+    const { container } = render(<IntroScene createScene={() => null} />);
+    await waitFor(() => expect(container.querySelector("canvas")).toBeNull());
+  });
+
+  it("disposes the scene on unmount", () => {
+    const scene = fakeScene();
+    const { unmount } = render(<IntroScene createScene={() => scene} />);
+    unmount();
+    expect(scene.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("renders a single static frame under prefers-reduced-motion", () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+    const scene = fakeScene();
+    render(<IntroScene createScene={() => scene} />);
+    expect(scene.step).toHaveBeenCalledOnce();
+  });
+});
 
 describe("createIntroScene", () => {
   it("returns null when a WebGL context cannot be created (jsdom)", () => {
