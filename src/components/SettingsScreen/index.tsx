@@ -52,6 +52,8 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
     toggleThrottleInference,
     centerCropFrames,
     toggleCenterCropFrames,
+    confidenceThreshold,
+    setConfidenceThreshold,
   } = useSettings();
 
   useEffect(() => {
@@ -173,6 +175,34 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
                 </span>
                 <Toggle on={centerCropFrames} />
               </button>
+
+              <div className="flex min-h-16 items-center justify-between gap-6 py-4">
+                <span className="flex flex-1 flex-col gap-2">
+                  <span className="flex items-center justify-between gap-6">
+                    <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                      Min confidence
+                    </span>
+                    <span className="text-base font-semibold tabular-nums tracking-[0.12em] text-white/60">
+                      {confidenceThreshold.toFixed(1)}
+                    </span>
+                  </span>
+                  <input
+                    type="range"
+                    min={0.1}
+                    max={0.9}
+                    step={0.1}
+                    value={confidenceThreshold}
+                    onChange={(event) =>
+                      setConfidenceThreshold(Number(event.target.value))
+                    }
+                    aria-label="Min confidence"
+                    className="h-3 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-hud-amber"
+                  />
+                  <span className="text-sm font-medium text-white/45">
+                    Lowers the bar for what counts as a detection.
+                  </span>
+                </span>
+              </div>
             </>
           )}
 

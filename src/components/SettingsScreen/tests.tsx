@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { SettingsButton } from "@/components/SettingsButton";
@@ -204,5 +204,29 @@ describe("SettingsScreen", () => {
         confidenceThreshold: 0.5,
       }),
     );
+  });
+
+  it("hides the Min confidence row while developer options are off", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    expect(screen.queryByText("Min confidence")).not.toBeInTheDocument();
+  });
+
+  it("shows the Min confidence slider under developer options and updates on change", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true }),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    const slider = screen.getByRole("slider", { name: /min confidence/i });
+    expect(slider).toHaveValue("0.5");
+    fireEvent.change(slider, { target: { value: "0.3" } });
+    expect(
+      JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}")
+        .confidenceThreshold,
+    ).toBe(0.3);
   });
 });
