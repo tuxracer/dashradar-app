@@ -1,5 +1,6 @@
 import {
   AdditiveBlending,
+  BoxGeometry,
   BufferGeometry,
   CanvasTexture,
   Color,
@@ -8,6 +9,8 @@ import {
   Group,
   LineBasicMaterial,
   LineSegments,
+  Mesh,
+  MeshBasicMaterial,
   PerspectiveCamera,
   Scene,
   Sprite,
@@ -22,7 +25,6 @@ import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js"
 import {
   AMBER,
   BEAT_LOOP_MS,
-  BLIP_COUNT,
   BLOOM_RADIUS,
   BLOOM_STRENGTH,
   BLOOM_THRESHOLD,
@@ -39,9 +41,14 @@ import {
   GRID_HALF_WIDTH,
   GRID_SCROLL_SPEED,
   GRID_SPACING,
+  HEADLIGHT_COLOR,
+  HEADLIGHT_TRAIL_LENGTH,
   LOCK_FAR_Z,
   LOCK_NEAR_Z,
+  ONCOMING_CAR_COUNT,
+  RECEDING_CAR_COUNT,
   SCENE_BACKGROUND,
+  TAILLIGHT_COLOR,
 } from "./consts";
 
 /**
@@ -134,7 +141,8 @@ const createCrossLines = (material: LineBasicMaterial): LineSegments => {
   return new LineSegments(geometry, material);
 };
 
-type Blip = { sprite: Sprite; speed: number };
+/** A pair of glow lights (plus trails when oncoming) moving as one vehicle. */
+type TrafficCar = { group: Group; speed: number };
 
 const createGlowSprite = (
   texture: CanvasTexture,
@@ -196,13 +204,51 @@ export const createIntroScene = (
   scene.add(longitudinal, crossGroup);
 
   const glowTexture = createGlowTexture();
-  const blips: Blip[] = Array.from({ length: BLIP_COUNT }, (_, i) => {
-    const sprite = createGlowSprite(glowTexture, AMBER, 0.9);
-    const lane = (i % 2 === 0 ? 1 : -1) * (0.8 + (i % 3) * 0.9);
-    sprite.position.set(lane, 0.35, -8 - i * 14);
-    scene.add(sprite);
-    return { sprite, speed: i % 2 === 0 ? -7 : 14 };
+
+  // Highway-at-night traffic: red taillight pairs recede on the right side
+  // of the grid while white headlight pairs streak toward the camera on the
+  // left, each headlight dragging a motion trail (a thin additive box along
+  // Z that perspective stretches into the streak).
+  const trailGeometry = new BoxGeometry(0.07, 0.02, HEADLIGHT_TRAIL_LENGTH);
+  const trailMaterial = new MeshBasicMaterial({
+    color: HEADLIGHT_COLOR,
+    transparent: true,
+    opacity: 0.3,
+    blending: AdditiveBlending,
+    depthWrite: false,
   });
+
+  const cars: TrafficCar[] = [];
+  for (let i = 0; i < RECEDING_CAR_COUNT; i++) {
+    const group = new Group();
+    for (const side of [-0.32, 0.32]) {
+      const light = createGlowSprite(glowTexture, TAILLIGHT_COLOR, 0.36);
+      light.position.set(side, 0.35, 0);
+      group.add(light);
+    }
+    group.position.set(1.0 + (i % 2), 0, -14 - i * 12);
+    scene.add(group);
+    cars.push({ group, speed: -6.5 });
+  }
+  for (let i = 0; i < ONCOMING_CAR_COUNT; i++) {
+    const group = new Group();
+    for (const side of [-0.3, 0.3]) {
+      const light = createGlowSprite(glowTexture, HEADLIGHT_COLOR, 0.42);
+      light.position.set(side, 0.35, 0);
+      group.add(light);
+      const trail = new Mesh(trailGeometry, trailMaterial);
+      trail.position.set(side, 0.35, -HEADLIGHT_TRAIL_LENGTH / 2);
+      group.add(trail);
+    }
+    group.position.set(-1.3 - (i % 2), 0, -20 - i * 15);
+    scene.add(group);
+    cars.push({ group, speed: 14 });
+  }
+  const carLights = cars.flatMap((car) =>
+    car.group.children.filter(
+      (child): child is Sprite => child instanceof Sprite,
+    ),
+  );
 
   const contactGroup = new Group();
   const contactBody = createGlowSprite(glowTexture, 0xb4bedd, 1.4);
@@ -239,10 +285,13 @@ export const createIntroScene = (
     crossGroup.position.z =
       (crossGroup.position.z + dt * GRID_SCROLL_SPEED) % GRID_SPACING;
 
-    for (const blip of blips) {
-      blip.sprite.position.z += dt * blip.speed;
-      if (blip.sprite.position.z > 2) blip.sprite.position.z = -GRID_DEPTH;
-      if (blip.sprite.position.z < -GRID_DEPTH) blip.sprite.position.z = -6;
+    // Cars recycle well before they reach the camera plane: a glow sprite
+    // passing right by the lens balloons across the frame otherwise, and a
+    // receding car respawning too near does the same in reverse.
+    for (const car of cars) {
+      car.group.position.z += dt * car.speed;
+      if (car.group.position.z > -7) car.group.position.z = -GRID_DEPTH;
+      if (car.group.position.z < -GRID_DEPTH) car.group.position.z = -12;
     }
 
     const contact = contactStateAt(loopMs);
@@ -284,7 +333,9 @@ export const createIntroScene = (
   };
 
   const dispose = () => {
-    for (const blip of blips) blip.sprite.material.dispose();
+    for (const light of carLights) light.material.dispose();
+    trailGeometry.dispose();
+    trailMaterial.dispose();
     contactBody.material.dispose();
     lightRed.material.dispose();
     lightBlue.material.dispose();

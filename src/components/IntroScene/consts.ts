@@ -60,8 +60,20 @@ export const GRID_SPACING = 2.4;
 /** How fast the cross-grid scrolls toward the camera, units per second. */
 export const GRID_SCROLL_SPEED = 9;
 
-/** Ambient traffic blip count. */
-export const BLIP_COUNT = 7;
+/** Oncoming cars: white headlight pairs streaking toward the camera. */
+export const ONCOMING_CAR_COUNT = 3;
+
+/** Receding cars: red taillight pairs shrinking toward the horizon. */
+export const RECEDING_CAR_COUNT = 4;
+
+/** Warm white of the oncoming headlights and their trails. */
+export const HEADLIGHT_COLOR = 0xffebc8;
+
+/** Red of the receding taillights. */
+export const TAILLIGHT_COLOR = 0xff3e30;
+
+/** World-unit length of the motion trail behind each oncoming headlight. */
+export const HEADLIGHT_TRAIL_LENGTH = 2.4;
 
 /** Pixel-ratio cap so 3x phones do not render 9x the pixels. */
 export const DPR_CAP = 1.75;
@@ -70,10 +82,10 @@ export const DPR_CAP = 1.75;
 export const STATIC_FRAME_MS = 3_000;
 
 /** UnrealBloomPass strength; the pass runs at half resolution for headroom. */
-export const BLOOM_STRENGTH = 0.85;
+export const BLOOM_STRENGTH = 0.65;
 
 /** UnrealBloomPass radius. */
-export const BLOOM_RADIUS = 0.7;
+export const BLOOM_RADIUS = 0.55;
 
 /** UnrealBloomPass luminance threshold. */
-export const BLOOM_THRESHOLD = 0.1;
+export const BLOOM_THRESHOLD = 0.15;
