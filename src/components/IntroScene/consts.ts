@@ -59,3 +59,12 @@ export const DPR_CAP = 1.75;
 
 /** Loop time rendered as the single static reduced-motion frame. */
 export const STATIC_FRAME_MS = 3_000;
+
+/** UnrealBloomPass strength; the pass runs at half resolution for headroom. */
+export const BLOOM_STRENGTH = 0.85;
+
+/** UnrealBloomPass radius. */
+export const BLOOM_RADIUS = 0.7;
+
+/** UnrealBloomPass luminance threshold. */
+export const BLOOM_THRESHOLD = 0.1;

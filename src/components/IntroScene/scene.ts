@@ -12,13 +12,20 @@ import {
   Scene,
   Sprite,
   SpriteMaterial,
+  Vector2,
   Vector3,
   WebGLRenderer,
 } from "three";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import {
   AMBER,
   BEAT_LOOP_MS,
   BLIP_COUNT,
+  BLOOM_RADIUS,
+  BLOOM_STRENGTH,
+  BLOOM_THRESHOLD,
   CONTACT_APPEAR_MS,
   CONTACT_EXIT_MS,
   CONTACT_LANE_X_PER_ASPECT,
@@ -205,6 +212,16 @@ export const createIntroScene = (
   contactGroup.visible = false;
   scene.add(contactGroup);
 
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloom = new UnrealBloomPass(
+    new Vector2(width / 2, height / 2),
+    BLOOM_STRENGTH,
+    BLOOM_RADIUS,
+    BLOOM_THRESHOLD,
+  );
+  composer.addPass(bloom);
+
   let viewWidth = width;
   let viewHeight = height;
   let startMs: number | null = null;
@@ -245,7 +262,7 @@ export const createIntroScene = (
       };
     }
 
-    renderer.render(scene, camera);
+    composer.render();
     return projection;
   };
 
@@ -255,6 +272,7 @@ export const createIntroScene = (
     camera.aspect = nextWidth / nextHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(nextWidth, nextHeight, false);
+    composer.setSize(nextWidth, nextHeight);
   };
 
   const dispose = () => {
@@ -266,6 +284,8 @@ export const createIntroScene = (
     gridMaterial.dispose();
     longitudinal.geometry.dispose();
     cross.geometry.dispose();
+    bloom.dispose();
+    composer.dispose();
     renderer.dispose();
   };
 
