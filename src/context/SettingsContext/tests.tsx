@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   CONFIDENCE_LEVELS,
   SettingsProvider,
+  snapConfidence,
   STORAGE_KEY,
   useSettings,
 } from "@/context/SettingsContext";
@@ -287,5 +288,23 @@ describe("SettingsContext", () => {
     expect(result.current.confidenceThreshold).toBe(0.5);
     act(() => result.current.toggleDeveloperOptions());
     expect(result.current.confidenceThreshold).toBe(0.3);
+  });
+});
+
+describe("snapConfidence", () => {
+  it("resolves a non-finite value to the 0.5 default", () => {
+    expect(snapConfidence(NaN)).toBe(0.5);
+    expect(snapConfidence(Infinity)).toBe(0.5);
+    expect(snapConfidence(-Infinity)).toBe(0.5);
+  });
+
+  it("snaps an off-step value to the nearest allowed level", () => {
+    expect(snapConfidence(0.27)).toBe(0.3);
+    expect(snapConfidence(0.84)).toBe(0.8);
+  });
+
+  it("clamps an out-of-range value to the nearest end step", () => {
+    expect(snapConfidence(5)).toBe(0.9);
+    expect(snapConfidence(-2)).toBe(0.1);
   });
 });

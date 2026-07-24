@@ -176,7 +176,7 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
                 <Toggle on={centerCropFrames} />
               </button>
 
-              <div className="flex min-h-16 items-center justify-between gap-6 py-4">
+              <div className="flex min-h-16 items-center py-4">
                 <span className="flex flex-1 flex-col gap-2">
                   <span className="flex items-center justify-between gap-6">
                     <span className="text-lg font-semibold tracking-[0.06em] text-white/90">

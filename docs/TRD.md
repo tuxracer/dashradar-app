@@ -383,7 +383,7 @@ Both sites take the threshold as a parameter rather than reading the constant di
 `src/lib/detectionTracker` sits between `toRoadDetections` and `buildHudModel`. It shows each road-filtered detection right away and only smooths flicker: when the model drops an object for a frame or two, the tracker keeps its last box on screen so it doesn't blink off. Pipeline position:
 
 ```
-worker → toRoadDetections (confidence >= 0.7) → detectionTracker (coast on miss) → buildHudModel
+worker → toRoadDetections (confidence >= 0.5) → detectionTracker (coast on miss) → buildHudModel
 ```
 
 The module is React-free and stateful, split into a pure step function and a stateful wrapper around it: `stepTracker(state, detections, config)` runs one frame and returns the next `TrackerState` plus the `visible` detections; `createDetectionTracker()` wraps it in a small factory exposing `.update(detections)`, which is what `DetectionContext` calls once per frame (§4). `initialTrackerState()` gives an empty starting state, and `iou(a, b)` is the shared intersection-over-union helper both the tracker and its tests use.
