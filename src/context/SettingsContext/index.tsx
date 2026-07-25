@@ -74,6 +74,9 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const [storedSaveFrames, setSaveFrames] = useState(
     () => loadSettings().saveFrames,
   );
+  const [storedAutoSaveFrames, setAutoSaveFrames] = useState(
+    () => loadSettings().autoSaveFrames,
+  );
   const [radarAudio, setRadarAudio] = useState(() => loadSettings().radarAudio);
   const [storedThrottleInference, setThrottleInference] = useState(
     () => loadSettings().throttleInference,
@@ -100,6 +103,9 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const saveFrames = developerOptions
     ? storedSaveFrames
     : DEVELOPER_OPTIONS_OFF.saveFrames;
+  const autoSaveFrames = developerOptions
+    ? storedAutoSaveFrames
+    : DEVELOPER_OPTIONS_OFF.autoSaveFrames;
   const throttleInference = developerOptions
     ? storedThrottleInference
     : DEVELOPER_OPTIONS_OFF.throttleInference;
@@ -116,6 +122,7 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       showDebug: storedShowDebug,
       frameThumbnails: storedFrameThumbnails,
       saveFrames: storedSaveFrames,
+      autoSaveFrames: storedAutoSaveFrames,
       radarAudio,
       throttleInference: storedThrottleInference,
       centerCropFrames: storedCenterCropFrames,
@@ -131,6 +138,7 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     storedShowDebug,
     storedFrameThumbnails,
     storedSaveFrames,
+    storedAutoSaveFrames,
     radarAudio,
     storedThrottleInference,
     storedCenterCropFrames,
@@ -151,6 +159,10 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
 
   const toggleSaveFrames = useCallback(() => {
     setSaveFrames((prev) => !prev);
+  }, []);
+
+  const toggleAutoSaveFrames = useCallback(() => {
+    setAutoSaveFrames((prev) => !prev);
   }, []);
 
   const toggleRadarAudio = useCallback(() => {
@@ -189,6 +201,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleFrameThumbnails,
       saveFrames,
       toggleSaveFrames,
+      autoSaveFrames,
+      toggleAutoSaveFrames,
       radarAudio,
       toggleRadarAudio,
       throttleInference,
@@ -210,6 +224,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleFrameThumbnails,
       saveFrames,
       toggleSaveFrames,
+      autoSaveFrames,
+      toggleAutoSaveFrames,
       radarAudio,
       toggleRadarAudio,
       throttleInference,

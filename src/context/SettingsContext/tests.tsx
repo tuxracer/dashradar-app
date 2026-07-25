@@ -40,6 +40,7 @@ describe("SettingsContext", () => {
         showDebug: false,
         frameThumbnails: true,
         saveFrames: true,
+        autoSaveFrames: false,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
@@ -98,6 +99,7 @@ describe("SettingsContext", () => {
         showDebug: true,
         frameThumbnails: true,
         saveFrames: true,
+        autoSaveFrames: false,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
@@ -121,6 +123,7 @@ describe("SettingsContext", () => {
         showDebug: true,
         frameThumbnails: true,
         saveFrames: true,
+        autoSaveFrames: false,
         radarAudio: false,
         throttleInference: true,
         centerCropFrames: true,
@@ -145,6 +148,7 @@ describe("SettingsContext", () => {
         showDebug: true,
         frameThumbnails: true,
         saveFrames: true,
+        autoSaveFrames: false,
         radarAudio: true,
         throttleInference: false,
         centerCropFrames: true,
@@ -178,6 +182,7 @@ describe("SettingsContext", () => {
         showDebug: true,
         frameThumbnails: true,
         saveFrames: true,
+        autoSaveFrames: false,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: false,
@@ -208,6 +213,7 @@ describe("SettingsContext", () => {
         showDebug: true,
         frameThumbnails: true,
         saveFrames: true,
+        autoSaveFrames: true,
         throttleInference: false,
         centerCropFrames: false,
       }),
@@ -216,6 +222,7 @@ describe("SettingsContext", () => {
     expect(result.current.showDebug).toBe(false);
     expect(result.current.frameThumbnails).toBe(false);
     expect(result.current.saveFrames).toBe(false);
+    expect(result.current.autoSaveFrames).toBe(false);
     expect(result.current.throttleInference).toBe(true);
     expect(result.current.centerCropFrames).toBe(true);
   });
@@ -243,6 +250,18 @@ describe("SettingsContext", () => {
     expect(result.current.frameThumbnails).toBe(true);
   });
 
+  // Auto save downloads a file per detection, so unlike the other three
+  // display options it stays off until asked for by name.
+  it("keeps auto save off even once developer options are on", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleDeveloperOptions());
+    expect(result.current.saveFrames).toBe(true);
+    expect(result.current.autoSaveFrames).toBe(false);
+
+    act(() => result.current.toggleAutoSaveFrames());
+    expect(result.current.autoSaveFrames).toBe(true);
+  });
+
   it("tolerates a stored blob predating the frame preview and saving options", () => {
     window.localStorage.setItem(
       STORAGE_KEY,
@@ -251,6 +270,7 @@ describe("SettingsContext", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     expect(result.current.frameThumbnails).toBe(true);
     expect(result.current.saveFrames).toBe(true);
+    expect(result.current.autoSaveFrames).toBe(false);
   });
 
   it("restores the stored developer options when developerOptions is turned back on", () => {
@@ -282,6 +302,7 @@ describe("SettingsContext", () => {
         showDebug: true,
         frameThumbnails: true,
         saveFrames: true,
+        autoSaveFrames: false,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: false,

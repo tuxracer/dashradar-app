@@ -26,6 +26,7 @@ import type { HudModel } from "@/lib/detection";
 import { buildHudModel, toRoadDetections } from "@/lib/detection";
 import { createDetectionTracker } from "@/lib/detectionTracker";
 import { contactDirection, signalFromScore } from "@/lib/radarSignal";
+import { downloadBlob, frameFilename } from "@/lib/saveFrame";
 import { waitForServiceWorkerControl } from "@/lib/serviceWorker";
 import { POLICE_LABEL } from "@/workers/detection/consts";
 import type {
@@ -105,19 +106,27 @@ export const DetectionProvider = ({
   const {
     frameThumbnails,
     saveFrames,
+    autoSaveFrames,
     throttleInference,
     centerCropFrames,
     confidenceThreshold,
     settingsOpen,
   } = useSettings();
-  // Mirrors the frame-saving flag for sendFrame, which is a stable callback:
+  // Mirrors the frame-saving flags for sendFrame, which is a stable callback:
   // the pump reads the current value per capture instead of re-subscribing on
   // toggles. It asks the worker for the full-frame JPEG the contact card's
-  // SAVE button downloads.
-  const includeFrameRef = useRef(saveFrames);
+  // SAVE button downloads. Auto save needs the same JPEG, so it implies the
+  // request rather than making the two settings order-dependent.
+  const includeFrameRef = useRef(saveFrames || autoSaveFrames);
   useEffect(() => {
-    includeFrameRef.current = saveFrames;
-  }, [saveFrames]);
+    includeFrameRef.current = saveFrames || autoSaveFrames;
+  }, [saveFrames, autoSaveFrames]);
+  // Mirrors auto save for the detections handler, which downloads a detection's
+  // frame the moment it arrives.
+  const autoSaveRef = useRef(autoSaveFrames);
+  useEffect(() => {
+    autoSaveRef.current = autoSaveFrames;
+  }, [autoSaveFrames]);
   // Mirrors the frame-preview flag the same way. It asks the worker for a
   // thumbnail of what the model saw on scans with no detection to crop.
   const includeThumbnailRef = useRef(frameThumbnails);
@@ -607,6 +616,17 @@ export const DetectionProvider = ({
                 direction: contactDirection(cropDetection.box),
                 at: performance.now(),
               });
+              // Auto save (developer option) downloads the frame the instant a
+              // detection lands, so training data can be collected on a drive
+              // without reaching for the card's SAVE button. Deliberately
+              // inside this branch: only scans that actually detected
+              // something download, never the detection-free scans (which is
+              // most of them), and never a crop whose detection failed the road
+              // filter above. Sits in the handler body rather than a setState
+              // updater, which StrictMode double-invokes.
+              if (autoSaveRef.current && message.frame) {
+                downloadBlob(message.frame, frameFilename(new Date()));
+              }
             } else {
               message.crop.image.close();
             }

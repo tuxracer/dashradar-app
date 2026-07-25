@@ -35,6 +35,15 @@ export type Settings = {
    */
   saveFrames: boolean;
   /**
+   * When true, every scan that detects something downloads its full inference
+   * frame automatically, with no tap on SAVE. For collecting training data on
+   * a drive, where reaching for the button on each detection is not practical
+   * and the false positives are exactly what needs reviewing later. Implies
+   * the frame encode saveFrames asks for. Off by default even under
+   * developerOptions, since it downloads a file per detection.
+   */
+  autoSaveFrames: boolean;
+  /**
    * When true, radar detector mode beeps as a police vehicle is detected:
    * the beeps pulse faster (and higher-pitched) the stronger the signal, and
    * stop entirely when nothing is detected. On by default.
@@ -76,6 +85,7 @@ export type DeveloperOptions = Pick<
   | "showDebug"
   | "frameThumbnails"
   | "saveFrames"
+  | "autoSaveFrames"
   | "throttleInference"
   | "centerCropFrames"
   | "confidenceThreshold"
@@ -83,10 +93,11 @@ export type DeveloperOptions = Pick<
 
 /**
  * Value exposed by the settings context via useSettings(). The developer
- * options (showDebug, frameThumbnails, saveFrames, throttleInference,
- * centerCropFrames, confidenceThreshold) are the *effective* values, already
- * gated on developerOptions, so consumers never have to repeat the gate. Each
- * toggle (or setter) still writes the stored value underneath.
+ * options (showDebug, frameThumbnails, saveFrames, autoSaveFrames,
+ * throttleInference, centerCropFrames, confidenceThreshold) are the
+ * *effective* values, already gated on developerOptions, so consumers never
+ * have to repeat the gate. Each toggle (or setter) still writes the stored
+ * value underneath.
  */
 export type SettingsContextValue = {
   developerOptions: boolean;
@@ -97,6 +108,8 @@ export type SettingsContextValue = {
   toggleFrameThumbnails: () => void;
   saveFrames: boolean;
   toggleSaveFrames: () => void;
+  autoSaveFrames: boolean;
+  toggleAutoSaveFrames: () => void;
   radarAudio: boolean;
   toggleRadarAudio: () => void;
   throttleInference: boolean;
@@ -131,6 +144,7 @@ export const isPersistedSettings = (
     (value.showDebug === undefined || isBoolean(value.showDebug)) &&
     (value.frameThumbnails === undefined || isBoolean(value.frameThumbnails)) &&
     (value.saveFrames === undefined || isBoolean(value.saveFrames)) &&
+    (value.autoSaveFrames === undefined || isBoolean(value.autoSaveFrames)) &&
     (value.radarAudio === undefined || isBoolean(value.radarAudio)) &&
     (value.throttleInference === undefined ||
       isBoolean(value.throttleInference)) &&

@@ -43,6 +43,7 @@ describe("SettingsScreen", () => {
         showDebug: true,
         frameThumbnails: true,
         saveFrames: true,
+        autoSaveFrames: false,
         radarAudio: false,
         throttleInference: true,
         centerCropFrames: true,
@@ -68,6 +69,7 @@ describe("SettingsScreen", () => {
         showDebug: false,
         frameThumbnails: true,
         saveFrames: true,
+        autoSaveFrames: false,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
@@ -87,6 +89,7 @@ describe("SettingsScreen", () => {
         showDebug: true,
         frameThumbnails: true,
         saveFrames: true,
+        autoSaveFrames: false,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
@@ -102,6 +105,7 @@ describe("SettingsScreen", () => {
     expect(screen.queryByText("Debug overlay")).not.toBeInTheDocument();
     expect(screen.queryByText("Frame preview")).not.toBeInTheDocument();
     expect(screen.queryByText("Save frames")).not.toBeInTheDocument();
+    expect(screen.queryByText("Auto save")).not.toBeInTheDocument();
     expect(screen.queryByText("Throttle inference")).not.toBeInTheDocument();
     expect(screen.queryByText("Center crop")).not.toBeInTheDocument();
   });
@@ -114,6 +118,7 @@ describe("SettingsScreen", () => {
     expect(screen.getByText("Debug overlay")).toBeInTheDocument();
     expect(screen.getByText("Frame preview")).toBeInTheDocument();
     expect(screen.getByText("Save frames")).toBeInTheDocument();
+    expect(screen.getByText("Auto save")).toBeInTheDocument();
     expect(screen.getByText("Throttle inference")).toBeInTheDocument();
     expect(screen.getByText("Center crop")).toBeInTheDocument();
   });
@@ -189,6 +194,7 @@ describe("SettingsScreen", () => {
         showDebug: true,
         frameThumbnails: true,
         saveFrames: true,
+        autoSaveFrames: false,
         radarAudio: true,
         throttleInference: false,
         centerCropFrames: true,
@@ -212,6 +218,7 @@ describe("SettingsScreen", () => {
         showDebug: true,
         frameThumbnails: true,
         saveFrames: true,
+        autoSaveFrames: false,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: false,
@@ -235,6 +242,7 @@ describe("SettingsScreen", () => {
         showDebug: true,
         frameThumbnails: false,
         saveFrames: true,
+        autoSaveFrames: false,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
@@ -258,6 +266,31 @@ describe("SettingsScreen", () => {
         showDebug: true,
         frameThumbnails: true,
         saveFrames: false,
+        autoSaveFrames: false,
+        radarAudio: true,
+        throttleInference: true,
+        centerCropFrames: true,
+        confidenceThreshold: 0.5,
+      }),
+    );
+  });
+
+  it("toggles and persists the auto save setting from its row", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true }),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    await user.click(screen.getByText("Auto save"));
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({
+        developerOptions: true,
+        showDebug: true,
+        frameThumbnails: true,
+        saveFrames: true,
+        autoSaveFrames: true,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,

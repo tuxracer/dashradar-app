@@ -31,6 +31,7 @@ import {
   HEARTBEAT_INTERVAL_MS,
   SENTINEL_STORAGE_KEY,
 } from "@/lib/crashSentinel";
+import { downloadBlob } from "@/lib/saveFrame";
 
 /** Arms the WASM safe mode by recording a full crash streak. */
 const armSafeMode = () => {
@@ -40,6 +41,10 @@ const armSafeMode = () => {
 };
 
 vi.mock("@vercel/analytics", () => ({ track: vi.fn() }));
+vi.mock("@/lib/saveFrame", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/saveFrame")>()),
+  downloadBlob: vi.fn(),
+}));
 import type {
   DebugSnapshot,
   DetectionWorkerLike,
@@ -278,6 +283,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   // restoreAllMocks does not reset a vi.fn() created by a module mock factory.
   vi.mocked(track).mockClear();
+  vi.mocked(downloadBlob).mockClear();
   // Restore the prototype visibilityState getter shadowed by
   // setDocumentVisibility, so later tests see jsdom's real value.
   Reflect.deleteProperty(document, "visibilityState");
@@ -1286,6 +1292,38 @@ describe("DetectionProvider", () => {
     expect(
       worker.posted.find((message) => message.type === "detect"),
     ).toMatchObject({ includeFrame: true, includeThumbnail: false });
+  });
+
+  // Auto save needs the same full-frame JPEG the SAVE button uses, so it has to
+  // ask for it on its own rather than depending on Save frames being on too.
+  it("posts includeFrame true for auto save even with frame saving off", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        developerOptions: true,
+        saveFrames: false,
+        autoSaveFrames: true,
+      }),
+    );
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    expect(
+      worker.posted.find((message) => message.type === "detect"),
+    ).toMatchObject({ includeFrame: true });
   });
 
   it("posts includeThumbnail true while the frame preview is on, and nothing else", async () => {
@@ -2359,6 +2397,125 @@ describe("DetectionProvider contact", () => {
     });
     expect(screen.getByTestId("contact-direction")).toHaveTextContent("left");
     expect(screen.getByTestId("contact-frame")).toHaveTextContent("none");
+  });
+});
+
+describe("DetectionProvider auto save", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const timing = { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 };
+  const policeDetection = (score: number) => ({
+    label: "police",
+    score,
+    box: { xmin: 0.15, ymin: 0.4, xmax: 0.25, ymax: 0.6 },
+  });
+  const jpeg = () => new Blob(["jpeg"], { type: "image/jpeg" });
+
+  const renderWithAutoSave = (enabled: boolean) => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true, autoSaveFrames: enabled }),
+    );
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const worker = new FakeWorker();
+    render(
+      <SettingsProvider>
+        <DetectionProvider createWorker={() => worker}>
+          <ContactProbe />
+        </DetectionProvider>
+      </SettingsProvider>,
+    );
+    return worker;
+  };
+
+  it("downloads a detection's frame as it arrives", () => {
+    const worker = renderWithAutoSave(true);
+    const frame = jpeg();
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [policeDetection(0.85)],
+        timing,
+        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
+        frame,
+      });
+    });
+    expect(downloadBlob).toHaveBeenCalledWith(
+      frame,
+      expect.stringMatching(/^dashradar-frame-\d{4}-\d{2}-\d{2}-\d{6}\.jpg$/),
+    );
+  });
+
+  // The whole point of auto save is collecting detections, not every scan. A
+  // drive is mostly detection-free frames, so downloading those would bury the
+  // detections and fill the device.
+  it("never downloads a detection-free scan, even one carrying a frame", () => {
+    const worker = renderWithAutoSave(true);
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [],
+        timing,
+        frameThumbnail: new FakeImageBitmap(),
+        frame: jpeg(),
+      });
+    });
+    expect(downloadBlob).not.toHaveBeenCalled();
+  });
+
+  it("never downloads a crop whose detection fails the road filter", () => {
+    const worker = renderWithAutoSave(true);
+    act(() => {
+      worker.emit({
+        type: "detections",
+        // Below the 0.5 confidence floor, so toRoadDetections drops it and the
+        // crop is discarded rather than shown or saved.
+        detections: [policeDetection(0.2)],
+        timing,
+        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
+        frame: jpeg(),
+      });
+    });
+    expect(downloadBlob).not.toHaveBeenCalled();
+  });
+
+  it("downloads nothing while the setting is off", () => {
+    const worker = renderWithAutoSave(false);
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [policeDetection(0.85)],
+        timing,
+        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
+        frame: jpeg(),
+      });
+    });
+    expect(downloadBlob).not.toHaveBeenCalled();
+  });
+
+  it("downloads one file per detection across consecutive scans", () => {
+    const worker = renderWithAutoSave(true);
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [policeDetection(0.85)],
+        timing,
+        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
+        frame: jpeg(),
+      });
+    });
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [policeDetection(0.9)],
+        timing,
+        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
+        frame: jpeg(),
+      });
+    });
+    expect(vi.mocked(downloadBlob)).toHaveBeenCalledTimes(2);
   });
 });
 
