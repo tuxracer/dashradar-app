@@ -122,9 +122,10 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const centerCropFrames = developerOptions
     ? storedCenterCropFrames
     : DEVELOPER_OPTIONS_OFF.centerCropFrames;
-  const zoomMode = developerOptions
-    ? storedZoomMode
-    : DEVELOPER_OPTIONS_OFF.zoomMode;
+  // The zoom mode is a regular user setting, not gated on developerOptions:
+  // narrowing or auto-cycling the scan is a driver-facing choice, so the
+  // stored value always takes effect.
+  const zoomMode = storedZoomMode;
   const confidenceThreshold = developerOptions
     ? storedConfidenceThreshold
     : DEVELOPER_OPTIONS_OFF.confidenceThreshold;

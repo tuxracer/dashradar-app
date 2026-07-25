@@ -111,7 +111,8 @@ describe("SettingsScreen", () => {
     expect(screen.queryByText("Auto save")).not.toBeInTheDocument();
     expect(screen.queryByText("Throttle inference")).not.toBeInTheDocument();
     expect(screen.queryByText("Center crop")).not.toBeInTheDocument();
-    expect(screen.queryByText("Zoom")).not.toBeInTheDocument();
+    // The Zoom picker is a regular user setting, not a developer row.
+    expect(screen.getByText("Zoom")).toBeInTheDocument();
   });
 
   it("reveals every developer row once developer options are on", async () => {

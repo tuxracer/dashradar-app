@@ -19,7 +19,7 @@ import {
  * frame (sx/sy 0).
  *
  * `zoom` shrinks that square by its factor while keeping it centered, which is
- * how the developer 2x zoom works: the same 512x512 model input then covers
+ * how the 2x zoom works: the same 512x512 model input then covers
  * half the field of view, so a distant vehicle occupies twice the linear size
  * in the input grid. Values below 1 would crop outside the frame, so they are
  * clamped away rather than honored.

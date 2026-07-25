@@ -76,7 +76,7 @@ export const WEBGPU_GRAPH_CAPTURE = true;
 export const INPUT_SIZE = 512;
 
 /**
- * Crop factor the developer 2x zoom applies: the centered square fed to the
+ * Crop factor the 2x zoom applies: the centered square fed to the
  * model shrinks to half its side, so the same 512x512 input covers half the
  * field of view and a distant vehicle occupies twice the linear size in the
  * input grid. A fixed step rather than a continuous range because native

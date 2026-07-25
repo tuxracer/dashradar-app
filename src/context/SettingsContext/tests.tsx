@@ -231,25 +231,24 @@ describe("SettingsContext", () => {
     expect(result.current.autoSaveFrames).toBe(false);
     expect(result.current.throttleInference).toBe(true);
     expect(result.current.centerCropFrames).toBe(true);
+    // The zoom mode is a regular user setting, so the stored value holds
+    // regardless of the developer master switch.
+    expect(result.current.zoomMode).toBe("auto");
+  });
+
+  it("defaults the zoom mode to 1x", () => {
+    // The other zoom modes narrow what the detector can see, so they are
+    // asked for deliberately rather than defaulted into.
+    const { result } = renderHook(() => useSettings(), { wrapper });
     expect(result.current.zoomMode).toBe("1x");
   });
 
-  it("defaults the zoom mode to 1x even under developer options", () => {
-    // The other zoom modes narrow what the detector can see, so unlike the
-    // diagnostics options the zoom is asked for deliberately rather than
-    // inherited from turning developer options on.
+  it("keeps the zoom mode across developer options toggles", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
-    act(() => result.current.toggleDeveloperOptions());
-    expect(result.current.zoomMode).toBe("1x");
-  });
-
-  it("restores a stored zoom mode when developerOptions comes back on", () => {
-    const { result } = renderHook(() => useSettings(), { wrapper });
-    act(() => result.current.toggleDeveloperOptions());
     act(() => result.current.setZoomMode("auto"));
     expect(result.current.zoomMode).toBe("auto");
     act(() => result.current.toggleDeveloperOptions());
-    expect(result.current.zoomMode).toBe("1x");
+    expect(result.current.zoomMode).toBe("auto");
     act(() => result.current.toggleDeveloperOptions());
     expect(result.current.zoomMode).toBe("auto");
   });

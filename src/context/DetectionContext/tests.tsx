@@ -1516,11 +1516,9 @@ describe("DetectionProvider", () => {
     ).toMatchObject({ zoom: ZOOM_2X });
   });
 
-  it("posts the unzoomed crop factor when a zoom mode is stored but developer options are off", async () => {
-    // The zoom narrows the detector's field of view, so it is gated on the
-    // Developer options master switch like the other tweaks: a stored 2x or
-    // auto mode must NOT narrow a normal drive. This pins the gate
-    // SettingsProvider applies to the stored value.
+  it("posts the stored crop factor without developer options", async () => {
+    // The zoom mode is a regular user setting, not developer-gated: a stored
+    // 2x narrows the scan on a normal drive with the master switch off.
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({ developerOptions: false, zoomMode: "2x" }),
@@ -1543,7 +1541,7 @@ describe("DetectionProvider", () => {
     });
     expect(
       worker.posted.find((message) => message.type === "detect"),
-    ).toMatchObject({ zoom: ZOOM_OFF });
+    ).toMatchObject({ zoom: ZOOM_2X });
   });
 
   // Auto zoom mode. These tests run the pump through several scans under fake

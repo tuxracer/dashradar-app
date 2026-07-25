@@ -86,8 +86,8 @@ export type WorkerRequest =
       /**
        * Factor by which to shrink the centered square crop, so the model input
        * covers a narrower field of view. 1 (the default when omitted) is the
-       * full centered square; ZOOM_2X halves it. Set from the developer 2x
-       * zoom setting. Only meaningful under center-crop preprocessing: the
+       * full centered square; ZOOM_2X halves it. Set from the zoom setting
+       * (or its auto machine). Only meaningful under center-crop preprocessing: the
        * squish path draws the whole frame and ignores this.
        */
       zoom?: number;

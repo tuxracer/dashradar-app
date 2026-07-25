@@ -6,7 +6,7 @@ import { ZOOM_2X } from "@/workers/detection/consts";
  * same way RadarDetectorScreen is fed) so the chip renders without the
  * worker in tests. */
 type ZoomIndicatorProps = {
-  /** Effective zoom mode from useSettings(), already gated on Developer options. */
+  /** Zoom mode from useSettings(). */
   mode: ZoomMode;
   /** The auto zoom machine's current crop factor, from useDetection(). */
   level: AutoZoomLevel;
@@ -14,8 +14,8 @@ type ZoomIndicatorProps = {
 
 /**
  * Amber pill centered in the top status bar showing which zoom the detector
- * is scanning at. Renders nothing in the plain 1x mode, so a normal drive
- * (Developer options off) never shows it. The fixed 2x mode reads a constant
+ * is scanning at. Renders nothing in the plain 1x mode, so the default setup
+ * never shows it. The fixed 2x mode reads a constant
  * "2X"; auto reads "AUTO · 1X" / "AUTO · 2X" live as the machine alternates
  * and locks. Positioned to sit on the StatusBar's line (same top offset) but
  * rendered as its own absolutely centered element, since the bar's
