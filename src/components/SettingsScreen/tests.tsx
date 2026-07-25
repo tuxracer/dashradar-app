@@ -49,6 +49,7 @@ describe("SettingsScreen", () => {
         centerCropFrames: true,
         zoomMode: "1x",
         confidenceThreshold: 0.5,
+        zoomIndicator: true,
       }),
     );
   });
@@ -76,6 +77,7 @@ describe("SettingsScreen", () => {
         centerCropFrames: true,
         zoomMode: "1x",
         confidenceThreshold: 0.5,
+        zoomIndicator: true,
       }),
     );
   });
@@ -97,6 +99,7 @@ describe("SettingsScreen", () => {
         centerCropFrames: true,
         zoomMode: "1x",
         confidenceThreshold: 0.5,
+        zoomIndicator: true,
       }),
     );
   });
@@ -106,6 +109,7 @@ describe("SettingsScreen", () => {
     renderScreen();
     await open(user);
     expect(screen.queryByText("Debug overlay")).not.toBeInTheDocument();
+    expect(screen.queryByText("Zoom indicator")).not.toBeInTheDocument();
     expect(screen.queryByText("Frame preview")).not.toBeInTheDocument();
     expect(screen.queryByText("Save frames")).not.toBeInTheDocument();
     expect(screen.queryByText("Auto save")).not.toBeInTheDocument();
@@ -121,6 +125,7 @@ describe("SettingsScreen", () => {
     await open(user);
     await user.click(screen.getByText("Developer options"));
     expect(screen.getByText("Debug overlay")).toBeInTheDocument();
+    expect(screen.getByText("Zoom indicator")).toBeInTheDocument();
     expect(screen.getByText("Frame preview")).toBeInTheDocument();
     expect(screen.getByText("Save frames")).toBeInTheDocument();
     expect(screen.getByText("Auto save")).toBeInTheDocument();
@@ -185,6 +190,22 @@ describe("SettingsScreen", () => {
     ).toBeInTheDocument();
   });
 
+  it("toggles and persists the zoom indicator setting from its row", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true }),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    // On by default under developer options, so the tap turns it off.
+    await user.click(screen.getByText("Zoom indicator"));
+    expect(
+      JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}")
+        .zoomIndicator,
+    ).toBe(false);
+  });
+
   it("toggles and persists the throttle setting from its row", async () => {
     window.localStorage.setItem(
       STORAGE_KEY,
@@ -206,6 +227,7 @@ describe("SettingsScreen", () => {
         centerCropFrames: true,
         zoomMode: "1x",
         confidenceThreshold: 0.5,
+        zoomIndicator: true,
       }),
     );
   });
@@ -231,6 +253,7 @@ describe("SettingsScreen", () => {
         centerCropFrames: false,
         zoomMode: "1x",
         confidenceThreshold: 0.5,
+        zoomIndicator: true,
       }),
     );
   });
@@ -256,6 +279,7 @@ describe("SettingsScreen", () => {
         centerCropFrames: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
+        zoomIndicator: true,
       }),
     );
   });
@@ -298,6 +322,7 @@ describe("SettingsScreen", () => {
         centerCropFrames: true,
         zoomMode: "1x",
         confidenceThreshold: 0.5,
+        zoomIndicator: true,
       }),
     );
   });
@@ -323,6 +348,7 @@ describe("SettingsScreen", () => {
         centerCropFrames: true,
         zoomMode: "1x",
         confidenceThreshold: 0.5,
+        zoomIndicator: true,
       }),
     );
   });
@@ -348,6 +374,7 @@ describe("SettingsScreen", () => {
         centerCropFrames: true,
         zoomMode: "1x",
         confidenceThreshold: 0.5,
+        zoomIndicator: true,
       }),
     );
   });

@@ -90,8 +90,8 @@ src/
     DevVideoView/               # dev-only stand-in for CameraView (no onError, camera errors don't exist in this mode): plays DEV_VIDEO_URL as the detection feed and doubles as a visible, controllable corner player (§4.3)
     RadarBackdrop/              # static radar-grid layer shown behind the (always-hidden) feed; the only thing ever visible in that layer
     RadarDetectorScreen/        # opaque fullscreen radar-detector-style instrument, the only detection UI, rendered unconditionally once the model has loaded (the ladder segments as radial ticks on a tachometer-style arc around a percentage readout and SCANNING/ALERT status word, with a scanning sweep, signal-colored glow, and pulsing alert ring; no camera or boxes), driven by a requestAnimationFrame peak-hold/decay loop writing to the DOM; the same loop drives the lib/radarAudio beeper (gated by the radarAudio setting); also renders a contact card beside the dial (right side in landscape, docked below it in portrait) from useDetection()'s optional contact prop, canvas-drawing the cutout above a direction row (no label or percent; the dial already carries the number; the row renders only while the raw signal is nonzero, so no stale heading shows while the card lingers through the decay tail); the card's opacity is written by the same rAF loop through a data-contact attribute on the root, so it normally fades in and out with the peak-held meter and only shows while a contact exists; with the frameThumbnails prop on the card instead stays lit for as long as a contact exists (regardless of the meter level), so the per-scan frame preview is visible on every scan including detection-free ones; with the saveFrames prop on the card also shows a SAVE button (lib/saveFrame) that downloads the full inference frame as a timestamped JPEG for collecting training data; the card's visibility is delayed-visibility CSS rather than opacity alone, so it stays clickable through the fade-out and only goes untappable once fully invisible
-    StatusBar/                  # wordmark + settings gear
-    ZoomIndicator/              # amber pill on the status bar line showing the scan zoom: nothing at plain 1x, "2X" in the fixed mode, live "AUTO · 1X/2X" in auto mode
+    StatusBar/                  # wordmark + settings gear + optional centered slot (the zoom pill)
+    ZoomIndicator/              # amber zoom pill for StatusBar's center slot, gated by the zoomIndicator developer option: 1X/2X in the fixed modes, live "AUTO · 1X/2X" (+ LOCKED) in auto mode
     SettingsButton/             # enlarged gear that opens the full-screen settings panel
     SettingsScreen/             # full-screen settings panel: audio alerts + debug overlay toggles + engine/model/about + share row
     ShareCard/                  # share row (settings) + ShareQr, the pre-rendered dashradar.app QR code on a white card, reused by the desktop intro
@@ -303,16 +303,19 @@ type SettingsContextValue = {
 };
 ```
 
-`developerOptions` (default off) is the master switch for the seven
+`developerOptions` (default off) is the master switch for the eight
 development-only options: `showDebug`, `frameThumbnails`, `saveFrames`,
-`autoSaveFrames`, `throttleInference`, `centerCropFrames`, and
-`confidenceThreshold`. `SettingsScreen` renders their rows only while it is
-on, and `SettingsProvider` reports all seven at their `DEVELOPER_OPTIONS_OFF`
+`autoSaveFrames`, `throttleInference`, `centerCropFrames`,
+`confidenceThreshold`, and `zoomIndicator`. `SettingsScreen` renders their
+rows only while it is
+on, and `SettingsProvider` reports all eight at their `DEVELOPER_OPTIONS_OFF`
 values while it is off, so a tweak left enabled cannot alter a normal drive.
 The gate lives in the provider, not in each consumer: `useSettings()` returns
 the already-gated effective value, so `DetectionContext` reads a bare
-`frameThumbnails`/`saveFrames`/`autoSaveFrames`/`throttleInference`/`centerCropFrames`/`confidenceThreshold`
-and `DebugOverlay` a bare `showDebug`. The stored values are left untouched
+`frameThumbnails`/`saveFrames`/`autoSaveFrames`/`throttleInference`/`centerCropFrames`/`confidenceThreshold`,
+`DebugOverlay` a bare `showDebug`, and `RadarScreen` a bare `zoomIndicator`
+(gating whether the on-glass zoom pill renders at all; it defaults on under
+the master switch, like the display diagnostics). The stored values are left untouched
 while the switch is off, so turning it back on restores the tweaks rather than
 resetting them.
 
@@ -473,7 +476,7 @@ The zoom setting's auto mode (§4, SettingsContext `zoomMode`) hands the per-sca
 
 The step is fed the **coasted** tracker output, not the raw per-frame detections, so a one-frame flicker cannot release a lock; an object only counts as gone once the tracker drops it after `MAX_MISSES` coasted frames, matching when the meter itself lets go. `DetectionContext` keeps the state in a ref (`autoZoomRef`), records each posted frame's zoom and dimensions at capture time (`lastFrameInfoRef`; only one frame is ever in flight, so the pairing with its result is trivial), steps the machine in the `detections` handler, and resets it to `initialAutoZoomState()` (1x, unlocked) on `stop()` and whenever the mode changes. In the fixed 1x/2x modes the machine is never stepped and `sendFrame` ignores it. The debug overlay's `zoom` row shows the mode, the last scan's crop factor, and the lock state.
 
-The machine's current level is also mirrored into context state as `autoZoomLevel` (updated per scan in the `detections` handler, reset with the machine on `stop()`), feeding the on-glass `ZoomIndicator`: an amber pill centered on the status bar line that shows nothing at plain 1x, a constant "2X" in the fixed 2x mode, and a live "AUTO · 1X" / "AUTO · 2X" in auto mode, so the active zoom is visible at a glance whenever the zoom setting narrows the scan. It is a presentational component fed props by `App`'s `RadarScreen` (mode from `useSettings()`, level from `useDetection()`), the same wiring pattern as `RadarDetectorScreen`. The `[zoomMode]` effect deliberately does not reset the state mirror: the mode is only changeable from the settings panel, and opening the panel already stops the pump, which resets the level with the machine.
+The machine's current state is also mirrored into context state as `autoZoom` (`{ zoom, locked }`, updated per scan in the `detections` handler, reset with the machine on `stop()`), feeding the on-glass `ZoomIndicator`: an amber pill rendered in `StatusBar`'s `center` slot (horizontally centered, vertically aligned with the wordmark) only while the `zoomIndicator` developer option is on. It reads a constant "1X" or "2X" in the fixed modes and a live "AUTO · 1X" / "AUTO · 2X" in auto mode, with a " · LOCKED" suffix while a detection is holding the level. It is a presentational component fed props by `App`'s `RadarScreen` (mode and the gate from `useSettings()`, machine state from `useDetection()`), the same wiring pattern as `RadarDetectorScreen`. The `[zoomMode]` effect deliberately does not reset the state mirror: the mode is only changeable from the settings panel, and opening the panel already stops the pump, which resets the state with the machine.
 
 ### Nearest object and the NEAR heuristic
 

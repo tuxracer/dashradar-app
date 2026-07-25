@@ -46,6 +46,7 @@ describe("SettingsContext", () => {
         centerCropFrames: true,
         zoomMode: "1x",
         confidenceThreshold: 0.5,
+        zoomIndicator: true,
       }),
     );
   });
@@ -106,6 +107,7 @@ describe("SettingsContext", () => {
         centerCropFrames: true,
         zoomMode: "1x",
         confidenceThreshold: 0.5,
+        zoomIndicator: true,
       }),
     );
   });
@@ -131,6 +133,7 @@ describe("SettingsContext", () => {
         centerCropFrames: true,
         zoomMode: "1x",
         confidenceThreshold: 0.5,
+        zoomIndicator: true,
       }),
     );
   });
@@ -157,6 +160,7 @@ describe("SettingsContext", () => {
         centerCropFrames: true,
         zoomMode: "1x",
         confidenceThreshold: 0.5,
+        zoomIndicator: true,
       }),
     );
   });
@@ -192,6 +196,7 @@ describe("SettingsContext", () => {
         centerCropFrames: false,
         zoomMode: "1x",
         confidenceThreshold: 0.5,
+        zoomIndicator: true,
       }),
     );
   });
@@ -222,6 +227,7 @@ describe("SettingsContext", () => {
         throttleInference: false,
         centerCropFrames: false,
         zoomMode: "auto",
+        zoomIndicator: true,
       }),
     );
     const { result } = renderHook(() => useSettings(), { wrapper });
@@ -231,6 +237,7 @@ describe("SettingsContext", () => {
     expect(result.current.autoSaveFrames).toBe(false);
     expect(result.current.throttleInference).toBe(true);
     expect(result.current.centerCropFrames).toBe(true);
+    expect(result.current.zoomIndicator).toBe(false);
     // The zoom mode is a regular user setting, so the stored value holds
     // regardless of the developer master switch.
     expect(result.current.zoomMode).toBe("auto");
@@ -374,6 +381,7 @@ describe("SettingsContext", () => {
         centerCropFrames: false,
         zoomMode: "1x",
         confidenceThreshold: 0.5,
+        zoomIndicator: true,
       }),
     );
   });

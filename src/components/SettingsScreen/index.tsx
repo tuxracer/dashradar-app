@@ -33,9 +33,9 @@ const Toggle = ({ on }: { on: boolean }) => (
  * landscape. Renders nothing until the panel is opened. Large, full-width rows
  * with big tap targets: the Audio alerts toggle, the segmented Zoom mode
  * picker, the Developer options toggle, the development-only controls
- * Developer options reveals (Debug overlay, Frame preview, Save frames, Auto
- * save, Throttle inference, Center crop, Min confidence), plus read-only
- * Detection engine, Model, and About rows.
+ * Developer options reveals (Debug overlay, Zoom indicator, Frame preview,
+ * Save frames, Auto save, Throttle inference, Center crop, Min confidence),
+ * plus read-only Detection engine, Model, and About rows.
  * Closes on the large close button or Escape. While it is open the detection
  * pump is paused (DetectionContext
  * watches `settingsOpen`) and resumes on close. Reads the backend as a prop
@@ -65,6 +65,8 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
     setZoomMode,
     confidenceThreshold,
     setConfidenceThreshold,
+    zoomIndicator,
+    toggleZoomIndicator,
   } = useSettings();
 
   useEffect(() => {
@@ -180,6 +182,22 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
                   </span>
                 </span>
                 <Toggle on={showDebug} />
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleZoomIndicator}
+                className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
+              >
+                <span className="flex flex-col gap-1">
+                  <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                    Zoom indicator
+                  </span>
+                  <span className="text-sm font-medium text-white/45">
+                    Shows the active zoom in the status bar.
+                  </span>
+                </span>
+                <Toggle on={zoomIndicator} />
               </button>
 
               <button

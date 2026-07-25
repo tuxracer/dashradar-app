@@ -31,11 +31,13 @@ export const DEFAULT_SETTINGS: Settings = {
   centerCropFrames: true,
   zoomMode: "1x",
   confidenceThreshold: 0.5,
+  zoomIndicator: true,
 };
 
 /**
  * Effective values the development-only settings report while the Developer
- * options master switch is off: nothing extra on the glass, no per-frame JPEG
+ * options master switch is off: nothing extra on the glass (no debug overlay,
+ * no zoom indicator pill), no per-frame JPEG
  * encode, no downloads, the thermal pacing floor in place, the center crop the
  * model trains with, and the 0.5 confidence floor.
  * Kept apart from
@@ -50,4 +52,5 @@ export const DEVELOPER_OPTIONS_OFF: DeveloperOptions = {
   throttleInference: true,
   centerCropFrames: true,
   confidenceThreshold: 0.5,
+  zoomIndicator: false,
 };

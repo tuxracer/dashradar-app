@@ -22,7 +22,7 @@ export type Settings = {
   /**
    * Master switch for the development-only settings (showDebug,
    * frameThumbnails, saveFrames, autoSaveFrames, throttleInference,
-   * centerCropFrames, confidenceThreshold). Off by default. While it is off, SettingsProvider
+   * centerCropFrames, confidenceThreshold, zoomIndicator). Off by default. While it is off, SettingsProvider
    * reports each of those at its DEVELOPER_OPTIONS_OFF value no matter what is
    * stored, so a development tweak left enabled cannot alter a normal drive.
    * Their stored values survive, so turning this back on restores the tweaks
@@ -103,6 +103,14 @@ export type Settings = {
    * CONFIDENCE_LEVELS (0.1 to 0.9).
    */
   confidenceThreshold: number;
+  /**
+   * When true, an amber pill on the status bar line shows the crop factor the
+   * detector is scanning at, including the auto mode's live level and lock
+   * state. A developer option, so it only takes effect while developerOptions
+   * is on, and on by default there: it is the on-glass counterpart of the
+   * debug overlay's zoom row.
+   */
+  zoomIndicator: boolean;
 };
 
 /**
@@ -118,12 +126,13 @@ export type DeveloperOptions = Pick<
   | "throttleInference"
   | "centerCropFrames"
   | "confidenceThreshold"
+  | "zoomIndicator"
 >;
 
 /**
  * Value exposed by the settings context via useSettings(). The developer
  * options (showDebug, frameThumbnails, saveFrames, autoSaveFrames,
- * throttleInference, centerCropFrames, confidenceThreshold) are the
+ * throttleInference, centerCropFrames, confidenceThreshold, zoomIndicator) are the
  * *effective* values, already gated on developerOptions, so consumers never
  * have to repeat the gate. Each toggle (or setter) still writes the stored
  * value underneath.
@@ -151,6 +160,8 @@ export type SettingsContextValue = {
   confidenceThreshold: number;
   /** Sets the minimum-confidence level, snapping to the nearest allowed step. */
   setConfidenceThreshold: (level: number) => void;
+  zoomIndicator: boolean;
+  toggleZoomIndicator: () => void;
   /** Whether the full-screen settings panel is open. Ephemeral, not persisted. */
   settingsOpen: boolean;
   /** Opens the full-screen settings panel. */
@@ -184,7 +195,8 @@ export const isPersistedSettings = (
       isBoolean(value.centerCropFrames)) &&
     (value.zoomMode === undefined || isZoomMode(value.zoomMode)) &&
     (value.confidenceThreshold === undefined ||
-      isNumber(value.confidenceThreshold))
+      isNumber(value.confidenceThreshold)) &&
+    (value.zoomIndicator === undefined || isBoolean(value.zoomIndicator))
   );
 };
 

@@ -22,7 +22,7 @@ import {
   writeHeartbeat,
 } from "@/lib/crashSentinel";
 import { initialAutoZoomState, stepAutoZoom } from "@/lib/autoZoom";
-import type { AutoZoomLevel } from "@/lib/autoZoom";
+import type { AutoZoomLevel, AutoZoomState } from "@/lib/autoZoom";
 import { DEV_VIDEO_URL } from "@/lib/devVideo";
 import type { HudModel } from "@/lib/detection";
 import { buildHudModel, toRoadDetections } from "@/lib/detection";
@@ -162,15 +162,17 @@ export const DetectionProvider = ({
   // src/lib/autoZoom). A ref, not state: it changes per result and nothing
   // renders it directly.
   const autoZoomRef = useRef(initialAutoZoomState());
-  // The machine's current level, mirrored into state for the ZoomIndicator
-  // chip. Updates once per scan at most (the same cadence as setHud), so the
-  // ref/state split costs nothing extra here; the ref stays the source the
-  // pump reads synchronously.
-  const [autoZoomLevel, setAutoZoomLevel] = useState<AutoZoomLevel>(ZOOM_OFF);
+  // The machine's current state (level and lock), mirrored into React state
+  // for the ZoomIndicator chip. Updates once per scan at most (the same
+  // cadence as setHud), so the ref/state split costs nothing extra here; the
+  // ref stays the source the pump reads synchronously.
+  const [autoZoom, setAutoZoom] = useState<AutoZoomState>(
+    initialAutoZoomState(),
+  );
   useEffect(() => {
     zoomModeRef.current = zoomMode;
     // A mode change invalidates any lock or alternation phase, so auto always
-    // begins a fresh spell zoomed out. The autoZoomLevel state needs no reset
+    // begins a fresh spell zoomed out. The autoZoom state needs no reset
     // here: the mode is only changeable from the settings panel, and opening
     // the panel already stopped the pump, which resets the level with the
     // machine.
@@ -674,7 +676,7 @@ export const DetectionProvider = ({
               frameWidth: frameInfo.width,
               frameHeight: frameInfo.height,
             });
-            setAutoZoomLevel(autoZoomRef.current.zoom);
+            setAutoZoom(autoZoomRef.current);
           }
           // Pair the crop with its detection. Validation mirrors the road
           // filter; a crop whose detection is dropped is discarded so the
@@ -973,7 +975,7 @@ export const DetectionProvider = ({
     // The auto zoom resets with the tracker: whatever it had locked onto is
     // gone with the tracks, so the next session starts zoomed out.
     autoZoomRef.current = initialAutoZoomState();
-    setAutoZoomLevel(ZOOM_OFF);
+    setAutoZoom(initialAutoZoomState());
     if (statusRef.current === "running") {
       statusRef.current = "ready";
       setStatus("ready");
@@ -1165,7 +1167,7 @@ export const DetectionProvider = ({
       getDebugSnapshot,
       error,
       contact,
-      autoZoomLevel,
+      autoZoom,
       cameraStalled,
       cameraEpoch,
       start,
@@ -1183,7 +1185,7 @@ export const DetectionProvider = ({
       getDebugSnapshot,
       error,
       contact,
-      autoZoomLevel,
+      autoZoom,
       cameraStalled,
       cameraEpoch,
       start,

@@ -97,6 +97,9 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const [storedConfidenceThreshold, setStoredConfidenceThreshold] = useState(
     () => loadSettings().confidenceThreshold,
   );
+  const [storedZoomIndicator, setZoomIndicator] = useState(
+    () => loadSettings().zoomIndicator,
+  );
 
   // The developer options report their DEVELOPER_OPTIONS_OFF value whenever
   // developerOptions is off, so a tweak left enabled (the debug overlay, the
@@ -129,6 +132,9 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const confidenceThreshold = developerOptions
     ? storedConfidenceThreshold
     : DEVELOPER_OPTIONS_OFF.confidenceThreshold;
+  const zoomIndicator = developerOptions
+    ? storedZoomIndicator
+    : DEVELOPER_OPTIONS_OFF.zoomIndicator;
 
   useEffect(() => {
     const next: Settings = {
@@ -142,6 +148,7 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       centerCropFrames: storedCenterCropFrames,
       zoomMode: storedZoomMode,
       confidenceThreshold: storedConfidenceThreshold,
+      zoomIndicator: storedZoomIndicator,
     };
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -159,6 +166,7 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     storedCenterCropFrames,
     storedZoomMode,
     storedConfidenceThreshold,
+    storedZoomIndicator,
   ]);
 
   const toggleDeveloperOptions = useCallback(() => {
@@ -201,6 +209,10 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     setStoredConfidenceThreshold(snapConfidence(level));
   }, []);
 
+  const toggleZoomIndicator = useCallback(() => {
+    setZoomIndicator((prev) => !prev);
+  }, []);
+
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const openSettings = useCallback(() => {
@@ -233,6 +245,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       setZoomMode,
       confidenceThreshold,
       setConfidenceThreshold,
+      zoomIndicator,
+      toggleZoomIndicator,
       settingsOpen,
       openSettings,
       closeSettings,
@@ -258,6 +272,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       setZoomMode,
       confidenceThreshold,
       setConfidenceThreshold,
+      zoomIndicator,
+      toggleZoomIndicator,
       settingsOpen,
       openSettings,
       closeSettings,

@@ -48,7 +48,7 @@ const RadarScreen = () => {
     modelProgress,
     hud,
     contact,
-    autoZoomLevel,
+    autoZoom,
     getFps,
     getDebugSnapshot,
     error,
@@ -56,7 +56,8 @@ const RadarScreen = () => {
     cameraStalled,
     cameraEpoch,
   } = useDetection();
-  const { radarAudio, frameThumbnails, saveFrames, zoomMode } = useSettings();
+  const { radarAudio, frameThumbnails, saveFrames, zoomMode, zoomIndicator } =
+    useSettings();
   // Dev video mode has no camera to introduce or ask permission for, so the
   // intro is skipped outright and the radar view loads immediately.
   const [showIntro, setShowIntro] = useState(
@@ -156,8 +157,17 @@ const RadarScreen = () => {
           saveFrames={saveFrames}
         />
       )}
-      <StatusBar />
-      <ZoomIndicator mode={zoomMode} level={autoZoomLevel} />
+      <StatusBar
+        center={
+          zoomIndicator ? (
+            <ZoomIndicator
+              mode={zoomMode}
+              level={autoZoom.zoom}
+              locked={autoZoom.locked}
+            />
+          ) : undefined
+        }
+      />
       <DebugOverlay
         backend={backend}
         backendProbe={backendProbe}

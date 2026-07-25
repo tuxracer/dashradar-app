@@ -3,33 +3,34 @@ import type { AutoZoomLevel } from "@/lib/autoZoom";
 import { ZOOM_2X } from "@/workers/detection/consts";
 
 /** Props for ZoomIndicator. Data comes in as props (from RadarScreen, the
- * same way RadarDetectorScreen is fed) so the chip renders without the
+ * same way RadarDetectorScreen is fed) so the pill renders without the
  * worker in tests. */
 type ZoomIndicatorProps = {
   /** Zoom mode from useSettings(). */
   mode: ZoomMode;
   /** The auto zoom machine's current crop factor, from useDetection(). */
   level: AutoZoomLevel;
+  /** Whether the auto zoom machine is holding its level on a detection. */
+  locked: boolean;
 };
 
 /**
- * Amber pill centered in the top status bar showing which zoom the detector
- * is scanning at. Renders nothing in the plain 1x mode, so the default setup
- * never shows it. The fixed 2x mode reads a constant
- * "2X"; auto reads "AUTO · 1X" / "AUTO · 2X" live as the machine alternates
- * and locks. Positioned to sit on the StatusBar's line (same top offset) but
- * rendered as its own absolutely centered element, since the bar's
- * justify-between flex row has unequal ends and would push a middle child
- * off-center.
+ * Amber pill showing which zoom the detector is scanning at: a constant 1X
+ * or 2X in the fixed modes, and the live level in auto mode with a LOCKED
+ * suffix while a detection is holding it there. Visibility is the caller's
+ * job: RadarScreen renders it only while the zoom indicator developer option
+ * is on, and places it in StatusBar's center slot so it sits vertically
+ * aligned with the wordmark. Only the pill itself lives here.
  */
-export const ZoomIndicator = ({ mode, level }: ZoomIndicatorProps) => {
-  if (mode === "1x") {
-    return null;
-  }
+export const ZoomIndicator = ({ mode, level, locked }: ZoomIndicatorProps) => {
   const label =
-    mode === "2x" ? "2X" : level === ZOOM_2X ? "AUTO · 2X" : "AUTO · 1X";
+    mode === "1x"
+      ? "1X"
+      : mode === "2x"
+        ? "2X"
+        : `AUTO · ${level === ZOOM_2X ? "2X" : "1X"}${locked ? " · LOCKED" : ""}`;
   return (
-    <span className="pointer-events-none absolute left-1/2 top-[max(0.75rem,env(safe-area-inset-top))] -translate-x-1/2 rounded-full border border-hud-amber/45 px-3 py-0.5 text-[13px] font-semibold tracking-[0.22em] text-hud-amber">
+    <span className="pointer-events-none whitespace-nowrap rounded-full border border-hud-amber/45 px-3 py-0.5 text-[13px] font-semibold tracking-[0.22em] text-hud-amber">
       {label}
     </span>
   );

@@ -1555,8 +1555,13 @@ describe("DetectionProvider", () => {
       .map((message) => message.zoom);
 
   const ZoomLevelProbe = () => {
-    const { autoZoomLevel } = useDetection();
-    return <span data-testid="auto-zoom-level">{autoZoomLevel}</span>;
+    const { autoZoom } = useDetection();
+    return (
+      <>
+        <span data-testid="auto-zoom-level">{autoZoom.zoom}</span>
+        <span data-testid="auto-zoom-locked">{String(autoZoom.locked)}</span>
+      </>
+    );
   };
 
   const startAutoZoomPump = async () => {
@@ -1671,14 +1676,20 @@ describe("DetectionProvider", () => {
     ]);
   });
 
-  it("exposes the machine's current level for the zoom indicator", async () => {
+  it("exposes the machine's level and lock state for the zoom indicator", async () => {
     const worker = await startAutoZoomPump();
     const level = () => screen.getByTestId("auto-zoom-level").textContent;
+    const locked = () => screen.getByTestId("auto-zoom-locked").textContent;
     expect(level()).toBe(String(ZOOM_OFF));
+    expect(locked()).toBe("false");
+    // Empty scan at 1x: alternate up to 2x, unlocked.
     await completeScan(worker, []);
     expect(level()).toBe(String(ZOOM_2X));
-    await completeScan(worker, []);
-    expect(level()).toBe(String(ZOOM_OFF));
+    expect(locked()).toBe("false");
+    // Detection at 2x: hold the level, locked.
+    await completeScan(worker, [smallCenteredPolice]);
+    expect(level()).toBe(String(ZOOM_2X));
+    expect(locked()).toBe("true");
   });
 
   it("posts confidenceThreshold 0.5 by default", async () => {
