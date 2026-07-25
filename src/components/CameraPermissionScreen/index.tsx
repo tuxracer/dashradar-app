@@ -74,7 +74,7 @@ export const CameraPermissionScreen = ({
         </h1>
         <p className="text-base font-medium leading-snug text-white/70">
           Patrol vehicles are spotted by watching the road through your rear
-          camera. Your browser will ask next. Tap allow to start scanning.
+          camera. Tap allow to start scanning.
         </p>
         <div className="flex flex-col gap-2">
           {PERMISSION_POINTS.map((point) => (
