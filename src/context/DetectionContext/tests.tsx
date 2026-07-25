@@ -419,6 +419,37 @@ describe("DetectionProvider", () => {
     });
   });
 
+  it("reports the first successful inference to analytics once", () => {
+    const worker = renderWithProvider(<Probe />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    expect(track).not.toHaveBeenCalledWith(
+      "first_inference",
+      expect.anything(),
+    );
+    const result = {
+      type: "detections" as const,
+      detections: [],
+      timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+    };
+    act(() => {
+      worker.emit(result);
+    });
+    expect(track).toHaveBeenCalledWith("first_inference", { backend: "wasm" });
+    // Later scans are silent: the event marks the session getting to inference,
+    // not each frame.
+    act(() => {
+      worker.emit(result);
+      worker.emit(result);
+    });
+    expect(
+      vi
+        .mocked(track)
+        .mock.calls.filter(([name]) => name === "first_inference"),
+    ).toHaveLength(1);
+  });
+
   it("reports worker errors to analytics", () => {
     const worker = renderWithProvider(<Probe />);
     act(() => {
@@ -684,8 +715,8 @@ describe("DetectionProvider", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    // Ready emits backend_resolved/model_ready; only the police event is under
-    // test here, so drop those before emitting the empty detections frame.
+    // Ready emits backend_resolved/model_ready and the first result emits
+    // first_inference; only the police event is under test here.
     vi.mocked(track).mockClear();
     act(() => {
       worker.emit({
@@ -694,7 +725,7 @@ describe("DetectionProvider", () => {
         timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
       });
     });
-    expect(track).not.toHaveBeenCalled();
+    expect(track).not.toHaveBeenCalledWith("police_detected");
   });
 
   it("does not pump a paced frame scheduled before stop()", async () => {
