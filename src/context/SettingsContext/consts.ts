@@ -14,10 +14,11 @@ export const CONFIDENCE_LEVELS = [
  * Developer options master switch on: the debug overlay, the per-scan frame
  * preview, and frame saving all default on, since turning developer options on
  * is itself the request to see and collect the diagnostics. Auto save and the
- * 2x zoom are the exceptions, defaulting off: one downloads a file per
- * detection and the other narrows what the detector can see, so both are worth
- * asking for deliberately rather than inheriting. What they report while that
- * switch is off is DEVELOPER_OPTIONS_OFF, not this.
+ * zoom are the exceptions, defaulting off (auto save) and 1x (zoom): one
+ * downloads a file per detection and the other modes narrow what the detector
+ * can see, so both are worth asking for deliberately rather than inheriting.
+ * What they report while that switch is off is DEVELOPER_OPTIONS_OFF, not
+ * this.
  */
 export const DEFAULT_SETTINGS: Settings = {
   developerOptions: false,
@@ -28,7 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
   radarAudio: true,
   throttleInference: true,
   centerCropFrames: true,
-  zoom2x: false,
+  zoomMode: "1x",
   confidenceThreshold: 0.5,
 };
 
@@ -48,6 +49,6 @@ export const DEVELOPER_OPTIONS_OFF: DeveloperOptions = {
   autoSaveFrames: false,
   throttleInference: true,
   centerCropFrames: true,
-  zoom2x: false,
+  zoomMode: "1x",
   confidenceThreshold: 0.5,
 };

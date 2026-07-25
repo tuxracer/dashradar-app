@@ -7,8 +7,9 @@ import {
   useState,
 } from "react";
 import type { ReactNode } from "react";
+import { isPlainObject } from "remeda";
 import { DEFAULT_SETTINGS, DEVELOPER_OPTIONS_OFF, STORAGE_KEY } from "./consts";
-import type { Settings, SettingsContextValue } from "./types";
+import type { Settings, SettingsContextValue, ZoomMode } from "./types";
 import { isPersistedSettings, snapConfidence } from "./types";
 
 export * from "./consts";
@@ -42,10 +43,16 @@ const loadSettings = (): Settings => {
       return DEFAULT_SETTINGS;
     }
     const parsed: unknown = JSON.parse(raw);
+    // Migrate the legacy zoom2x boolean (which zoomMode replaced): a stored
+    // true carries over as the 2x mode so the tweak survives the rename. Read
+    // off the raw blob, since zoom2x is no longer part of the Settings shape.
+    const legacyZoom2x = isPlainObject(parsed) && parsed.zoom2x === true;
     if (!isPersistedSettings(parsed)) {
       return DEFAULT_SETTINGS;
     }
-    const merged = { ...DEFAULT_SETTINGS, ...parsed };
+    const zoomMode =
+      parsed.zoomMode ?? (legacyZoom2x ? "2x" : DEFAULT_SETTINGS.zoomMode);
+    const merged = { ...DEFAULT_SETTINGS, ...parsed, zoomMode };
     return {
       ...merged,
       confidenceThreshold: snapConfidence(merged.confidenceThreshold),
@@ -84,7 +91,9 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const [storedCenterCropFrames, setCenterCropFrames] = useState(
     () => loadSettings().centerCropFrames,
   );
-  const [storedZoom2x, setZoom2x] = useState(() => loadSettings().zoom2x);
+  const [storedZoomMode, setStoredZoomMode] = useState(
+    () => loadSettings().zoomMode,
+  );
   const [storedConfidenceThreshold, setStoredConfidenceThreshold] = useState(
     () => loadSettings().confidenceThreshold,
   );
@@ -113,7 +122,9 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const centerCropFrames = developerOptions
     ? storedCenterCropFrames
     : DEVELOPER_OPTIONS_OFF.centerCropFrames;
-  const zoom2x = developerOptions ? storedZoom2x : DEVELOPER_OPTIONS_OFF.zoom2x;
+  const zoomMode = developerOptions
+    ? storedZoomMode
+    : DEVELOPER_OPTIONS_OFF.zoomMode;
   const confidenceThreshold = developerOptions
     ? storedConfidenceThreshold
     : DEVELOPER_OPTIONS_OFF.confidenceThreshold;
@@ -128,7 +139,7 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       radarAudio,
       throttleInference: storedThrottleInference,
       centerCropFrames: storedCenterCropFrames,
-      zoom2x: storedZoom2x,
+      zoomMode: storedZoomMode,
       confidenceThreshold: storedConfidenceThreshold,
     };
     try {
@@ -145,7 +156,7 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     radarAudio,
     storedThrottleInference,
     storedCenterCropFrames,
-    storedZoom2x,
+    storedZoomMode,
     storedConfidenceThreshold,
   ]);
 
@@ -181,8 +192,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     setCenterCropFrames((prev) => !prev);
   }, []);
 
-  const toggleZoom2x = useCallback(() => {
-    setZoom2x((prev) => !prev);
+  const setZoomMode = useCallback((mode: ZoomMode) => {
+    setStoredZoomMode(mode);
   }, []);
 
   const setConfidenceThreshold = useCallback((level: number) => {
@@ -217,8 +228,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleThrottleInference,
       centerCropFrames,
       toggleCenterCropFrames,
-      zoom2x,
-      toggleZoom2x,
+      zoomMode,
+      setZoomMode,
       confidenceThreshold,
       setConfidenceThreshold,
       settingsOpen,
@@ -242,8 +253,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleThrottleInference,
       centerCropFrames,
       toggleCenterCropFrames,
-      zoom2x,
-      toggleZoom2x,
+      zoomMode,
+      setZoomMode,
       confidenceThreshold,
       setConfidenceThreshold,
       settingsOpen,

@@ -106,6 +106,13 @@ export type DebugSnapshot = {
   pacingDelayMs: number;
   /** Which pacing rule produced pacingDelayMs. */
   pacingRule: PacingRule;
+  /** Crop factor the frame was scanned at (ZOOM_OFF or ZOOM_2X). */
+  zoom: number;
+  /**
+   * Whether the auto zoom is holding its level because a detection is
+   * present. Always false in the fixed zoom modes.
+   */
+  zoomLocked: boolean;
 };
 
 export type DetectionContextValue = {

@@ -21,6 +21,8 @@ import {
   HEARTBEAT_INTERVAL_MS,
   writeHeartbeat,
 } from "@/lib/crashSentinel";
+import { initialAutoZoomState, stepAutoZoom } from "@/lib/autoZoom";
+import type { AutoZoomLevel } from "@/lib/autoZoom";
 import { DEV_VIDEO_URL } from "@/lib/devVideo";
 import type { HudModel } from "@/lib/detection";
 import { buildHudModel, toRoadDetections } from "@/lib/detection";
@@ -109,7 +111,7 @@ export const DetectionProvider = ({
     autoSaveFrames,
     throttleInference,
     centerCropFrames,
-    zoom2x,
+    zoomMode,
     confidenceThreshold,
     settingsOpen,
   } = useSettings();
@@ -152,13 +154,28 @@ export const DetectionProvider = ({
   useEffect(() => {
     centerCropRef.current = centerCropFrames;
   }, [centerCropFrames]);
-  // Mirrors the 2x zoom as the crop factor sendFrame posts, same idiom again.
-  // Already gated on Developer options, so a normal drive always scans the full
-  // centered square and can never be left narrowed by a stale persisted true.
-  const zoomRef = useRef(zoom2x ? ZOOM_2X : ZOOM_OFF);
+  // Mirrors the zoom mode for sendFrame, same idiom again. Already gated on
+  // Developer options, so a normal drive always scans the full centered square
+  // and can never be left narrowed by a stale persisted mode.
+  const zoomModeRef = useRef(zoomMode);
+  // Auto zoom machine state: the crop factor the next auto-mode scan captures
+  // at, advanced by the detections handler from each scan's outcome (see
+  // src/lib/autoZoom). A ref, not state: it changes per result and nothing
+  // renders it directly.
+  const autoZoomRef = useRef(initialAutoZoomState());
   useEffect(() => {
-    zoomRef.current = zoom2x ? ZOOM_2X : ZOOM_OFF;
-  }, [zoom2x]);
+    zoomModeRef.current = zoomMode;
+    // A mode change invalidates any lock or alternation phase, so auto always
+    // begins a fresh spell zoomed out.
+    autoZoomRef.current = initialAutoZoomState();
+  }, [zoomMode]);
+  // Crop factor and dimensions of the most recently posted frame. Only one
+  // frame is ever in flight, so when a detections result arrives this always
+  // describes the frame it came from; the auto zoom step needs the capture
+  // zoom (was this a 1x or 2x look?) and the frame geometry for its fit check.
+  const lastFrameInfoRef = useRef<
+    { zoom: AutoZoomLevel; width: number; height: number } | undefined
+  >(undefined);
   // Mirrors the effective minimum confidence for sendFrame and the detections
   // handler, both of which read it per result rather than re-subscribing.
   // useSettings() already gates it: it can only differ from the 0.5 floor while
@@ -393,6 +410,20 @@ export const DetectionProvider = ({
       lastCaptureMsRef.current = performance.now() - captureStart;
       postTimeRef.current = performance.now();
       inFlightRef.current += 1;
+      // Fixed modes always post their level; auto posts whatever the machine
+      // decided after the previous scan (1x on the first scan of a session).
+      const zoom: AutoZoomLevel =
+        zoomModeRef.current === "2x"
+          ? ZOOM_2X
+          : zoomModeRef.current === "auto"
+            ? autoZoomRef.current.zoom
+            : ZOOM_OFF;
+      // Recorded before the transfer detaches the bitmap.
+      lastFrameInfoRef.current = {
+        zoom,
+        width: frame.width,
+        height: frame.height,
+      };
       worker.postMessage(
         {
           type: "detect",
@@ -400,7 +431,7 @@ export const DetectionProvider = ({
           includeFrame: includeFrameRef.current,
           includeThumbnail: includeThumbnailRef.current,
           centerCrop: centerCropRef.current,
-          zoom: zoomRef.current,
+          zoom,
           confidenceThreshold: confidenceThresholdRef.current,
         },
         [frame],
@@ -623,6 +654,20 @@ export const DetectionProvider = ({
           );
           const tracked = trackerRef.current?.update(roadDetections) ?? [];
           setHud(buildHudModel(tracked));
+          // Auto zoom: pick the next scan's crop factor from this scan's
+          // outcome. Fed the coasted set, not the raw detections, so a
+          // one-frame flicker cannot release a lock before the tracker drops
+          // the object. In the fixed modes the machine is left at its reset
+          // state; sendFrame ignores it there.
+          const frameInfo = lastFrameInfoRef.current;
+          if (zoomModeRef.current === "auto" && frameInfo) {
+            autoZoomRef.current = stepAutoZoom({
+              zoom: frameInfo.zoom,
+              detections: tracked,
+              frameWidth: frameInfo.width,
+              frameHeight: frameInfo.height,
+            });
+          }
           // Pair the crop with its detection. Validation mirrors the road
           // filter; a crop whose detection is dropped is discarded so the
           // card never shows evidence the HUD pipeline would not count.
@@ -700,6 +745,8 @@ export const DetectionProvider = ({
             filteredCount: roadDetections.length,
             shownCount: tracked.length,
             brightFraction: message.brightFraction ?? 0,
+            zoom: frameInfo?.zoom ?? ZOOM_OFF,
+            zoomLocked: autoZoomRef.current.locked,
             // Carried forward for one line; schedulePacedFrame below writes
             // this frame's actual pacing decision.
             pacingDelayMs: debugRef.current.pacingDelayMs,
@@ -915,6 +962,9 @@ export const DetectionProvider = ({
     // long stop() would otherwise confirm on the first matched frame after
     // restart. A resumed session must re-earn confirmation from scratch.
     trackerRef.current = createDetectionTracker();
+    // The auto zoom resets with the tracker: whatever it had locked onto is
+    // gone with the tracks, so the next session starts zoomed out.
+    autoZoomRef.current = initialAutoZoomState();
     if (statusRef.current === "running") {
       statusRef.current = "ready";
       setStatus("ready");

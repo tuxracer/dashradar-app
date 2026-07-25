@@ -4,7 +4,7 @@ import { ShareCard } from "@/components/ShareCard";
 import { useSettings } from "@/context/SettingsContext";
 import type { DetectionBackend } from "@/workers/detection/types";
 import { MODEL_REVISION } from "@/workers/detection/consts";
-import { MODEL_SLUG, MODEL_URL, REPO_URL } from "./consts";
+import { MODEL_SLUG, MODEL_URL, REPO_URL, ZOOM_MODE_OPTIONS } from "./consts";
 
 export * from "./consts";
 
@@ -33,8 +33,9 @@ const Toggle = ({ on }: { on: boolean }) => (
  * landscape. Renders nothing until the panel is opened. Large, full-width rows
  * with big tap targets: Audio alerts and Developer options toggles, the
  * development-only controls Developer options reveals (Debug overlay, Frame
- * preview, Save frames, Auto save, Throttle inference, Center crop, 2x zoom,
- * Min confidence), plus read-only Detection engine, Model, and About rows.
+ * preview, Save frames, Auto save, Throttle inference, Center crop, the
+ * segmented Zoom mode picker, Min confidence), plus read-only Detection
+ * engine, Model, and About rows.
  * Closes on the large close button or Escape. While it is open the detection
  * pump is paused (DetectionContext
  * watches `settingsOpen`) and resumes on close. Reads the backend as a prop
@@ -60,8 +61,8 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
     toggleThrottleInference,
     centerCropFrames,
     toggleCenterCropFrames,
-    zoom2x,
-    toggleZoom2x,
+    zoomMode,
+    setZoomMode,
     confidenceThreshold,
     setConfidenceThreshold,
   } = useSettings();
@@ -234,21 +235,32 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
                 <Toggle on={centerCropFrames} />
               </button>
 
-              <button
-                type="button"
-                onClick={toggleZoom2x}
-                className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
-              >
+              <div className="flex min-h-16 flex-col gap-3 py-4">
                 <span className="flex flex-col gap-1">
                   <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-                    2x zoom
+                    Zoom
                   </span>
                   <span className="text-sm font-medium text-white/45">
-                    Narrows the view to reach farther down the road.
+                    Sets how far down the road the scan reaches.
                   </span>
                 </span>
-                <Toggle on={zoom2x} />
-              </button>
+                <div className="flex gap-2">
+                  {ZOOM_MODE_OPTIONS.map(({ mode, label }) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setZoomMode(mode)}
+                      className={`h-14 flex-1 rounded-xl text-base font-semibold tracking-[0.12em] transition-colors ${
+                        zoomMode === mode
+                          ? "bg-hud-amber text-surface"
+                          : "bg-white/10 text-white/70"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               <div className="flex min-h-16 items-center py-4">
                 <span className="flex flex-1 flex-col gap-2">

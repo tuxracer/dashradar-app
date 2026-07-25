@@ -28,6 +28,8 @@ const debug: DebugSnapshot = {
   overheadMs: 2.5,
   pacingDelayMs: 600,
   pacingRule: "rest",
+  zoom: 1,
+  zoomLocked: false,
 };
 
 /** Complete probe with quiet defaults; override the fields a test cares about. */

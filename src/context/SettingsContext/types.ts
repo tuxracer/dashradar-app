@@ -1,12 +1,28 @@
-import { isBoolean, isNumber, isPlainObject } from "remeda";
+import { isBoolean, isNumber, isPlainObject, isString } from "remeda";
 import { CONFIDENCE_LEVELS } from "./consts";
+
+/**
+ * Crop-factor modes the developer zoom setting offers. "1x" scans the full
+ * centered square, "2x" always scans the half-side crop, and "auto" lets the
+ * detection loop pick per scan: alternating between the two while nothing is
+ * detected, then locking or zooming based on where the detection sits (see
+ * src/lib/autoZoom).
+ */
+export type ZoomMode = "1x" | "2x" | "auto";
+
+const ZOOM_MODES: readonly ZoomMode[] = ["1x", "2x", "auto"];
+
+/** Validates a persisted or otherwise untrusted value as a ZoomMode. */
+export const isZoomMode = (value: unknown): value is ZoomMode => {
+  return isString(value) && ZOOM_MODES.includes(value as ZoomMode);
+};
 
 /** User-controlled display options for the HUD. Serialized to localStorage. */
 export type Settings = {
   /**
    * Master switch for the development-only settings (showDebug,
    * frameThumbnails, saveFrames, autoSaveFrames, throttleInference,
-   * centerCropFrames, zoom2x, confidenceThreshold). Off by default. While it is off, SettingsProvider
+   * centerCropFrames, zoomMode, confidenceThreshold). Off by default. While it is off, SettingsProvider
    * reports each of those at its DEVELOPER_OPTIONS_OFF value no matter what is
    * stored, so a development tweak left enabled cannot alter a normal drive.
    * Their stored values survive, so turning this back on restores the tweaks
@@ -67,16 +83,18 @@ export type Settings = {
    */
   centerCropFrames: boolean;
   /**
-   * When true, the worker halves the centered square it feeds the model, so
-   * the same 512x512 input covers half the field of view and distant vehicles
-   * occupy twice the linear size in the input grid. A digital crop rather than
+   * Crop factor the worker scans at. "2x" halves the centered square fed to
+   * the model, so the same 512x512 input covers half the field of view and
+   * distant vehicles occupy twice the linear size in the input grid; "auto"
+   * alternates between 1x and 2x while nothing is detected and locks or zooms
+   * per scan once something is (src/lib/autoZoom). A digital crop rather than
    * the camera's own zoom, because native zoom is unavailable on iOS Safari
    * and uses device-defined units on Chrome Android; cropping ourselves is the
    * only way one setting means the same thing on both. A developer option, and
-   * off by default even under developerOptions, since it narrows what the
-   * detector can see.
+   * "1x" by default even under developerOptions, since the other modes narrow
+   * what the detector can see.
    */
-  zoom2x: boolean;
+  zoomMode: ZoomMode;
   /**
    * Minimum detection confidence. Detections scoring below this are discarded.
    * A developer option, so it only takes effect while developerOptions is on and
@@ -99,14 +117,14 @@ export type DeveloperOptions = Pick<
   | "autoSaveFrames"
   | "throttleInference"
   | "centerCropFrames"
-  | "zoom2x"
+  | "zoomMode"
   | "confidenceThreshold"
 >;
 
 /**
  * Value exposed by the settings context via useSettings(). The developer
  * options (showDebug, frameThumbnails, saveFrames, autoSaveFrames,
- * throttleInference, centerCropFrames, zoom2x, confidenceThreshold) are the
+ * throttleInference, centerCropFrames, zoomMode, confidenceThreshold) are the
  * *effective* values, already gated on developerOptions, so consumers never
  * have to repeat the gate. Each toggle (or setter) still writes the stored
  * value underneath.
@@ -128,8 +146,9 @@ export type SettingsContextValue = {
   toggleThrottleInference: () => void;
   centerCropFrames: boolean;
   toggleCenterCropFrames: () => void;
-  zoom2x: boolean;
-  toggleZoom2x: () => void;
+  zoomMode: ZoomMode;
+  /** Sets the zoom mode (1x, 2x, or auto). */
+  setZoomMode: (mode: ZoomMode) => void;
   confidenceThreshold: number;
   /** Sets the minimum-confidence level, snapping to the nearest allowed step. */
   setConfidenceThreshold: (level: number) => void;
@@ -164,7 +183,7 @@ export const isPersistedSettings = (
       isBoolean(value.throttleInference)) &&
     (value.centerCropFrames === undefined ||
       isBoolean(value.centerCropFrames)) &&
-    (value.zoom2x === undefined || isBoolean(value.zoom2x)) &&
+    (value.zoomMode === undefined || isZoomMode(value.zoomMode)) &&
     (value.confidenceThreshold === undefined ||
       isNumber(value.confidenceThreshold))
   );

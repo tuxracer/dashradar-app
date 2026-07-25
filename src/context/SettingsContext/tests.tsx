@@ -44,7 +44,7 @@ describe("SettingsContext", () => {
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
-        zoom2x: false,
+        zoomMode: "1x",
         confidenceThreshold: 0.5,
       }),
     );
@@ -104,7 +104,7 @@ describe("SettingsContext", () => {
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
-        zoom2x: false,
+        zoomMode: "1x",
         confidenceThreshold: 0.5,
       }),
     );
@@ -129,7 +129,7 @@ describe("SettingsContext", () => {
         radarAudio: false,
         throttleInference: true,
         centerCropFrames: true,
-        zoom2x: false,
+        zoomMode: "1x",
         confidenceThreshold: 0.5,
       }),
     );
@@ -155,7 +155,7 @@ describe("SettingsContext", () => {
         radarAudio: true,
         throttleInference: false,
         centerCropFrames: true,
-        zoom2x: false,
+        zoomMode: "1x",
         confidenceThreshold: 0.5,
       }),
     );
@@ -190,7 +190,7 @@ describe("SettingsContext", () => {
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: false,
-        zoom2x: false,
+        zoomMode: "1x",
         confidenceThreshold: 0.5,
       }),
     );
@@ -221,7 +221,7 @@ describe("SettingsContext", () => {
         autoSaveFrames: true,
         throttleInference: false,
         centerCropFrames: false,
-        zoom2x: true,
+        zoomMode: "auto",
       }),
     );
     const { result } = renderHook(() => useSettings(), { wrapper });
@@ -231,27 +231,67 @@ describe("SettingsContext", () => {
     expect(result.current.autoSaveFrames).toBe(false);
     expect(result.current.throttleInference).toBe(true);
     expect(result.current.centerCropFrames).toBe(true);
-    expect(result.current.zoom2x).toBe(false);
+    expect(result.current.zoomMode).toBe("1x");
   });
 
-  it("defaults zoom2x to false even under developer options", () => {
-    // The zoom narrows what the detector can see, so unlike the diagnostics
-    // options it is asked for deliberately rather than inherited from turning
-    // developer options on.
+  it("defaults the zoom mode to 1x even under developer options", () => {
+    // The other zoom modes narrow what the detector can see, so unlike the
+    // diagnostics options the zoom is asked for deliberately rather than
+    // inherited from turning developer options on.
     const { result } = renderHook(() => useSettings(), { wrapper });
     act(() => result.current.toggleDeveloperOptions());
-    expect(result.current.zoom2x).toBe(false);
+    expect(result.current.zoomMode).toBe("1x");
   });
 
-  it("restores a stored zoom2x when developerOptions comes back on", () => {
+  it("restores a stored zoom mode when developerOptions comes back on", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     act(() => result.current.toggleDeveloperOptions());
-    act(() => result.current.toggleZoom2x());
-    expect(result.current.zoom2x).toBe(true);
+    act(() => result.current.setZoomMode("auto"));
+    expect(result.current.zoomMode).toBe("auto");
     act(() => result.current.toggleDeveloperOptions());
-    expect(result.current.zoom2x).toBe(false);
+    expect(result.current.zoomMode).toBe("1x");
     act(() => result.current.toggleDeveloperOptions());
-    expect(result.current.zoom2x).toBe(true);
+    expect(result.current.zoomMode).toBe("auto");
+  });
+
+  it("migrates a legacy stored zoom2x true to the 2x mode", () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true, zoom2x: true }),
+    );
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.zoomMode).toBe("2x");
+  });
+
+  it("ignores a legacy stored zoom2x false", () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true, zoom2x: false }),
+    );
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.zoomMode).toBe("1x");
+  });
+
+  it("prefers a stored zoomMode over a lingering legacy zoom2x", () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        developerOptions: true,
+        zoom2x: true,
+        zoomMode: "auto",
+      }),
+    );
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.zoomMode).toBe("auto");
+  });
+
+  it("falls back to the 1x mode when a stored zoomMode is invalid", () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true, zoomMode: "4x" }),
+    );
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.zoomMode).toBe("1x");
   });
 
   // The frame preview and frame saving used to ride along with showDebug; they
@@ -333,7 +373,7 @@ describe("SettingsContext", () => {
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: false,
-        zoom2x: false,
+        zoomMode: "1x",
         confidenceThreshold: 0.5,
       }),
     );

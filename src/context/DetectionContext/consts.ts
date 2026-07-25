@@ -1,3 +1,4 @@
+import { ZOOM_OFF } from "@/workers/detection/consts";
 import type { DebugSnapshot } from "./types";
 
 /** Retry delay when the video element has no frame data yet. */
@@ -58,6 +59,8 @@ export const INITIAL_DEBUG: DebugSnapshot = {
   overheadMs: 0,
   pacingDelayMs: 0,
   pacingRule: "floor",
+  zoom: ZOOM_OFF,
+  zoomLocked: false,
 };
 
 /**

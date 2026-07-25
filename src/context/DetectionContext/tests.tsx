@@ -32,6 +32,7 @@ import {
   SENTINEL_STORAGE_KEY,
 } from "@/lib/crashSentinel";
 import { downloadBlob } from "@/lib/saveFrame";
+import type { RawDetection } from "@/types";
 import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 
 /** Arms the WASM safe mode by recording a full crash streak. */
@@ -1489,10 +1490,10 @@ describe("DetectionProvider", () => {
     ).toMatchObject({ zoom: ZOOM_OFF });
   });
 
-  it("posts the 2x crop factor when developer options and 2x zoom are on", async () => {
+  it("posts the 2x crop factor when developer options are on and the 2x mode is selected", async () => {
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ developerOptions: true, zoom2x: true }),
+      JSON.stringify({ developerOptions: true, zoomMode: "2x" }),
     );
     vi.stubGlobal(
       "createImageBitmap",
@@ -1515,14 +1516,14 @@ describe("DetectionProvider", () => {
     ).toMatchObject({ zoom: ZOOM_2X });
   });
 
-  it("posts the unzoomed crop factor when 2x zoom is on but developer options are off", async () => {
+  it("posts the unzoomed crop factor when a zoom mode is stored but developer options are off", async () => {
     // The zoom narrows the detector's field of view, so it is gated on the
-    // Developer options master switch like the other tweaks: a stored
-    // zoom2x=true must NOT narrow a normal drive. This pins the gate
+    // Developer options master switch like the other tweaks: a stored 2x or
+    // auto mode must NOT narrow a normal drive. This pins the gate
     // SettingsProvider applies to the stored value.
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ developerOptions: false, zoom2x: true }),
+      JSON.stringify({ developerOptions: false, zoomMode: "2x" }),
     );
     vi.stubGlobal(
       "createImageBitmap",
@@ -1543,6 +1544,123 @@ describe("DetectionProvider", () => {
     expect(
       worker.posted.find((message) => message.type === "detect"),
     ).toMatchObject({ zoom: ZOOM_OFF });
+  });
+
+  // Auto zoom mode. These tests run the pump through several scans under fake
+  // timers: each round emits a detections result and advances past the pacing
+  // floor so the next detect posts, then asserts the crop factor it carried.
+  // The fake bitmap is 1280x720, whose margin-inset 2x region normalizes to
+  // x 0.3875..0.6125, y 0.3..0.7.
+  const postedZooms = (worker: FakeWorker) =>
+    worker.posted
+      .filter((message) => message.type === "detect")
+      .map((message) => message.zoom);
+
+  const startAutoZoomPump = async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true, zoomMode: "auto" }),
+    );
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    return worker;
+  };
+
+  const completeScan = async (
+    worker: FakeWorker,
+    detections: RawDetection[],
+  ) => {
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections,
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    });
+  };
+
+  const smallCenteredPolice = {
+    label: "police",
+    score: 0.9,
+    box: { xmin: 0.45, ymin: 0.45, xmax: 0.55, ymax: 0.55 },
+  };
+
+  const widePolice = {
+    label: "police",
+    score: 0.9,
+    box: { xmin: 0.3, ymin: 0.4, xmax: 0.7, ymax: 0.6 },
+  };
+
+  it("alternates the crop factor between scans while nothing is detected in auto mode", async () => {
+    const worker = await startAutoZoomPump();
+    await completeScan(worker, []);
+    await completeScan(worker, []);
+    await completeScan(worker, []);
+    expect(postedZooms(worker)).toEqual([ZOOM_OFF, ZOOM_2X, ZOOM_OFF, ZOOM_2X]);
+  });
+
+  it("locks at 2x while a detection is present in the 2x view", async () => {
+    const worker = await startAutoZoomPump();
+    // Scan 1 (1x): nothing, flip to 2x. Scans 2 and 3 (2x): detection holds
+    // the lock instead of alternating away.
+    await completeScan(worker, []);
+    await completeScan(worker, [smallCenteredPolice]);
+    await completeScan(worker, [smallCenteredPolice]);
+    expect(postedZooms(worker)).toEqual([ZOOM_OFF, ZOOM_2X, ZOOM_2X, ZOOM_2X]);
+  });
+
+  it("zooms in on a 1x detection that fits the 2x view", async () => {
+    const worker = await startAutoZoomPump();
+    await completeScan(worker, [smallCenteredPolice]);
+    expect(postedZooms(worker)).toEqual([ZOOM_OFF, ZOOM_2X]);
+  });
+
+  it("locks at 1x when zooming in would crop the detection out", async () => {
+    const worker = await startAutoZoomPump();
+    // The wide box spills past the 2x region on both x edges, so auto must
+    // hold 1x for as long as it is detected rather than alternating to 2x
+    // and losing it.
+    await completeScan(worker, [widePolice]);
+    await completeScan(worker, [widePolice]);
+    expect(postedZooms(worker)).toEqual([ZOOM_OFF, ZOOM_OFF, ZOOM_OFF]);
+  });
+
+  it("releases a 2x lock by zooming out once the tracker drops the object", async () => {
+    const worker = await startAutoZoomPump();
+    await completeScan(worker, []);
+    await completeScan(worker, [smallCenteredPolice]);
+    // The coasting tracker holds the stale box for MAX_MISSES (2) empty
+    // scans, keeping the lock; the third empty scan drops it and the machine
+    // zooms out first.
+    await completeScan(worker, []);
+    await completeScan(worker, []);
+    await completeScan(worker, []);
+    await completeScan(worker, []);
+    expect(postedZooms(worker)).toEqual([
+      ZOOM_OFF,
+      ZOOM_2X,
+      ZOOM_2X,
+      ZOOM_2X,
+      ZOOM_2X,
+      ZOOM_OFF,
+      ZOOM_2X,
+    ]);
   });
 
   it("posts confidenceThreshold 0.5 by default", async () => {
