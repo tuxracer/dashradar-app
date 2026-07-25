@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { track } from "@vercel/analytics";
+import {
+  CameraPermissionScreen,
+  markCameraPromptAccepted,
+  shouldShowCameraPrompt,
+} from "@/components/CameraPermissionScreen";
 import { CameraView } from "@/components/CameraView";
 import { DebugOverlay } from "@/components/DebugOverlay";
 import { DevVideoView } from "@/components/DevVideoView";
@@ -62,6 +67,13 @@ const RadarScreen = () => {
   const [showIntro, setShowIntro] = useState(
     () => DEV_VIDEO_URL === null && shouldShowIntro(),
   );
+  // The in-app permission ask sits between the intro and the first
+  // getUserMedia call, so the browser's own prompt never lands unexplained.
+  // Dev video mode never requests the camera, so it skips the ask too.
+  const [showCameraPrompt, setShowCameraPrompt] = useState(
+    () => DEV_VIDEO_URL === null && shouldShowCameraPrompt(),
+  );
+  const [cameraPromptDeclined, setCameraPromptDeclined] = useState(false);
   const [cameraError, setCameraError] = useState<CameraError>();
   const [videoSize, setVideoSize] = useState<Size>();
   const viewportSize = useViewportSize();
@@ -106,6 +118,26 @@ const RadarScreen = () => {
           track("intro_start");
           markIntroSeen();
           setShowIntro(false);
+        }}
+      />
+    );
+  }
+  // Declining the in-app permission ask lands on the same screen as a real
+  // browser-level denial; its reload button restarts the flow at the ask.
+  if (cameraPromptDeclined) {
+    return <ErrorScreen code="PERMISSION_DENIED" />;
+  }
+  if (showCameraPrompt) {
+    return (
+      <CameraPermissionScreen
+        onAllow={() => {
+          track("camera_prompt_allow");
+          markCameraPromptAccepted();
+          setShowCameraPrompt(false);
+        }}
+        onDecline={() => {
+          track("camera_prompt_decline");
+          setCameraPromptDeclined(true);
         }}
       />
     );

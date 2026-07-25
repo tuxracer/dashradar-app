@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { Camera, CameraOff, CloudOff, TriangleAlert } from "lucide-react";
 import { RadarBackdrop } from "@/components/RadarBackdrop";
+import { ScopeGlyph } from "@/components/ScopeGlyph";
 import { WORDMARK } from "@/lib/branding";
 import type { AppErrorCode, ErrorPoint } from "./consts";
 import { ERROR_COPY } from "./consts";
@@ -23,25 +24,6 @@ const ERROR_ICON: Readonly<Record<AppErrorCode, LucideIcon>> = {
   WORKER_CRASHED: TriangleAlert,
   CAMERA_STALLED: CameraOff,
 };
-
-/**
- * The error glyph centered in static radar-scope rings, echoing the intro's
- * animated scope so the error state still reads as part of the instrument.
- * The outer ring pulses gently; purely decorative.
- */
-const ErrorScope = ({ icon: Icon }: { icon: LucideIcon }) => (
-  <div className="relative flex aspect-square w-36 shrink-0 items-center justify-center landscape:w-44">
-    <div className="absolute inset-0 animate-pulse rounded-full border border-hud-amber/30 motion-reduce:animate-none" />
-    <div className="absolute inset-[14%] rounded-full border border-hud-amber/20" />
-    <div className="absolute inset-x-0 top-1/2 h-px bg-hud-amber/10" />
-    <div className="absolute inset-y-0 left-1/2 w-px bg-hud-amber/10" />
-    <Icon
-      className="relative h-14 w-14 text-hud-amber landscape:h-16 landscape:w-16"
-      strokeWidth={1.25}
-      aria-hidden
-    />
-  </div>
-);
 
 const ErrorPointRow = ({ label, text }: ErrorPoint) => (
   <div className="flex items-baseline gap-3 text-left">
@@ -70,7 +52,7 @@ export const ErrorScreen = ({ code }: ErrorScreenProps) => {
     <main className="fixed inset-0 overflow-y-auto bg-surface">
       <div className="relative flex min-h-full flex-col items-center justify-center gap-6 px-8 py-6 landscape:flex-row landscape:gap-12">
         <RadarBackdrop />
-        <ErrorScope icon={ERROR_ICON[code]} />
+        <ScopeGlyph icon={ERROR_ICON[code]} />
         <div className="flex max-w-md flex-col items-center gap-4 text-center landscape:items-start landscape:text-left">
           <span className="text-[13px] font-semibold tracking-[0.34em] text-white/85">
             {WORDMARK}

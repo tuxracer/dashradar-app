@@ -29,16 +29,39 @@ class FakeWorker {
 }
 
 describe("App", () => {
-  it("shows the intro on first open, then the camera error screen when the camera is unavailable", async () => {
+  it("walks first open through intro, permission ask, then the camera error screen when the camera is unavailable", async () => {
     vi.stubGlobal("Worker", FakeWorker);
     vi.stubGlobal("navigator", {});
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "START" }));
+    fireEvent.click(screen.getByRole("button", { name: "ALLOW CAMERA" }));
     await waitFor(() =>
       expect(
         screen.getByText(/browser can't access the camera/i),
       ).toBeInTheDocument(),
     );
+  });
+
+  it("shows the camera access denied screen when the permission ask is declined", () => {
+    vi.stubGlobal("Worker", FakeWorker);
+    vi.stubGlobal("navigator", {});
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "START" }));
+    fireEvent.click(screen.getByRole("button", { name: "Not now" }));
+    expect(
+      screen.getByRole("heading", { name: /camera access needed/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("skips the permission ask once it has been accepted before", () => {
+    vi.stubGlobal("Worker", FakeWorker);
+    vi.stubGlobal("navigator", {});
+    window.localStorage.setItem("dashradar:cameraPromptAccepted", "true");
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "START" }));
+    expect(
+      screen.queryByRole("button", { name: "ALLOW CAMERA" }),
+    ).not.toBeInTheDocument();
   });
 
   it("skips the intro and never requests the camera in dev video mode", () => {
