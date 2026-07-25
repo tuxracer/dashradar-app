@@ -103,18 +103,27 @@ export const DetectionProvider = ({
   devVideoMode = DEV_VIDEO_URL !== null,
 }: DetectionProviderProps) => {
   const {
-    showDebug,
+    frameThumbnails,
+    saveFrames,
     throttleInference,
     centerCropFrames,
     confidenceThreshold,
     settingsOpen,
   } = useSettings();
-  // Mirrors showDebug for sendFrame, which is a stable callback: the pump
-  // reads the current value per capture instead of re-subscribing on toggles.
-  const includeFrameRef = useRef(showDebug);
+  // Mirrors the frame-saving flag for sendFrame, which is a stable callback:
+  // the pump reads the current value per capture instead of re-subscribing on
+  // toggles. It asks the worker for the full-frame JPEG the contact card's
+  // SAVE button downloads.
+  const includeFrameRef = useRef(saveFrames);
   useEffect(() => {
-    includeFrameRef.current = showDebug;
-  }, [showDebug]);
+    includeFrameRef.current = saveFrames;
+  }, [saveFrames]);
+  // Mirrors the frame-preview flag the same way. It asks the worker for a
+  // thumbnail of what the model saw on scans with no detection to crop.
+  const includeThumbnailRef = useRef(frameThumbnails);
+  useEffect(() => {
+    includeThumbnailRef.current = frameThumbnails;
+  }, [frameThumbnails]);
   // Mirrors the throttle flag for schedulePacedFrame, a stable callback that
   // reads it per result instead of re-subscribing. useSettings() already
   // reports the effective value: throttleInference can only be false while the
@@ -368,6 +377,7 @@ export const DetectionProvider = ({
           type: "detect",
           frame,
           includeFrame: includeFrameRef.current,
+          includeThumbnail: includeThumbnailRef.current,
           centerCrop: centerCropRef.current,
           confidenceThreshold: confidenceThresholdRef.current,
         },
@@ -601,7 +611,7 @@ export const DetectionProvider = ({
               message.crop.image.close();
             }
           } else if (message.frameThumbnail) {
-            // Debug mode, no detection to crop: show a bare frame preview so the
+            // Frame preview on, no detection to crop: show a bare preview so the
             // card reflects every scan. No detection metadata, so the meter
             // stays at zero and the card's direction row stays hidden.
             replaceContact({

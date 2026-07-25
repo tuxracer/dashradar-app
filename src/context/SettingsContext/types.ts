@@ -5,12 +5,12 @@ import { CONFIDENCE_LEVELS } from "./consts";
 export type Settings = {
   /**
    * Master switch for the development-only settings (showDebug,
-   * throttleInference, centerCropFrames, confidenceThreshold). Off by default.
-   * While it is off, SettingsProvider reports each of those four at its
-   * DEVELOPER_OPTIONS_OFF value no matter what is stored, so a development
-   * tweak left enabled cannot alter a normal drive. Their stored values
-   * survive, so turning this back on restores the tweaks rather than
-   * resetting them.
+   * frameThumbnails, saveFrames, throttleInference, centerCropFrames,
+   * confidenceThreshold). Off by default. While it is off, SettingsProvider
+   * reports each of those at its DEVELOPER_OPTIONS_OFF value no matter what is
+   * stored, so a development tweak left enabled cannot alter a normal drive.
+   * Their stored values survive, so turning this back on restores the tweaks
+   * rather than resetting them.
    */
   developerOptions: boolean;
   /**
@@ -20,6 +20,20 @@ export type Settings = {
    * turning developer options on is itself the request to see the diagnostics.
    */
   showDebug: boolean;
+  /**
+   * When true, the contact card shows a thumbnail of what the model saw on
+   * every scan, including scans with no detection, and stays lit rather than
+   * fading out with the meter. A developer option, so it only takes effect
+   * while developerOptions is on, and on by default there.
+   */
+  frameThumbnails: boolean;
+  /**
+   * When true, the contact card carries a SAVE button that downloads the full
+   * inference frame as a JPEG, for collecting training data. Costs a JPEG
+   * encode inside every detect round trip, so it is a developer option and only
+   * takes effect while developerOptions is on.
+   */
+  saveFrames: boolean;
   /**
    * When true, radar detector mode beeps as a police vehicle is detected:
    * the beeps pulse faster (and higher-pitched) the stronger the signal, and
@@ -54,26 +68,35 @@ export type Settings = {
 };
 
 /**
- * The four development-only settings, the ones gated behind the
- * developerOptions master switch.
+ * The development-only settings, the ones gated behind the developerOptions
+ * master switch.
  */
 export type DeveloperOptions = Pick<
   Settings,
-  "showDebug" | "throttleInference" | "centerCropFrames" | "confidenceThreshold"
+  | "showDebug"
+  | "frameThumbnails"
+  | "saveFrames"
+  | "throttleInference"
+  | "centerCropFrames"
+  | "confidenceThreshold"
 >;
 
 /**
- * Value exposed by the settings context via useSettings(). The four developer
- * options (showDebug, throttleInference, centerCropFrames,
- * confidenceThreshold) are the *effective* values, already gated on
- * developerOptions, so consumers never have to repeat the gate. Each toggle
- * (or setter) still writes the stored value underneath.
+ * Value exposed by the settings context via useSettings(). The developer
+ * options (showDebug, frameThumbnails, saveFrames, throttleInference,
+ * centerCropFrames, confidenceThreshold) are the *effective* values, already
+ * gated on developerOptions, so consumers never have to repeat the gate. Each
+ * toggle (or setter) still writes the stored value underneath.
  */
 export type SettingsContextValue = {
   developerOptions: boolean;
   toggleDeveloperOptions: () => void;
   showDebug: boolean;
   toggleShowDebug: () => void;
+  frameThumbnails: boolean;
+  toggleFrameThumbnails: () => void;
+  saveFrames: boolean;
+  toggleSaveFrames: () => void;
   radarAudio: boolean;
   toggleRadarAudio: () => void;
   throttleInference: boolean;
@@ -106,6 +129,8 @@ export const isPersistedSettings = (
     (value.developerOptions === undefined ||
       isBoolean(value.developerOptions)) &&
     (value.showDebug === undefined || isBoolean(value.showDebug)) &&
+    (value.frameThumbnails === undefined || isBoolean(value.frameThumbnails)) &&
+    (value.saveFrames === undefined || isBoolean(value.saveFrames)) &&
     (value.radarAudio === undefined || isBoolean(value.radarAudio)) &&
     (value.throttleInference === undefined ||
       isBoolean(value.throttleInference)) &&

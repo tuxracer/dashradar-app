@@ -64,9 +64,16 @@ export type WorkerRequest =
       frame: ImageBitmap;
       /**
        * When true, the worker returns the full inference frame as a JPEG blob
-       * on the detections response (debug-mode frame saving).
+       * on the detections response, so the UI can offer to save it. Set from
+       * the developer frame-saving setting.
        */
       includeFrame?: boolean;
+      /**
+       * When true, a frame with no detection to crop comes back with a
+       * downscaled thumbnail of the model's input instead, so the UI can show
+       * what every scan saw. Set from the developer frame-preview setting.
+       */
+      includeThumbnail?: boolean;
       /**
        * When true (the default when omitted), the worker feeds the model the
        * largest centered square crop of the frame, matching the
@@ -98,6 +105,8 @@ export const isWorkerRequest = (value: unknown): value is WorkerRequest => {
     typeof ImageBitmap !== "undefined" &&
     value.frame instanceof ImageBitmap &&
     (value.includeFrame === undefined || isBoolean(value.includeFrame)) &&
+    (value.includeThumbnail === undefined ||
+      isBoolean(value.includeThumbnail)) &&
     (value.centerCrop === undefined || isBoolean(value.centerCrop)) &&
     (value.confidenceThreshold === undefined ||
       isNumber(value.confidenceThreshold))
@@ -235,10 +244,10 @@ export type WorkerResponse =
       crop?: DetectionCrop;
       /**
        * Downscaled full-frame thumbnail, present only when the request asked
-       * for it (includeFrame, i.e. debug mode) and the frame had no top
-       * detection to crop. Lets the debug UI show what every scan saw even when
-       * nothing was detected. Mutually exclusive with `crop`: a frame with a
-       * top detection sends `crop` instead.
+       * for it (includeThumbnail) and the frame had no top detection to crop.
+       * Lets the UI show what every scan saw even when nothing was detected.
+       * Mutually exclusive with `crop`: a frame with a top detection sends
+       * `crop` instead.
        */
       frameThumbnail?: ImageBitmap;
       /**

@@ -197,18 +197,18 @@ describe("RadarDetectorScreen contact card", () => {
 describe("RadarDetectorScreen frame saving", () => {
   const frameBlob = () => new Blob(["jpeg"], { type: "image/jpeg" });
 
-  it("shows SAVE only when debug is on and the contact carries a frame", () => {
+  it("shows SAVE only when frame saving is on and the contact carries a frame", () => {
     const view = render(
       <RadarDetectorScreen
         confidence={0.5}
         audioEnabled={false}
         contact={testContact("left", frameBlob())}
-        debug={true}
+        saveFrames={true}
       />,
     );
     expect(screen.getByTestId("contact-save")).toBeInTheDocument();
 
-    // Same contact without debug: no button.
+    // Same contact with frame saving off: no button.
     view.rerender(
       <RadarDetectorScreen
         confidence={0.5}
@@ -218,13 +218,25 @@ describe("RadarDetectorScreen frame saving", () => {
     );
     expect(screen.queryByTestId("contact-save")).not.toBeInTheDocument();
 
-    // Debug on but a contact captured without a frame: no button.
+    // Frame saving on but a contact captured without a frame: no button.
     view.rerender(
       <RadarDetectorScreen
         confidence={0.5}
         audioEnabled={false}
         contact={testContact("left")}
-        debug={true}
+        saveFrames={true}
+      />,
+    );
+    expect(screen.queryByTestId("contact-save")).not.toBeInTheDocument();
+  });
+
+  it("keeps SAVE off the card when only the frame preview is on", () => {
+    render(
+      <RadarDetectorScreen
+        confidence={0.5}
+        audioEnabled={false}
+        contact={testContact("left", frameBlob())}
+        frameThumbnails={true}
       />,
     );
     expect(screen.queryByTestId("contact-save")).not.toBeInTheDocument();
@@ -238,7 +250,7 @@ describe("RadarDetectorScreen frame saving", () => {
         confidence={0.5}
         audioEnabled={false}
         contact={testContact("left", frame)}
-        debug={true}
+        saveFrames={true}
       />,
     );
     screen.getByTestId("contact-save").click();
@@ -249,20 +261,20 @@ describe("RadarDetectorScreen frame saving", () => {
   });
 });
 
-describe("RadarDetectorScreen debug frame preview", () => {
+describe("RadarDetectorScreen frame preview", () => {
   const frameBlob = () => new Blob(["jpeg"], { type: "image/jpeg" });
 
-  it("keeps the card lit every scan in debug mode even at a zero meter", async () => {
+  it("keeps the card lit every scan with the preview on, even at a zero meter", async () => {
     render(
       <RadarDetectorScreen
         confidence={0}
         audioEnabled={false}
         contact={previewContact()}
-        debug={true}
+        frameThumbnails={true}
       />,
     );
-    // A detection-free scan holds the meter at zero, but debug mode keeps the
-    // card visible so the frame preview shows on every scan.
+    // A detection-free scan holds the meter at zero, but the preview setting
+    // keeps the card visible so it shows on every scan.
     await waitFor(() =>
       expect(
         screen.getByTestId("contact-card").closest("[data-contact]"),
@@ -270,16 +282,18 @@ describe("RadarDetectorScreen debug frame preview", () => {
     );
   });
 
-  it("hides a zero-meter contact when debug is off", async () => {
+  it("hides a zero-meter contact when the preview is off", async () => {
     render(
       <RadarDetectorScreen
         confidence={0}
         audioEnabled={false}
         contact={previewContact()}
+        saveFrames={true}
       />,
     );
-    // Without debug the card is meter-gated: at zero it fades out. Let the rAF
-    // loop tick first so this is not just the pre-tick default.
+    // Without the preview the card is meter-gated even with frame saving on: at
+    // zero it fades out. Let the rAF loop tick first so this is not just the
+    // pre-tick default.
     await waitFor(() =>
       expect(screen.getByTestId("signal-status")).toHaveTextContent("SCANNING"),
     );
@@ -294,7 +308,8 @@ describe("RadarDetectorScreen debug frame preview", () => {
         confidence={0}
         audioEnabled={false}
         contact={previewContact(frameBlob())}
-        debug={true}
+        frameThumbnails={true}
+        saveFrames={true}
       />,
     );
     expect(screen.getByTestId("contact-card")).toBeInTheDocument();

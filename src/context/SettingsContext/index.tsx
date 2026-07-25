@@ -68,6 +68,12 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const [storedShowDebug, setShowDebug] = useState(
     () => loadSettings().showDebug,
   );
+  const [storedFrameThumbnails, setFrameThumbnails] = useState(
+    () => loadSettings().frameThumbnails,
+  );
+  const [storedSaveFrames, setSaveFrames] = useState(
+    () => loadSettings().saveFrames,
+  );
   const [radarAudio, setRadarAudio] = useState(() => loadSettings().radarAudio);
   const [storedThrottleInference, setThrottleInference] = useState(
     () => loadSettings().throttleInference,
@@ -79,14 +85,21 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     () => loadSettings().confidenceThreshold,
   );
 
-  // The four developer options report their DEVELOPER_OPTIONS_OFF value
-  // whenever developerOptions is off, so a tweak left enabled (the debug
-  // overlay, unthrottled inference, squished frames, a lowered confidence
-  // floor) stops taking effect the moment the master switch goes off. The
-  // stored value is untouched, so turning it back on restores the tweak.
+  // The developer options report their DEVELOPER_OPTIONS_OFF value whenever
+  // developerOptions is off, so a tweak left enabled (the debug overlay, the
+  // per-scan frame preview, frame saving, unthrottled inference, squished
+  // frames, a lowered confidence floor) stops taking effect the moment the
+  // master switch goes off. The stored value is untouched, so turning it back
+  // on restores the tweak.
   const showDebug = developerOptions
     ? storedShowDebug
     : DEVELOPER_OPTIONS_OFF.showDebug;
+  const frameThumbnails = developerOptions
+    ? storedFrameThumbnails
+    : DEVELOPER_OPTIONS_OFF.frameThumbnails;
+  const saveFrames = developerOptions
+    ? storedSaveFrames
+    : DEVELOPER_OPTIONS_OFF.saveFrames;
   const throttleInference = developerOptions
     ? storedThrottleInference
     : DEVELOPER_OPTIONS_OFF.throttleInference;
@@ -101,6 +114,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     const next: Settings = {
       developerOptions,
       showDebug: storedShowDebug,
+      frameThumbnails: storedFrameThumbnails,
+      saveFrames: storedSaveFrames,
       radarAudio,
       throttleInference: storedThrottleInference,
       centerCropFrames: storedCenterCropFrames,
@@ -114,6 +129,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   }, [
     developerOptions,
     storedShowDebug,
+    storedFrameThumbnails,
+    storedSaveFrames,
     radarAudio,
     storedThrottleInference,
     storedCenterCropFrames,
@@ -126,6 +143,14 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
 
   const toggleShowDebug = useCallback(() => {
     setShowDebug((prev) => !prev);
+  }, []);
+
+  const toggleFrameThumbnails = useCallback(() => {
+    setFrameThumbnails((prev) => !prev);
+  }, []);
+
+  const toggleSaveFrames = useCallback(() => {
+    setSaveFrames((prev) => !prev);
   }, []);
 
   const toggleRadarAudio = useCallback(() => {
@@ -160,6 +185,10 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleDeveloperOptions,
       showDebug,
       toggleShowDebug,
+      frameThumbnails,
+      toggleFrameThumbnails,
+      saveFrames,
+      toggleSaveFrames,
       radarAudio,
       toggleRadarAudio,
       throttleInference,
@@ -177,6 +206,10 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleDeveloperOptions,
       showDebug,
       toggleShowDebug,
+      frameThumbnails,
+      toggleFrameThumbnails,
+      saveFrames,
+      toggleSaveFrames,
       radarAudio,
       toggleRadarAudio,
       throttleInference,

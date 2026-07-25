@@ -36,20 +36,21 @@ export type CameraStallReason = "frozen" | "watchdog" | "obscured";
 
 /**
  * Latest cutout the radar detector mode renders on its contact card. Usually a
- * detection crop with its score, signal, box, and direction. In debug mode a
- * scan with no detection instead produces a bare frame preview (image and
- * frame only): the detection-only fields below are absent for it.
+ * detection crop with its score, signal, box, and direction. With the frame
+ * preview setting on, a scan with no detection instead produces a bare frame
+ * preview (image and frame only): the detection-only fields below are absent
+ * for it.
  */
 export type Contact = {
   /**
-   * The card image: a cutout of the detection, or, for a debug frame preview,
-   * a downscaled thumbnail of the whole inference frame.
+   * The card image: a cutout of the detection, or, for a frame preview, a
+   * downscaled thumbnail of the whole inference frame.
    */
   image: ImageBitmap;
   /**
    * Full inference frame the image was taken from, JPEG-encoded by the worker.
-   * Present only when the frame was captured with the debug setting on; the
-   * contact card's SAVE button downloads it for training data.
+   * Present only when the frame was captured with the frame-saving setting on;
+   * the contact card's SAVE button downloads it for training data.
    */
   frame?: Blob;
   /** Raw model score of the cropped detection. Absent on a frame preview. */
@@ -146,10 +147,10 @@ export type DetectionContextValue = {
   /**
    * Latest cutout with its score, remapped signal, and direction. Replaced
    * when a new crop arrives; left untouched by detection-free frames so radar
-   * detector mode's contact card lingers through the meter's decay tail. In
-   * debug mode a detection-free scan instead replaces it with a bare frame
-   * preview, so the card shows what every scan saw. Cleared on worker errors
-   * and teardown.
+   * detector mode's contact card lingers through the meter's decay tail. With
+   * the frame preview setting on, a detection-free scan instead replaces it
+   * with a bare frame preview, so the card shows what every scan saw. Cleared
+   * on worker errors and teardown.
    */
   contact: Contact | undefined;
   /**

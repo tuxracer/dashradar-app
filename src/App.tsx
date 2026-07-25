@@ -54,7 +54,7 @@ const RadarScreen = () => {
     cameraStalled,
     cameraEpoch,
   } = useDetection();
-  const { showDebug, radarAudio } = useSettings();
+  const { radarAudio, frameThumbnails, saveFrames } = useSettings();
   // Dev video mode has no camera to introduce or ask permission for, so the
   // intro is skipped outright and the radar view loads immediately.
   const [showIntro, setShowIntro] = useState(
@@ -150,7 +150,8 @@ const RadarScreen = () => {
           confidence={hudSignal(hud)}
           audioEnabled={radarAudio}
           contact={contact}
-          debug={showDebug}
+          frameThumbnails={frameThumbnails}
+          saveFrames={saveFrames}
         />
       )}
       <StatusBar />

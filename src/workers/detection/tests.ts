@@ -62,6 +62,25 @@ describe("isWorkerRequest", () => {
     ).toBe(false);
   });
 
+  it("accepts detect with and without the includeThumbnail flag", () => {
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const frame = new FakeImageBitmap();
+    expect(
+      isWorkerRequest({ type: "detect", frame, includeThumbnail: true }),
+    ).toBe(true);
+    expect(
+      isWorkerRequest({ type: "detect", frame, includeThumbnail: false }),
+    ).toBe(true);
+  });
+
+  it("rejects a non-boolean includeThumbnail", () => {
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const frame = new FakeImageBitmap();
+    expect(
+      isWorkerRequest({ type: "detect", frame, includeThumbnail: 1 }),
+    ).toBe(false);
+  });
+
   it("accepts a detect message carrying a numeric confidenceThreshold", () => {
     vi.stubGlobal("ImageBitmap", FakeImageBitmap);
     const frame = new FakeImageBitmap();

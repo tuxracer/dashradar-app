@@ -426,11 +426,11 @@ const loadModel = async (forceWasm: boolean) => {
 
 /**
  * Downscale the model's square input canvas to a thumbnail bitmap for the
- * debug contact card, shown on scans that had no detection to crop. Sourced
- * from the input canvas rather than the original frame so the card shows
- * exactly what the model saw: the centered square crop by default, or the
- * squished full frame in the debug squish mode; the SAVE path (encodeFrame)
- * still saves the full original. The edge is capped at CROP_MAX_EDGE (never upscaled),
+ * contact card, shown on scans that had no detection to crop. Sourced from the
+ * input canvas rather than the original frame so the card shows exactly what
+ * the model saw: the centered square crop by default, or the squished full
+ * frame in the debug squish mode; the SAVE path (encodeFrame) still saves the
+ * full original. The edge is capped at CROP_MAX_EDGE (never upscaled),
  * matching the detection crop's sizing. Best-effort like the crop: any
  * failure returns undefined and never blocks the detection result.
  */
@@ -447,7 +447,7 @@ const createFrameThumbnail = async (): Promise<ImageBitmap | undefined> => {
 };
 
 /**
- * Encode the full inference frame as a JPEG blob for debug-mode frame saving.
+ * Encode the full inference frame as a JPEG blob for the frame-saving option.
  * Best-effort like the crop: any failure returns undefined and never blocks
  * the detection result.
  */
@@ -468,12 +468,19 @@ const encodeFrame = async (frame: ImageBitmap): Promise<Blob | undefined> => {
   }
 };
 
-const detect = async (
-  frame: ImageBitmap,
-  includeFrame: boolean,
-  centerCrop: boolean,
-  confidenceThreshold: number,
-) => {
+const detect = async ({
+  frame,
+  includeFrame,
+  includeThumbnail,
+  centerCrop,
+  confidenceThreshold,
+}: {
+  frame: ImageBitmap;
+  includeFrame: boolean;
+  includeThumbnail: boolean;
+  centerCrop: boolean;
+  confidenceThreshold: number;
+}) => {
   if (!model) {
     frame.close();
     return;
@@ -575,18 +582,18 @@ const detect = async (
       }
     }
 
-    // In debug mode (includeFrame), when there is no detection to crop, send a
+    // When the frame preview is on and there is no detection to crop, send a
     // downscaled model-input thumbnail so the contact card still shows what
     // the scan saw. A frame with a top detection sends the crop instead, so
     // the two are mutually exclusive.
     let frameThumbnail: ImageBitmap | undefined;
-    if (includeFrame && topIndex === undefined) {
+    if (includeThumbnail && topIndex === undefined) {
       frameThumbnail = await createFrameThumbnail();
     }
 
-    // Full-frame JPEG for debug-mode saving, sent whenever debug asked for it
-    // so the card's SAVE button works beside both a crop and a frame thumbnail
-    // (a missed-detection frame is exactly the kind worth saving as training
+    // Full-frame JPEG for frame saving, sent whenever it was asked for so the
+    // card's SAVE button works beside both a crop and a frame thumbnail (a
+    // missed-detection frame is exactly the kind worth saving as training
     // data).
     let fullFrame: Blob | undefined;
     if (includeFrame) {
@@ -629,10 +636,11 @@ self.onmessage = (event: MessageEvent<unknown>) => {
     void loadModel(request.forceWasm ?? false);
     return;
   }
-  void detect(
-    request.frame,
-    request.includeFrame ?? false,
-    request.centerCrop ?? true,
-    request.confidenceThreshold ?? CONFIDENCE_THRESHOLD,
-  );
+  void detect({
+    frame: request.frame,
+    includeFrame: request.includeFrame ?? false,
+    includeThumbnail: request.includeThumbnail ?? false,
+    centerCrop: request.centerCrop ?? true,
+    confidenceThreshold: request.confidenceThreshold ?? CONFIDENCE_THRESHOLD,
+  });
 };

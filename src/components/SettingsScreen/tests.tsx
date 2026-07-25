@@ -41,6 +41,8 @@ describe("SettingsScreen", () => {
       JSON.stringify({
         developerOptions: false,
         showDebug: true,
+        frameThumbnails: true,
+        saveFrames: true,
         radarAudio: false,
         throttleInference: true,
         centerCropFrames: true,
@@ -64,6 +66,8 @@ describe("SettingsScreen", () => {
       JSON.stringify({
         developerOptions: true,
         showDebug: false,
+        frameThumbnails: true,
+        saveFrames: true,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
@@ -81,6 +85,8 @@ describe("SettingsScreen", () => {
       JSON.stringify({
         developerOptions: true,
         showDebug: true,
+        frameThumbnails: true,
+        saveFrames: true,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
@@ -94,6 +100,8 @@ describe("SettingsScreen", () => {
     renderScreen();
     await open(user);
     expect(screen.queryByText("Debug overlay")).not.toBeInTheDocument();
+    expect(screen.queryByText("Frame preview")).not.toBeInTheDocument();
+    expect(screen.queryByText("Save frames")).not.toBeInTheDocument();
     expect(screen.queryByText("Throttle inference")).not.toBeInTheDocument();
     expect(screen.queryByText("Center crop")).not.toBeInTheDocument();
   });
@@ -104,6 +112,8 @@ describe("SettingsScreen", () => {
     await open(user);
     await user.click(screen.getByText("Developer options"));
     expect(screen.getByText("Debug overlay")).toBeInTheDocument();
+    expect(screen.getByText("Frame preview")).toBeInTheDocument();
+    expect(screen.getByText("Save frames")).toBeInTheDocument();
     expect(screen.getByText("Throttle inference")).toBeInTheDocument();
     expect(screen.getByText("Center crop")).toBeInTheDocument();
   });
@@ -177,6 +187,8 @@ describe("SettingsScreen", () => {
       JSON.stringify({
         developerOptions: true,
         showDebug: true,
+        frameThumbnails: true,
+        saveFrames: true,
         radarAudio: true,
         throttleInference: false,
         centerCropFrames: true,
@@ -198,9 +210,57 @@ describe("SettingsScreen", () => {
       JSON.stringify({
         developerOptions: true,
         showDebug: true,
+        frameThumbnails: true,
+        saveFrames: true,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: false,
+        confidenceThreshold: 0.5,
+      }),
+    );
+  });
+
+  it("toggles and persists the frame preview setting from its row", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true }),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    await user.click(screen.getByText("Frame preview"));
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({
+        developerOptions: true,
+        showDebug: true,
+        frameThumbnails: false,
+        saveFrames: true,
+        radarAudio: true,
+        throttleInference: true,
+        centerCropFrames: true,
+        confidenceThreshold: 0.5,
+      }),
+    );
+  });
+
+  it("toggles and persists the frame saving setting from its row", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true }),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    await user.click(screen.getByText("Save frames"));
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({
+        developerOptions: true,
+        showDebug: true,
+        frameThumbnails: true,
+        saveFrames: false,
+        radarAudio: true,
+        throttleInference: true,
+        centerCropFrames: true,
         confidenceThreshold: 0.5,
       }),
     );

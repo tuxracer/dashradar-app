@@ -1234,7 +1234,7 @@ describe("DetectionProvider", () => {
     expect(screen.getByTestId("objects").textContent).toBe("1");
   });
 
-  it("posts includeFrame false while the debug setting is off", async () => {
+  it("asks for neither the frame nor a thumbnail while developer options are off", async () => {
     vi.stubGlobal(
       "createImageBitmap",
       vi.fn(() => Promise.resolve(fakeBitmap())),
@@ -1253,13 +1253,19 @@ describe("DetectionProvider", () => {
     });
     expect(
       worker.posted.find((message) => message.type === "detect"),
-    ).toMatchObject({ includeFrame: false });
+    ).toMatchObject({ includeFrame: false, includeThumbnail: false });
   });
 
-  it("posts includeFrame true while the debug setting is on", async () => {
+  // The two flags are separate settings, so each has to reach the worker on its
+  // own rather than riding along with the debug overlay.
+  it("posts includeFrame true while frame saving is on, and nothing else", async () => {
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ developerOptions: true, showDebug: true }),
+      JSON.stringify({
+        developerOptions: true,
+        saveFrames: true,
+        frameThumbnails: false,
+      }),
     );
     vi.stubGlobal(
       "createImageBitmap",
@@ -1279,7 +1285,37 @@ describe("DetectionProvider", () => {
     });
     expect(
       worker.posted.find((message) => message.type === "detect"),
-    ).toMatchObject({ includeFrame: true });
+    ).toMatchObject({ includeFrame: true, includeThumbnail: false });
+  });
+
+  it("posts includeThumbnail true while the frame preview is on, and nothing else", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        developerOptions: true,
+        saveFrames: false,
+        frameThumbnails: true,
+      }),
+    );
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    expect(
+      worker.posted.find((message) => message.type === "detect"),
+    ).toMatchObject({ includeFrame: false, includeThumbnail: true });
   });
 
   it("posts centerCrop true by default", async () => {

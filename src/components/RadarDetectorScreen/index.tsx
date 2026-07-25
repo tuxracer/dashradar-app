@@ -28,11 +28,16 @@ type RadarDetectorScreenProps = {
   /** Latest cutout to render as the contact card, if any. */
   contact?: Contact;
   /**
-   * Whether the debug setting is on. Reveals the contact card's SAVE button
-   * and keeps the card lit for every scan (including detection-free frames,
-   * which arrive as a bare frame preview) instead of fading it with the meter.
+   * Whether the frame-preview setting is on. Keeps the card lit for every scan
+   * (including detection-free frames, which arrive as a bare frame preview)
+   * instead of fading it with the meter.
    */
-  debug?: boolean;
+  frameThumbnails?: boolean;
+  /**
+   * Whether the frame-saving setting is on. Reveals the contact card's SAVE
+   * button, which downloads the full inference frame as a JPEG.
+   */
+  saveFrames?: boolean;
 };
 
 /** Arc angle for a segment, in degrees, 0 pointing straight up. */
@@ -58,22 +63,24 @@ const ALERT_RING_COLOR = `rgb(${SIGNAL_HIGH_COLOR.join(", ")})`;
  * silence instead. The contact card's direction row follows the same rule as
  * the audio: it renders only while the raw signal is nonzero (a live
  * detection), so a stale heading is never shown while the card lingers
- * through the dial's decay tail. While the debug setting is on the card also
- * shows a SAVE button that downloads the full inference frame as a JPEG for
- * collecting training data, and it stays lit on every scan: a detection-free
- * scan arrives as a bare frame preview (a thumbnail of the whole frame) so the
- * debug view always reflects what the last scan saw.
+ * through the dial's decay tail. The two developer options each add one thing
+ * to the card: with frameThumbnails on it stays lit on every scan, since a
+ * detection-free scan arrives as a bare frame preview (a thumbnail of the whole
+ * frame) that should always reflect what the last scan saw; with saveFrames on
+ * it shows a SAVE button that downloads the full inference frame as a JPEG for
+ * collecting training data.
  */
 export const RadarDetectorScreen = ({
   confidence,
   audioEnabled,
   contact,
-  debug,
+  frameThumbnails,
+  saveFrames,
 }: RadarDetectorScreenProps) => {
   const confidenceRef = useRef(confidence);
   const audioEnabledRef = useRef(audioEnabled);
   const contactRef = useRef(contact);
-  const debugRef = useRef(debug);
+  const frameThumbnailsRef = useRef(frameThumbnails);
   const beeperRef = useRef<RadarBeeper | undefined>(undefined);
   const peakRef = useRef(0);
   const lastTimeRef = useRef<number | undefined>(undefined);
@@ -100,8 +107,8 @@ export const RadarDetectorScreen = ({
   }, [contact]);
 
   useEffect(() => {
-    debugRef.current = debug;
-  }, [debug]);
+    frameThumbnailsRef.current = frameThumbnails;
+  }, [frameThumbnails]);
 
   // Draw the cutout into the card's canvas whenever it changes. The canvas
   // takes the bitmap's intrinsic size; CSS scales it to fit the card.
@@ -193,12 +200,12 @@ export const RadarDetectorScreen = ({
       if (screen) {
         screen.dataset.alert = String(level >= ALERT_THRESHOLD);
         // Normally the card tracks the meter, fading in with a detection and
-        // out with the decay tail. In debug mode it stays lit for as long as a
-        // contact exists so the per-scan frame preview is always visible, even
-        // at a zero meter.
+        // out with the decay tail. With the frame preview on it stays lit for
+        // as long as a contact exists so the per-scan preview is always
+        // visible, even at a zero meter.
         screen.dataset.contact = String(
           contactRef.current !== undefined &&
-            (debugRef.current === true || level > 0),
+            (frameThumbnailsRef.current === true || level > 0),
         );
       }
 
@@ -296,7 +303,7 @@ export const RadarDetectorScreen = ({
               </span>
             </div>
           )}
-          {debug && frameBlob && (
+          {saveFrames && frameBlob && (
             <button
               data-testid="contact-save"
               onClick={() => downloadBlob(frameBlob, frameFilename(new Date()))}

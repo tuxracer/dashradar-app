@@ -38,6 +38,8 @@ describe("SettingsContext", () => {
       JSON.stringify({
         developerOptions: true,
         showDebug: false,
+        frameThumbnails: true,
+        saveFrames: true,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
@@ -94,6 +96,8 @@ describe("SettingsContext", () => {
       JSON.stringify({
         developerOptions: false,
         showDebug: true,
+        frameThumbnails: true,
+        saveFrames: true,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
@@ -115,6 +119,8 @@ describe("SettingsContext", () => {
       JSON.stringify({
         developerOptions: false,
         showDebug: true,
+        frameThumbnails: true,
+        saveFrames: true,
         radarAudio: false,
         throttleInference: true,
         centerCropFrames: true,
@@ -137,6 +143,8 @@ describe("SettingsContext", () => {
       JSON.stringify({
         developerOptions: true,
         showDebug: true,
+        frameThumbnails: true,
+        saveFrames: true,
         radarAudio: true,
         throttleInference: false,
         centerCropFrames: true,
@@ -168,6 +176,8 @@ describe("SettingsContext", () => {
       JSON.stringify({
         developerOptions: true,
         showDebug: true,
+        frameThumbnails: true,
+        saveFrames: true,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: false,
@@ -196,14 +206,51 @@ describe("SettingsContext", () => {
       JSON.stringify({
         developerOptions: false,
         showDebug: true,
+        frameThumbnails: true,
+        saveFrames: true,
         throttleInference: false,
         centerCropFrames: false,
       }),
     );
     const { result } = renderHook(() => useSettings(), { wrapper });
     expect(result.current.showDebug).toBe(false);
+    expect(result.current.frameThumbnails).toBe(false);
+    expect(result.current.saveFrames).toBe(false);
     expect(result.current.throttleInference).toBe(true);
     expect(result.current.centerCropFrames).toBe(true);
+  });
+
+  // The frame preview and frame saving used to ride along with showDebug; they
+  // are separate options now, so each has to flip on its own.
+  it("toggles the frame preview independently of the debug overlay", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleDeveloperOptions());
+    act(() => result.current.toggleShowDebug());
+    expect(result.current.showDebug).toBe(false);
+    expect(result.current.frameThumbnails).toBe(true);
+
+    act(() => result.current.toggleFrameThumbnails());
+    expect(result.current.frameThumbnails).toBe(false);
+    expect(result.current.saveFrames).toBe(true);
+  });
+
+  it("toggles frame saving independently of the debug overlay", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleDeveloperOptions());
+    act(() => result.current.toggleSaveFrames());
+    expect(result.current.saveFrames).toBe(false);
+    expect(result.current.showDebug).toBe(true);
+    expect(result.current.frameThumbnails).toBe(true);
+  });
+
+  it("tolerates a stored blob predating the frame preview and saving options", () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true, showDebug: false }),
+    );
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.frameThumbnails).toBe(true);
+    expect(result.current.saveFrames).toBe(true);
   });
 
   it("restores the stored developer options when developerOptions is turned back on", () => {
@@ -233,6 +280,8 @@ describe("SettingsContext", () => {
       JSON.stringify({
         developerOptions: false,
         showDebug: true,
+        frameThumbnails: true,
+        saveFrames: true,
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: false,
