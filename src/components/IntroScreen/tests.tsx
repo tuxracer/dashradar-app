@@ -2,6 +2,8 @@ import { fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DESKTOP_CONTINUE_CONFIRM_MESSAGE,
+  INTRO_SEEN_STORAGE_KEY,
+  INTRO_VERSION,
   IntroScreen,
   markIntroSeen,
   shouldShowIntro,
@@ -29,6 +31,24 @@ describe("shouldShowIntro", () => {
   it("shows on a first open and never again after markIntroSeen", () => {
     expect(shouldShowIntro()).toBe(true);
     markIntroSeen();
+    expect(shouldShowIntro()).toBe(false);
+  });
+
+  it("shows again for a stored version older than the current intro", () => {
+    window.localStorage.setItem(INTRO_SEEN_STORAGE_KEY, "1");
+    expect(shouldShowIntro()).toBe(true);
+  });
+
+  it("shows again for the pre-versioning flag value", () => {
+    window.localStorage.setItem(INTRO_SEEN_STORAGE_KEY, "true");
+    expect(shouldShowIntro()).toBe(true);
+  });
+
+  it("stays dismissed for a stored version newer than the current intro", () => {
+    window.localStorage.setItem(
+      INTRO_SEEN_STORAGE_KEY,
+      String(INTRO_VERSION + 1),
+    );
     expect(shouldShowIntro()).toBe(false);
   });
 });

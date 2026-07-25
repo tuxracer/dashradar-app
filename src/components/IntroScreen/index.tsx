@@ -6,27 +6,31 @@ import { isDesktopDevice } from "@/lib/deviceType";
 import {
   DESKTOP_CONTINUE_CONFIRM_MESSAGE,
   INTRO_SEEN_STORAGE_KEY,
+  INTRO_VERSION,
 } from "./consts";
 
 export * from "./consts";
 
 /**
- * True until the intro has been dismissed once. When localStorage is
+ * True until the current intro version has been dismissed. A stored value that
+ * is missing, not a number, or older than INTRO_VERSION shows the intro again,
+ * so a reworked intro reaches returning users too. When localStorage is
  * unavailable (private mode / quota) the intro shows again each visit, which
  * beats silently skipping onboarding for a genuine first open.
  */
 export const shouldShowIntro = (): boolean => {
   try {
-    return window.localStorage.getItem(INTRO_SEEN_STORAGE_KEY) === null;
+    const seen = Number(window.localStorage.getItem(INTRO_SEEN_STORAGE_KEY));
+    return !Number.isFinite(seen) || seen < INTRO_VERSION;
   } catch {
     return true;
   }
 };
 
-/** Persists the dismissal so the intro only ever shows on the first open. */
+/** Persists the dismissal of the current intro version. */
 export const markIntroSeen = () => {
   try {
-    window.localStorage.setItem(INTRO_SEEN_STORAGE_KEY, "true");
+    window.localStorage.setItem(INTRO_SEEN_STORAGE_KEY, String(INTRO_VERSION));
   } catch {
     // Storage unavailable; the intro will show again next visit.
   }
