@@ -39,7 +39,6 @@ import type {
 import { isWorkerResponse } from "@/workers/detection/types";
 import {
   DARK_BRIGHT_FRACTION,
-  FPS_SAMPLE_SIZE,
   FRAME_RETRY_MS,
   INITIAL_DEBUG,
   MAX_RECONNECT_ATTEMPTS,
@@ -206,11 +205,10 @@ export const DetectionProvider = ({
   });
   const [hud, setHud] = useState<HudModel>();
   const [error, setError] = useState<DetectionErrorCode>();
-  // fps and the per-frame debug snapshot update on every result, but nothing
-  // renders them by default (the debug overlay and settings panel are hidden),
-  // so they live in refs read via getFps()/getDebugSnapshot() instead of state
-  // that would re-render every consumer per frame.
-  const fpsRef = useRef(0);
+  // The per-frame debug snapshot updates on every result, but nothing renders
+  // it by default (the debug overlay is hidden), so it lives in a ref read via
+  // getDebugSnapshot() instead of state that would re-render every consumer per
+  // frame.
   const debugRef = useRef<DebugSnapshot>(INITIAL_DEBUG);
   const [contact, setContact] = useState<Contact>();
   // Mirrors `contact` so the previous bitmap can be closed from event
@@ -350,7 +348,6 @@ export const DetectionProvider = ({
   // a baseline captured when it starts, so framesProcessed in the sentinel
   // record counts only frames from the current running span.
   const framesTotalRef = useRef(0);
-  const resultTimesRef = useRef<number[]>([]);
   // Capture duration of the most recently posted frame and the timestamp it was
   // posted, paired with the next detections result for the debug snapshot.
   const lastCaptureMsRef = useRef(0);
@@ -484,22 +481,6 @@ export const DetectionProvider = ({
     paceTimerRef.current = window.setTimeout(() => {
       void sendFrameRef.current();
     }, delay);
-  }, []);
-
-  const recordResultTime = useCallback(() => {
-    const times = resultTimesRef.current;
-    times.push(performance.now());
-    if (times.length > FPS_SAMPLE_SIZE) {
-      times.shift();
-    }
-    if (times.length >= 2) {
-      const elapsed = times[times.length - 1] - times[0];
-      // Two results inside the same millisecond would divide by zero; keep
-      // the previous reading until a measurable interval accumulates.
-      if (elapsed > 0) {
-        fpsRef.current = Math.round(((times.length - 1) * 1000) / elapsed);
-      }
-    }
   }, []);
 
   // Probe WebGPU adapter availability on the main thread once at startup. Read
@@ -763,7 +744,6 @@ export const DetectionProvider = ({
             pacingDelayMs: debugRef.current.pacingDelayMs,
             pacingRule: debugRef.current.pacingRule,
           };
-          recordResultTime();
           // Camera-health check. Only while the pump is live: a late in-flight
           // result arriving after stop() (e.g. mid-recovery) has runningRef
           // false and must not touch the detectors. A byte-identical
@@ -925,7 +905,6 @@ export const DetectionProvider = ({
   }, [
     createWorker,
     devVideoMode,
-    recordResultTime,
     replaceContact,
     schedulePacedFrame,
     sendFrame,
@@ -1151,8 +1130,6 @@ export const DetectionProvider = ({
     };
   }, [status]);
 
-  const getFps = useCallback(() => fpsRef.current, []);
-
   const getDebugSnapshot = useCallback(() => debugRef.current, []);
 
   const value = useMemo(
@@ -1164,7 +1141,6 @@ export const DetectionProvider = ({
       downloadingModel,
       modelProgress,
       hud,
-      getFps,
       getDebugSnapshot,
       error,
       contact,
@@ -1182,7 +1158,6 @@ export const DetectionProvider = ({
       downloadingModel,
       modelProgress,
       hud,
-      getFps,
       getDebugSnapshot,
       error,
       contact,

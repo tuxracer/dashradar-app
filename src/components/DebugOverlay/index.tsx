@@ -13,19 +13,11 @@ type DebugOverlayProps = {
   backend: DetectionBackend | undefined;
   backendProbe: BackendProbe | undefined;
   mainThreadWebGpu: MainThreadWebGpu | undefined;
-  /** Rolling detection-result rate; polled on the readout tick. */
-  getFps: () => number;
   modelProgress: ModelProgress;
   /** Latest per-frame diagnostics; polled on the readout tick. */
   getDebug: () => DebugSnapshot;
   videoSize: Size | undefined;
   viewportSize: Size;
-};
-
-/** Values the readout tick polls together, rendered as one state update. */
-type DebugReadout = {
-  debug: DebugSnapshot;
-  fps: number;
 };
 
 /** Compact per-stage summary of the WebGPU probe, e.g. "gpu·adp·dev·f16". */
@@ -99,14 +91,13 @@ const Row = ({ label, value }: { label: string; value: string }) => (
  * Development diagnostics panel pinned to the top-left, below the wordmark line.
  * Rendered only when the showDebug setting is on. pointer-events are disabled so
  * it never intercepts taps meant for the HUD. Data comes in as props (backend,
- * fps, model progress, the per-frame debug snapshot, and the current sizes) so
- * the panel stays testable without the detection worker.
+ * model progress, the per-frame debug snapshot, and the current sizes) so the
+ * panel stays testable without the detection worker.
  */
 export const DebugOverlay = ({
   backend,
   backendProbe,
   mainThreadWebGpu,
-  getFps,
   modelProgress,
   getDebug,
   videoSize,
@@ -114,10 +105,7 @@ export const DebugOverlay = ({
 }: DebugOverlayProps) => {
   const { showDebug, throttleInference, zoomMode } = useSettings();
 
-  const [readout, setReadout] = useState<DebugReadout>(() => ({
-    debug: getDebug(),
-    fps: getFps(),
-  }));
+  const [debug, setDebug] = useState<DebugSnapshot>(getDebug);
   useEffect(() => {
     // The panel renders nothing while showDebug is off, so don't run the
     // readout loop (and its state updates) for a hidden overlay. On enable,
@@ -133,14 +121,13 @@ export const DebugOverlay = ({
       // Throttle to ~8 Hz; the readout is for eyeballing, not smoothness.
       if (time - last > 120) {
         last = time;
-        setReadout({ debug: getDebug(), fps: getFps() });
+        setDebug(getDebug());
       }
       frame = window.requestAnimationFrame(tick);
     };
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
-  }, [getDebug, getFps, showDebug]);
-  const { debug, fps } = readout;
+  }, [getDebug, showDebug]);
 
   if (!showDebug) {
     return null;
@@ -166,7 +153,7 @@ export const DebugOverlay = ({
       </div>
       <Row
         label="engine"
-        value={`${backendLabel}${backendProbe?.safeMode ? " (safe mode)" : ""} · ${fps} FPS`}
+        value={`${backendLabel}${backendProbe?.safeMode ? " (safe mode)" : ""}`}
       />
       {backendProbe && (
         <Row label="wgpu probe" value={probeStages(backendProbe)} />

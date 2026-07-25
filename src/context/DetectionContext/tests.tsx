@@ -86,22 +86,9 @@ const Probe = () => {
   );
 };
 
-// fps and the debug snapshot live in refs read through getFps()/
-// getDebugSnapshot() (results must not re-render the app), so these probes
-// read them on demand instead of rendering live state.
-const FpsProbe = () => {
-  const { getFps } = useDetection();
-  const [fps, setFps] = useState<number>();
-  return (
-    <div>
-      <button data-testid="read-fps" onClick={() => setFps(getFps())}>
-        read fps
-      </button>
-      <span data-testid="fps">{fps ?? "none"}</span>
-    </div>
-  );
-};
-
+// The debug snapshot lives in a ref read through getDebugSnapshot() (results
+// must not re-render the app), so this probe reads it on demand instead of
+// rendering live state.
 const DebugProbe = () => {
   const { getDebugSnapshot } = useDetection();
   const [debug, setDebug] = useState<DebugSnapshot>();
@@ -993,50 +980,6 @@ describe("DetectionProvider", () => {
     expect(
       worker.posted.filter((message) => message.type === "detect"),
     ).toHaveLength(3);
-  });
-
-  it("exposes a finite fps after multiple detection results", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const worker = renderWithProvider(
-      <>
-        <FpsProbe />
-        <StartOnReady />
-      </>,
-    );
-    act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    for (let result = 0; result < 2; result += 1) {
-      // The first frame posts on a microtask; later frames wait out pacing.
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(
-          result === 0 ? 0 : MIN_FRAME_INTERVAL_MS,
-        );
-      });
-      expect(
-        worker.posted.filter((message) => message.type === "detect"),
-      ).toHaveLength(result + 1);
-      act(() => {
-        worker.emit({
-          type: "detections",
-          detections: [],
-          timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
-        });
-      });
-    }
-    act(() => {
-      screen.getByTestId("read-fps").click();
-    });
-    const fps = Number(screen.getByTestId("fps").textContent);
-    expect(Number.isFinite(fps)).toBe(true);
-    expect(fps).toBeGreaterThanOrEqual(0);
   });
 
   it("exposes a debug snapshot from detection results", async () => {

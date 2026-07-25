@@ -32,9 +32,6 @@ export const MIN_FRAME_INTERVAL_MS = 2_000;
  */
 export const PACING_REST_RATIO = 0.5;
 
-/** Rolling window of result timestamps used for the FPS readout. */
-export const FPS_SAMPLE_SIZE = 10;
-
 /**
  * Debounce window for the anonymous `police_detected` analytics event. The
  * event fires only on the leading edge of a sighting: once reported, further

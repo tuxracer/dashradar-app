@@ -140,12 +140,6 @@ export type DetectionContextValue = {
   modelProgress: ModelProgress;
   hud: HudModel | undefined;
   /**
-   * Rolling detection-result rate. Held in a ref and read on demand (the
-   * debug overlay's readout tick, the settings panel's poll while open) so
-   * per-result updates don't re-render the React tree.
-   */
-  getFps: () => number;
-  /**
    * Latest per-frame diagnostics. Updated on every result but held in a ref
    * and read on demand, so results don't re-render the app while the debug
    * overlay is hidden and toggling it on still shows current numbers.

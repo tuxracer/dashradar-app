@@ -16,9 +16,9 @@ type StatusBarProps = {
 
 /**
  * Top bar over the radar: the DASHRADAR.APP wordmark on the left, the settings
- * gear on the right, and an optional centered slot between them. The
- * engine/FPS readout now lives in the full-screen
- * settings panel, keeping this bar minimal and glanceable for a driver.
+ * gear on the right, and an optional centered slot between them. The engine
+ * readout now lives in the full-screen settings panel, keeping this bar minimal
+ * and glanceable for a driver.
  * pointer-events are disabled on the container so the video and HUD underneath
  * stay interactive; SettingsButton re-enables them for the gear itself.
  */

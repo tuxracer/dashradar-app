@@ -53,7 +53,6 @@ const renderOverlay = (backendProbe?: BackendProbe) =>
         backend="webgpu"
         backendProbe={backendProbe}
         mainThreadWebGpu="no-adapter"
-        getFps={() => 12}
         modelProgress={{ loadedBytes: 0, totalBytes: 0 }}
         getDebug={() => debug}
         videoSize={{ width: 1280, height: 720 }}
@@ -71,7 +70,7 @@ describe("DebugOverlay", () => {
   it("renders diagnostics when showDebug is on", () => {
     enableDebug();
     renderOverlay();
-    expect(screen.getByText(/12 FPS/)).toBeInTheDocument();
+    expect(screen.getByText("GPU")).toBeInTheDocument();
     expect(screen.getByText(/1280.*720/)).toBeInTheDocument();
     expect(screen.getByText(/2\s*\/\s*4/)).toBeInTheDocument();
     expect(screen.getByText("overhead")).toBeInTheDocument();

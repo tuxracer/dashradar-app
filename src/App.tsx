@@ -49,7 +49,6 @@ const RadarScreen = () => {
     hud,
     contact,
     autoZoom,
-    getFps,
     getDebugSnapshot,
     error,
     start,
@@ -172,7 +171,6 @@ const RadarScreen = () => {
         backend={backend}
         backendProbe={backendProbe}
         mainThreadWebGpu={mainThreadWebGpu}
-        getFps={getFps}
         modelProgress={modelProgress}
         getDebug={getDebugSnapshot}
         videoSize={videoSize}
