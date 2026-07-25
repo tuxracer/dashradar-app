@@ -91,9 +91,10 @@ export type Settings = {
    * per scan once something is (src/lib/autoZoom). A digital crop rather than
    * the camera's own zoom, because native zoom is unavailable on iOS Safari
    * and uses device-defined units on Chrome Android; cropping ourselves is the
-   * only way one setting means the same thing on both. A developer option,
-   * and "1x" by default even under developerOptions, since the other modes
-   * narrow what the detector can see.
+   * only way one setting means the same thing on both. Defaults to "auto",
+   * the production scanning behavior; the developer row exists to override it
+   * with a fixed 1x or 2x for testing, and that override only takes effect
+   * while developerOptions is on.
    */
   zoomMode: ZoomMode;
   /**

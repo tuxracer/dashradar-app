@@ -379,13 +379,14 @@ frame onto the square input instead, a comparison mode for models trained on
 stretched data. Squish is gated the same way, so normal use always runs the
 center-crop default regardless of a stale stored value (§4 step 3).
 
-`zoomMode` (`"1x" | "2x" | "auto"`, default `"1x"` even under Developer
-options, picked from `SettingsScreen`'s segmented Zoom row in the developer
-section) selects the crop
-factor the worker scans at. 2x halves the centered square the worker feeds
+`zoomMode` (`"1x" | "2x" | "auto"`, default `"auto"`, picked from
+`SettingsScreen`'s segmented Zoom row in the developer section) selects the
+crop factor the worker scans at. Auto, the production default (including
+with Developer options off), hands the choice to the detection loop per scan
+(§5, Auto zoom); the developer row overrides it with a fixed level for
+testing. 2x halves the centered square the worker feeds
 the model, so the same 512x512 input covers half the field of view and a
-distant vehicle occupies twice the linear size in the input grid; auto hands
-the choice to the detection loop per scan (§5, Auto zoom). It is a digital
+distant vehicle occupies twice the linear size in the input grid. It is a digital
 crop rather than the camera's own zoom: native zoom
 (`MediaStreamTrack.applyConstraints({ advanced: [{ zoom }] })`) does not
 exist on iOS Safari at all, and on Chrome Android it reports device-defined
@@ -394,8 +395,9 @@ way one setting means the same thing on both platforms. `CAMERA_CONSTRAINTS`
 requests roughly 1024 on each axis, about twice the model's input edge, so the
 2x crop lands at 512 native with no upsampling and the 1x square downsamples
 cleanly. `DetectionContext` mirrors the mode into the `zoom` crop factor
-(`ZOOM_2X`/`ZOOM_OFF`) it posts with every `detect`, and it is gated like the
-rest, so a stored 2x or auto can never narrow a normal drive. `loadSettings`
+(`ZOOM_2X`/`ZOOM_OFF`) it posts with every `detect`, and the override is
+gated like the rest, so a pinned fixed zoom can never outlive the master
+switch: a normal drive always runs auto. `loadSettings`
 migrates the legacy `zoom2x` boolean this mode replaced: a persisted
 `zoom2x: true` with no stored `zoomMode` loads as `"2x"`.
 
@@ -468,7 +470,7 @@ Every track is returned as a `visible` detection for `buildHudModel` to shape (t
 
 ### Auto zoom (`src/lib/autoZoom`)
 
-The zoom setting's auto mode (§4, SettingsContext `zoomMode`) hands the per-scan crop-factor choice to this React-free module. `stepAutoZoom(frame)` is pure: it takes the scan that just finished (the crop factor it was captured with, its coasted detections in full-frame normalized coordinates, and the frame's pixel dimensions) and returns the next `AutoZoomState` (`{ zoom, locked }`, where `zoom` is `ZOOM_OFF` or `ZOOM_2X`). The rules:
+The zoom setting's auto mode (§4, SettingsContext `zoomMode`), the production default, hands the per-scan crop-factor choice to this React-free module. `stepAutoZoom(frame)` is pure: it takes the scan that just finished (the crop factor it was captured with, its coasted detections in full-frame normalized coordinates, and the frame's pixel dimensions) and returns the next `AutoZoomState` (`{ zoom, locked }`, where `zoom` is `ZOOM_OFF` or `ZOOM_2X`). The rules:
 
 - **Nothing detected**: flip to the level the scan was not captured at, unlocked. Idle scanning therefore alternates 1x, 2x, 1x, 2x at the pacing cadence, covering both fields of view at no extra inference cost. The flip is also the release path for a lock: losing a contact at 2x zooms out first, which may bring a vehicle that outgrew the narrow view back into frame.
 - **Detected at 2x**: lock at 2x until the object is gone.

@@ -1468,7 +1468,9 @@ describe("DetectionProvider", () => {
     ).toMatchObject({ centerCrop: true });
   });
 
-  it("posts the unzoomed crop factor by default", async () => {
+  it("posts the unzoomed crop factor on the default auto mode's first scan", async () => {
+    // The default mode is auto, whose machine always starts a session zoomed
+    // out; the alternation from there is covered by the auto zoom tests below.
     vi.stubGlobal(
       "createImageBitmap",
       vi.fn(() => Promise.resolve(fakeBitmap())),
@@ -1516,11 +1518,11 @@ describe("DetectionProvider", () => {
     ).toMatchObject({ zoom: ZOOM_2X });
   });
 
-  it("posts the unzoomed crop factor when a zoom mode is stored but developer options are off", async () => {
-    // The zoom narrows the detector's field of view, so it is gated on the
-    // Developer options master switch like the other tweaks: a stored 2x or
-    // auto mode must NOT narrow a normal drive. This pins the gate
-    // SettingsProvider applies to the stored value.
+  it("ignores a stored fixed zoom when developer options are off", async () => {
+    // A fixed 1x/2x is a developer override gated on the master switch: with
+    // it off, a stored 2x must not pin the scan and the auto default runs
+    // instead. Auto's machine starts a session zoomed out, so the first frame
+    // posting ZOOM_OFF (not the stored ZOOM_2X) pins the gate.
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({ developerOptions: false, zoomMode: "2x" }),
