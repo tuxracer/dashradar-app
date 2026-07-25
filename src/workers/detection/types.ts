@@ -84,6 +84,14 @@ export type WorkerRequest =
        */
       centerCrop?: boolean;
       /**
+       * Factor by which to shrink the centered square crop, so the model input
+       * covers a narrower field of view. 1 (the default when omitted) is the
+       * full centered square; ZOOM_2X halves it. Set from the developer 2x
+       * zoom setting. Only meaningful under center-crop preprocessing: the
+       * squish path draws the whole frame and ignores this.
+       */
+      zoom?: number;
+      /**
        * Minimum detection confidence for this frame's decode. When omitted the
        * worker uses the CONFIDENCE_THRESHOLD default (the production floor).
        * Set from the developer confidence-threshold setting so a lowered value
@@ -108,6 +116,7 @@ export const isWorkerRequest = (value: unknown): value is WorkerRequest => {
     (value.includeThumbnail === undefined ||
       isBoolean(value.includeThumbnail)) &&
     (value.centerCrop === undefined || isBoolean(value.centerCrop)) &&
+    (value.zoom === undefined || isNumber(value.zoom)) &&
     (value.confidenceThreshold === undefined ||
       isNumber(value.confidenceThreshold))
   );

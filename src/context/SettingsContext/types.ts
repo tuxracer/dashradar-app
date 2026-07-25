@@ -5,8 +5,8 @@ import { CONFIDENCE_LEVELS } from "./consts";
 export type Settings = {
   /**
    * Master switch for the development-only settings (showDebug,
-   * frameThumbnails, saveFrames, throttleInference, centerCropFrames,
-   * confidenceThreshold). Off by default. While it is off, SettingsProvider
+   * frameThumbnails, saveFrames, autoSaveFrames, throttleInference,
+   * centerCropFrames, zoom2x, confidenceThreshold). Off by default. While it is off, SettingsProvider
    * reports each of those at its DEVELOPER_OPTIONS_OFF value no matter what is
    * stored, so a development tweak left enabled cannot alter a normal drive.
    * Their stored values survive, so turning this back on restores the tweaks
@@ -67,6 +67,17 @@ export type Settings = {
    */
   centerCropFrames: boolean;
   /**
+   * When true, the worker halves the centered square it feeds the model, so
+   * the same 512x512 input covers half the field of view and distant vehicles
+   * occupy twice the linear size in the input grid. A digital crop rather than
+   * the camera's own zoom, because native zoom is unavailable on iOS Safari
+   * and uses device-defined units on Chrome Android; cropping ourselves is the
+   * only way one setting means the same thing on both. A developer option, and
+   * off by default even under developerOptions, since it narrows what the
+   * detector can see.
+   */
+  zoom2x: boolean;
+  /**
    * Minimum detection confidence. Detections scoring below this are discarded.
    * A developer option, so it only takes effect while developerOptions is on and
    * reports the 0.5 production floor (DEVELOPER_OPTIONS_OFF.confidenceThreshold)
@@ -88,13 +99,14 @@ export type DeveloperOptions = Pick<
   | "autoSaveFrames"
   | "throttleInference"
   | "centerCropFrames"
+  | "zoom2x"
   | "confidenceThreshold"
 >;
 
 /**
  * Value exposed by the settings context via useSettings(). The developer
  * options (showDebug, frameThumbnails, saveFrames, autoSaveFrames,
- * throttleInference, centerCropFrames, confidenceThreshold) are the
+ * throttleInference, centerCropFrames, zoom2x, confidenceThreshold) are the
  * *effective* values, already gated on developerOptions, so consumers never
  * have to repeat the gate. Each toggle (or setter) still writes the stored
  * value underneath.
@@ -116,6 +128,8 @@ export type SettingsContextValue = {
   toggleThrottleInference: () => void;
   centerCropFrames: boolean;
   toggleCenterCropFrames: () => void;
+  zoom2x: boolean;
+  toggleZoom2x: () => void;
   confidenceThreshold: number;
   /** Sets the minimum-confidence level, snapping to the nearest allowed step. */
   setConfidenceThreshold: (level: number) => void;
@@ -150,6 +164,7 @@ export const isPersistedSettings = (
       isBoolean(value.throttleInference)) &&
     (value.centerCropFrames === undefined ||
       isBoolean(value.centerCropFrames)) &&
+    (value.zoom2x === undefined || isBoolean(value.zoom2x)) &&
     (value.confidenceThreshold === undefined ||
       isNumber(value.confidenceThreshold))
   );

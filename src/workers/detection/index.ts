@@ -15,6 +15,7 @@ import {
   MODEL_URL_BY_BACKEND,
   WASM_THREAD_CAP,
   WEBGPU_GRAPH_CAPTURE,
+  ZOOM_OFF,
 } from "./consts";
 import {
   centerCropRegion,
@@ -473,12 +474,14 @@ const detect = async ({
   includeFrame,
   includeThumbnail,
   centerCrop,
+  zoom,
   confidenceThreshold,
 }: {
   frame: ImageBitmap;
   includeFrame: boolean;
   includeThumbnail: boolean;
   centerCrop: boolean;
+  zoom: number;
   confidenceThreshold: number;
 }) => {
   if (!model) {
@@ -491,7 +494,7 @@ const detect = async ({
       throw new DetectionError("INFERENCE_FAILED");
     }
     if (centerCrop) {
-      const region = centerCropRegion(frame.width, frame.height);
+      const region = centerCropRegion(frame.width, frame.height, zoom);
       inputContext.drawImage(
         frame,
         region.sx,
@@ -549,7 +552,12 @@ const detect = async ({
     const detections = centerCrop
       ? decoded.map((detection) => ({
           ...detection,
-          box: mapCropBoxToFrame(detection.box, frame.width, frame.height),
+          box: mapCropBoxToFrame(
+            detection.box,
+            frame.width,
+            frame.height,
+            zoom,
+          ),
         }))
       : decoded;
     const decodeMs = performance.now() - decodeStart;
@@ -641,6 +649,7 @@ self.onmessage = (event: MessageEvent<unknown>) => {
     includeFrame: request.includeFrame ?? false,
     includeThumbnail: request.includeThumbnail ?? false,
     centerCrop: request.centerCrop ?? true,
+    zoom: request.zoom ?? ZOOM_OFF,
     confidenceThreshold: request.confidenceThreshold ?? CONFIDENCE_THRESHOLD,
   });
 };

@@ -15,6 +15,7 @@ import {
   IMAGENET_MEAN,
   IMAGENET_STD,
   INPUT_SIZE,
+  ZOOM_2X,
 } from "@/workers/detection/consts";
 import { isWorkerRequest, isWorkerResponse } from "@/workers/detection/types";
 import type { RawDetection } from "@/types";
@@ -398,6 +399,28 @@ describe("centerCropRegion", () => {
   it("covers a square frame exactly", () => {
     expect(centerCropRegion(512, 512)).toEqual({ sx: 0, sy: 0, side: 512 });
   });
+
+  it("halves the crop at 2x zoom, keeping it centered", () => {
+    expect(centerCropRegion(1024, 1024, ZOOM_2X)).toEqual({
+      sx: 256,
+      sy: 256,
+      side: 512,
+    });
+  });
+
+  it("stays centered at 2x zoom on a landscape frame", () => {
+    const region = centerCropRegion(1024, 512, ZOOM_2X);
+    expect(region).toEqual({ sx: 384, sy: 128, side: 256 });
+    // The crop's center is still the frame's center on both axes.
+    expect(region.sx + region.side / 2).toBe(512);
+    expect(region.sy + region.side / 2).toBe(256);
+  });
+
+  it("ignores a zoom below 1 rather than cropping outside the frame", () => {
+    expect(centerCropRegion(1024, 512, 0.5)).toEqual(
+      centerCropRegion(1024, 512),
+    );
+  });
 });
 
 describe("mapCropBoxToFrame", () => {
@@ -426,6 +449,32 @@ describe("mapCropBoxToFrame", () => {
   it("is the identity on a square frame", () => {
     const box = { xmin: 0.1, ymin: 0.2, xmax: 0.6, ymax: 0.9 };
     expect(mapCropBoxToFrame(box, 512, 512)).toEqual(box);
+  });
+
+  it("maps a 2x-zoomed crop onto the middle quarter of a square frame", () => {
+    // At 2x the crop is the centered half of the frame, so a box filling the
+    // crop covers 0.25..0.75 of the frame on both axes.
+    const box = mapCropBoxToFrame(
+      { xmin: 0, ymin: 0, xmax: 1, ymax: 1 },
+      1024,
+      1024,
+      ZOOM_2X,
+    );
+    expect(box).toEqual({ xmin: 0.25, ymin: 0.25, xmax: 0.75, ymax: 0.75 });
+  });
+
+  it("halves a 2x-zoomed detection's apparent size versus 1x", () => {
+    // The same box in crop space describes a physically smaller region of the
+    // frame at 2x, which is what makes a distant vehicle fill more of the
+    // model's input.
+    const cropBox = { xmin: 0.4, ymin: 0.4, xmax: 0.6, ymax: 0.6 };
+    const wide = mapCropBoxToFrame(cropBox, 1024, 1024);
+    const zoomed = mapCropBoxToFrame(cropBox, 1024, 1024, ZOOM_2X);
+    expect(zoomed.xmax - zoomed.xmin).toBeCloseTo((wide.xmax - wide.xmin) / 2);
+    expect(zoomed.ymax - zoomed.ymin).toBeCloseTo((wide.ymax - wide.ymin) / 2);
+    // Both stay centered on the frame's center.
+    expect(zoomed.xmin + zoomed.xmax).toBeCloseTo(1);
+    expect(zoomed.ymin + zoomed.ymax).toBeCloseTo(1);
   });
 
   it("maps a portrait frame's crop onto its vertical center", () => {

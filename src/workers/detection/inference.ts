@@ -12,16 +12,24 @@ import {
 } from "./consts";
 
 /**
- * The largest centered square source region of a frame: the region the worker
- * draws onto the model input under center-crop preprocessing, matching the
- * Fill-with-center-crop resize the model trains with. A square frame yields
- * the whole frame (sx/sy 0).
+ * The centered square source region of a frame: the region the worker draws
+ * onto the model input under center-crop preprocessing, matching the
+ * Fill-with-center-crop resize the model trains with. At the default zoom of 1
+ * this is the largest centered square, and a square frame yields the whole
+ * frame (sx/sy 0).
+ *
+ * `zoom` shrinks that square by its factor while keeping it centered, which is
+ * how the developer 2x zoom works: the same 512x512 model input then covers
+ * half the field of view, so a distant vehicle occupies twice the linear size
+ * in the input grid. Values below 1 would crop outside the frame, so they are
+ * clamped away rather than honored.
  */
 export const centerCropRegion = (
   width: number,
   height: number,
+  zoom = 1,
 ): { sx: number; sy: number; side: number } => {
-  const side = Math.min(width, height);
+  const side = Math.min(width, height) / Math.max(1, zoom);
   return { sx: (width - side) / 2, sy: (height - side) / 2, side };
 };
 
@@ -31,14 +39,16 @@ export const centerCropRegion = (
  * the model's boxes describe the crop, but every downstream consumer (the
  * contact-card cutout, direction shaping, HUD area math) works in full-frame
  * coordinates, so the worker remaps each detection through this before
- * posting it.
+ * posting it. `zoom` must match the value the crop was taken with, or the
+ * boxes land in the wrong place.
  */
 export const mapCropBoxToFrame = (
   box: NormalizedBox,
   frameWidth: number,
   frameHeight: number,
+  zoom = 1,
 ): NormalizedBox => {
-  const { sx, sy, side } = centerCropRegion(frameWidth, frameHeight);
+  const { sx, sy, side } = centerCropRegion(frameWidth, frameHeight, zoom);
   return {
     xmin: (sx + box.xmin * side) / frameWidth,
     ymin: (sy + box.ymin * side) / frameHeight,

@@ -33,8 +33,10 @@ const Toggle = ({ on }: { on: boolean }) => (
  * landscape. Renders nothing until the panel is opened. Large, full-width rows
  * with big tap targets: Audio alerts and Developer options toggles, the
  * development-only controls Developer options reveals (Debug overlay, Frame
- * preview, Save frames, Auto save, Throttle inference, Center crop, Min
- * confidence), plus read-only Detection engine, Model, and About rows. Closes on the large close button or Escape. While it is open the detection pump is paused (DetectionContext
+ * preview, Save frames, Auto save, Throttle inference, Center crop, 2x zoom,
+ * Min confidence), plus read-only Detection engine, Model, and About rows.
+ * Closes on the large close button or Escape. While it is open the detection
+ * pump is paused (DetectionContext
  * watches `settingsOpen`) and resumes on close. Reads the backend as a prop
  * (the same way StatusBar used to) so it stays testable without the worker.
  */
@@ -58,6 +60,8 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
     toggleThrottleInference,
     centerCropFrames,
     toggleCenterCropFrames,
+    zoom2x,
+    toggleZoom2x,
     confidenceThreshold,
     setConfidenceThreshold,
   } = useSettings();
@@ -228,6 +232,22 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
                   </span>
                 </span>
                 <Toggle on={centerCropFrames} />
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleZoom2x}
+                className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
+              >
+                <span className="flex flex-col gap-1">
+                  <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                    2x zoom
+                  </span>
+                  <span className="text-sm font-medium text-white/45">
+                    Narrows the view to reach farther down the road.
+                  </span>
+                </span>
+                <Toggle on={zoom2x} />
               </button>
 
               <div className="flex min-h-16 items-center py-4">

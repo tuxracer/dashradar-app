@@ -32,6 +32,7 @@ import {
   SENTINEL_STORAGE_KEY,
 } from "@/lib/crashSentinel";
 import { downloadBlob } from "@/lib/saveFrame";
+import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 
 /** Arms the WASM safe mode by recording a full crash streak. */
 const armSafeMode = () => {
@@ -1464,6 +1465,84 @@ describe("DetectionProvider", () => {
     expect(
       worker.posted.find((message) => message.type === "detect"),
     ).toMatchObject({ centerCrop: true });
+  });
+
+  it("posts the unzoomed crop factor by default", async () => {
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    expect(
+      worker.posted.find((message) => message.type === "detect"),
+    ).toMatchObject({ zoom: ZOOM_OFF });
+  });
+
+  it("posts the 2x crop factor when developer options and 2x zoom are on", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true, zoom2x: true }),
+    );
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    expect(
+      worker.posted.find((message) => message.type === "detect"),
+    ).toMatchObject({ zoom: ZOOM_2X });
+  });
+
+  it("posts the unzoomed crop factor when 2x zoom is on but developer options are off", async () => {
+    // The zoom narrows the detector's field of view, so it is gated on the
+    // Developer options master switch like the other tweaks: a stored
+    // zoom2x=true must NOT narrow a normal drive. This pins the gate
+    // SettingsProvider applies to the stored value.
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: false, zoom2x: true }),
+    );
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    expect(
+      worker.posted.find((message) => message.type === "detect"),
+    ).toMatchObject({ zoom: ZOOM_OFF });
   });
 
   it("posts confidenceThreshold 0.5 by default", async () => {

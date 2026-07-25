@@ -28,7 +28,7 @@ import { createDetectionTracker } from "@/lib/detectionTracker";
 import { contactDirection, signalFromScore } from "@/lib/radarSignal";
 import { downloadBlob, frameFilename } from "@/lib/saveFrame";
 import { waitForServiceWorkerControl } from "@/lib/serviceWorker";
-import { POLICE_LABEL } from "@/workers/detection/consts";
+import { POLICE_LABEL, ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 import type {
   BackendProbe,
   DetectionBackend,
@@ -109,6 +109,7 @@ export const DetectionProvider = ({
     autoSaveFrames,
     throttleInference,
     centerCropFrames,
+    zoom2x,
     confidenceThreshold,
     settingsOpen,
   } = useSettings();
@@ -151,6 +152,13 @@ export const DetectionProvider = ({
   useEffect(() => {
     centerCropRef.current = centerCropFrames;
   }, [centerCropFrames]);
+  // Mirrors the 2x zoom as the crop factor sendFrame posts, same idiom again.
+  // Already gated on Developer options, so a normal drive always scans the full
+  // centered square and can never be left narrowed by a stale persisted true.
+  const zoomRef = useRef(zoom2x ? ZOOM_2X : ZOOM_OFF);
+  useEffect(() => {
+    zoomRef.current = zoom2x ? ZOOM_2X : ZOOM_OFF;
+  }, [zoom2x]);
   // Mirrors the effective minimum confidence for sendFrame and the detections
   // handler, both of which read it per result rather than re-subscribing.
   // useSettings() already gates it: it can only differ from the 0.5 floor while
@@ -392,6 +400,7 @@ export const DetectionProvider = ({
           includeFrame: includeFrameRef.current,
           includeThumbnail: includeThumbnailRef.current,
           centerCrop: centerCropRef.current,
+          zoom: zoomRef.current,
           confidenceThreshold: confidenceThresholdRef.current,
         },
         [frame],

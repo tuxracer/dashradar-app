@@ -75,6 +75,23 @@ export const WEBGPU_GRAPH_CAPTURE = true;
 /** Square input edge the model expects (NCHW `[1,3,512,512]`). */
 export const INPUT_SIZE = 512;
 
+/**
+ * Crop factor the developer 2x zoom applies: the centered square fed to the
+ * model shrinks to half its side, so the same 512x512 input covers half the
+ * field of view and a distant vehicle occupies twice the linear size in the
+ * input grid. A fixed step rather than a continuous range because native
+ * camera zoom is unavailable on iOS Safari and reports device-defined units on
+ * Chrome Android, so cropping the frame ourselves is the only way one setting
+ * means the same thing on both.
+ *
+ * CAMERA_CONSTRAINTS requests roughly twice the model's input edge so this
+ * crop lands at 512 native with no upsampling.
+ */
+export const ZOOM_2X = 2;
+
+/** Crop factor when the 2x zoom is off: the full centered square. */
+export const ZOOM_OFF = 1;
+
 /** ImageNet channel means (R, G, B) used to normalize the input. */
 export const IMAGENET_MEAN: readonly [number, number, number] = [
   0.485, 0.456, 0.406,

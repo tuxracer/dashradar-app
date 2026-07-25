@@ -44,6 +44,7 @@ describe("SettingsContext", () => {
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
+        zoom2x: false,
         confidenceThreshold: 0.5,
       }),
     );
@@ -103,6 +104,7 @@ describe("SettingsContext", () => {
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
+        zoom2x: false,
         confidenceThreshold: 0.5,
       }),
     );
@@ -127,6 +129,7 @@ describe("SettingsContext", () => {
         radarAudio: false,
         throttleInference: true,
         centerCropFrames: true,
+        zoom2x: false,
         confidenceThreshold: 0.5,
       }),
     );
@@ -152,6 +155,7 @@ describe("SettingsContext", () => {
         radarAudio: true,
         throttleInference: false,
         centerCropFrames: true,
+        zoom2x: false,
         confidenceThreshold: 0.5,
       }),
     );
@@ -186,6 +190,7 @@ describe("SettingsContext", () => {
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: false,
+        zoom2x: false,
         confidenceThreshold: 0.5,
       }),
     );
@@ -216,6 +221,7 @@ describe("SettingsContext", () => {
         autoSaveFrames: true,
         throttleInference: false,
         centerCropFrames: false,
+        zoom2x: true,
       }),
     );
     const { result } = renderHook(() => useSettings(), { wrapper });
@@ -225,6 +231,27 @@ describe("SettingsContext", () => {
     expect(result.current.autoSaveFrames).toBe(false);
     expect(result.current.throttleInference).toBe(true);
     expect(result.current.centerCropFrames).toBe(true);
+    expect(result.current.zoom2x).toBe(false);
+  });
+
+  it("defaults zoom2x to false even under developer options", () => {
+    // The zoom narrows what the detector can see, so unlike the diagnostics
+    // options it is asked for deliberately rather than inherited from turning
+    // developer options on.
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleDeveloperOptions());
+    expect(result.current.zoom2x).toBe(false);
+  });
+
+  it("restores a stored zoom2x when developerOptions comes back on", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleDeveloperOptions());
+    act(() => result.current.toggleZoom2x());
+    expect(result.current.zoom2x).toBe(true);
+    act(() => result.current.toggleDeveloperOptions());
+    expect(result.current.zoom2x).toBe(false);
+    act(() => result.current.toggleDeveloperOptions());
+    expect(result.current.zoom2x).toBe(true);
   });
 
   // The frame preview and frame saving used to ride along with showDebug; they
@@ -306,6 +333,7 @@ describe("SettingsContext", () => {
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: false,
+        zoom2x: false,
         confidenceThreshold: 0.5,
       }),
     );

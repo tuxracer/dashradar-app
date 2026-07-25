@@ -13,8 +13,9 @@ export const CONFIDENCE_LEVELS = [
  * developer options take the value they should have once someone turns the
  * Developer options master switch on: the debug overlay, the per-scan frame
  * preview, and frame saving all default on, since turning developer options on
- * is itself the request to see and collect the diagnostics. Auto save is the
- * exception, defaulting off: it downloads a file per detection, which is worth
+ * is itself the request to see and collect the diagnostics. Auto save and the
+ * 2x zoom are the exceptions, defaulting off: one downloads a file per
+ * detection and the other narrows what the detector can see, so both are worth
  * asking for deliberately rather than inheriting. What they report while that
  * switch is off is DEVELOPER_OPTIONS_OFF, not this.
  */
@@ -27,6 +28,7 @@ export const DEFAULT_SETTINGS: Settings = {
   radarAudio: true,
   throttleInference: true,
   centerCropFrames: true,
+  zoom2x: false,
   confidenceThreshold: 0.5,
 };
 
@@ -34,7 +36,8 @@ export const DEFAULT_SETTINGS: Settings = {
  * Effective values the development-only settings report while the Developer
  * options master switch is off: nothing extra on the glass, no per-frame JPEG
  * encode, no downloads, the thermal pacing floor in place, the center crop the
- * model trains with, and the 0.5 confidence floor. Kept apart from
+ * model trains with at its full field of view, and the 0.5 confidence floor.
+ * Kept apart from
  * DEFAULT_SETTINGS so a developer option can default on for developers while
  * staying off for a normal drive.
  */
@@ -45,5 +48,6 @@ export const DEVELOPER_OPTIONS_OFF: DeveloperOptions = {
   autoSaveFrames: false,
   throttleInference: true,
   centerCropFrames: true,
+  zoom2x: false,
   confidenceThreshold: 0.5,
 };

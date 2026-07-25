@@ -47,6 +47,7 @@ describe("SettingsScreen", () => {
         radarAudio: false,
         throttleInference: true,
         centerCropFrames: true,
+        zoom2x: false,
         confidenceThreshold: 0.5,
       }),
     );
@@ -73,6 +74,7 @@ describe("SettingsScreen", () => {
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
+        zoom2x: false,
         confidenceThreshold: 0.5,
       }),
     );
@@ -93,6 +95,7 @@ describe("SettingsScreen", () => {
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
+        zoom2x: false,
         confidenceThreshold: 0.5,
       }),
     );
@@ -108,6 +111,7 @@ describe("SettingsScreen", () => {
     expect(screen.queryByText("Auto save")).not.toBeInTheDocument();
     expect(screen.queryByText("Throttle inference")).not.toBeInTheDocument();
     expect(screen.queryByText("Center crop")).not.toBeInTheDocument();
+    expect(screen.queryByText("2x zoom")).not.toBeInTheDocument();
   });
 
   it("reveals every developer row once developer options are on", async () => {
@@ -121,6 +125,7 @@ describe("SettingsScreen", () => {
     expect(screen.getByText("Auto save")).toBeInTheDocument();
     expect(screen.getByText("Throttle inference")).toBeInTheDocument();
     expect(screen.getByText("Center crop")).toBeInTheDocument();
+    expect(screen.getByText("2x zoom")).toBeInTheDocument();
   });
 
   it("closes on the close button", async () => {
@@ -198,6 +203,7 @@ describe("SettingsScreen", () => {
         radarAudio: true,
         throttleInference: false,
         centerCropFrames: true,
+        zoom2x: false,
         confidenceThreshold: 0.5,
       }),
     );
@@ -222,6 +228,32 @@ describe("SettingsScreen", () => {
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: false,
+        zoom2x: false,
+        confidenceThreshold: 0.5,
+      }),
+    );
+  });
+
+  it("toggles and persists the 2x zoom setting from its row", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true }),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    await user.click(screen.getByText("2x zoom"));
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({
+        developerOptions: true,
+        showDebug: true,
+        frameThumbnails: true,
+        saveFrames: true,
+        autoSaveFrames: false,
+        radarAudio: true,
+        throttleInference: true,
+        centerCropFrames: true,
+        zoom2x: true,
         confidenceThreshold: 0.5,
       }),
     );
@@ -246,6 +278,7 @@ describe("SettingsScreen", () => {
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
+        zoom2x: false,
         confidenceThreshold: 0.5,
       }),
     );
@@ -270,6 +303,7 @@ describe("SettingsScreen", () => {
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
+        zoom2x: false,
         confidenceThreshold: 0.5,
       }),
     );
@@ -294,6 +328,7 @@ describe("SettingsScreen", () => {
         radarAudio: true,
         throttleInference: true,
         centerCropFrames: true,
+        zoom2x: false,
         confidenceThreshold: 0.5,
       }),
     );
