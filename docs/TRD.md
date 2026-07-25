@@ -303,16 +303,16 @@ type SettingsContextValue = {
 };
 ```
 
-`developerOptions` (default off) is the master switch for the eight
+`developerOptions` (default off) is the master switch for the nine
 development-only options: `showDebug`, `frameThumbnails`, `saveFrames`,
-`autoSaveFrames`, `throttleInference`, `centerCropFrames`,
+`autoSaveFrames`, `throttleInference`, `centerCropFrames`, `zoomMode`,
 `confidenceThreshold`, and `zoomIndicator`. `SettingsScreen` renders their
 rows only while it is
-on, and `SettingsProvider` reports all eight at their `DEVELOPER_OPTIONS_OFF`
+on, and `SettingsProvider` reports all nine at their `DEVELOPER_OPTIONS_OFF`
 values while it is off, so a tweak left enabled cannot alter a normal drive.
 The gate lives in the provider, not in each consumer: `useSettings()` returns
 the already-gated effective value, so `DetectionContext` reads a bare
-`frameThumbnails`/`saveFrames`/`autoSaveFrames`/`throttleInference`/`centerCropFrames`/`confidenceThreshold`,
+`frameThumbnails`/`saveFrames`/`autoSaveFrames`/`throttleInference`/`centerCropFrames`/`zoomMode`/`confidenceThreshold`,
 `DebugOverlay` a bare `showDebug`, and `RadarScreen` a bare `zoomIndicator`
 (gating whether the on-glass zoom pill renders at all; it defaults on under
 the master switch, like the display diagnostics). The stored values are left untouched
@@ -379,10 +379,9 @@ frame onto the square input instead, a comparison mode for models trained on
 stretched data. Squish is gated the same way, so normal use always runs the
 center-crop default regardless of a stale stored value (§4 step 3).
 
-`zoomMode` (`"1x" | "2x" | "auto"`, default `"1x"`) is a regular user
-setting, not a developer option: its segmented Zoom row (1X/2X/AUTO) sits
-directly under Audio alerts for all users, and the stored mode always takes
-effect regardless of the Developer options switch. It selects the crop
+`zoomMode` (`"1x" | "2x" | "auto"`, default `"1x"` even under Developer
+options, picked from `SettingsScreen`'s segmented Zoom row in the developer
+section) selects the crop
 factor the worker scans at. 2x halves the centered square the worker feeds
 the model, so the same 512x512 input covers half the field of view and a
 distant vehicle occupies twice the linear size in the input grid; auto hands
@@ -395,7 +394,8 @@ way one setting means the same thing on both platforms. `CAMERA_CONSTRAINTS`
 requests roughly 1024 on each axis, about twice the model's input edge, so the
 2x crop lands at 512 native with no upsampling and the 1x square downsamples
 cleanly. `DetectionContext` mirrors the mode into the `zoom` crop factor
-(`ZOOM_2X`/`ZOOM_OFF`) it posts with every `detect`. `loadSettings`
+(`ZOOM_2X`/`ZOOM_OFF`) it posts with every `detect`, and it is gated like the
+rest, so a stored 2x or auto can never narrow a normal drive. `loadSettings`
 migrates the legacy `zoom2x` boolean this mode replaced: a persisted
 `zoom2x: true` with no stored `zoomMode` loads as `"2x"`.
 

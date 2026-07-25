@@ -22,7 +22,8 @@ export type Settings = {
   /**
    * Master switch for the development-only settings (showDebug,
    * frameThumbnails, saveFrames, autoSaveFrames, throttleInference,
-   * centerCropFrames, confidenceThreshold, zoomIndicator). Off by default. While it is off, SettingsProvider
+   * centerCropFrames, zoomMode, confidenceThreshold, zoomIndicator). Off by
+   * default. While it is off, SettingsProvider
    * reports each of those at its DEVELOPER_OPTIONS_OFF value no matter what is
    * stored, so a development tweak left enabled cannot alter a normal drive.
    * Their stored values survive, so turning this back on restores the tweaks
@@ -90,9 +91,9 @@ export type Settings = {
    * per scan once something is (src/lib/autoZoom). A digital crop rather than
    * the camera's own zoom, because native zoom is unavailable on iOS Safari
    * and uses device-defined units on Chrome Android; cropping ourselves is the
-   * only way one setting means the same thing on both. A regular user setting
-   * (not a developer option), defaulting to "1x" since the other modes narrow
-   * what the detector can see.
+   * only way one setting means the same thing on both. A developer option,
+   * and "1x" by default even under developerOptions, since the other modes
+   * narrow what the detector can see.
    */
   zoomMode: ZoomMode;
   /**
@@ -125,6 +126,7 @@ export type DeveloperOptions = Pick<
   | "autoSaveFrames"
   | "throttleInference"
   | "centerCropFrames"
+  | "zoomMode"
   | "confidenceThreshold"
   | "zoomIndicator"
 >;
@@ -132,7 +134,8 @@ export type DeveloperOptions = Pick<
 /**
  * Value exposed by the settings context via useSettings(). The developer
  * options (showDebug, frameThumbnails, saveFrames, autoSaveFrames,
- * throttleInference, centerCropFrames, confidenceThreshold, zoomIndicator) are the
+ * throttleInference, centerCropFrames, zoomMode, confidenceThreshold,
+ * zoomIndicator) are the
  * *effective* values, already gated on developerOptions, so consumers never
  * have to repeat the gate. Each toggle (or setter) still writes the stored
  * value underneath.

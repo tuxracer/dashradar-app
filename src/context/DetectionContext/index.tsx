@@ -154,8 +154,9 @@ export const DetectionProvider = ({
   useEffect(() => {
     centerCropRef.current = centerCropFrames;
   }, [centerCropFrames]);
-  // Mirrors the zoom mode for sendFrame, same idiom again. A regular user
-  // setting (not developer-gated): the stored mode always drives the scan.
+  // Mirrors the zoom mode for sendFrame, same idiom again. Already gated on
+  // Developer options, so a normal drive always scans the full centered square
+  // and can never be left narrowed by a stale persisted mode.
   const zoomModeRef = useRef(zoomMode);
   // Auto zoom machine state: the crop factor the next auto-mode scan captures
   // at, advanced by the detections handler from each scan's outcome (see
