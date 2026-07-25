@@ -14,6 +14,7 @@ import { RadarBackdrop } from "@/components/RadarBackdrop";
 import { RadarDetectorScreen } from "@/components/RadarDetectorScreen";
 import { SettingsScreen } from "@/components/SettingsScreen";
 import { StatusBar } from "@/components/StatusBar";
+import { ZoomIndicator } from "@/components/ZoomIndicator";
 import { DetectionProvider, useDetection } from "@/context/DetectionContext";
 import { SettingsProvider, useSettings } from "@/context/SettingsContext";
 import type { CameraError } from "@/lib/camera";
@@ -47,6 +48,7 @@ const RadarScreen = () => {
     modelProgress,
     hud,
     contact,
+    autoZoomLevel,
     getFps,
     getDebugSnapshot,
     error,
@@ -54,7 +56,7 @@ const RadarScreen = () => {
     cameraStalled,
     cameraEpoch,
   } = useDetection();
-  const { radarAudio, frameThumbnails, saveFrames } = useSettings();
+  const { radarAudio, frameThumbnails, saveFrames, zoomMode } = useSettings();
   // Dev video mode has no camera to introduce or ask permission for, so the
   // intro is skipped outright and the radar view loads immediately.
   const [showIntro, setShowIntro] = useState(
@@ -155,6 +157,7 @@ const RadarScreen = () => {
         />
       )}
       <StatusBar />
+      <ZoomIndicator mode={zoomMode} level={autoZoomLevel} />
       <DebugOverlay
         backend={backend}
         backendProbe={backendProbe}

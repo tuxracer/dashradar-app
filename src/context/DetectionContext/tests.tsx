@@ -1556,6 +1556,11 @@ describe("DetectionProvider", () => {
       .filter((message) => message.type === "detect")
       .map((message) => message.zoom);
 
+  const ZoomLevelProbe = () => {
+    const { autoZoomLevel } = useDetection();
+    return <span data-testid="auto-zoom-level">{autoZoomLevel}</span>;
+  };
+
   const startAutoZoomPump = async () => {
     window.localStorage.setItem(
       STORAGE_KEY,
@@ -1566,7 +1571,12 @@ describe("DetectionProvider", () => {
       "createImageBitmap",
       vi.fn(() => Promise.resolve(fakeBitmap())),
     );
-    const worker = renderWithProvider(<StartOnReady />);
+    const worker = renderWithProvider(
+      <>
+        <StartOnReady />
+        <ZoomLevelProbe />
+      </>,
+    );
     act(() => {
       worker.emit({ type: "ready", backend: "wasm" });
     });
@@ -1661,6 +1671,16 @@ describe("DetectionProvider", () => {
       ZOOM_OFF,
       ZOOM_2X,
     ]);
+  });
+
+  it("exposes the machine's current level for the zoom indicator", async () => {
+    const worker = await startAutoZoomPump();
+    const level = () => screen.getByTestId("auto-zoom-level").textContent;
+    expect(level()).toBe(String(ZOOM_OFF));
+    await completeScan(worker, []);
+    expect(level()).toBe(String(ZOOM_2X));
+    await completeScan(worker, []);
+    expect(level()).toBe(String(ZOOM_OFF));
   });
 
   it("posts confidenceThreshold 0.5 by default", async () => {

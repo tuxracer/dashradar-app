@@ -1,3 +1,4 @@
+import type { AutoZoomLevel } from "@/lib/autoZoom";
 import type { HudModel } from "@/lib/detection";
 import type { ContactDirection } from "@/lib/radarSignal";
 import type { NormalizedBox } from "@/types";
@@ -160,6 +161,13 @@ export type DetectionContextValue = {
    * on worker errors and teardown.
    */
   contact: Contact | undefined;
+  /**
+   * The auto zoom machine's current crop factor, for the on-glass zoom
+   * indicator. Advances once per scan while the zoom mode is auto; resets to
+   * 1x on stop and on mode change, so it reads 1x in the fixed modes (where
+   * the indicator derives its label from the mode alone).
+   */
+  autoZoomLevel: AutoZoomLevel;
   /**
    * True once automatic camera recovery has exhausted its remount attempts on a
    * frozen or black feed. Terminal: the pump is stopped and the app shows the
