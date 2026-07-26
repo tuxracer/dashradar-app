@@ -35,7 +35,7 @@ import type { DetectionBackend } from "./types";
  * the `CacheFirst` "model-cache" so returning visitors download the new weights
  * instead of being served the old cached copy forever.
  */
-export const MODEL_REVISION = "v2.2";
+export const MODEL_REVISION = "v2.3";
 
 /**
  * Hugging Face repo name the weights are published under. Paired with
