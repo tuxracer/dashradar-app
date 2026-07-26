@@ -30,7 +30,7 @@ import { createDetectionTracker } from "@/lib/detectionTracker";
 import { contactDirection, signalFromScore } from "@/lib/radarSignal";
 import { downloadBlob, frameFilename } from "@/lib/saveFrame";
 import { waitForServiceWorkerControl } from "@/lib/serviceWorker";
-import { recordTimings } from "@/lib/timingHistory";
+import { recordTimings, takeTimingReport } from "@/lib/timingHistory";
 import { POLICE_LABEL, ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 import type {
   BackendProbe,
@@ -747,8 +747,20 @@ export const DetectionProvider = ({
           };
           // Roll the same two numbers into the sessionStorage window, so a
           // drive's recent pacing can be read back off the device afterwards
-          // without the debug overlay having been open at the time.
-          recordTimings({ roundTripMs, inferenceMs });
+          // without the debug overlay having been open at the time. Once the
+          // window first fills, report its medians to analytics: ten scans in
+          // is past the first-run costs (session compile, a cold GPU) and is
+          // still early enough that most sessions reach it, so the fleet-wide
+          // numbers describe steady-state pacing. takeTimingReport is the
+          // once-per-session guard, so this stays quiet for the rest of the
+          // drive no matter how long it scans.
+          const report = takeTimingReport(
+            recordTimings({ roundTripMs, inferenceMs }),
+          );
+          if (report) {
+            track("timing_round_trip", { seconds: report.roundTrip });
+            track("timing_inference", { seconds: report.inference });
+          }
           // Camera-health check. Only while the pump is live: a late in-flight
           // result arriving after stop() (e.g. mid-recovery) has runningRef
           // false and must not touch the detectors. A byte-identical

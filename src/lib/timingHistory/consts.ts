@@ -14,3 +14,10 @@ export const TIMING_HISTORY_LIMIT = 10;
  * so a series reads as a pacing trend rather than noise.
  */
 export const TIMING_BUCKET_MS = 500;
+
+/**
+ * sessionStorage key marking that this session already reported its median
+ * timings to analytics. Its presence is the whole record; the value is only
+ * there to make the entry readable in devtools.
+ */
+export const TIMING_ANALYTICS_STORAGE_KEY = "dashradar:timingsReported";

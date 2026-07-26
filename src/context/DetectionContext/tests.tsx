@@ -32,7 +32,7 @@ import {
   SENTINEL_STORAGE_KEY,
 } from "@/lib/crashSentinel";
 import { downloadBlob } from "@/lib/saveFrame";
-import { readTimingHistory } from "@/lib/timingHistory";
+import { readTimingHistory, TIMING_HISTORY_LIMIT } from "@/lib/timingHistory";
 import type { RawDetection } from "@/types";
 import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 
@@ -1067,6 +1067,66 @@ describe("DetectionProvider", () => {
     const history = readTimingHistory();
     expect(history.inference).toEqual([2.5]);
     expect(history.roundTrip).toHaveLength(1);
+  });
+
+  it("reports median timings to analytics once the window first fills", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const { video, presentFrame } = videoWithControlledFrames();
+    const worker = renderWithProvider(<StartStopWithVideo video={video} />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+
+    /** Run `count` scans, each reporting a one-second inference. */
+    const runScans = async (count: number, firstFingerprint: number) => {
+      for (let scan = 0; scan < count; scan += 1) {
+        await act(async () => {
+          presentFrame();
+          await vi.advanceTimersByTimeAsync(0);
+        });
+        act(() => {
+          worker.emit({
+            type: "detections",
+            detections: [],
+            timing: { preprocessMs: 1, inferenceMs: 1_000, decodeMs: 1 },
+            // Distinct each scan, so the frozen-feed detector never fires.
+            fingerprint: firstFingerprint + scan,
+            brightFraction: 0.5,
+          });
+        });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+        });
+      }
+    };
+    const timingEvents = () =>
+      vi
+        .mocked(track)
+        .mock.calls.filter(([event]) => event.startsWith("timing_"));
+
+    // Nine scans is a partial window, which reports nothing: a median of a
+    // handful of samples is not worth an event.
+    await runScans(TIMING_HISTORY_LIMIT - 1, 1);
+    expect(timingEvents()).toHaveLength(0);
+
+    // The tenth fills the window and reports both medians.
+    await runScans(1, 100);
+    expect(timingEvents()).toEqual([
+      ["timing_round_trip", { seconds: expect.any(Number) }],
+      ["timing_inference", { seconds: 1 }],
+    ]);
+
+    // The drive keeps scanning, and the window keeps rolling; neither event
+    // may fire a second time.
+    await runScans(TIMING_HISTORY_LIMIT, 200);
+    expect(timingEvents()).toHaveLength(2);
   });
 
   it("runs unthrottled (zero pacing delay) when developer options are on and throttling is off", async () => {

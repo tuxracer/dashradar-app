@@ -1,10 +1,11 @@
 import {
+  TIMING_ANALYTICS_STORAGE_KEY,
   TIMING_BUCKET_MS,
   TIMING_HISTORY_LIMIT,
   TIMING_HISTORY_STORAGE_KEY,
 } from "./consts";
 import { isTimingHistory } from "./types";
-import type { TimingHistory, TimingSample } from "./types";
+import type { TimingHistory, TimingReport, TimingSample } from "./types";
 
 export * from "./consts";
 export * from "./types";
@@ -59,11 +60,11 @@ const appendSample = (series: number[], seconds: number): number[] => {
 export const recordTimings = ({
   roundTripMs,
   inferenceMs,
-}: TimingSample): void => {
-  if (!Number.isFinite(roundTripMs) || !Number.isFinite(inferenceMs)) {
-    return;
-  }
+}: TimingSample): TimingHistory => {
   const history = readTimingHistory();
+  if (!Number.isFinite(roundTripMs) || !Number.isFinite(inferenceMs)) {
+    return history;
+  }
   const next: TimingHistory = {
     roundTrip: appendSample(history.roundTrip, toBucketedSeconds(roundTripMs)),
     inference: appendSample(history.inference, toBucketedSeconds(inferenceMs)),
@@ -76,4 +77,60 @@ export const recordTimings = ({
   } catch {
     // Private mode or quota pressure; the drive runs without the history.
   }
+  return next;
+};
+
+/**
+ * Median of a series, snapped back onto the half-second grid its samples sit
+ * on. An even-length window averages its two middle samples, which can land
+ * between buckets (1.5 and 2 average to 1.75); snapping keeps every reported
+ * value one of the same handful the samples use, so the analytics facet stays
+ * low-cardinality and comparable across devices. An empty series is 0.
+ */
+export const medianSeconds = (series: number[]): number => {
+  if (series.length === 0) {
+    return 0;
+  }
+  const sorted = [...series].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  const median =
+    sorted.length % 2 === 0
+      ? (sorted[middle - 1] + sorted[middle]) / 2
+      : sorted[middle];
+  return Math.round(median * 2) / 2;
+};
+
+/**
+ * The one-and-only analytics summary for this session, or undefined when it
+ * isn't due: the window has yet to fill (a session that scanned only a handful
+ * of times reports nothing rather than a median of two samples), or this
+ * session already reported. Claiming it marks the session reported in
+ * sessionStorage, so the caller may fire the events unconditionally on a
+ * defined result, and a later full window (the drive keeps scanning long past
+ * ten) never reports again. Session-scoped by construction: a new tab starts
+ * fresh, which is the granularity the events are counted at.
+ */
+export const takeTimingReport = (
+  history: TimingHistory,
+): TimingReport | undefined => {
+  if (
+    history.roundTrip.length < TIMING_HISTORY_LIMIT ||
+    history.inference.length < TIMING_HISTORY_LIMIT
+  ) {
+    return undefined;
+  }
+  try {
+    if (window.sessionStorage.getItem(TIMING_ANALYTICS_STORAGE_KEY) !== null) {
+      return undefined;
+    }
+    window.sessionStorage.setItem(TIMING_ANALYTICS_STORAGE_KEY, "true");
+  } catch {
+    // Storage unavailable, so "already reported" cannot be recorded or read.
+    // Report nothing rather than risk an event on every scan past the tenth.
+    return undefined;
+  }
+  return {
+    roundTrip: medianSeconds(history.roundTrip),
+    inference: medianSeconds(history.inference),
+  };
 };

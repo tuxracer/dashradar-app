@@ -16,6 +16,15 @@ export type TimingSample = {
   inferenceMs: number;
 };
 
+/**
+ * The once-per-session analytics summary of a full window: each series' median,
+ * in seconds on the same half-second grid as the samples.
+ */
+export type TimingReport = {
+  roundTrip: number;
+  inference: number;
+};
+
 /** Validates a parsed sessionStorage blob as a TimingHistory. */
 export const isTimingHistory = (value: unknown): value is TimingHistory => {
   return (
