@@ -1409,7 +1409,7 @@ describe("DetectionProvider", () => {
     ).toMatchObject({ includeFrame: true, includeThumbnail: false });
   });
 
-  // Auto save needs the same full-frame JPEG the SAVE button uses, so it has to
+  // Auto save needs the same frame JPEG the SAVE button uses, so it has to
   // ask for it on its own rather than depending on Save frames being on too.
   it("posts includeFrame true for auto save even with frame saving off", async () => {
     window.localStorage.setItem(
@@ -2698,7 +2698,7 @@ describe("DetectionProvider contact", () => {
     expect(image.close).toHaveBeenCalled();
   });
 
-  it("carries the full-frame blob into the contact", () => {
+  it("carries the saved-frame blob into the contact", () => {
     vi.stubGlobal("ImageBitmap", FakeImageBitmap);
     const worker = new FakeWorker();
     render(

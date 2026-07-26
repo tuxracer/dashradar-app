@@ -124,7 +124,7 @@ export const DetectionProvider = ({
   } = useSettings();
   // Mirrors the frame-saving flags for sendFrame, which is a stable callback:
   // the pump reads the current value per capture instead of re-subscribing on
-  // toggles. It asks the worker for the full-frame JPEG the contact card's
+  // toggles. It asks the worker for the model-input JPEG the contact card's
   // SAVE button downloads. Auto save needs the same JPEG, so it implies the
   // request rather than making the two settings order-dependent.
   const includeFrameRef = useRef(saveFrames || autoSaveFrames);

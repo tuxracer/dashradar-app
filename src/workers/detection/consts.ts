@@ -141,7 +141,7 @@ export const CROP_PADDING = 0.15;
 export const CROP_MAX_EDGE = 320;
 
 /**
- * JPEG quality for the full-frame capture returned with a detection when the
+ * JPEG quality for the model-input capture returned with a detection when the
  * context asks for it (debug-mode frame saving). High enough that compression
  * artifacts stay irrelevant for training data, at a fraction of PNG size.
  */

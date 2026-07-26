@@ -46,14 +46,14 @@ export type Settings = {
    */
   frameThumbnails: boolean;
   /**
-   * When true, the contact card carries a SAVE button that downloads the full
-   * inference frame as a JPEG, for collecting training data. Costs a JPEG
-   * encode inside every detect round trip, so it is a developer option and only
-   * takes effect while developerOptions is on.
+   * When true, the contact card carries a SAVE button that downloads the
+   * model's square input frame as a JPEG, for collecting training data. Costs
+   * a JPEG encode inside every detect round trip, so it is a developer option
+   * and only takes effect while developerOptions is on.
    */
   saveFrames: boolean;
   /**
-   * When true, every scan that detects something downloads its full inference
+   * When true, every scan that detects something downloads its model-input
    * frame automatically, with no tap on SAVE. For collecting training data on
    * a drive, where reaching for the button on each detection is not practical
    * and the false positives are exactly what needs reviewing later. Implies

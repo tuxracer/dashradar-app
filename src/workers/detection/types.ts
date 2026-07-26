@@ -63,7 +63,7 @@ export type WorkerRequest =
       type: "detect";
       frame: ImageBitmap;
       /**
-       * When true, the worker returns the full inference frame as a JPEG blob
+       * When true, the worker returns the model's square input as a JPEG blob
        * on the detections response, so the UI can offer to save it. Set from
        * the developer frame-saving setting.
        */
@@ -267,10 +267,10 @@ export type WorkerResponse =
        */
       frameThumbnail?: ImageBitmap;
       /**
-       * Full inference frame encoded as JPEG, present whenever the request
-       * asked for it (includeFrame). Pairs with the crop or the frame
-       * thumbnail from the same message as the image the contact card's SAVE
-       * button downloads for training data.
+       * The model's square input (INPUT_SIZE on a side) encoded as JPEG,
+       * present whenever the request asked for it (includeFrame). Pairs with
+       * the crop or the frame thumbnail from the same message as the image the
+       * contact card's SAVE button downloads for training data.
        */
       frame?: Blob;
       /**

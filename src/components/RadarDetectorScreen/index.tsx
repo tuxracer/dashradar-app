@@ -35,7 +35,7 @@ type RadarDetectorScreenProps = {
   frameThumbnails?: boolean;
   /**
    * Whether the frame-saving setting is on. Reveals the contact card's SAVE
-   * button, which downloads the full inference frame as a JPEG.
+   * button, which downloads the model's square input frame as a JPEG.
    */
   saveFrames?: boolean;
 };
@@ -67,8 +67,8 @@ const ALERT_RING_COLOR = `rgb(${SIGNAL_HIGH_COLOR.join(", ")})`;
  * to the card: with frameThumbnails on it stays lit on every scan, since a
  * detection-free scan arrives as a bare frame preview (a thumbnail of the whole
  * frame) that should always reflect what the last scan saw; with saveFrames on
- * it shows a SAVE button that downloads the full inference frame as a JPEG for
- * collecting training data.
+ * it shows a SAVE button that downloads the model's square input frame as a
+ * JPEG for collecting training data.
  */
 export const RadarDetectorScreen = ({
   confidence,

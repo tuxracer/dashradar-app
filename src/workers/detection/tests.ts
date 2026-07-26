@@ -136,7 +136,7 @@ describe("isWorkerResponse", () => {
     );
   });
 
-  it("accepts a detections message carrying a full-frame blob", () => {
+  it("accepts a detections message carrying a saved-frame blob", () => {
     expect(
       isWorkerResponse({
         type: "detections",

@@ -49,7 +49,7 @@ export type Contact = {
    */
   image: ImageBitmap;
   /**
-   * Full inference frame the image was taken from, JPEG-encoded by the worker.
+   * The model's square input for this scan, JPEG-encoded by the worker.
    * Present only when the frame was captured with the frame-saving setting on;
    * the contact card's SAVE button downloads it for training data.
    */
