@@ -32,6 +32,7 @@ import {
   SENTINEL_STORAGE_KEY,
 } from "@/lib/crashSentinel";
 import { downloadBlob } from "@/lib/saveFrame";
+import { readTimingHistory } from "@/lib/timingHistory";
 import type { RawDetection } from "@/types";
 import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 
@@ -279,6 +280,8 @@ afterEach(() => {
   // A seeded showDebug (or any other persisted setting) must not leak between
   // tests: SettingsProvider persists its state to localStorage on mount.
   window.localStorage.clear();
+  // Every detection result appends to the rolling timing window.
+  window.sessionStorage.clear();
 });
 
 describe("DetectionProvider", () => {
@@ -1032,6 +1035,38 @@ describe("DetectionProvider", () => {
     const pacingDelay = Number(screen.getByTestId("pacing-delay").textContent);
     expect(pacingDelay).toBeGreaterThan(0);
     expect(pacingDelay).toBeLessThanOrEqual(MIN_FRAME_INTERVAL_MS);
+  });
+
+  it("rolls each result's timings into the sessionStorage history", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(readTimingHistory()).toEqual({ roundTrip: [], inference: [] });
+
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [],
+        // Two and a half seconds of inference buckets to 2.5; the round trip
+        // is measured here rather than reported, so only its length matters.
+        timing: { preprocessMs: 1, inferenceMs: 2_500, decodeMs: 3 },
+      });
+    });
+    const history = readTimingHistory();
+    expect(history.inference).toEqual([2.5]);
+    expect(history.roundTrip).toHaveLength(1);
   });
 
   it("runs unthrottled (zero pacing delay) when developer options are on and throttling is off", async () => {

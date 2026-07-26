@@ -30,6 +30,7 @@ import { createDetectionTracker } from "@/lib/detectionTracker";
 import { contactDirection, signalFromScore } from "@/lib/radarSignal";
 import { downloadBlob, frameFilename } from "@/lib/saveFrame";
 import { waitForServiceWorkerControl } from "@/lib/serviceWorker";
+import { recordTimings } from "@/lib/timingHistory";
 import { POLICE_LABEL, ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 import type {
   BackendProbe,
@@ -744,6 +745,10 @@ export const DetectionProvider = ({
             pacingDelayMs: debugRef.current.pacingDelayMs,
             pacingRule: debugRef.current.pacingRule,
           };
+          // Roll the same two numbers into the sessionStorage window, so a
+          // drive's recent pacing can be read back off the device afterwards
+          // without the debug overlay having been open at the time.
+          recordTimings({ roundTripMs, inferenceMs });
           // Camera-health check. Only while the pump is live: a late in-flight
           // result arriving after stop() (e.g. mid-recovery) has runningRef
           // false and must not touch the detectors. A byte-identical
