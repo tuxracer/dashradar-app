@@ -31,7 +31,13 @@ import { contactDirection, signalFromScore } from "@/lib/radarSignal";
 import { downloadBlob, frameFilename } from "@/lib/saveFrame";
 import { waitForServiceWorkerControl } from "@/lib/serviceWorker";
 import { recordTimings, takeTimingReport } from "@/lib/timingHistory";
-import { POLICE_LABEL, ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
+import {
+  MODEL_REVISION,
+  MODEL_SLUG,
+  POLICE_LABEL,
+  ZOOM_2X,
+  ZOOM_OFF,
+} from "@/workers/detection/consts";
 import type {
   BackendProbe,
   DetectionBackend,
@@ -302,6 +308,11 @@ export const DetectionProvider = ({
   // recycled worker's `ready` does not re-fire them, which would otherwise
   // inflate the counts every WORKER_RECYCLE_AFTER_MS of a scanning session.
   const readyTrackedRef = useRef(false);
+  // Guards the one-time model_downloaded analytics. A page load downloads the
+  // weights at most once in practice (later loads read the runtime cache), but
+  // a device whose cache never sticks would otherwise re-download and re-fire
+  // the event on every periodic worker recycle.
+  const modelDownloadTrackedRef = useRef(false);
   // Whether this page load's `load` posts carried forceWasm (the WASM safe
   // mode was armed). Captured at post time so the ready handler can report
   // the safe_mode_load analytics event without re-reading localStorage.
@@ -566,6 +577,22 @@ export const DetectionProvider = ({
         case "model-load-start": {
           setDownloadingModel(!message.fromCache);
           modelFromCacheRef.current = message.fromCache;
+          break;
+        }
+        case "model-downloaded": {
+          // Which model actually reached this device, and how long the bytes
+          // took to arrive. The revision is the only thing that says which
+          // weights a session ran, so a bad rollout is visible in analytics
+          // without waiting for it to surface as an error.
+          if (!modelDownloadTrackedRef.current) {
+            modelDownloadTrackedRef.current = true;
+            track("model_downloaded", {
+              model: MODEL_SLUG,
+              revision: MODEL_REVISION,
+              backend: message.backend,
+              seconds: Math.round(message.durationMs / 1_000),
+            });
+          }
           break;
         }
         case "model-progress": {

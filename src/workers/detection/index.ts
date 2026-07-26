@@ -347,10 +347,20 @@ const loadForBackend = async (backend: DetectionBackend): Promise<ModelIo> => {
   // reading already-cached weights (a cache read still takes a beat to compile
   // the ONNX session, which otherwise flashes a misleading "downloading" UI).
   post({ type: "model-load-start", fromCache: cached !== undefined });
-  const weights = cached
-    ? new Uint8Array(await cached.arrayBuffer())
-    : await fetchModel(url);
-  if (!cached) {
+  let weights: Uint8Array<ArrayBuffer>;
+  if (cached) {
+    weights = new Uint8Array(await cached.arrayBuffer());
+  } else {
+    const downloadStartedAt = performance.now();
+    weights = await fetchModel(url);
+    // Report the completed download before the session is built from it, so a
+    // device that downloads the weights but then fails session creation still
+    // counts as a successful download.
+    post({
+      type: "model-downloaded",
+      backend,
+      durationMs: performance.now() - downloadStartedAt,
+    });
     await cacheModelInDev(url, weights);
   }
   let captureError: string | undefined;

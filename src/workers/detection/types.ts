@@ -244,6 +244,13 @@ const isBackendProbe = (value: unknown): value is BackendProbe => {
 export type WorkerResponse =
   | { type: "model-load-start"; fromCache: boolean }
   | { type: "model-progress"; progress: ModelFileProgress }
+  /**
+   * The weights finished streaming over the network, before the ONNX session
+   * is built from them. Sent only for an actual download, never for a cache
+   * read, so the context can count fresh downloads (and how long they took)
+   * separately from sessions that started from cached bytes.
+   */
+  | { type: "model-downloaded"; backend: DetectionBackend; durationMs: number }
   | { type: "backend-probe"; probe: BackendProbe }
   | { type: "ready"; backend: DetectionBackend }
   | {
@@ -295,6 +302,8 @@ export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
       return isBoolean(value.fromCache);
     case "model-progress":
       return isModelFileProgress(value.progress);
+    case "model-downloaded":
+      return isDetectionBackend(value.backend) && isNumber(value.durationMs);
     case "backend-probe":
       return isBackendProbe(value.probe);
     case "ready":

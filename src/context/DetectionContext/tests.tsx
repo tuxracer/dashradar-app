@@ -34,7 +34,12 @@ import {
 import { downloadBlob } from "@/lib/saveFrame";
 import { readTimingHistory, TIMING_HISTORY_LIMIT } from "@/lib/timingHistory";
 import type { RawDetection } from "@/types";
-import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
+import {
+  MODEL_REVISION,
+  MODEL_SLUG,
+  ZOOM_2X,
+  ZOOM_OFF,
+} from "@/workers/detection/consts";
 
 /** Arms the WASM safe mode by recording a full crash streak. */
 const armSafeMode = () => {
@@ -409,6 +414,45 @@ describe("DetectionProvider", () => {
       backend: "wasm",
       fromCache: true,
     });
+  });
+
+  it("reports the model and revision when the weights download", () => {
+    const worker = renderWithProvider(<Probe />);
+    act(() => {
+      worker.emit({ type: "model-load-start", fromCache: false });
+      worker.emit({
+        type: "model-downloaded",
+        backend: "webgpu",
+        durationMs: 8_400,
+      });
+    });
+    expect(track).toHaveBeenCalledWith("model_downloaded", {
+      model: MODEL_SLUG,
+      revision: MODEL_REVISION,
+      backend: "webgpu",
+      seconds: 8,
+    });
+  });
+
+  it("reports a downloaded model once per page load", () => {
+    const worker = renderWithProvider(<Probe />);
+    act(() => {
+      worker.emit({
+        type: "model-downloaded",
+        backend: "wasm",
+        durationMs: 1_000,
+      });
+      worker.emit({
+        type: "model-downloaded",
+        backend: "wasm",
+        durationMs: 1_000,
+      });
+    });
+    expect(
+      vi
+        .mocked(track)
+        .mock.calls.filter(([name]) => name === "model_downloaded"),
+    ).toHaveLength(1);
   });
 
   it("reports the first successful inference to analytics once", () => {

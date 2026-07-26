@@ -3,8 +3,12 @@ import { X } from "lucide-react";
 import { ShareCard } from "@/components/ShareCard";
 import { useSettings } from "@/context/SettingsContext";
 import type { DetectionBackend } from "@/workers/detection/types";
-import { MODEL_REVISION } from "@/workers/detection/consts";
-import { MODEL_SLUG, MODEL_URL, REPO_URL, ZOOM_MODE_OPTIONS } from "./consts";
+import {
+  MODEL_REPO_URL,
+  MODEL_REVISION,
+  MODEL_SLUG,
+} from "@/workers/detection/consts";
+import { REPO_URL, ZOOM_MODE_OPTIONS } from "./consts";
 
 export * from "./consts";
 
@@ -338,7 +342,7 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
           </div>
 
           <a
-            href={MODEL_URL}
+            href={MODEL_REPO_URL}
             target="_blank"
             rel="noreferrer"
             className="flex min-h-16 items-center justify-between gap-6 py-4"

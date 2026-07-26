@@ -37,10 +37,21 @@ import type { DetectionBackend } from "./types";
  */
 export const MODEL_REVISION = "v2.2";
 
+/**
+ * Hugging Face repo name the weights are published under. Paired with
+ * MODEL_REVISION it names exactly which model a build runs, which is why both
+ * are shown in the settings Model row and reported with the model-download
+ * analytics event.
+ */
+export const MODEL_SLUG = "las-vegas-metro-rfdetr-small-t1";
+
+/** Hugging Face model page the weights are downloaded from. */
+export const MODEL_REPO_URL = `https://huggingface.co/tuxracer/${MODEL_SLUG}`;
+
 export const MODEL_URL_BY_BACKEND: Readonly<Record<DetectionBackend, string>> =
   {
-    webgpu: `https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1/resolve/${MODEL_REVISION}/onnx/model_fp16.onnx`,
-    wasm: `https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1/resolve/${MODEL_REVISION}/onnx/model_int8.onnx`,
+    webgpu: `${MODEL_REPO_URL}/resolve/${MODEL_REVISION}/onnx/model_fp16.onnx`,
+    wasm: `${MODEL_REPO_URL}/resolve/${MODEL_REVISION}/onnx/model_int8.onnx`,
   };
 
 /**
