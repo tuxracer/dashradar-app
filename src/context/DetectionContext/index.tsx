@@ -68,6 +68,7 @@ import type {
   DetectionWorkerLike,
   MainThreadWebGpu,
   ModelProgress,
+  SavedFrame,
 } from "./types";
 
 export * from "./consts";
@@ -218,6 +219,10 @@ export const DetectionProvider = ({
   // frame.
   const debugRef = useRef<DebugSnapshot>(INITIAL_DEBUG);
   const [contact, setContact] = useState<Contact>();
+  // Latest auto-saved frame, published for the save toast. Only auto save
+  // writes it: the contact card's SAVE button is a deliberate tap, so it needs
+  // no confirmation the way a download firing on its own does.
+  const [savedFrame, setSavedFrame] = useState<SavedFrame>();
   // Mirrors `contact` so the previous bitmap can be closed from event
   // handlers without a side effect inside a setState updater (StrictMode
   // double-invokes updaters; see statusRef above).
@@ -715,7 +720,13 @@ export const DetectionProvider = ({
               // filter above. Sits in the handler body rather than a setState
               // updater, which StrictMode double-invokes.
               if (autoSaveRef.current && message.frame) {
-                downloadBlob(message.frame, frameFilename(new Date()));
+                const filename = frameFilename(new Date());
+                downloadBlob(message.frame, filename);
+                // A download on a phone gives no visible sign it happened, so
+                // publish the save for the toast. A fresh `at` each time is
+                // what makes a run of saves re-show it rather than sitting
+                // still after the first one.
+                setSavedFrame({ filename, at: performance.now() });
               }
             } else {
               message.crop.image.close();
@@ -1188,6 +1199,7 @@ export const DetectionProvider = ({
       getDebugSnapshot,
       error,
       contact,
+      savedFrame,
       autoZoom,
       cameraStalled,
       cameraEpoch,
@@ -1205,6 +1217,7 @@ export const DetectionProvider = ({
       getDebugSnapshot,
       error,
       contact,
+      savedFrame,
       autoZoom,
       cameraStalled,
       cameraEpoch,

@@ -2743,6 +2743,17 @@ describe("DetectionProvider contact", () => {
   });
 });
 
+/** Reads the auto-save publication the save toast renders. */
+const SavedFrameProbe = () => {
+  const { savedFrame } = useDetection();
+  return (
+    <div>
+      <span data-testid="saved-filename">{savedFrame?.filename ?? "none"}</span>
+      <span data-testid="saved-at">{savedFrame?.at ?? "none"}</span>
+    </div>
+  );
+};
+
 describe("DetectionProvider auto save", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -2767,6 +2778,7 @@ describe("DetectionProvider auto save", () => {
       <SettingsProvider>
         <DetectionProvider createWorker={() => worker}>
           <ContactProbe />
+          <SavedFrameProbe />
         </DetectionProvider>
       </SettingsProvider>,
     );
@@ -2859,6 +2871,57 @@ describe("DetectionProvider auto save", () => {
       });
     });
     expect(vi.mocked(downloadBlob)).toHaveBeenCalledTimes(2);
+  });
+
+  // A download is invisible on a phone, so the save is published for the toast
+  // that tells a collection drive it is actually writing files.
+  it("publishes the saved frame under the name it was downloaded as", () => {
+    const worker = renderWithAutoSave(true);
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [policeDetection(0.85)],
+        timing,
+        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
+        frame: jpeg(),
+      });
+    });
+    const [, filename] = vi.mocked(downloadBlob).mock.calls[0];
+    expect(screen.getByTestId("saved-filename")).toHaveTextContent(filename);
+  });
+
+  // Consecutive saves land inside the same second, so the filename alone can
+  // repeat; the toast re-shows off the fresh timestamp instead.
+  it("publishes a distinct entry per save", () => {
+    const worker = renderWithAutoSave(true);
+    const scan = (score: number) => {
+      act(() => {
+        worker.emit({
+          type: "detections",
+          detections: [policeDetection(score)],
+          timing,
+          crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
+          frame: jpeg(),
+        });
+      });
+      return screen.getByTestId("saved-at").textContent;
+    };
+    const first = scan(0.85);
+    expect(scan(0.9)).not.toBe(first);
+  });
+
+  it("publishes nothing when a scan saves nothing", () => {
+    const worker = renderWithAutoSave(false);
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [policeDetection(0.85)],
+        timing,
+        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
+        frame: jpeg(),
+      });
+    });
+    expect(screen.getByTestId("saved-filename")).toHaveTextContent("none");
   });
 });
 

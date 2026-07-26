@@ -18,6 +18,7 @@ import { ModelLoadScreen } from "@/components/ModelLoadScreen";
 import { RadarBackdrop } from "@/components/RadarBackdrop";
 import { RadarDetectorScreen } from "@/components/RadarDetectorScreen";
 import { RoundTripIndicator } from "@/components/RoundTripIndicator";
+import { SaveToast } from "@/components/SaveToast";
 import { SettingsScreen } from "@/components/SettingsScreen";
 import { StatusBar } from "@/components/StatusBar";
 import { ZoomIndicator } from "@/components/ZoomIndicator";
@@ -54,6 +55,7 @@ const RadarScreen = () => {
     modelProgress,
     hud,
     contact,
+    savedFrame,
     autoZoom,
     getDebugSnapshot,
     error,
@@ -195,6 +197,7 @@ const RadarScreen = () => {
           saveFrames={saveFrames}
         />
       )}
+      <SaveToast saved={savedFrame} />
       <StatusBar
         center={
           zoomIndicator || roundTripIndicator ? (

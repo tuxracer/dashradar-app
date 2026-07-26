@@ -69,6 +69,18 @@ export type Contact = {
 };
 
 /**
+ * Most recent frame the auto-save developer option downloaded. Replaced on
+ * every save (`at` is fresh each time, so a repeat save is a distinct value),
+ * which is what lets the save toast re-show for a run of saved detections.
+ */
+export type SavedFrame = {
+  /** Name the frame was downloaded under. */
+  filename: string;
+  /** performance.now() when the download fired. */
+  at: number;
+};
+
+/**
  * Which pacing rule set the delay before the next capture: the absolute
  * MIN_FRAME_INTERVAL_MS floor ("floor", fast devices) or the proportional
  * PACING_REST_RATIO rest ("rest", devices whose round trip is long enough
@@ -155,6 +167,14 @@ export type DetectionContextValue = {
    * on worker errors and teardown.
    */
   contact: Contact | undefined;
+  /**
+   * Latest frame the auto-save developer option wrote to disk, for the save
+   * toast. A download is otherwise invisible on a phone, so this is the only
+   * confirmation a collection drive gets that saving is actually working.
+   * Undefined until the first save of the session; never cleared, since the
+   * toast times itself out.
+   */
+  savedFrame: SavedFrame | undefined;
   /**
    * The auto zoom machine's current state (crop factor and whether a present
    * detection is locking it), for the on-glass zoom indicator. Advances once
