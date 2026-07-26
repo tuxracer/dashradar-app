@@ -30,7 +30,11 @@ import { createDetectionTracker } from "@/lib/detectionTracker";
 import { contactDirection, signalFromScore } from "@/lib/radarSignal";
 import { downloadBlob, frameFilename } from "@/lib/saveFrame";
 import { waitForServiceWorkerControl } from "@/lib/serviceWorker";
-import { recordTimings, takeTimingReport } from "@/lib/timingHistory";
+import {
+  recordTimings,
+  takeTimingReport,
+  toBucketedSeconds,
+} from "@/lib/timingHistory";
 import {
   MODEL_REVISION,
   MODEL_SLUG,
@@ -312,10 +316,11 @@ export const DetectionProvider = ({
   // mode was armed). Captured at post time so the ready handler can report
   // the safe_mode_load analytics event without re-reading localStorage.
   const safeModeLoadRef = useRef(false);
-  // Guards the one-time first_inference analytics so only the first result of
-  // the page load is counted, not every scan (which would be one event every
-  // couple of seconds for the whole drive).
-  const firstInferenceTrackedRef = useRef(false);
+  // Guards the one-time first_inference / first_round_trip analytics so only
+  // the first result of the page load is counted, not every scan (which would
+  // be one event every couple of seconds for the whole drive). One ref for
+  // both, since they describe the same first scan and always fire together.
+  const firstResultTrackedRef = useRef(false);
   const videoRef = useRef<HTMLVideoElement | undefined>(undefined);
   const runningRef = useRef(false);
   // Mirrors `status` so event handlers can branch on the current status
@@ -649,18 +654,6 @@ export const DetectionProvider = ({
         case "detections": {
           inFlightRef.current = Math.max(0, inFlightRef.current - 1);
           framesTotalRef.current += 1;
-          // The session actually got scanning: the intro was dismissed, camera
-          // permission was granted, the stream started, the model loaded, and a
-          // frame made it through inference. Every earlier gate has its own
-          // drop-off, so this is the one event that says all of them were
-          // cleared. Once per page load only, since a per-frame event would
-          // fire every couple of seconds for the length of a drive. Emitted
-          // from the handler body, not a setState updater, which StrictMode
-          // double-invokes.
-          if (!firstInferenceTrackedRef.current) {
-            firstInferenceTrackedRef.current = true;
-            track("first_inference", { backend: backendRef.current ?? null });
-          }
           const roadDetections = toRoadDetections(
             message.detections,
             confidenceThresholdRef.current,
@@ -772,13 +765,36 @@ export const DetectionProvider = ({
             pacingDelayMs: debugRef.current.pacingDelayMs,
             pacingRule: debugRef.current.pacingRule,
           };
+          // The session actually got scanning: the intro was dismissed, camera
+          // permission was granted, the stream started, the model loaded, and a
+          // frame made it through inference. Every earlier gate has its own
+          // drop-off, so this is the one event that says all of them were
+          // cleared. The pair carries this first scan's inference time and
+          // round trip on the same half-second grid the timing events use,
+          // which are the cold numbers those medians never see: the first scan
+          // pays the session compile and a cold GPU. Once per page load only,
+          // since a per-frame event would fire every couple of seconds for the
+          // length of a drive. Emitted from the handler body, not a setState
+          // updater, which StrictMode double-invokes.
+          if (!firstResultTrackedRef.current) {
+            firstResultTrackedRef.current = true;
+            const backend = backendRef.current ?? null;
+            track("first_inference", {
+              backend,
+              seconds: toBucketedSeconds(inferenceMs),
+            });
+            track("first_round_trip", {
+              backend,
+              seconds: toBucketedSeconds(roundTripMs),
+            });
+          }
           // Roll the same two numbers into the sessionStorage window, so a
           // drive's recent pacing can be read back off the device afterwards
           // without the debug overlay having been open at the time. Once the
-          // window first fills, report its medians to analytics: ten scans in
+          // window first fills, report its medians to analytics: five scans in
           // is past the first-run costs (session compile, a cold GPU) and is
-          // still early enough that most sessions reach it, so the fleet-wide
-          // numbers describe steady-state pacing. takeTimingReport is the
+          // early enough that even a short session reaches it, so the
+          // fleet-wide numbers cover every drive. takeTimingReport is the
           // once-per-session guard, so this stays quiet for the rest of the
           // drive no matter how long it scans.
           const report = takeTimingReport(

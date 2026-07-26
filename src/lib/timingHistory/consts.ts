@@ -2,11 +2,14 @@
 export const TIMING_HISTORY_STORAGE_KEY = "dashradar:timings";
 
 /**
- * How many scans each series keeps. The window is short on purpose: this is
- * for reading how the last stretch of a drive paced, not for building a
- * session-long log, and a short window keeps the write cheap.
+ * How many scans each series keeps, and so how many a session records before
+ * its one timing report is due. The window is short on purpose: this is for
+ * reading how the last stretch of a drive paced, not for building a
+ * session-long log, a short window keeps the write cheap, and five scans is
+ * already past the first-run costs (a cold session compile, a cold GPU) while
+ * still being reached by even a short session.
  */
-export const TIMING_HISTORY_LIMIT = 10;
+export const TIMING_HISTORY_LIMIT = 5;
 
 /**
  * Bucket width the samples are rounded to, in milliseconds. Half a second is

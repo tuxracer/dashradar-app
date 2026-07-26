@@ -472,18 +472,23 @@ describe("DetectionProvider", () => {
     act(() => {
       worker.emit(result);
     });
-    expect(track).toHaveBeenCalledWith("first_inference", { backend: "wasm" });
-    // Later scans are silent: the event marks the session getting to inference,
-    // not each frame.
+    expect(track).toHaveBeenCalledWith("first_inference", {
+      backend: "wasm",
+      seconds: expect.any(Number),
+    });
+    expect(track).toHaveBeenCalledWith("first_round_trip", {
+      backend: "wasm",
+      seconds: expect.any(Number),
+    });
+    // Later scans are silent: the events mark the session getting to
+    // inference, not each frame.
     act(() => {
       worker.emit(result);
       worker.emit(result);
     });
     expect(
-      vi
-        .mocked(track)
-        .mock.calls.filter(([name]) => name === "first_inference"),
-    ).toHaveLength(1);
+      vi.mocked(track).mock.calls.filter(([name]) => name.startsWith("first_")),
+    ).toHaveLength(2);
   });
 
   it("reports worker errors to analytics", () => {
@@ -1113,6 +1118,44 @@ describe("DetectionProvider", () => {
     expect(history.roundTrip).toHaveLength(1);
   });
 
+  it("reports the first scan's inference time and round trip as two events", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    // The frame is in flight for four seconds, of which the worker spent 2400
+    // ms in inference, so the two events carry different numbers.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_000);
+    });
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 400, inferenceMs: 2_400, decodeMs: 400 },
+      });
+    });
+    expect(track).toHaveBeenCalledWith("first_inference", {
+      backend: "wasm",
+      seconds: 2.5,
+    });
+    expect(track).toHaveBeenCalledWith("first_round_trip", {
+      backend: "wasm",
+      seconds: 4,
+    });
+  });
+
   it("reports median timings to analytics once the window first fills", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(
@@ -1155,12 +1198,12 @@ describe("DetectionProvider", () => {
         .mocked(track)
         .mock.calls.filter(([event]) => event.startsWith("timing_"));
 
-    // Nine scans is a partial window, which reports nothing: a median of a
-    // handful of samples is not worth an event.
+    // A partial window reports nothing: a median of a couple of readings is
+    // not worth an event.
     await runScans(TIMING_HISTORY_LIMIT - 1, 1);
     expect(timingEvents()).toHaveLength(0);
 
-    // The tenth fills the window and reports both medians.
+    // The next scan fills the window and reports both medians.
     await runScans(1, 100);
     expect(timingEvents()).toEqual([
       ["timing_round_trip", { seconds: expect.any(Number) }],

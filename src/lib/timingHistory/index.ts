@@ -102,13 +102,13 @@ export const medianSeconds = (series: number[]): number => {
 
 /**
  * The one-and-only analytics summary for this session, or undefined when it
- * isn't due: the window has yet to fill (a session that scanned only a handful
- * of times reports nothing rather than a median of two samples), or this
- * session already reported. Claiming it marks the session reported in
- * sessionStorage, so the caller may fire the events unconditionally on a
- * defined result, and a later full window (the drive keeps scanning long past
- * ten) never reports again. Session-scoped by construction: a new tab starts
- * fresh, which is the granularity the events are counted at.
+ * isn't due: the window has yet to fill (a session that scanned once or twice
+ * reports nothing rather than a median of its first reading), or this session
+ * already reported. Claiming it marks the session reported in sessionStorage,
+ * so the caller may fire the events unconditionally on a defined result, and a
+ * later full window (the drive keeps scanning long past five) never reports
+ * again. Session-scoped by construction: a new tab starts fresh, which is the
+ * granularity the events are counted at.
  */
 export const takeTimingReport = (
   history: TimingHistory,
@@ -126,7 +126,7 @@ export const takeTimingReport = (
     window.sessionStorage.setItem(TIMING_ANALYTICS_STORAGE_KEY, "true");
   } catch {
     // Storage unavailable, so "already reported" cannot be recorded or read.
-    // Report nothing rather than risk an event on every scan past the tenth.
+    // Report nothing rather than risk an event on every scan past the fifth.
     return undefined;
   }
   return {
