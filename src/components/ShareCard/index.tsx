@@ -54,7 +54,7 @@ export const ShareCard = () => {
           Share dashradar
         </span>
         <span className="text-sm font-medium text-white/45">
-          Point a camera to open {SHARE_URL_LABEL}.
+          Point a camera at the QR code to open {SHARE_URL_LABEL}.
         </span>
         {supportsShare && (
           <button
