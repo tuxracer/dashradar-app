@@ -439,11 +439,11 @@ const loadModel = async (forceWasm: boolean) => {
  * Downscale the model's square input canvas to a thumbnail bitmap for the
  * contact card, shown on scans that had no detection to crop. Sourced from the
  * input canvas rather than the original frame so the card shows exactly what
- * the model saw: the centered square crop by default, or the squished full
- * frame in the debug squish mode; the SAVE path (encodeFrame) saves that same
- * input at full size. The edge is capped at CROP_MAX_EDGE (never upscaled),
- * matching the detection crop's sizing. Best-effort like the crop: any
- * failure returns undefined and never blocks the detection result.
+ * the model saw: the centered square crop at the scan's zoom; the SAVE path
+ * (encodeFrame) saves that same input at full size. The edge is capped at
+ * CROP_MAX_EDGE (never upscaled), matching the detection crop's sizing.
+ * Best-effort like the crop: any failure returns undefined and never blocks
+ * the detection result.
  */
 const createFrameThumbnail = async (): Promise<ImageBitmap | undefined> => {
   const edge = Math.min(CROP_MAX_EDGE, INPUT_SIZE);
@@ -461,9 +461,8 @@ const createFrameThumbnail = async (): Promise<ImageBitmap | undefined> => {
  * Encode the model's square input canvas as a JPEG blob for the frame-saving
  * option. Saving the input rather than the original camera frame means a saved
  * file is exactly the INPUT_SIZE image the model scored: the centered square
- * crop at the scan's zoom, or the squished full frame in the debug squish mode.
- * Best-effort like the crop: any failure returns undefined and never blocks the
- * detection result.
+ * crop at the scan's zoom. Best-effort like the crop: any failure returns
+ * undefined and never blocks the detection result.
  */
 const encodeFrame = async (): Promise<Blob | undefined> => {
   try {
@@ -480,14 +479,12 @@ const detect = async ({
   frame,
   includeFrame,
   includeThumbnail,
-  centerCrop,
   zoom,
   confidenceThreshold,
 }: {
   frame: ImageBitmap;
   includeFrame: boolean;
   includeThumbnail: boolean;
-  centerCrop: boolean;
   zoom: number;
   confidenceThreshold: number;
 }) => {
@@ -500,22 +497,18 @@ const detect = async ({
     if (!inputContext) {
       throw new DetectionError("INFERENCE_FAILED");
     }
-    if (centerCrop) {
-      const region = centerCropRegion(frame.width, frame.height, zoom);
-      inputContext.drawImage(
-        frame,
-        region.sx,
-        region.sy,
-        region.side,
-        region.side,
-        0,
-        0,
-        INPUT_SIZE,
-        INPUT_SIZE,
-      );
-    } else {
-      inputContext.drawImage(frame, 0, 0, INPUT_SIZE, INPUT_SIZE);
-    }
+    const region = centerCropRegion(frame.width, frame.height, zoom);
+    inputContext.drawImage(
+      frame,
+      region.sx,
+      region.sy,
+      region.side,
+      region.side,
+      0,
+      0,
+      INPUT_SIZE,
+      INPUT_SIZE,
+    );
     const imageData = inputContext.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
     const fingerprint = frameFingerprint(imageData);
     const brightFraction = frameBrightFraction(imageData);
@@ -553,20 +546,13 @@ const detect = async ({
 
     const decodeStart = performance.now();
     const decoded = decodeDetections(dets, labels, confidenceThreshold);
-    // Under center crop the model's boxes describe the cropped square; remap
-    // them to full-frame coordinates so every consumer downstream (cropRect
-    // below, direction and HUD shaping in the context) keeps one space.
-    const detections = centerCrop
-      ? decoded.map((detection) => ({
-          ...detection,
-          box: mapCropBoxToFrame(
-            detection.box,
-            frame.width,
-            frame.height,
-            zoom,
-          ),
-        }))
-      : decoded;
+    // The model's boxes describe the cropped square; remap them to full-frame
+    // coordinates so every consumer downstream (cropRect below, direction and
+    // HUD shaping in the context) keeps one space.
+    const detections = decoded.map((detection) => ({
+      ...detection,
+      box: mapCropBoxToFrame(detection.box, frame.width, frame.height, zoom),
+    }));
     const decodeMs = performance.now() - decodeStart;
 
     // Cut the highest-scoring detection out of the full-resolution frame so
@@ -655,7 +641,6 @@ self.onmessage = (event: MessageEvent<unknown>) => {
     frame: request.frame,
     includeFrame: request.includeFrame ?? false,
     includeThumbnail: request.includeThumbnail ?? false,
-    centerCrop: request.centerCrop ?? true,
     zoom: request.zoom ?? ZOOM_OFF,
     confidenceThreshold: request.confidenceThreshold ?? CONFIDENCE_THRESHOLD,
   });

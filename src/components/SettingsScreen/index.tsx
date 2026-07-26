@@ -38,8 +38,8 @@ const Toggle = ({ on }: { on: boolean }) => (
  * with big tap targets: the Audio alerts and Developer options toggles, the
  * development-only controls Developer options reveals (Debug overlay, Zoom
  * indicator, Round-trip, Frame preview, Save frames, Auto save, Throttle
- * inference, Center crop, the segmented Zoom mode picker, Min confidence), plus
- * read-only Detection engine, Model, and About rows.
+ * inference, the segmented Zoom mode picker, Min confidence), plus read-only
+ * Detection engine, Model, and About rows.
  * Closes on the large close button or Escape. While it is open the detection
  * pump is paused (DetectionContext
  * watches `settingsOpen`) and resumes on close. Reads the backend as a prop
@@ -63,8 +63,6 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
     toggleRadarAudio,
     throttleInference,
     toggleThrottleInference,
-    centerCropFrames,
-    toggleCenterCropFrames,
     zoomMode,
     setZoomMode,
     confidenceThreshold,
@@ -257,22 +255,6 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
                   </span>
                 </span>
                 <Toggle on={throttleInference} />
-              </button>
-
-              <button
-                type="button"
-                onClick={toggleCenterCropFrames}
-                className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
-              >
-                <span className="flex flex-col gap-1">
-                  <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-                    Center crop
-                  </span>
-                  <span className="text-sm font-medium text-white/45">
-                    Crops the feed square for the model.
-                  </span>
-                </span>
-                <Toggle on={centerCropFrames} />
               </button>
 
               <div className="flex min-h-16 flex-col gap-3 py-4">

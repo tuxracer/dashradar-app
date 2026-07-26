@@ -117,7 +117,6 @@ export const DetectionProvider = ({
     saveFrames,
     autoSaveFrames,
     throttleInference,
-    centerCropFrames,
     zoomMode,
     confidenceThreshold,
     settingsOpen,
@@ -152,15 +151,6 @@ export const DetectionProvider = ({
   useEffect(() => {
     throttledRef.current = throttleInference;
   }, [throttleInference]);
-  // Mirrors the center-crop mode for sendFrame, same idiom as the two refs
-  // above and likewise already gated on Developer options: squish (false) is a
-  // development-only comparison mode, so a stale persisted false can never
-  // silently mismatch the model's center-crop training preprocessing in normal
-  // use.
-  const centerCropRef = useRef(centerCropFrames);
-  useEffect(() => {
-    centerCropRef.current = centerCropFrames;
-  }, [centerCropFrames]);
   // Mirrors the zoom mode for sendFrame, same idiom again. Already gated on
   // Developer options, so a normal drive always scans the full centered square
   // and can never be left narrowed by a stale persisted mode.
@@ -454,7 +444,6 @@ export const DetectionProvider = ({
           frame,
           includeFrame: includeFrameRef.current,
           includeThumbnail: includeThumbnailRef.current,
-          centerCrop: centerCropRef.current,
           zoom,
           confidenceThreshold: confidenceThresholdRef.current,
         },

@@ -28,7 +28,6 @@ export const DEFAULT_SETTINGS: Settings = {
   autoSaveFrames: false,
   radarAudio: true,
   throttleInference: true,
-  centerCropFrames: true,
   zoomMode: "auto",
   confidenceThreshold: 0.5,
   zoomIndicator: true,
@@ -39,9 +38,8 @@ export const DEFAULT_SETTINGS: Settings = {
  * Effective values the development-only settings report while the Developer
  * options master switch is off: nothing extra on the glass (no debug overlay,
  * no zoom or round-trip pill), no per-frame JPEG
- * encode, no downloads, the thermal pacing floor in place, the center crop the
- * model trains with, the auto zoom (the production scanning behavior), and
- * the 0.5 confidence floor.
+ * encode, no downloads, the thermal pacing floor in place, the auto zoom (the
+ * production scanning behavior), and the 0.5 confidence floor.
  * Kept apart from
  * DEFAULT_SETTINGS so a developer option can default on for developers while
  * staying off for a normal drive.
@@ -52,7 +50,6 @@ export const DEVELOPER_OPTIONS_OFF: DeveloperOptions = {
   saveFrames: false,
   autoSaveFrames: false,
   throttleInference: true,
-  centerCropFrames: true,
   zoomMode: "auto",
   confidenceThreshold: 0.5,
   zoomIndicator: false,

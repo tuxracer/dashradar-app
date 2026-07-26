@@ -1,7 +1,7 @@
 /**
  * Back camera preferred. The detector feeds the model a centered square of
- * each frame, resized to 512x512 (`INPUT_SIZE`; a debug-only toggle can squish
- * the full frame instead), so the model never reads more than 512 on a side.
+ * each frame, resized to 512x512 (`INPUT_SIZE`), so the model never reads more
+ * than 512 on a side.
  *
  * We request roughly 1024 rather than 512 so the 2x zoom has real
  * pixels to work with: at 2x the centered crop is half the frame's short edge,

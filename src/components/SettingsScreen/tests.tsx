@@ -46,7 +46,6 @@ describe("SettingsScreen", () => {
         autoSaveFrames: false,
         radarAudio: false,
         throttleInference: true,
-        centerCropFrames: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
@@ -75,7 +74,6 @@ describe("SettingsScreen", () => {
         autoSaveFrames: false,
         radarAudio: true,
         throttleInference: true,
-        centerCropFrames: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
@@ -98,7 +96,6 @@ describe("SettingsScreen", () => {
         autoSaveFrames: false,
         radarAudio: true,
         throttleInference: true,
-        centerCropFrames: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
@@ -118,7 +115,6 @@ describe("SettingsScreen", () => {
     expect(screen.queryByText("Save frames")).not.toBeInTheDocument();
     expect(screen.queryByText("Auto save")).not.toBeInTheDocument();
     expect(screen.queryByText("Throttle inference")).not.toBeInTheDocument();
-    expect(screen.queryByText("Center crop")).not.toBeInTheDocument();
     expect(screen.queryByText("Zoom")).not.toBeInTheDocument();
   });
 
@@ -134,7 +130,6 @@ describe("SettingsScreen", () => {
     expect(screen.getByText("Save frames")).toBeInTheDocument();
     expect(screen.getByText("Auto save")).toBeInTheDocument();
     expect(screen.getByText("Throttle inference")).toBeInTheDocument();
-    expect(screen.getByText("Center crop")).toBeInTheDocument();
     expect(screen.getByText("Zoom")).toBeInTheDocument();
   });
 
@@ -244,34 +239,6 @@ describe("SettingsScreen", () => {
         autoSaveFrames: false,
         radarAudio: true,
         throttleInference: false,
-        centerCropFrames: true,
-        zoomMode: "auto",
-        confidenceThreshold: 0.5,
-        zoomIndicator: true,
-        roundTripIndicator: true,
-      }),
-    );
-  });
-
-  it("toggles and persists the center crop setting from its row", async () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ developerOptions: true }),
-    );
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    await user.click(screen.getByText("Center crop"));
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        developerOptions: true,
-        showDebug: true,
-        frameThumbnails: true,
-        saveFrames: true,
-        autoSaveFrames: false,
-        radarAudio: true,
-        throttleInference: true,
-        centerCropFrames: false,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
@@ -298,7 +265,6 @@ describe("SettingsScreen", () => {
         autoSaveFrames: false,
         radarAudio: true,
         throttleInference: true,
-        centerCropFrames: true,
         zoomMode: "2x",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
@@ -342,7 +308,6 @@ describe("SettingsScreen", () => {
         autoSaveFrames: false,
         radarAudio: true,
         throttleInference: true,
-        centerCropFrames: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
@@ -369,7 +334,6 @@ describe("SettingsScreen", () => {
         autoSaveFrames: false,
         radarAudio: true,
         throttleInference: true,
-        centerCropFrames: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
@@ -396,7 +360,6 @@ describe("SettingsScreen", () => {
         autoSaveFrames: true,
         radarAudio: true,
         throttleInference: true,
-        centerCropFrames: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,

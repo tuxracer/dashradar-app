@@ -75,20 +75,10 @@ export type WorkerRequest =
        */
       includeThumbnail?: boolean;
       /**
-       * When true (the default when omitted), the worker feeds the model the
-       * largest centered square crop of the frame, matching the
-       * Fill-with-center-crop preprocessing the model trains with; boxes are
-       * remapped to full-frame coordinates before posting. When false, the
-       * frame is squished onto the square input instead (legacy behavior for
-       * models trained on stretched data; debug-only comparison mode).
-       */
-      centerCrop?: boolean;
-      /**
-       * Factor by which to shrink the centered square crop, so the model input
-       * covers a narrower field of view. 1 (the default when omitted) is the
-       * full centered square; ZOOM_2X halves it. Set from the zoom setting
-       * (or its auto machine). Only meaningful under center-crop preprocessing: the
-       * squish path draws the whole frame and ignores this.
+       * Factor by which to shrink the centered square crop the worker feeds the
+       * model, so the input covers a narrower field of view. 1 (the default
+       * when omitted) is the full centered square; ZOOM_2X halves it. Set from
+       * the zoom setting (or its auto machine).
        */
       zoom?: number;
       /**
@@ -115,7 +105,6 @@ export const isWorkerRequest = (value: unknown): value is WorkerRequest => {
     (value.includeFrame === undefined || isBoolean(value.includeFrame)) &&
     (value.includeThumbnail === undefined ||
       isBoolean(value.includeThumbnail)) &&
-    (value.centerCrop === undefined || isBoolean(value.centerCrop)) &&
     (value.zoom === undefined || isNumber(value.zoom)) &&
     (value.confidenceThreshold === undefined ||
       isNumber(value.confidenceThreshold))

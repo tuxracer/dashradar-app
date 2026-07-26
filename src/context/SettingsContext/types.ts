@@ -22,7 +22,7 @@ export type Settings = {
   /**
    * Master switch for the development-only settings (showDebug,
    * frameThumbnails, saveFrames, autoSaveFrames, throttleInference,
-   * centerCropFrames, zoomMode, confidenceThreshold, zoomIndicator,
+   * zoomMode, confidenceThreshold, zoomIndicator,
    * roundTripIndicator). Off by
    * default. While it is off, SettingsProvider
    * reports each of those at its DEVELOPER_OPTIONS_OFF value no matter what is
@@ -75,16 +75,6 @@ export type Settings = {
    */
   throttleInference: boolean;
   /**
-   * When true (the default), the worker feeds the model the largest centered
-   * square crop of the camera frame, matching the Fill-with-center-crop
-   * preprocessing the model trains with. When false, the frame is squished
-   * onto the square input instead, a comparison mode for models trained on
-   * stretched data. A developer option, so squish only takes effect while
-   * developerOptions is on and normal use always runs the center-crop path
-   * that matches the model's training even if a stale false was left persisted.
-   */
-  centerCropFrames: boolean;
-  /**
    * Crop factor the worker scans at. "2x" halves the centered square fed to
    * the model, so the same 512x512 input covers half the field of view and
    * distant vehicles occupy twice the linear size in the input grid; "auto"
@@ -136,7 +126,6 @@ export type DeveloperOptions = Pick<
   | "saveFrames"
   | "autoSaveFrames"
   | "throttleInference"
-  | "centerCropFrames"
   | "zoomMode"
   | "confidenceThreshold"
   | "zoomIndicator"
@@ -146,7 +135,7 @@ export type DeveloperOptions = Pick<
 /**
  * Value exposed by the settings context via useSettings(). The developer
  * options (showDebug, frameThumbnails, saveFrames, autoSaveFrames,
- * throttleInference, centerCropFrames, zoomMode, confidenceThreshold,
+ * throttleInference, zoomMode, confidenceThreshold,
  * zoomIndicator, roundTripIndicator) are the
  * *effective* values, already gated on developerOptions, so consumers never
  * have to repeat the gate. Each toggle (or setter) still writes the stored
@@ -167,8 +156,6 @@ export type SettingsContextValue = {
   toggleRadarAudio: () => void;
   throttleInference: boolean;
   toggleThrottleInference: () => void;
-  centerCropFrames: boolean;
-  toggleCenterCropFrames: () => void;
   zoomMode: ZoomMode;
   /** Sets the zoom mode (1x, 2x, or auto). */
   setZoomMode: (mode: ZoomMode) => void;
@@ -208,8 +195,6 @@ export const isPersistedSettings = (
     (value.radarAudio === undefined || isBoolean(value.radarAudio)) &&
     (value.throttleInference === undefined ||
       isBoolean(value.throttleInference)) &&
-    (value.centerCropFrames === undefined ||
-      isBoolean(value.centerCropFrames)) &&
     (value.zoomMode === undefined || isZoomMode(value.zoomMode)) &&
     (value.confidenceThreshold === undefined ||
       isNumber(value.confidenceThreshold)) &&

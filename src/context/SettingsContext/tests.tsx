@@ -43,7 +43,6 @@ describe("SettingsContext", () => {
         autoSaveFrames: false,
         radarAudio: true,
         throttleInference: true,
-        centerCropFrames: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
@@ -105,7 +104,6 @@ describe("SettingsContext", () => {
         autoSaveFrames: false,
         radarAudio: true,
         throttleInference: true,
-        centerCropFrames: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
@@ -132,7 +130,6 @@ describe("SettingsContext", () => {
         autoSaveFrames: false,
         radarAudio: false,
         throttleInference: true,
-        centerCropFrames: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
@@ -160,7 +157,6 @@ describe("SettingsContext", () => {
         autoSaveFrames: false,
         radarAudio: true,
         throttleInference: false,
-        centerCropFrames: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
@@ -178,43 +174,6 @@ describe("SettingsContext", () => {
     expect(result.current.throttleInference).toBe(true);
   });
 
-  it("defaults centerCropFrames to true when storage is empty", () => {
-    const { result } = renderHook(() => useSettings(), { wrapper });
-    expect(result.current.centerCropFrames).toBe(true);
-  });
-
-  it("toggling flips centerCropFrames and persists it to localStorage", () => {
-    const { result } = renderHook(() => useSettings(), { wrapper });
-    act(() => result.current.toggleDeveloperOptions());
-    act(() => result.current.toggleCenterCropFrames());
-    expect(result.current.centerCropFrames).toBe(false);
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        developerOptions: true,
-        showDebug: true,
-        frameThumbnails: true,
-        saveFrames: true,
-        autoSaveFrames: false,
-        radarAudio: true,
-        throttleInference: true,
-        centerCropFrames: false,
-        zoomMode: "auto",
-        confidenceThreshold: 0.5,
-        zoomIndicator: true,
-        roundTripIndicator: true,
-      }),
-    );
-  });
-
-  it("tolerates a stored blob missing centerCropFrames, defaulting it to true", () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ showDebug: true }),
-    );
-    const { result } = renderHook(() => useSettings(), { wrapper });
-    expect(result.current.centerCropFrames).toBe(true);
-  });
-
   it("defaults developerOptions to false when storage is empty", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     expect(result.current.developerOptions).toBe(false);
@@ -230,7 +189,6 @@ describe("SettingsContext", () => {
         saveFrames: true,
         autoSaveFrames: true,
         throttleInference: false,
-        centerCropFrames: false,
         zoomMode: "1x",
         zoomIndicator: true,
         roundTripIndicator: true,
@@ -242,7 +200,6 @@ describe("SettingsContext", () => {
     expect(result.current.saveFrames).toBe(false);
     expect(result.current.autoSaveFrames).toBe(false);
     expect(result.current.throttleInference).toBe(true);
-    expect(result.current.centerCropFrames).toBe(true);
     expect(result.current.zoomIndicator).toBe(false);
     expect(result.current.roundTripIndicator).toBe(false);
     // A fixed-zoom override is a developer tweak; a normal drive always runs
@@ -377,18 +334,17 @@ describe("SettingsContext", () => {
   it("keeps persisting the stored developer options while developerOptions is off", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     act(() => result.current.toggleDeveloperOptions());
-    act(() => result.current.toggleCenterCropFrames());
+    act(() => result.current.toggleFrameThumbnails());
     act(() => result.current.toggleDeveloperOptions());
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
         developerOptions: false,
         showDebug: true,
-        frameThumbnails: true,
+        frameThumbnails: false,
         saveFrames: true,
         autoSaveFrames: false,
         radarAudio: true,
         throttleInference: true,
-        centerCropFrames: false,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,

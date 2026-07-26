@@ -88,9 +88,6 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const [storedThrottleInference, setThrottleInference] = useState(
     () => loadSettings().throttleInference,
   );
-  const [storedCenterCropFrames, setCenterCropFrames] = useState(
-    () => loadSettings().centerCropFrames,
-  );
   const [storedZoomMode, setStoredZoomMode] = useState(
     () => loadSettings().zoomMode,
   );
@@ -106,8 +103,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
 
   // The developer options report their DEVELOPER_OPTIONS_OFF value whenever
   // developerOptions is off, so a tweak left enabled (the debug overlay, the
-  // per-scan frame preview, frame saving, unthrottled inference, squished
-  // frames, a zoomed-in crop, a lowered confidence floor) stops taking effect
+  // per-scan frame preview, frame saving, unthrottled inference, a zoomed-in
+  // crop, a lowered confidence floor) stops taking effect
   // the moment the master switch goes off. The stored value is untouched, so
   // turning it back on restores the tweak.
   const showDebug = developerOptions
@@ -125,9 +122,6 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const throttleInference = developerOptions
     ? storedThrottleInference
     : DEVELOPER_OPTIONS_OFF.throttleInference;
-  const centerCropFrames = developerOptions
-    ? storedCenterCropFrames
-    : DEVELOPER_OPTIONS_OFF.centerCropFrames;
   const zoomMode = developerOptions
     ? storedZoomMode
     : DEVELOPER_OPTIONS_OFF.zoomMode;
@@ -150,7 +144,6 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       autoSaveFrames: storedAutoSaveFrames,
       radarAudio,
       throttleInference: storedThrottleInference,
-      centerCropFrames: storedCenterCropFrames,
       zoomMode: storedZoomMode,
       confidenceThreshold: storedConfidenceThreshold,
       zoomIndicator: storedZoomIndicator,
@@ -169,7 +162,6 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     storedAutoSaveFrames,
     radarAudio,
     storedThrottleInference,
-    storedCenterCropFrames,
     storedZoomMode,
     storedConfidenceThreshold,
     storedZoomIndicator,
@@ -202,10 +194,6 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
 
   const toggleThrottleInference = useCallback(() => {
     setThrottleInference((prev) => !prev);
-  }, []);
-
-  const toggleCenterCropFrames = useCallback(() => {
-    setCenterCropFrames((prev) => !prev);
   }, []);
 
   const setZoomMode = useCallback((mode: ZoomMode) => {
@@ -250,8 +238,6 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleRadarAudio,
       throttleInference,
       toggleThrottleInference,
-      centerCropFrames,
-      toggleCenterCropFrames,
       zoomMode,
       setZoomMode,
       confidenceThreshold,
@@ -279,8 +265,6 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleRadarAudio,
       throttleInference,
       toggleThrottleInference,
-      centerCropFrames,
-      toggleCenterCropFrames,
       zoomMode,
       setZoomMode,
       confidenceThreshold,

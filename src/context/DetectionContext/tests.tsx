@@ -1471,85 +1471,6 @@ describe("DetectionProvider", () => {
     ).toMatchObject({ includeFrame: false, includeThumbnail: true });
   });
 
-  it("posts centerCrop true by default", async () => {
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const worker = renderWithProvider(<StartOnReady />);
-    act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    await waitFor(() => {
-      expect(
-        worker.posted.filter((message) => message.type === "detect"),
-      ).toHaveLength(1);
-    });
-    expect(
-      worker.posted.find((message) => message.type === "detect"),
-    ).toMatchObject({ centerCrop: true });
-  });
-
-  it("posts centerCrop false when developer options are on and center crop is toggled off", async () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ developerOptions: true, centerCropFrames: false }),
-    );
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const worker = renderWithProvider(<StartOnReady />);
-    act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    await waitFor(() => {
-      expect(
-        worker.posted.filter((message) => message.type === "detect"),
-      ).toHaveLength(1);
-    });
-    expect(
-      worker.posted.find((message) => message.type === "detect"),
-    ).toMatchObject({ centerCrop: false });
-  });
-
-  it("posts centerCrop true when center crop is off but developer options are off", async () => {
-    // The squish comparison mode is gated on the Developer options master
-    // switch: a stored centerCropFrames=false must NOT switch preprocessing
-    // while developerOptions is off, so normal use can never silently mismatch
-    // the model's center-crop training. This pins the gate SettingsProvider
-    // applies to the stored value.
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ developerOptions: false, centerCropFrames: false }),
-    );
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const worker = renderWithProvider(<StartOnReady />);
-    act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    await waitFor(() => {
-      expect(
-        worker.posted.filter((message) => message.type === "detect"),
-      ).toHaveLength(1);
-    });
-    expect(
-      worker.posted.find((message) => message.type === "detect"),
-    ).toMatchObject({ centerCrop: true });
-  });
-
   it("posts the unzoomed crop factor on the default auto mode's first scan", async () => {
     // The default mode is auto, whose machine always starts a session zoomed
     // out; the alternation from there is covered by the auto zoom tests below.
@@ -1827,9 +1748,9 @@ describe("DetectionProvider", () => {
   });
 
   it("posts confidenceThreshold 0.5 when a stored override exists but developer options are off", async () => {
-    // Gated the same way as centerCropFrames: a stored override must NOT take
-    // effect while developerOptions is off, so normal use always filters at
-    // the 0.5 production floor.
+    // Gated on the Developer options master switch: a stored override must NOT
+    // take effect while developerOptions is off, so normal use always filters
+    // at the 0.5 production floor.
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({ developerOptions: false, confidenceThreshold: 0.2 }),
