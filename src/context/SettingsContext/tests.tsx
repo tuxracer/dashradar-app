@@ -47,6 +47,7 @@ describe("SettingsContext", () => {
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
+        roundTripIndicator: true,
       }),
     );
   });
@@ -108,6 +109,7 @@ describe("SettingsContext", () => {
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
+        roundTripIndicator: true,
       }),
     );
   });
@@ -134,6 +136,7 @@ describe("SettingsContext", () => {
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
+        roundTripIndicator: true,
       }),
     );
   });
@@ -161,6 +164,7 @@ describe("SettingsContext", () => {
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
+        roundTripIndicator: true,
       }),
     );
   });
@@ -197,6 +201,7 @@ describe("SettingsContext", () => {
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
+        roundTripIndicator: true,
       }),
     );
   });
@@ -228,6 +233,7 @@ describe("SettingsContext", () => {
         centerCropFrames: false,
         zoomMode: "1x",
         zoomIndicator: true,
+        roundTripIndicator: true,
       }),
     );
     const { result } = renderHook(() => useSettings(), { wrapper });
@@ -238,6 +244,7 @@ describe("SettingsContext", () => {
     expect(result.current.throttleInference).toBe(true);
     expect(result.current.centerCropFrames).toBe(true);
     expect(result.current.zoomIndicator).toBe(false);
+    expect(result.current.roundTripIndicator).toBe(false);
     // A fixed-zoom override is a developer tweak; a normal drive always runs
     // the auto default.
     expect(result.current.zoomMode).toBe("auto");
@@ -385,6 +392,7 @@ describe("SettingsContext", () => {
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
+        roundTripIndicator: true,
       }),
     );
   });

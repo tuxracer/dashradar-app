@@ -100,6 +100,9 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const [storedZoomIndicator, setZoomIndicator] = useState(
     () => loadSettings().zoomIndicator,
   );
+  const [storedRoundTripIndicator, setRoundTripIndicator] = useState(
+    () => loadSettings().roundTripIndicator,
+  );
 
   // The developer options report their DEVELOPER_OPTIONS_OFF value whenever
   // developerOptions is off, so a tweak left enabled (the debug overlay, the
@@ -134,6 +137,9 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const zoomIndicator = developerOptions
     ? storedZoomIndicator
     : DEVELOPER_OPTIONS_OFF.zoomIndicator;
+  const roundTripIndicator = developerOptions
+    ? storedRoundTripIndicator
+    : DEVELOPER_OPTIONS_OFF.roundTripIndicator;
 
   useEffect(() => {
     const next: Settings = {
@@ -148,6 +154,7 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       zoomMode: storedZoomMode,
       confidenceThreshold: storedConfidenceThreshold,
       zoomIndicator: storedZoomIndicator,
+      roundTripIndicator: storedRoundTripIndicator,
     };
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -166,6 +173,7 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     storedZoomMode,
     storedConfidenceThreshold,
     storedZoomIndicator,
+    storedRoundTripIndicator,
   ]);
 
   const toggleDeveloperOptions = useCallback(() => {
@@ -212,6 +220,10 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     setZoomIndicator((prev) => !prev);
   }, []);
 
+  const toggleRoundTripIndicator = useCallback(() => {
+    setRoundTripIndicator((prev) => !prev);
+  }, []);
+
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const openSettings = useCallback(() => {
@@ -246,6 +258,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       setConfidenceThreshold,
       zoomIndicator,
       toggleZoomIndicator,
+      roundTripIndicator,
+      toggleRoundTripIndicator,
       settingsOpen,
       openSettings,
       closeSettings,
@@ -273,6 +287,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       setConfidenceThreshold,
       zoomIndicator,
       toggleZoomIndicator,
+      roundTripIndicator,
+      toggleRoundTripIndicator,
       settingsOpen,
       openSettings,
       closeSettings,

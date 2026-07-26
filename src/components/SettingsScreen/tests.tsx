@@ -50,6 +50,7 @@ describe("SettingsScreen", () => {
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
+        roundTripIndicator: true,
       }),
     );
   });
@@ -78,6 +79,7 @@ describe("SettingsScreen", () => {
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
+        roundTripIndicator: true,
       }),
     );
   });
@@ -100,6 +102,7 @@ describe("SettingsScreen", () => {
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
+        roundTripIndicator: true,
       }),
     );
   });
@@ -110,6 +113,7 @@ describe("SettingsScreen", () => {
     await open(user);
     expect(screen.queryByText("Debug overlay")).not.toBeInTheDocument();
     expect(screen.queryByText("Zoom indicator")).not.toBeInTheDocument();
+    expect(screen.queryByText("Round-trip")).not.toBeInTheDocument();
     expect(screen.queryByText("Frame preview")).not.toBeInTheDocument();
     expect(screen.queryByText("Save frames")).not.toBeInTheDocument();
     expect(screen.queryByText("Auto save")).not.toBeInTheDocument();
@@ -125,6 +129,7 @@ describe("SettingsScreen", () => {
     await user.click(screen.getByText("Developer options"));
     expect(screen.getByText("Debug overlay")).toBeInTheDocument();
     expect(screen.getByText("Zoom indicator")).toBeInTheDocument();
+    expect(screen.getByText("Round-trip")).toBeInTheDocument();
     expect(screen.getByText("Frame preview")).toBeInTheDocument();
     expect(screen.getByText("Save frames")).toBeInTheDocument();
     expect(screen.getByText("Auto save")).toBeInTheDocument();
@@ -205,6 +210,22 @@ describe("SettingsScreen", () => {
     ).toBe(false);
   });
 
+  it("toggles and persists the round-trip indicator setting from its row", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true }),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    // On by default under developer options, so the tap turns it off.
+    await user.click(screen.getByText("Round-trip"));
+    expect(
+      JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}")
+        .roundTripIndicator,
+    ).toBe(false);
+  });
+
   it("toggles and persists the throttle setting from its row", async () => {
     window.localStorage.setItem(
       STORAGE_KEY,
@@ -227,6 +248,7 @@ describe("SettingsScreen", () => {
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
+        roundTripIndicator: true,
       }),
     );
   });
@@ -253,6 +275,7 @@ describe("SettingsScreen", () => {
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
+        roundTripIndicator: true,
       }),
     );
   });
@@ -279,6 +302,7 @@ describe("SettingsScreen", () => {
         zoomMode: "2x",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
+        roundTripIndicator: true,
       }),
     );
   });
@@ -322,6 +346,7 @@ describe("SettingsScreen", () => {
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
+        roundTripIndicator: true,
       }),
     );
   });
@@ -348,6 +373,7 @@ describe("SettingsScreen", () => {
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
+        roundTripIndicator: true,
       }),
     );
   });
@@ -374,6 +400,7 @@ describe("SettingsScreen", () => {
         zoomMode: "auto",
         confidenceThreshold: 0.5,
         zoomIndicator: true,
+        roundTripIndicator: true,
       }),
     );
   });

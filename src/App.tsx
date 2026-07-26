@@ -17,6 +17,7 @@ import {
 import { ModelLoadScreen } from "@/components/ModelLoadScreen";
 import { RadarBackdrop } from "@/components/RadarBackdrop";
 import { RadarDetectorScreen } from "@/components/RadarDetectorScreen";
+import { RoundTripIndicator } from "@/components/RoundTripIndicator";
 import { SettingsScreen } from "@/components/SettingsScreen";
 import { StatusBar } from "@/components/StatusBar";
 import { ZoomIndicator } from "@/components/ZoomIndicator";
@@ -60,8 +61,14 @@ const RadarScreen = () => {
     cameraStalled,
     cameraEpoch,
   } = useDetection();
-  const { radarAudio, frameThumbnails, saveFrames, zoomMode, zoomIndicator } =
-    useSettings();
+  const {
+    radarAudio,
+    frameThumbnails,
+    saveFrames,
+    zoomMode,
+    zoomIndicator,
+    roundTripIndicator,
+  } = useSettings();
   // Dev video mode has no camera to introduce or ask permission for, so the
   // intro is skipped outright and the radar view loads immediately.
   const [showIntro, setShowIntro] = useState(
@@ -190,12 +197,19 @@ const RadarScreen = () => {
       )}
       <StatusBar
         center={
-          zoomIndicator ? (
-            <ZoomIndicator
-              mode={zoomMode}
-              level={autoZoom.zoom}
-              locked={autoZoom.locked}
-            />
+          zoomIndicator || roundTripIndicator ? (
+            <span className="flex items-center gap-2">
+              {zoomIndicator && (
+                <ZoomIndicator
+                  mode={zoomMode}
+                  level={autoZoom.zoom}
+                  locked={autoZoom.locked}
+                />
+              )}
+              {roundTripIndicator && (
+                <RoundTripIndicator getDebug={getDebugSnapshot} />
+              )}
+            </span>
           ) : undefined
         }
       />

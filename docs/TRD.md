@@ -90,10 +90,11 @@ src/
     DevVideoView/               # dev-only stand-in for CameraView (no onError, camera errors don't exist in this mode): plays DEV_VIDEO_URL as the detection feed and doubles as a visible, controllable corner player (§4.3)
     RadarBackdrop/              # static radar-grid layer shown behind the (always-hidden) feed; the only thing ever visible in that layer
     RadarDetectorScreen/        # opaque fullscreen radar-detector-style instrument, the only detection UI, rendered unconditionally once the model has loaded (the ladder segments as radial ticks on a tachometer-style arc around a percentage readout and SCANNING/ALERT status word, with a scanning sweep, signal-colored glow, and pulsing alert ring; no camera or boxes), driven by a requestAnimationFrame peak-hold/decay loop writing to the DOM; the same loop drives the lib/radarAudio beeper (gated by the radarAudio setting); also renders a contact card beside the dial (right side in landscape, docked below it in portrait) from useDetection()'s optional contact prop, canvas-drawing the cutout above a direction row (no label or percent; the dial already carries the number; the row renders only while the raw signal is nonzero, so no stale heading shows while the card lingers through the decay tail); the card's opacity is written by the same rAF loop through a data-contact attribute on the root, so it normally fades in and out with the peak-held meter and only shows while a contact exists; with the frameThumbnails prop on the card instead stays lit for as long as a contact exists (regardless of the meter level), so the per-scan frame preview is visible on every scan including detection-free ones; with the saveFrames prop on the card also shows a SAVE button (lib/saveFrame) that downloads the full inference frame as a timestamped JPEG for collecting training data; the card's visibility is delayed-visibility CSS rather than opacity alone, so it stays clickable through the fade-out and only goes untappable once fully invisible
-    StatusBar/                  # wordmark + settings gear + optional centered slot (the zoom pill)
+    StatusBar/                  # wordmark + settings gear + optional centered slot (the zoom and round-trip pills); a three-column grid, so a wide slot squeezes the ends (the wordmark truncates) instead of overlapping them
     ZoomIndicator/              # amber zoom pill for StatusBar's center slot, gated by the zoomIndicator developer option: 1X/2X in the fixed modes, live "AUTO · 1X/2X" (+ LOCKED) in auto mode
+    RoundTripIndicator/         # matching amber pill showing the last scan's round trip ("RT · 412 MS"), gated by the roundTripIndicator developer option; polls getDebugSnapshot() at ~4 Hz
     SettingsButton/             # enlarged gear that opens the full-screen settings panel
-    SettingsScreen/             # full-screen settings panel: audio alerts + debug overlay toggles + engine/model/about + share row
+    SettingsScreen/             # full-screen settings panel: audio alerts + developer option toggles + engine/model/about + share row
     ShareCard/                  # share row (settings) + ShareQr, the pre-rendered dashradar.app QR code on a white card, reused by the desktop intro
     DebugOverlay/               # top-left diagnostics panel (timing, detection counts, system info); shown only when showDebug is on
     ModelLoadScreen/            # download-progress screen (percent + MB), delayed to avoid a flash, shown only for a real network download (not a cache load)
@@ -155,7 +156,7 @@ type DetectionContextValue = {
 };
 ```
 
-`DebugSnapshot` (`src/context/DetectionContext/types.ts`) combines the worker's per-frame `FrameTiming` (`preprocessMs`, `inferenceMs`, `decodeMs`) with timing the context measures itself (`captureMs`, the time to capture the video frame into an `ImageBitmap`; `roundTripMs`, wall time from posting a frame to receiving its result) plus `rawCount`/`filteredCount`/`shownCount` (detections as decoded by the worker, after `toRoadDetections`, and after the `detectionTracker` coasting smoother, in that order; see §5), `overheadMs` (round-trip time not spent in the worker's three stages: postMessage delivery each way plus scheduling, clamped at 0), and `pacingDelayMs`/`pacingRule` (the idle delay `schedulePacedFrame` scheduled after the result and whether the absolute floor or the proportional rest set it, rendered as the overlay's `pacing` row), plus `zoom`/`zoomLocked` (the crop factor the frame was scanned at and whether the auto zoom is holding it there, rendered with the zoom mode as the overlay's `zoom` row). It updates on every `detections` reply regardless of whether `showDebug` is on, so toggling the overlay shows current numbers immediately rather than stale ones. The snapshot lives in a ref read through `getDebugSnapshot()`, not React state: nothing renders it by default (the debug overlay is hidden), so per-result state updates would re-render every context consumer for values nobody is showing. `DebugOverlay`, its only consumer, polls it on its ~8 Hz readout tick.
+`DebugSnapshot` (`src/context/DetectionContext/types.ts`) combines the worker's per-frame `FrameTiming` (`preprocessMs`, `inferenceMs`, `decodeMs`) with timing the context measures itself (`captureMs`, the time to capture the video frame into an `ImageBitmap`; `roundTripMs`, wall time from posting a frame to receiving its result) plus `rawCount`/`filteredCount`/`shownCount` (detections as decoded by the worker, after `toRoadDetections`, and after the `detectionTracker` coasting smoother, in that order; see §5), `overheadMs` (round-trip time not spent in the worker's three stages: postMessage delivery each way plus scheduling, clamped at 0), and `pacingDelayMs`/`pacingRule` (the idle delay `schedulePacedFrame` scheduled after the result and whether the absolute floor or the proportional rest set it, rendered as the overlay's `pacing` row), plus `zoom`/`zoomLocked` (the crop factor the frame was scanned at and whether the auto zoom is holding it there, rendered with the zoom mode as the overlay's `zoom` row). It updates on every `detections` reply regardless of whether `showDebug` is on, so toggling the overlay shows current numbers immediately rather than stale ones. The snapshot lives in a ref read through `getDebugSnapshot()`, not React state: nothing renders it by default (the debug overlay is hidden), so per-result state updates would re-render every context consumer for values nobody is showing. `DebugOverlay` polls it on its ~8 Hz readout tick, and `RoundTripIndicator` (the on-glass round-trip pill) polls the same ref at ~4 Hz for `roundTripMs` alone; both hold the polled value in their own local state, so the re-renders stay inside the component that reads it.
 
 `contact` (`Contact`, `src/context/DetectionContext/types.ts`) is the latest cutout the contact card renders. Usually a detection crop: the cropped `ImageBitmap` carried on the worker's `crop` field (see Worker protocol below), the detection's raw `score`, `signal` (the score remapped through `signalFromScore`, the same semantic as the dial readout; not currently rendered on the card), `box`, `direction` (`contactDirection`, which third of the frame the box center falls in), an optional `frame` (a `Blob`), and `at` (`performance.now()` when the reply arrived). A `detections` reply carrying a `crop` replaces `contact` and closes the previous bitmap (`replaceContact`); a detection-free frame leaves `contact` untouched, so the contact card lingers through the meter's decay tail instead of vanishing the instant police drop out of frame. A crop paired with a detection that fails `toRoadDetections`'s validation (mirroring the road filter) is closed and discarded rather than shown. With the frame preview setting on, a detection-free scan instead arrives with the worker's `frameThumbnail` and replaces `contact` with a bare **frame preview**: the thumbnail `image`, the optional `frame`, and `at`, with the `score`/`signal`/`box`/`direction` detection fields absent (they are optional on `Contact`). This is what shows a thumbnail on every scan. `contact` is cleared, closing its bitmap, on a `worker-error`/`onerror` and on provider teardown.
 
@@ -302,19 +303,21 @@ type SettingsContextValue = {
 };
 ```
 
-`developerOptions` (default off) is the master switch for the nine
+`developerOptions` (default off) is the master switch for the ten
 development-only options: `showDebug`, `frameThumbnails`, `saveFrames`,
 `autoSaveFrames`, `throttleInference`, `centerCropFrames`, `zoomMode`,
-`confidenceThreshold`, and `zoomIndicator`. `SettingsScreen` renders their
+`confidenceThreshold`, `zoomIndicator`, and `roundTripIndicator`.
+`SettingsScreen` renders their
 rows only while it is
-on, and `SettingsProvider` reports all nine at their `DEVELOPER_OPTIONS_OFF`
+on, and `SettingsProvider` reports all ten at their `DEVELOPER_OPTIONS_OFF`
 values while it is off, so a tweak left enabled cannot alter a normal drive.
 The gate lives in the provider, not in each consumer: `useSettings()` returns
 the already-gated effective value, so `DetectionContext` reads a bare
 `frameThumbnails`/`saveFrames`/`autoSaveFrames`/`throttleInference`/`centerCropFrames`/`zoomMode`/`confidenceThreshold`,
-`DebugOverlay` a bare `showDebug`, and `RadarScreen` a bare `zoomIndicator`
-(gating whether the on-glass zoom pill renders at all; it defaults on under
-the master switch, like the display diagnostics). The stored values are left untouched
+`DebugOverlay` a bare `showDebug`, and `RadarScreen` a bare
+`zoomIndicator`/`roundTripIndicator`
+(gating whether the on-glass zoom and round-trip pills render at all; both
+default on under the master switch, like the display diagnostics). The stored values are left untouched
 while the switch is off, so turning it back on restores the tweaks rather than
 resetting them.
 
@@ -410,6 +413,21 @@ value reaches both places the threshold is enforced (§5): it rides the
 per-frame `detect` message to the worker's `decodeDetections` and is also
 passed to the main-thread `toRoadDetections` call, so a change takes effect on
 the next scan with no worker reload.
+`zoomIndicator` and `roundTripIndicator` (both default on under the master
+switch) put the debug overlay's zoom and round-trip rows on the glass as amber
+pills in `StatusBar`'s `center` slot, so pacing and zoom stay readable on a
+dash-mounted phone without the full panel covering the meter. `RadarScreen`
+gates each pill on its own setting and passes them as one gap-spaced row when
+both are on. `ZoomIndicator` is presentational (see §5, auto zoom);
+`RoundTripIndicator` instead takes `getDebugSnapshot` and polls it at ~4 Hz
+(`READOUT_INTERVAL_MS`), since the snapshot deliberately lives in a ref rather
+than context state. It renders `RT · 412 MS` from `roundTripMs` rounded to
+whole milliseconds, and `RT · -- MS` until the first result lands, because a
+zero snapshot means no scan has come back rather than an instant one. That is
+the full round trip, not the model time: with `saveFrames` or `autoSaveFrames`
+on it also carries the worker's JPEG encode, so the number jumps when frame
+saving is enabled.
+
 `SettingsProvider` wraps the app outside `DetectionProvider`;
 `SettingsButton` (a gear in `StatusBar`) opens the full-screen
 `SettingsScreen`, which is the only UI that writes any of these options.

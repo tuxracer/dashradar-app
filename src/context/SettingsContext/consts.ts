@@ -32,12 +32,13 @@ export const DEFAULT_SETTINGS: Settings = {
   zoomMode: "auto",
   confidenceThreshold: 0.5,
   zoomIndicator: true,
+  roundTripIndicator: true,
 };
 
 /**
  * Effective values the development-only settings report while the Developer
  * options master switch is off: nothing extra on the glass (no debug overlay,
- * no zoom indicator pill), no per-frame JPEG
+ * no zoom or round-trip pill), no per-frame JPEG
  * encode, no downloads, the thermal pacing floor in place, the center crop the
  * model trains with, the auto zoom (the production scanning behavior), and
  * the 0.5 confidence floor.
@@ -55,4 +56,5 @@ export const DEVELOPER_OPTIONS_OFF: DeveloperOptions = {
   zoomMode: "auto",
   confidenceThreshold: 0.5,
   zoomIndicator: false,
+  roundTripIndicator: false,
 };
