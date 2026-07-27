@@ -87,7 +87,7 @@ src/
   globals.css                   # Tailwind import + HUD design tokens (--color-hud-amber, --color-surface)
   components/
     CameraView/                 # the <video> element; owns getUserMedia lifecycle, reports the element + errors; always rendered opacity-0, the camera feed is never shown on screen
-    CameraPreview/              # developer-only live view of the model's capture region, gated by the cameraPreview option: plays CameraView's MediaStream in a second video element cropped to the scanned square (cover-fit in a square box + scale(zoom), mirroring the worker's centerCropRegion; left edge in landscape, top center under the status pills in portrait); not mounted in dev video mode, whose corner player already shows the clip
+    CameraPreview/              # developer-only live view of the model's capture region, gated by the cameraPreview option: plays the feed in a second video element cropped to the scanned square (cover-fit in a square box + scale(zoom), mirroring the worker's centerCropRegion; left edge in landscape, top center under the status pills in portrait); mirrors CameraView's MediaStream, or the dev video element via captureStream (the corner player shows the whole clip, the preview the crop)
     DevVideoView/               # dev-only stand-in for CameraView (no onError, camera errors don't exist in this mode): plays DEV_VIDEO_URL as the detection feed and doubles as a visible, controllable corner player (§4.3)
     RadarBackdrop/              # static radar-grid layer shown behind the (always-hidden) feed; the only thing ever visible in that layer
     RadarDetectorScreen/        # opaque fullscreen radar-detector-style instrument, the only detection UI, rendered unconditionally once the model has loaded (the ladder segments as radial ticks on a tachometer-style arc around a percentage readout and SCANNING/ALERT status word, with a scanning sweep, signal-colored glow, and pulsing alert ring; no camera or boxes), driven by a requestAnimationFrame peak-hold/decay loop writing to the DOM (parked while the meter is idle, woken by prop changes, so idle scanning schedules no frames); the same loop drives the lib/radarAudio beeper (gated by the radarAudio setting); also renders a contact card beside the dial (right side in landscape, docked below it in portrait) from useDetection()'s optional contact prop, canvas-drawing the cutout above a direction row (no label or percent; the dial already carries the number; the row renders only while the raw signal is nonzero, so no stale heading shows while the card lingers through the decay tail); the card's opacity is written by the same rAF loop through a data-contact attribute on the root, so it normally fades in and out with the peak-held meter and only shows while a contact exists; with the frameThumbnails prop on the card instead stays lit for as long as a contact exists (regardless of the meter level), so the per-scan frame preview is visible on every scan including detection-free ones; with the saveFrames prop on the card also shows a SAVE button (lib/saveFrame) that downloads the full inference frame as a timestamped JPEG for collecting training data; the card's visibility is delayed-visibility CSS rather than opacity alone, so it stays clickable through the fade-out and only goes untappable once fully invisible
@@ -466,9 +466,13 @@ to the centered half-side region it actually samples. The zoom prop follows
 `sendFrame`'s mapping (the fixed level in the 1x/2x modes, the machine's live
 level in auto mode), so in auto the preview visibly steps and locks with the
 scan. `RadarScreen` keeps
-the camera's video element in state (refreshed by every `onStream`, including
-the remount a `cameraEpoch` bump forces) and mounts the preview only on the
-real camera path, since dev video mode's corner player already shows the clip.
+the feed's video element in state (refreshed by every `onStream`, including
+the remount a `cameraEpoch` bump forces) and mounts the preview on both feed
+paths: on the camera path it plays `CameraView`'s stream directly, and in dev
+video mode, where the source plays a file rather than a stream, it mirrors
+the element via `captureStream` (Chromium-only, which is every browser dev
+video mode targets). The dev corner player shows the whole clip, so the
+preview still earns its place there by showing the crop.
 It defaults off because the app deliberately never shows the feed and a second
 live video surface costs compositing on a thermally constrained device.
 

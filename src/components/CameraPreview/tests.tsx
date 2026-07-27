@@ -39,6 +39,20 @@ describe("CameraPreview", () => {
     expect(video?.srcObject).toBeNull();
   });
 
+  // Dev video mode plays a file, so the source has no srcObject; the preview
+  // falls back to mirroring the element through captureStream.
+  it("mirrors a stream-less source via captureStream", () => {
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    const stream = { id: "captured-stream" } as unknown as MediaStream;
+    const source: HTMLVideoElement & { captureStream?: () => MediaStream } =
+      document.createElement("video");
+    source.captureStream = vi.fn(() => stream);
+    const { container } = render(
+      <CameraPreview source={source} zoom={ZOOM_OFF} />,
+    );
+    expect(container.querySelector("video")?.srcObject).toBe(stream);
+  });
+
   it("stays idle when the source has no stream yet", () => {
     const play = vi
       .spyOn(HTMLMediaElement.prototype, "play")

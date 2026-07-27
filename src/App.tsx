@@ -205,24 +205,22 @@ const RadarScreen = () => {
           saveFrames={saveFrames}
         />
       )}
-      {/* Dev video mode is excluded: its corner player already shows the feed.
-          The zoom mirrors sendFrame's mapping, so the preview always narrows
-          to the region the next capture actually scans. */}
-      {!modelLoading &&
-        cameraPreview &&
-        cameraVideo &&
-        DEV_VIDEO_URL === null && (
-          <CameraPreview
-            source={cameraVideo}
-            zoom={
-              zoomMode === "2x"
-                ? ZOOM_2X
-                : zoomMode === "auto"
-                  ? autoZoom.zoom
-                  : ZOOM_OFF
-            }
-          />
-        )}
+      {/* The zoom mirrors sendFrame's mapping, so the preview always narrows
+          to the region the next capture actually scans. Mounted in dev video
+          mode too: the corner player shows the whole clip, the preview the
+          crop. */}
+      {!modelLoading && cameraPreview && cameraVideo && (
+        <CameraPreview
+          source={cameraVideo}
+          zoom={
+            zoomMode === "2x"
+              ? ZOOM_2X
+              : zoomMode === "auto"
+                ? autoZoom.zoom
+                : ZOOM_OFF
+          }
+        />
+      )}
       <SaveToast saved={savedFrame} />
       <StatusBar
         center={
