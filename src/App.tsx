@@ -30,6 +30,7 @@ import type { Size } from "@/lib/detection";
 import { DEV_VIDEO_URL } from "@/lib/devVideo";
 import { hudSignal } from "@/lib/radarSignal";
 import { createWakeLockManager } from "@/lib/wakeLock";
+import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 
 const useViewportSize = (): Size => {
   const [size, setSize] = useState<Size>({
@@ -204,11 +205,24 @@ const RadarScreen = () => {
           saveFrames={saveFrames}
         />
       )}
-      {/* Dev video mode is excluded: its corner player already shows the feed. */}
+      {/* Dev video mode is excluded: its corner player already shows the feed.
+          The zoom mirrors sendFrame's mapping, so the preview always narrows
+          to the region the next capture actually scans. */}
       {!modelLoading &&
         cameraPreview &&
         cameraVideo &&
-        DEV_VIDEO_URL === null && <CameraPreview source={cameraVideo} />}
+        DEV_VIDEO_URL === null && (
+          <CameraPreview
+            source={cameraVideo}
+            zoom={
+              zoomMode === "2x"
+                ? ZOOM_2X
+                : zoomMode === "auto"
+                  ? autoZoom.zoom
+                  : ZOOM_OFF
+            }
+          />
+        )}
       <SaveToast saved={savedFrame} />
       <StatusBar
         center={

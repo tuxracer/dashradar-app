@@ -114,13 +114,13 @@ export type Settings = {
    */
   roundTripIndicator: boolean;
   /**
-   * When true, a small live view of the rear-camera feed the detector captures
-   * frames from renders on the glass: on the left edge in landscape, top
-   * center under the status pills in portrait. A developer option, so it only
-   * takes effect while developerOptions is on. Off by default even there: the
-   * app deliberately never shows the feed, and a second live video surface
-   * costs compositing on a thermally constrained device, so it is worth asking
-   * for by name.
+   * When true, a small live view of the region the detector is scanning (the
+   * centered square crop, narrowed further under the digital zoom) renders on
+   * the glass: on the left edge in landscape, top center under the status
+   * pills in portrait. A developer option, so it only takes effect while
+   * developerOptions is on. Off by default even there: the app deliberately
+   * never shows the feed, and a second live video surface costs compositing
+   * on a thermally constrained device, so it is worth asking for by name.
    */
   cameraPreview: boolean;
 };

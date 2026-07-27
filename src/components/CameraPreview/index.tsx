@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import type { AutoZoomLevel } from "@/lib/autoZoom";
 
 /** Props for CameraPreview. */
 type CameraPreviewProps = {
@@ -9,18 +10,29 @@ type CameraPreviewProps = {
    * independently of the full-viewport source.
    */
   source: HTMLVideoElement;
+  /**
+   * Crop factor the next capture scans at (ZOOM_OFF or ZOOM_2X): the fixed
+   * level in the 1x/2x modes, the machine's live level in auto mode. The
+   * preview narrows to the same region.
+   */
+  zoom: AutoZoomLevel;
 };
 
 /**
- * Developer-only live view of the feed the detector is scanning, for checking
- * aim and exposure on a dash mount without leaving the meter. Sits clear of
- * the rest of the HUD: on the left edge in landscape, mirroring the contact
- * card on the right, and top center under the status-bar pills in portrait,
- * clear of the portrait contact card at the bottom. pointer-events are
- * disabled so the meter underneath stays interactive. Mounted only on the
- * real camera path; dev video mode already shows its clip in a corner player.
+ * Developer-only live view of exactly what the detector is scanning, for
+ * checking aim and framing on a dash mount without leaving the meter. Shows
+ * the model's capture region rather than the whole feed, mirroring the
+ * worker's centerCropRegion: the square container's object-cover video shows
+ * the largest centered square of the frame, and scaling the video by the crop
+ * factor narrows that to the centered 1/zoom region the 2x digital zoom
+ * actually samples. Sits clear of the rest of the HUD: on the left edge in
+ * landscape, mirroring the contact card on the right, and top center under
+ * the status-bar pills in portrait, clear of the portrait contact card at the
+ * bottom. pointer-events are disabled so the meter underneath stays
+ * interactive. Mounted only on the real camera path; dev video mode already
+ * shows its clip in a corner player.
  */
-export const CameraPreview = ({ source }: CameraPreviewProps) => {
+export const CameraPreview = ({ source, zoom }: CameraPreviewProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -42,14 +54,15 @@ export const CameraPreview = ({ source }: CameraPreviewProps) => {
   return (
     <div
       data-testid="camera-preview"
-      className="pointer-events-none absolute left-[4%] top-1/2 w-[24%] -translate-y-1/2 overflow-hidden rounded-lg border border-hud-amber/40 bg-surface/90 portrait:left-1/2 portrait:top-[calc(max(0.75rem,env(safe-area-inset-top))_+_3.5rem)] portrait:w-[56%] portrait:-translate-x-1/2 portrait:translate-y-0"
+      className="pointer-events-none absolute left-[4%] top-1/2 aspect-square w-[24%] -translate-y-1/2 overflow-hidden rounded-lg border border-hud-amber/40 bg-surface/90 portrait:left-1/2 portrait:top-[calc(max(0.75rem,env(safe-area-inset-top))_+_3.5rem)] portrait:w-[56%] portrait:-translate-x-1/2 portrait:translate-y-0"
     >
       <video
         ref={videoRef}
         autoPlay
         muted
         playsInline
-        className="block w-full"
+        className="h-full w-full object-cover transition-transform duration-300"
+        style={{ transform: `scale(${zoom})` }}
       />
     </div>
   );
