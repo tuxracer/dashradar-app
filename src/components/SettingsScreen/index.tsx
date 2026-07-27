@@ -37,8 +37,9 @@ const Toggle = ({ on }: { on: boolean }) => (
  * landscape. Renders nothing until the panel is opened. Large, full-width rows
  * with big tap targets: the Audio alerts and Developer options toggles, the
  * development-only controls Developer options reveals (Debug overlay, Zoom
- * indicator, Round-trip, Frame preview, Save frames, Auto save, Throttle
- * inference, the segmented Zoom mode picker, Min confidence), plus read-only
+ * indicator, Round-trip, Camera preview, Frame preview, Save frames, Auto
+ * save, Throttle inference, the segmented Zoom mode picker, Min confidence),
+ * plus read-only
  * Detection engine, Model, and About rows.
  * Closes on the large close button or Escape. While it is open the detection
  * pump is paused (DetectionContext
@@ -71,6 +72,8 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
     toggleZoomIndicator,
     roundTripIndicator,
     toggleRoundTripIndicator,
+    cameraPreview,
+    toggleCameraPreview,
   } = useSettings();
 
   useEffect(() => {
@@ -191,6 +194,22 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
                   </span>
                 </span>
                 <Toggle on={roundTripIndicator} />
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleCameraPreview}
+                className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
+              >
+                <span className="flex flex-col gap-1">
+                  <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                    Camera preview
+                  </span>
+                  <span className="text-sm font-medium text-white/45">
+                    Shows the live feed being scanned.
+                  </span>
+                </span>
+                <Toggle on={cameraPreview} />
               </button>
 
               <button

@@ -23,7 +23,7 @@ export type Settings = {
    * Master switch for the development-only settings (showDebug,
    * frameThumbnails, saveFrames, autoSaveFrames, throttleInference,
    * zoomMode, confidenceThreshold, zoomIndicator,
-   * roundTripIndicator). Off by
+   * roundTripIndicator, cameraPreview). Off by
    * default. While it is off, SettingsProvider
    * reports each of those at its DEVELOPER_OPTIONS_OFF value no matter what is
    * stored, so a development tweak left enabled cannot alter a normal drive.
@@ -113,6 +113,16 @@ export type Settings = {
    * a phone without the full panel covering the meter.
    */
   roundTripIndicator: boolean;
+  /**
+   * When true, a small live view of the rear-camera feed the detector captures
+   * frames from renders on the glass: on the left edge in landscape, top
+   * center under the status pills in portrait. A developer option, so it only
+   * takes effect while developerOptions is on. Off by default even there: the
+   * app deliberately never shows the feed, and a second live video surface
+   * costs compositing on a thermally constrained device, so it is worth asking
+   * for by name.
+   */
+  cameraPreview: boolean;
 };
 
 /**
@@ -130,13 +140,14 @@ export type DeveloperOptions = Pick<
   | "confidenceThreshold"
   | "zoomIndicator"
   | "roundTripIndicator"
+  | "cameraPreview"
 >;
 
 /**
  * Value exposed by the settings context via useSettings(). The developer
  * options (showDebug, frameThumbnails, saveFrames, autoSaveFrames,
  * throttleInference, zoomMode, confidenceThreshold,
- * zoomIndicator, roundTripIndicator) are the
+ * zoomIndicator, roundTripIndicator, cameraPreview) are the
  * *effective* values, already gated on developerOptions, so consumers never
  * have to repeat the gate. Each toggle (or setter) still writes the stored
  * value underneath.
@@ -166,6 +177,8 @@ export type SettingsContextValue = {
   toggleZoomIndicator: () => void;
   roundTripIndicator: boolean;
   toggleRoundTripIndicator: () => void;
+  cameraPreview: boolean;
+  toggleCameraPreview: () => void;
   /** Whether the full-screen settings panel is open. Ephemeral, not persisted. */
   settingsOpen: boolean;
   /** Opens the full-screen settings panel. */
@@ -200,7 +213,8 @@ export const isPersistedSettings = (
       isNumber(value.confidenceThreshold)) &&
     (value.zoomIndicator === undefined || isBoolean(value.zoomIndicator)) &&
     (value.roundTripIndicator === undefined ||
-      isBoolean(value.roundTripIndicator))
+      isBoolean(value.roundTripIndicator)) &&
+    (value.cameraPreview === undefined || isBoolean(value.cameraPreview))
   );
 };
 

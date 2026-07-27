@@ -100,11 +100,14 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const [storedRoundTripIndicator, setRoundTripIndicator] = useState(
     () => loadSettings().roundTripIndicator,
   );
+  const [storedCameraPreview, setCameraPreview] = useState(
+    () => loadSettings().cameraPreview,
+  );
 
   // The developer options report their DEVELOPER_OPTIONS_OFF value whenever
   // developerOptions is off, so a tweak left enabled (the debug overlay, the
-  // per-scan frame preview, frame saving, unthrottled inference, a zoomed-in
-  // crop, a lowered confidence floor) stops taking effect
+  // per-scan frame preview, the live camera preview, frame saving, unthrottled
+  // inference, a zoomed-in crop, a lowered confidence floor) stops taking effect
   // the moment the master switch goes off. The stored value is untouched, so
   // turning it back on restores the tweak.
   const showDebug = developerOptions
@@ -134,6 +137,9 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const roundTripIndicator = developerOptions
     ? storedRoundTripIndicator
     : DEVELOPER_OPTIONS_OFF.roundTripIndicator;
+  const cameraPreview = developerOptions
+    ? storedCameraPreview
+    : DEVELOPER_OPTIONS_OFF.cameraPreview;
 
   useEffect(() => {
     const next: Settings = {
@@ -148,6 +154,7 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       confidenceThreshold: storedConfidenceThreshold,
       zoomIndicator: storedZoomIndicator,
       roundTripIndicator: storedRoundTripIndicator,
+      cameraPreview: storedCameraPreview,
     };
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -166,6 +173,7 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     storedConfidenceThreshold,
     storedZoomIndicator,
     storedRoundTripIndicator,
+    storedCameraPreview,
   ]);
 
   const toggleDeveloperOptions = useCallback(() => {
@@ -212,6 +220,10 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     setRoundTripIndicator((prev) => !prev);
   }, []);
 
+  const toggleCameraPreview = useCallback(() => {
+    setCameraPreview((prev) => !prev);
+  }, []);
+
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const openSettings = useCallback(() => {
@@ -246,6 +258,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleZoomIndicator,
       roundTripIndicator,
       toggleRoundTripIndicator,
+      cameraPreview,
+      toggleCameraPreview,
       settingsOpen,
       openSettings,
       closeSettings,
@@ -273,6 +287,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleZoomIndicator,
       roundTripIndicator,
       toggleRoundTripIndicator,
+      cameraPreview,
+      toggleCameraPreview,
       settingsOpen,
       openSettings,
       closeSettings,

@@ -5,6 +5,7 @@ import {
   markCameraPromptAccepted,
   shouldShowCameraPrompt,
 } from "@/components/CameraPermissionScreen";
+import { CameraPreview } from "@/components/CameraPreview";
 import { CameraView } from "@/components/CameraView";
 import { DebugOverlay } from "@/components/DebugOverlay";
 import { DevVideoView } from "@/components/DevVideoView";
@@ -70,6 +71,7 @@ const RadarScreen = () => {
     zoomMode,
     zoomIndicator,
     roundTripIndicator,
+    cameraPreview,
   } = useSettings();
   // Dev video mode has no camera to introduce or ask permission for, so the
   // intro is skipped outright and the radar view loads immediately.
@@ -85,6 +87,10 @@ const RadarScreen = () => {
   const [cameraPromptDeclined, setCameraPromptDeclined] = useState(false);
   const [cameraError, setCameraError] = useState<CameraError>();
   const [videoSize, setVideoSize] = useState<Size>();
+  // The camera's video element, kept so the developer camera preview can play
+  // the same MediaStream. Refreshed on every stream (re)start, including the
+  // remount a cameraEpoch bump forces.
+  const [cameraVideo, setCameraVideo] = useState<HTMLVideoElement>();
   const viewportSize = useViewportSize();
   const wakeLock = useMemo(() => createWakeLockManager(), []);
 
@@ -115,6 +121,7 @@ const RadarScreen = () => {
   const handleStream = useCallback(
     (video: HTMLVideoElement) => {
       updateVideoSize(video);
+      setCameraVideo(video);
       start(video);
     },
     [start, updateVideoSize],
@@ -197,6 +204,11 @@ const RadarScreen = () => {
           saveFrames={saveFrames}
         />
       )}
+      {/* Dev video mode is excluded: its corner player already shows the feed. */}
+      {!modelLoading &&
+        cameraPreview &&
+        cameraVideo &&
+        DEV_VIDEO_URL === null && <CameraPreview source={cameraVideo} />}
       <SaveToast saved={savedFrame} />
       <StatusBar
         center={

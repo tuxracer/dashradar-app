@@ -13,9 +13,11 @@ export const CONFIDENCE_LEVELS = [
  * developer options take the value they should have once someone turns the
  * Developer options master switch on: the debug overlay, the per-scan frame
  * preview, and frame saving all default on, since turning developer options on
- * is itself the request to see and collect the diagnostics. Auto save is the
- * exception, defaulting off: it downloads a file per detection, so it is
- * worth asking for deliberately rather than inheriting. The zoom defaults to
+ * is itself the request to see and collect the diagnostics. Auto save and the
+ * camera preview are the exceptions, defaulting off: auto save downloads a
+ * file per detection, and the camera preview puts a live video surface on the
+ * glass, so each is worth asking for deliberately rather than inheriting. The
+ * zoom defaults to
  * auto, the production behavior, so the developer row is an override for
  * pinning a fixed 1x or 2x during testing. What the developer options report
  * while the master switch is off is DEVELOPER_OPTIONS_OFF, not this.
@@ -32,12 +34,13 @@ export const DEFAULT_SETTINGS: Settings = {
   confidenceThreshold: 0.5,
   zoomIndicator: true,
   roundTripIndicator: true,
+  cameraPreview: false,
 };
 
 /**
  * Effective values the development-only settings report while the Developer
  * options master switch is off: nothing extra on the glass (no debug overlay,
- * no zoom or round-trip pill), no per-frame JPEG
+ * no zoom or round-trip pill, no camera preview), no per-frame JPEG
  * encode, no downloads, the thermal pacing floor in place, the auto zoom (the
  * production scanning behavior), and the 0.5 confidence floor.
  * Kept apart from
@@ -54,4 +57,5 @@ export const DEVELOPER_OPTIONS_OFF: DeveloperOptions = {
   confidenceThreshold: 0.5,
   zoomIndicator: false,
   roundTripIndicator: false,
+  cameraPreview: false,
 };

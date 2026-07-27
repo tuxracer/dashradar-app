@@ -47,6 +47,7 @@ describe("SettingsContext", () => {
         confidenceThreshold: 0.5,
         zoomIndicator: true,
         roundTripIndicator: true,
+        cameraPreview: false,
       }),
     );
   });
@@ -108,6 +109,7 @@ describe("SettingsContext", () => {
         confidenceThreshold: 0.5,
         zoomIndicator: true,
         roundTripIndicator: true,
+        cameraPreview: false,
       }),
     );
   });
@@ -134,6 +136,7 @@ describe("SettingsContext", () => {
         confidenceThreshold: 0.5,
         zoomIndicator: true,
         roundTripIndicator: true,
+        cameraPreview: false,
       }),
     );
   });
@@ -161,6 +164,7 @@ describe("SettingsContext", () => {
         confidenceThreshold: 0.5,
         zoomIndicator: true,
         roundTripIndicator: true,
+        cameraPreview: false,
       }),
     );
   });
@@ -192,6 +196,7 @@ describe("SettingsContext", () => {
         zoomMode: "1x",
         zoomIndicator: true,
         roundTripIndicator: true,
+        cameraPreview: true,
       }),
     );
     const { result } = renderHook(() => useSettings(), { wrapper });
@@ -202,6 +207,7 @@ describe("SettingsContext", () => {
     expect(result.current.throttleInference).toBe(true);
     expect(result.current.zoomIndicator).toBe(false);
     expect(result.current.roundTripIndicator).toBe(false);
+    expect(result.current.cameraPreview).toBe(false);
     // A fixed-zoom override is a developer tweak; a normal drive always runs
     // the auto default.
     expect(result.current.zoomMode).toBe("auto");
@@ -290,6 +296,18 @@ describe("SettingsContext", () => {
     expect(result.current.frameThumbnails).toBe(true);
   });
 
+  // The camera preview puts a live video surface on the glass, so like auto
+  // save it stays off until asked for by name.
+  it("keeps the camera preview off even once developer options are on", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleDeveloperOptions());
+    expect(result.current.showDebug).toBe(true);
+    expect(result.current.cameraPreview).toBe(false);
+
+    act(() => result.current.toggleCameraPreview());
+    expect(result.current.cameraPreview).toBe(true);
+  });
+
   // Auto save downloads a file per detection, so unlike the other three
   // display options it stays off until asked for by name.
   it("keeps auto save off even once developer options are on", () => {
@@ -349,6 +367,7 @@ describe("SettingsContext", () => {
         confidenceThreshold: 0.5,
         zoomIndicator: true,
         roundTripIndicator: true,
+        cameraPreview: false,
       }),
     );
   });

@@ -50,6 +50,7 @@ describe("SettingsScreen", () => {
         confidenceThreshold: 0.5,
         zoomIndicator: true,
         roundTripIndicator: true,
+        cameraPreview: false,
       }),
     );
   });
@@ -78,6 +79,7 @@ describe("SettingsScreen", () => {
         confidenceThreshold: 0.5,
         zoomIndicator: true,
         roundTripIndicator: true,
+        cameraPreview: false,
       }),
     );
   });
@@ -100,6 +102,7 @@ describe("SettingsScreen", () => {
         confidenceThreshold: 0.5,
         zoomIndicator: true,
         roundTripIndicator: true,
+        cameraPreview: false,
       }),
     );
   });
@@ -111,6 +114,7 @@ describe("SettingsScreen", () => {
     expect(screen.queryByText("Debug overlay")).not.toBeInTheDocument();
     expect(screen.queryByText("Zoom indicator")).not.toBeInTheDocument();
     expect(screen.queryByText("Round-trip")).not.toBeInTheDocument();
+    expect(screen.queryByText("Camera preview")).not.toBeInTheDocument();
     expect(screen.queryByText("Frame preview")).not.toBeInTheDocument();
     expect(screen.queryByText("Save frames")).not.toBeInTheDocument();
     expect(screen.queryByText("Auto save")).not.toBeInTheDocument();
@@ -126,6 +130,7 @@ describe("SettingsScreen", () => {
     expect(screen.getByText("Debug overlay")).toBeInTheDocument();
     expect(screen.getByText("Zoom indicator")).toBeInTheDocument();
     expect(screen.getByText("Round-trip")).toBeInTheDocument();
+    expect(screen.getByText("Camera preview")).toBeInTheDocument();
     expect(screen.getByText("Frame preview")).toBeInTheDocument();
     expect(screen.getByText("Save frames")).toBeInTheDocument();
     expect(screen.getByText("Auto save")).toBeInTheDocument();
@@ -221,6 +226,22 @@ describe("SettingsScreen", () => {
     ).toBe(false);
   });
 
+  it("toggles and persists the camera preview setting from its row", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true }),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    // Off by default even under developer options, so the tap turns it on.
+    await user.click(screen.getByText("Camera preview"));
+    expect(
+      JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}")
+        .cameraPreview,
+    ).toBe(true);
+  });
+
   it("toggles and persists the throttle setting from its row", async () => {
     window.localStorage.setItem(
       STORAGE_KEY,
@@ -243,6 +264,7 @@ describe("SettingsScreen", () => {
         confidenceThreshold: 0.5,
         zoomIndicator: true,
         roundTripIndicator: true,
+        cameraPreview: false,
       }),
     );
   });
@@ -269,6 +291,7 @@ describe("SettingsScreen", () => {
         confidenceThreshold: 0.5,
         zoomIndicator: true,
         roundTripIndicator: true,
+        cameraPreview: false,
       }),
     );
   });
@@ -312,6 +335,7 @@ describe("SettingsScreen", () => {
         confidenceThreshold: 0.5,
         zoomIndicator: true,
         roundTripIndicator: true,
+        cameraPreview: false,
       }),
     );
   });
@@ -338,6 +362,7 @@ describe("SettingsScreen", () => {
         confidenceThreshold: 0.5,
         zoomIndicator: true,
         roundTripIndicator: true,
+        cameraPreview: false,
       }),
     );
   });
@@ -364,6 +389,7 @@ describe("SettingsScreen", () => {
         confidenceThreshold: 0.5,
         zoomIndicator: true,
         roundTripIndicator: true,
+        cameraPreview: false,
       }),
     );
   });
