@@ -414,7 +414,14 @@ units rather than a multiplier, so cropping the frame ourselves is the only
 way one setting means the same thing on both platforms. `CAMERA_CONSTRAINTS`
 requests roughly 1024 on each axis, about twice the model's input edge, so the
 2x crop lands at 512 native with no upsampling and the 1x square downsamples
-cleanly. `DetectionContext` mirrors the mode into the `zoom` crop factor
+cleanly. It also caps the requested frame rate (`CAMERA_FRAME_RATE`, ideal 15):
+detection consumes about one frame every two seconds, but the sensor and ISP
+run at the granted rate for the whole session, so requesting 15 roughly halves
+the steady capture-power draw of the 30 fps default. The rate is deliberately
+not lower: auto-exposure can stretch shutter time toward the frame period, and
+the long shutters a very low rate permits motion-blur night frames of moving
+vehicles, exactly the frames the model needs sharp. `ideal` keeps the request
+best-effort on cameras without a matching mode. `DetectionContext` mirrors the mode into the `zoom` crop factor
 (`ZOOM_2X`/`ZOOM_OFF`) it posts with every `detect`, and the override is
 gated like the rest, so a pinned fixed zoom can never outlive the master
 switch: a normal drive always runs auto. `loadSettings`
