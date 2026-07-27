@@ -55,8 +55,12 @@ const ALERT_RING_COLOR = `rgb(${SIGNAL_HIGH_COLOR.join(", ")})`;
  * loop applies peak-hold + decay to the incoming confidence and writes the lit
  * segments, colors, readout, status word, and glow straight to the DOM, off
  * React's render path, so smoothness does not depend on the detector's frame
- * rate. The camera feed and bounding boxes are intentionally not shown in this
- * mode. The same loop feeds a radar-detector beeper (see lib/radarAudio) the
+ * rate. The loop parks itself once the meter is quiescent (no raw signal and a
+ * fully decayed peak) and any prop change wakes it, so the idle scanning state,
+ * which dominates a session, schedules no animation frames and does no
+ * per-frame work; while awake it also skips DOM writes whenever the values
+ * behind them have not changed. The camera feed and bounding boxes are
+ * intentionally not shown in this mode. The same loop feeds a radar-detector beeper (see lib/radarAudio) the
  * raw signal rather than the peak-held level, so the beeps cut off as soon as
  * the detection is gone while the dial decays smoothly behind them; the beeper
  * exists only while this mode is mounted, and audioEnabled false feeds it
@@ -90,24 +94,33 @@ export const RadarDetectorScreen = ({
   const glowRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef<HTMLDivElement>(null);
   const cropCanvasRef = useRef<HTMLCanvasElement>(null);
+  // Restarts the rAF loop when it has parked itself on an idle meter (see the
+  // loop effect below). A no-op while the loop is already running, so the
+  // mirror effects can call it unconditionally on every prop change.
+  const wakeRef = useRef<() => void>(() => {});
 
   // Refs may not be written during render; mirror the latest prop in via an
   // effect so the persistent rAF loop reads the current value without
-  // re-subscribing.
+  // re-subscribing. Each mirror also wakes the parked loop so the change is
+  // flushed to the DOM even when the meter is idle.
   useEffect(() => {
     confidenceRef.current = confidence;
+    wakeRef.current();
   }, [confidence]);
 
   useEffect(() => {
     audioEnabledRef.current = audioEnabled;
+    wakeRef.current();
   }, [audioEnabled]);
 
   useEffect(() => {
     contactRef.current = contact;
+    wakeRef.current();
   }, [contact]);
 
   useEffect(() => {
     frameThumbnailsRef.current = frameThumbnails;
+    wakeRef.current();
   }, [frameThumbnails]);
 
   // Draw the cutout into the card's canvas whenever it changes. The canvas
@@ -142,7 +155,15 @@ export const RadarDetectorScreen = ({
   }, []);
 
   useEffect(() => {
+    let disposed = false;
+    let running = false;
     let frame = 0;
+    // Values behind the last DOM flush. While both hold, every write below
+    // would rewrite an identical value, so the flush is skipped and a steady
+    // alert does not churn styles and text at display refresh rate.
+    let writtenLevel: number | undefined;
+    let writtenContactShown: boolean | undefined;
+
     const tick = (now: number) => {
       const last = lastTimeRef.current ?? now;
       // Clamp dt so a backgrounded tab that resumes does not decay a huge step.
@@ -155,64 +176,95 @@ export const RadarDetectorScreen = ({
       // Feed the audio the raw signal, not the peak-held meter level: the
       // beeps stop the instant the detection is gone instead of winding down
       // with the dial's decay tail. A disabled toggle feeds silence instead.
+      // Runs every awake tick, outside the changed-values gate, because the
+      // beep cadence is paced by repeated calls at a steady level.
       beeperRef.current?.update(
         audioEnabledRef.current ? confidenceRef.current : 0,
         now,
       );
 
-      const color = signalColor(level);
-      const lit = litSegments(level, SEGMENT_COUNT);
-      segmentRefs.current.forEach((segment, index) => {
-        if (!segment) {
-          return;
+      // Normally the card tracks the meter, fading in with a detection and
+      // out with the decay tail. With the frame preview on it stays lit for
+      // as long as a contact exists so the per-scan preview is always
+      // visible, even at a zero meter.
+      const contactShown =
+        contactRef.current !== undefined &&
+        (frameThumbnailsRef.current === true || level > 0);
+
+      if (level !== writtenLevel || contactShown !== writtenContactShown) {
+        writtenLevel = level;
+        writtenContactShown = contactShown;
+
+        const color = signalColor(level);
+        const lit = litSegments(level, SEGMENT_COUNT);
+        segmentRefs.current.forEach((segment, index) => {
+          if (!segment) {
+            return;
+          }
+          if (index < lit) {
+            segment.style.backgroundColor = color;
+            segment.style.boxShadow = `0 0 12px ${color}`;
+          } else {
+            segment.style.backgroundColor = "";
+            segment.style.boxShadow = "";
+          }
+        });
+
+        const hasSignal = level >= CONTACT_THRESHOLD;
+        const readout = readoutRef.current;
+        if (readout) {
+          readout.textContent = `${Math.round(level * 100)}%`;
+          readout.style.color = hasSignal ? color : "";
         }
-        if (index < lit) {
-          segment.style.backgroundColor = color;
-          segment.style.boxShadow = `0 0 12px ${color}`;
-        } else {
-          segment.style.backgroundColor = "";
-          segment.style.boxShadow = "";
+
+        const status = statusRef.current;
+        if (status) {
+          status.textContent = hasSignal ? "ALERT" : "SCANNING";
+          status.style.color = hasSignal ? color : "";
         }
-      });
 
-      const hasSignal = level >= CONTACT_THRESHOLD;
-      const readout = readoutRef.current;
-      if (readout) {
-        readout.textContent = `${Math.round(level * 100)}%`;
-        readout.style.color = hasSignal ? color : "";
+        const glow = glowRef.current;
+        if (glow) {
+          glow.style.background = `radial-gradient(closest-side, ${color} 0%, transparent 70%)`;
+          glow.style.opacity = String(0.04 + 0.26 * level);
+        }
+
+        // The pulsing alert ring is CSS-driven off this data attribute (see
+        // the group-data-[alert=true] classes below).
+        const screen = screenRef.current;
+        if (screen) {
+          screen.dataset.alert = String(level >= ALERT_THRESHOLD);
+          screen.dataset.contact = String(contactShown);
+        }
       }
 
-      const status = statusRef.current;
-      if (status) {
-        status.textContent = hasSignal ? "ALERT" : "SCANNING";
-        status.style.color = hasSignal ? color : "";
+      // Park the loop once the meter is quiescent: no raw signal and a fully
+      // decayed peak make every write above a fixed point, so further frames
+      // would only spend battery. This is the dominant state of a scanning
+      // session on a dash-mounted phone. The mirror effects wake the loop on
+      // any prop change, so it always runs at least one tick to flush the
+      // change (and the beeper) before parking again.
+      if (confidenceRef.current === 0 && level === 0) {
+        running = false;
+        lastTimeRef.current = undefined;
+        return;
       }
-
-      const glow = glowRef.current;
-      if (glow) {
-        glow.style.background = `radial-gradient(closest-side, ${color} 0%, transparent 70%)`;
-        glow.style.opacity = String(0.04 + 0.26 * level);
-      }
-
-      // The pulsing alert ring is CSS-driven off this data attribute (see the
-      // group-data-[alert=true] classes below).
-      const screen = screenRef.current;
-      if (screen) {
-        screen.dataset.alert = String(level >= ALERT_THRESHOLD);
-        // Normally the card tracks the meter, fading in with a detection and
-        // out with the decay tail. With the frame preview on it stays lit for
-        // as long as a contact exists so the per-scan preview is always
-        // visible, even at a zero meter.
-        screen.dataset.contact = String(
-          contactRef.current !== undefined &&
-            (frameThumbnailsRef.current === true || level > 0),
-        );
-      }
-
       frame = window.requestAnimationFrame(tick);
     };
-    frame = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(frame);
+
+    const wake = () => {
+      if (disposed || running) {
+        return;
+      }
+      running = true;
+      frame = window.requestAnimationFrame(tick);
+    };
+    wakeRef.current = wake;
+    wake();
+    return () => {
+      disposed = true;
+      window.cancelAnimationFrame(frame);
+    };
   }, []);
 
   const frameBlob = contact?.frame;

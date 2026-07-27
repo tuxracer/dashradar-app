@@ -302,6 +302,54 @@ describe("RadarDetectorScreen frame preview", () => {
     ).toHaveAttribute("data-contact", "false");
   });
 
+  it("parks the rAF loop once the meter is idle", async () => {
+    beeperUpdate.mockClear();
+    render(<RadarDetectorScreen confidence={0} audioEnabled={true} />);
+    // The loop always runs one tick to flush the initial state (which also
+    // feeds the beeper), then parks on the quiescent meter: no further ticks.
+    await waitFor(() => expect(beeperUpdate).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(beeperUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("wakes the parked loop when a signal arrives", async () => {
+    beeperUpdate.mockClear();
+    const view = render(
+      <RadarDetectorScreen confidence={0} audioEnabled={true} />,
+    );
+    await waitFor(() => expect(beeperUpdate).toHaveBeenCalledTimes(1));
+
+    view.rerender(<RadarDetectorScreen confidence={0.9} audioEnabled={true} />);
+    await waitFor(() =>
+      expect(screen.getByTestId("signal-status")).toHaveTextContent("ALERT"),
+    );
+    expect(beeperUpdate).toHaveBeenLastCalledWith(0.9, expect.any(Number));
+  });
+
+  it("wakes the parked loop to light a preview contact at a zero meter", async () => {
+    beeperUpdate.mockClear();
+    const view = render(
+      <RadarDetectorScreen confidence={0} audioEnabled={false} />,
+    );
+    await waitFor(() => expect(beeperUpdate).toHaveBeenCalledTimes(1));
+
+    // A detection-free scan arrives while the meter is idle: the contact
+    // mirror must wake the loop so the card still lights.
+    view.rerender(
+      <RadarDetectorScreen
+        confidence={0}
+        audioEnabled={false}
+        contact={previewContact()}
+        frameThumbnails={true}
+      />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("contact-card").closest("[data-contact]"),
+      ).toHaveAttribute("data-contact", "true"),
+    );
+  });
+
   it("shows a preview's SAVE button but never a direction row", () => {
     render(
       <RadarDetectorScreen
