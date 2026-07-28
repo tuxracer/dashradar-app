@@ -23,6 +23,9 @@ importers:
       onnxruntime-web:
         specifier: ^1.27.0
         version: 1.27.0
+      privacy-signals:
+        specifier: ^0.1.0
+        version: 0.1.0
       react:
         specifier: 19.2.4
         version: 19.2.4
@@ -2714,6 +2717,9 @@ packages:
   pretty-format@27.5.1:
     resolution: {integrity: sha512-Qb1gy5OrP5+zDf2Bvnzdl3jsTf1qXVMazbvCoKhtKqVs4/YK4ozX4gKQJJVyNe+cajNPn0KoC0MC3FUmaHWEmQ==}
     engines: {node: ^10.13.0 || ^12.13.0 || ^14.15.0 || >=15.0.0}
+
+  privacy-signals@0.1.0:
+    resolution: {integrity: sha512-wPOLtXTnn327SmJ5lO4EF8zxqbxela5lBAFynUYcxGhiFVuHK6D/IqOpZ/8fDsfeFmHOKtRLM1cVj9TgJCNrAQ==}
 
   progress@2.0.3:
     resolution: {integrity: sha512-7PiHtLll5LdnKIMw100I+8xJXR5gW2QwWYkT6iJva0bXitZKa/XMrSbdmg3r2Xnaidz9Qumd0VPaMrZlF9V9sA==}
@@ -6145,6 +6151,8 @@ snapshots:
       ansi-regex: 5.0.1
       ansi-styles: 5.2.0
       react-is: 17.0.2
+
+  privacy-signals@0.1.0: {}
 
   progress@2.0.3: {}
 

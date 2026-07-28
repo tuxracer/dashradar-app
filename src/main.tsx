@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { reactErrorHandler } from "@sentry/react";
 import { registerSW } from "virtual:pwa-register";
 import { Analytics } from "@vercel/analytics/react";
-import { isDoNotTrackEnabled } from "@/lib/doNotTrack";
+import { isTrackingOptedOut } from "privacy-signals";
 import { trackPwaInstall } from "@/lib/pwaInstall";
 import { requestPersistentStorage } from "@/lib/serviceWorker";
 import "@fontsource/rajdhani/500.css";
@@ -34,12 +34,14 @@ createRoot(rootElement, {
     <App />
     {/* Honor Do Not Track / Global Privacy Control: beforeSend gates both page
         views and every custom track() call, so returning null when the user has
-        opted out suppresses all analytics from one place. Dev builds are
-        treated the same as an active DNT signal, so a dev session never emits
+        opted out suppresses all analytics from one place. Only a definitive
+        "not opted out" (=== false) lets an event through; null means the
+        signals could not be read, which is not consent. Dev builds are
+        treated the same as an active opt-out, so a dev session never emits
         analytics events. */}
     <Analytics
       beforeSend={(event) =>
-        import.meta.env.DEV || isDoNotTrackEnabled() ? null : event
+        !import.meta.env.DEV && isTrackingOptedOut() === false ? event : null
       }
     />
   </StrictMode>,

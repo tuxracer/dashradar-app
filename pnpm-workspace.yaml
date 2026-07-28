@@ -8,3 +8,5 @@ ignoredBuiltDependencies:
   - sharp
   - unrs-resolver
   - msw
+minimumReleaseAgeExclude:
+  - privacy-signals@0.1.0

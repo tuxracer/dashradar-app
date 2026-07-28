@@ -5,7 +5,7 @@ import {
   shouldCountWebGpuCrash,
 } from "@/lib/backendSafeMode";
 import { readPreviousSessionEnd } from "@/lib/crashSentinel";
-import { isDoNotTrackEnabled } from "@/lib/doNotTrack";
+import { isTrackingOptedOut } from "privacy-signals";
 
 /**
  * Fraction of traces sampled. Kept at 1.0 everywhere, production included: the
@@ -41,12 +41,14 @@ if (shouldCountWebGpuCrash(previousSessionEnd)) {
  * first). Reporting is skipped entirely when the user has asked not to be
  * tracked: dashradar's principle is that no data leaves the device, so error
  * reporting honors Do Not Track / Global Privacy Control the same way
- * src/main.tsx already gates Vercel Analytics. Dev builds are treated the same
- * as an active DNT signal, so a dev session never reports to Sentry either.
+ * src/main.tsx already gates Vercel Analytics: only a definitive "not opted
+ * out" (=== false) initializes the SDK, since null means the signals could
+ * not be read, which is not consent. Dev builds are treated the same as an
+ * active opt-out, so a dev session never reports to Sentry either.
  * An empty VITE_SENTRY_DSN also disables the SDK, so a build without it
  * configured stays silent.
  */
-if (!import.meta.env.DEV && !isDoNotTrackEnabled()) {
+if (!import.meta.env.DEV && isTrackingOptedOut() === false) {
   Sentry.init({
     dsn: import.meta.env.VITE_SENTRY_DSN,
     environment: import.meta.env.MODE,

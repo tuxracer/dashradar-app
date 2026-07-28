@@ -30,7 +30,7 @@ Module map (internals in TRD §4 and §5):
 - `src/context/DetectionContext/`: worker lifecycle and frame-pump state machine; pacing, periodic worker recycle, camera-stall detection and recovery, crash-sentinel heartbeat, auto zoom stepping, contact/saved-frame state, ref-backed debug snapshot.
 - `src/context/SettingsContext/`: localStorage-backed settings (`dashradar:settings`) behind the `developerOptions` master switch. The provider hands out already-gated effective values, so consumers never repeat the gate. `autoSaveFrames` is the one developer option that defaults off even under the switch.
 - `src/workers/detection/`: downloads the ONNX weights, runs inference; pure preprocess/decode in `inference.ts`, constants in `consts.ts`, typed message protocol in `types.ts`.
-- `src/lib/`: React-free domain modules, one directory each: `detection`, `detectionTracker`, `autoZoom`, `radarSignal`, `radarAudio`, `camera`, `crashSentinel`, `backendSafeMode`, `browserEngine`, `devVideo`, `doNotTrack`, `pwaInstall`, `saveFrame`, `serviceWorker`, `timingHistory`, `wakeLock`, and friends.
+- `src/lib/`: React-free domain modules, one directory each: `detection`, `detectionTracker`, `autoZoom`, `radarSignal`, `radarAudio`, `camera`, `crashSentinel`, `backendSafeMode`, `browserEngine`, `devVideo`, `pwaInstall`, `saveFrame`, `serviceWorker`, `timingHistory`, `wakeLock`, and friends.
 - `src/components/`: `CameraView` (hidden `<video>`, the feed is never shown), `RadarDetectorScreen` (the only detection UI; rAF peak-hold loop writing straight to the DOM, drives the beeper and contact card), `StatusBar` + indicator pills, `SettingsScreen`, `DebugOverlay`, `SaveToast`, intro/permission/load/error screens.
 - `src/types/`: shared detection types and guards.
 
@@ -40,7 +40,7 @@ Module map (internals in TRD §4 and §5):
 
 **Bundling**: ship all application code in the initial load; no lazy loading, dynamic `import()`, or code splitting (runtime chunk fetches break offline use). The one sanctioned exception is the detection worker chunk, which the Workbox precache includes.
 
-**Telemetry**: Vercel Analytics and Sentry are both gated on Do Not Track / Global Privacy Control (`src/lib/doNotTrack`), and dev builds emit nothing.
+**Telemetry**: Vercel Analytics and Sentry are both gated on Do Not Track / Global Privacy Control via the [`privacy-signals`](https://github.com/tuxracer/privacy-signals) package (extracted from this repo; only `isTrackingOptedOut() === false` enables them, since `null` means the signals were unreadable and is not consent), and dev builds emit nothing.
 
 ## Commands
 
