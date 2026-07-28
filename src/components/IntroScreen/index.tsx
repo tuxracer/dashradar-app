@@ -45,7 +45,9 @@ type IntroScreenProps = {
  * Full-screen first-open intro. Rendered instead of the radar screen until
  * dismissed, so the camera permission prompt fires right after the START tap
  * instead of cold on page load. The model download proceeds underneath in
- * DetectionProvider while the user reads. On a desktop the START button is
+ * DetectionProvider while the user reads. The copy powers on in the same
+ * one-shot staggered cascade as the permission ask and error screens, so the
+ * whole panel family enters the same way. On a desktop the START button is
  * replaced by the share QR code, since the app is built for a phone on a dash:
  * scanning it moves the user to mobile, and a small link below still lets them
  * continue on the desktop.
@@ -68,18 +70,18 @@ export const IntroScreen = ({ onStart }: IntroScreenProps) => {
         <RadarBackdrop />
         <IntroScene />
         <div className="relative flex max-w-md flex-col items-center gap-4 text-center landscape:max-w-lg">
-          <span className="text-[13px] font-semibold tracking-[0.34em] text-white/85">
+          <span className="animate-rise-in text-[13px] font-semibold tracking-[0.34em] text-white/85 [animation-delay:120ms] motion-reduce:animate-none">
             {WORDMARK}
           </span>
-          <h1 className="text-3xl font-bold leading-[1.05] tracking-wide text-white/90">
+          <h1 className="animate-rise-in text-3xl font-bold leading-[1.05] tracking-wide text-white/90 [animation-delay:200ms] motion-reduce:animate-none">
             <span>POLICE DETECTION</span>{" "}
             <span className="block">ON YOUR DASH</span>
           </h1>
-          <p className="text-base font-medium leading-snug text-white/70">
+          <p className="animate-rise-in text-base font-medium leading-snug text-white/70 [animation-delay:280ms] motion-reduce:animate-none">
             On-device computer vision. Nothing leaves your phone.
           </p>
           {desktop ? (
-            <div className="mt-1 flex flex-col items-center gap-3">
+            <div className="mt-1 flex animate-rise-in flex-col items-center gap-3 [animation-delay:360ms] motion-reduce:animate-none">
               <p className="text-sm font-semibold tracking-[0.06em] text-white/80">
                 Scan with your phone to continue on mobile.
               </p>
@@ -96,7 +98,7 @@ export const IntroScreen = ({ onStart }: IntroScreenProps) => {
             <button
               type="button"
               onClick={onStart}
-              className="mt-1 rounded-full bg-hud-amber px-14 py-3.5 text-lg font-bold tracking-[0.24em] text-surface active:scale-95"
+              className="mt-1 animate-rise-in rounded-full bg-hud-amber px-14 py-3.5 text-lg font-bold tracking-[0.24em] text-surface [animation-delay:360ms] [animation-duration:0.6s] active:scale-95 motion-reduce:animate-none"
             >
               START
             </button>
