@@ -38,6 +38,12 @@ type RadarDetectorScreenProps = {
    * button, which downloads the model's square input frame as a JPEG.
    */
   saveFrames?: boolean;
+  /**
+   * Whether detection has not started yet (model loading, session warm-up).
+   * The status word reads INITIALIZING instead of SCANNING and the sweep
+   * animation stays parked until scanning actually begins.
+   */
+  initializing?: boolean;
 };
 
 /** Arc angle for a segment, in degrees, 0 pointing straight up. */
@@ -54,6 +60,11 @@ const ALERT_RING_COLOR = `rgb(${SIGNAL_HIGH_COLOR.join(", ")})`;
  * ALERT_THRESHOLD a red ring around the dial pulses. A requestAnimationFrame
  * loop applies peak-hold + decay to the incoming confidence and writes the lit
  * segments, colors, readout, status word, and glow straight to the DOM, off
+ * React's render path. Before detection has started (the initializing prop)
+ * the instrument still renders in full, but the status word reads INITIALIZING
+ * and the sweep stays parked, so the first paint is the dial rather than a
+ * blank screen and the sweep's motion signals that scanning is actually live.
+ * The rAF loop runs off
  * React's render path, so smoothness does not depend on the detector's frame
  * rate. The loop parks itself once the meter is quiescent (no raw signal and a
  * fully decayed peak) and any prop change wakes it, so the idle scanning state,
@@ -80,11 +91,13 @@ export const RadarDetectorScreen = ({
   contact,
   frameThumbnails,
   saveFrames,
+  initializing,
 }: RadarDetectorScreenProps) => {
   const confidenceRef = useRef(confidence);
   const audioEnabledRef = useRef(audioEnabled);
   const contactRef = useRef(contact);
   const frameThumbnailsRef = useRef(frameThumbnails);
+  const initializingRef = useRef(initializing);
   const beeperRef = useRef<RadarBeeper | undefined>(undefined);
   const peakRef = useRef(0);
   const lastTimeRef = useRef<number | undefined>(undefined);
@@ -122,6 +135,11 @@ export const RadarDetectorScreen = ({
     frameThumbnailsRef.current = frameThumbnails;
     wakeRef.current();
   }, [frameThumbnails]);
+
+  useEffect(() => {
+    initializingRef.current = initializing;
+    wakeRef.current();
+  }, [initializing]);
 
   // Draw the cutout into the card's canvas whenever it changes. The canvas
   // takes the bitmap's intrinsic size; CSS scales it to fit the card.
@@ -163,6 +181,7 @@ export const RadarDetectorScreen = ({
     // alert does not churn styles and text at display refresh rate.
     let writtenLevel: number | undefined;
     let writtenContactShown: boolean | undefined;
+    let writtenInitializing: boolean | undefined;
 
     const tick = (now: number) => {
       const last = lastTimeRef.current ?? now;
@@ -191,9 +210,18 @@ export const RadarDetectorScreen = ({
         contactRef.current !== undefined &&
         (frameThumbnailsRef.current === true || level > 0);
 
-      if (level !== writtenLevel || contactShown !== writtenContactShown) {
+      // The status word flips between INITIALIZING and SCANNING at a zero
+      // meter, so the initializing flag gates the flush alongside the level.
+      const isInitializing = initializingRef.current === true;
+
+      if (
+        level !== writtenLevel ||
+        contactShown !== writtenContactShown ||
+        isInitializing !== writtenInitializing
+      ) {
         writtenLevel = level;
         writtenContactShown = contactShown;
+        writtenInitializing = isInitializing;
 
         const color = signalColor(level);
         const lit = litSegments(level, SEGMENT_COUNT);
@@ -219,7 +247,11 @@ export const RadarDetectorScreen = ({
 
         const status = statusRef.current;
         if (status) {
-          status.textContent = hasSignal ? "ALERT" : "SCANNING";
+          status.textContent = hasSignal
+            ? "ALERT"
+            : isInitializing
+              ? "INITIALIZING"
+              : "SCANNING";
           status.style.color = hasSignal ? color : "";
         }
 
@@ -291,8 +323,13 @@ export const RadarDetectorScreen = ({
       <div className="relative aspect-square w-[min(84vmin,28rem)] translate-y-[3%]">
         <div ref={glowRef} className="absolute inset-[6%] rounded-full" />
         <div className="absolute inset-[24%] rounded-full border border-hud-amber/15" />
+        {/* The sweep only spins once scanning is live; while initializing it
+            is invisible and unanimated (no compositor work), then fades in as
+            the first scan becomes possible. */}
         <div
-          className="absolute inset-[24%] animate-spin rounded-full [animation-duration:5s] motion-reduce:animate-none"
+          className={`absolute inset-[24%] rounded-full transition-opacity duration-700 [animation-duration:5s] motion-reduce:animate-none ${
+            initializing ? "opacity-0" : "animate-spin"
+          }`}
           style={{
             background:
               "conic-gradient(from 0deg, rgba(255,179,64,0.28) 0deg, rgba(255,179,64,0.04) 60deg, transparent 70deg)",
@@ -332,7 +369,7 @@ export const RadarDetectorScreen = ({
             data-testid="signal-status"
             className="text-[13px] font-semibold tracking-[0.3em] text-white/40"
           >
-            SCANNING
+            {initializing ? "INITIALIZING" : "SCANNING"}
           </span>
         </div>
       </div>

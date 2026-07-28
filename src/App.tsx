@@ -171,11 +171,8 @@ const RadarScreen = () => {
     return <ErrorScreen code="CAMERA_STALLED" />;
   }
 
-  // While the model is still loading, keep the radar-mode UI unmounted and the
-  // camera feed invisible (it stays mounted so getUserMedia fires right after
-  // the intro's START tap). Otherwise the radar meter flashes for a beat before
-  // the model-download screen covers it; showing only the backdrop grid until
-  // the model is ready avoids that flash on both the download and cache paths.
+  // The camera feed stays mounted but invisible while the model loads, so
+  // getUserMedia fires right after the intro's START tap.
   const modelLoading = status === "loading-model";
 
   return (
@@ -196,15 +193,19 @@ const RadarScreen = () => {
           onVideoResize={updateVideoSize}
         />
       )}
-      {!modelLoading && (
-        <RadarDetectorScreen
-          confidence={hudSignal(hud)}
-          audioEnabled={radarAudio}
-          contact={contact}
-          frameThumbnails={frameThumbnails}
-          saveFrames={saveFrames}
-        />
-      )}
+      {/* The meter mounts immediately so the first paint past the permission
+          flow is the instrument reading INITIALIZING, not a blank backdrop;
+          the sweep starts once detection is running. A first-visit download
+          is still covered by the opaque ModelLoadScreen below. */}
+      <RadarDetectorScreen
+        confidence={hudSignal(hud)}
+        audioEnabled={radarAudio}
+        contact={contact}
+        frameThumbnails={frameThumbnails}
+        saveFrames={saveFrames}
+        initializing={status !== "running"}
+      />
+
       {/* The zoom mirrors sendFrame's mapping, so the preview always narrows
           to the region the next capture actually scans. Mounted in dev video
           mode too: the corner player shows the whole clip, the preview the

@@ -57,6 +57,47 @@ describe("RadarDetectorScreen", () => {
     );
   });
 
+  it("reads INITIALIZING before detection has started", async () => {
+    render(
+      <RadarDetectorScreen
+        confidence={0}
+        audioEnabled={false}
+        initializing={true}
+      />,
+    );
+    expect(screen.getByTestId("signal-status")).toHaveTextContent(
+      "INITIALIZING",
+    );
+    // Still INITIALIZING after the rAF loop's first flush.
+    await waitFor(() =>
+      expect(screen.getByTestId("signal-status")).toHaveTextContent(
+        "INITIALIZING",
+      ),
+    );
+  });
+
+  it("flips INITIALIZING to SCANNING once scanning begins, even at a zero meter", async () => {
+    const view = render(
+      <RadarDetectorScreen
+        confidence={0}
+        audioEnabled={false}
+        initializing={true}
+      />,
+    );
+    // The meter is quiescent, so this transition must wake the parked loop
+    // and flush with no level change behind it.
+    view.rerender(
+      <RadarDetectorScreen
+        confidence={0}
+        audioEnabled={false}
+        initializing={false}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("signal-status")).toHaveTextContent("SCANNING"),
+    );
+  });
+
   it("feeds the beeper the raw signal while audio is enabled", async () => {
     beeperUpdate.mockClear();
     render(<RadarDetectorScreen confidence={0.8} audioEnabled={true} />);
