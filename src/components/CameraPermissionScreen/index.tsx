@@ -1,7 +1,6 @@
 import { Camera } from "lucide-react";
 import { RadarBackdrop } from "@/components/RadarBackdrop";
 import { ScopeGlyph } from "@/components/ScopeGlyph";
-import { WORDMARK } from "@/lib/branding";
 import type { PermissionPoint } from "./consts";
 import { CAMERA_PROMPT_STORAGE_KEY, PERMISSION_POINTS } from "./consts";
 
@@ -32,7 +31,7 @@ export const markCameraPromptAccepted = () => {
 
 const PermissionPointRow = ({ label, text }: PermissionPoint) => (
   <div className="flex items-baseline gap-3 text-left">
-    <span className="w-24 shrink-0 text-xs font-semibold tracking-[0.18em] text-hud-amber">
+    <span className="shrink-0 text-xs font-semibold tracking-[0.18em] text-hud-amber">
       {label}
     </span>
     <span className="text-sm font-medium leading-snug text-white/70">
@@ -53,9 +52,13 @@ type CameraPermissionScreenProps = {
  * getUserMedia call. It explains why the camera is needed before the browser's
  * own permission prompt appears, so that prompt never lands cold: the camera
  * is only requested after the ALLOW CAMERA tap. Laid out like the error
- * screens (scope beside the copy in landscape, stacked in portrait), with the
- * same intact-camera glyph and privacy rows as the PERMISSION_DENIED screen,
- * so accepting and declining stay in one visual language.
+ * screens (scope beside the copy in landscape, stacked in portrait) with the
+ * intact-camera glyph, so accepting and declining stay in one visual language.
+ * The copy is kept to a glance: the intro one tap earlier already introduced
+ * the app, so this screen only says why the camera is needed and that it stays
+ * private. Content powers on in a one-shot staggered cascade (scope first,
+ * then copy, then buttons) instead of cutting in all at once; the shared
+ * backdrop stays constant across the intro-to-ask transition.
  */
 export const CameraPermissionScreen = ({
   onAllow,
@@ -64,26 +67,24 @@ export const CameraPermissionScreen = ({
   <main className="fixed inset-0 overflow-y-auto bg-surface">
     <div className="relative flex min-h-full flex-col items-center justify-center gap-6 px-8 py-6 landscape:flex-row landscape:gap-12">
       <RadarBackdrop />
-      <ScopeGlyph icon={Camera} />
+      <div className="shrink-0 animate-scope-in motion-reduce:animate-none">
+        <ScopeGlyph icon={Camera} />
+      </div>
       <div className="flex max-w-md flex-col items-center gap-4 text-center landscape:items-start landscape:text-left">
-        <span className="text-[13px] font-semibold tracking-[0.34em] text-white/85">
-          {WORDMARK}
-        </span>
-        <h1 className="text-2xl font-bold leading-[1.05] tracking-wide text-white/90 landscape:text-3xl">
+        <h1 className="animate-rise-in text-2xl font-bold leading-[1.05] tracking-wide text-white/90 [animation-delay:120ms] motion-reduce:animate-none landscape:text-3xl">
           YOUR CAMERA IS THE DETECTOR
         </h1>
-        <p className="text-base font-medium leading-snug text-white/70">
-          Patrol vehicles are spotted by watching the road through your rear
-          camera. Tap allow to start scanning.
+        <p className="animate-rise-in text-base font-medium leading-snug text-white/70 [animation-delay:200ms] motion-reduce:animate-none">
+          It watches the road through your rear camera to spot patrol vehicles.
         </p>
-        <div className="flex flex-col gap-2">
+        <div className="flex animate-rise-in flex-col gap-2 [animation-delay:280ms] motion-reduce:animate-none">
           {PERMISSION_POINTS.map((point) => (
             <PermissionPointRow key={point.label} {...point} />
           ))}
         </div>
         <button
           type="button"
-          className="mt-1 rounded-full bg-hud-amber px-12 py-3.5 text-lg font-bold tracking-[0.24em] text-surface active:scale-95"
+          className="mt-1 animate-rise-in rounded-full bg-hud-amber px-12 py-3.5 text-lg font-bold tracking-[0.24em] text-surface [animation-delay:360ms] [animation-duration:0.6s] active:scale-95 motion-reduce:animate-none"
           onClick={onAllow}
         >
           ALLOW CAMERA
@@ -91,7 +92,7 @@ export const CameraPermissionScreen = ({
         <button
           type="button"
           onClick={onDecline}
-          className="text-sm font-medium text-white/50 underline underline-offset-4 transition-colors hover:text-white/80"
+          className="animate-rise-in text-sm font-medium text-white/50 underline underline-offset-4 transition-colors [animation-delay:440ms] hover:text-white/80 motion-reduce:animate-none"
         >
           Not now
         </button>

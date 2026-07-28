@@ -12,11 +12,13 @@ export type PermissionPoint = {
 };
 
 /**
- * Privacy reassurance rows for the permission ask. Worded identically to the
- * PERMISSION_DENIED error screen's rows so the two screens speak with one
- * voice about the same promise.
+ * Privacy reassurance for the permission ask, kept to a single row so the ask
+ * stays glanceable. The PERMISSION_DENIED error screen carries the fuller
+ * two-row version for users who declined and need more convincing.
  */
 export const PERMISSION_POINTS: readonly PermissionPoint[] = [
-  { label: "ON-DEVICE", text: "Detection runs entirely on your phone." },
-  { label: "PRIVATE", text: "No images ever leave your device." },
+  {
+    label: "PRIVATE",
+    text: "Detection runs on your phone. No images ever leave it.",
+  },
 ];

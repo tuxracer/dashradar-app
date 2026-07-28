@@ -45,9 +45,9 @@ describe("CameraPermissionScreen", () => {
       getByRole("heading", { name: /your camera is the detector/i }),
     ).toBeInTheDocument();
     expect(
-      getByText(/watching the road through your rear camera/i),
+      getByText(/watches the road through your rear camera/i),
     ).toBeInTheDocument();
-    expect(getByText("ON-DEVICE")).toBeInTheDocument();
-    expect(getByText(/no images ever leave your device/i)).toBeInTheDocument();
+    expect(getByText("PRIVATE")).toBeInTheDocument();
+    expect(getByText(/no images ever leave it/i)).toBeInTheDocument();
   });
 });
