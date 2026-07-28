@@ -45,6 +45,9 @@ type ErrorScreenProps = {
  * body copy, optional reassurance rows, and a reload button. Laid out like the
  * intro (scope beside the copy in landscape, stacked in portrait) so failures
  * stay in the app's visual language instead of reading as a wall of text.
+ * Content powers on in the same one-shot staggered cascade as the camera
+ * permission ask (scope first, then copy, then the button), so the whole
+ * panel family enters the same way.
  */
 export const ErrorScreen = ({ code }: ErrorScreenProps) => {
   const { title, body, points } = ERROR_COPY[code];
@@ -54,27 +57,27 @@ export const ErrorScreen = ({ code }: ErrorScreenProps) => {
         <RadarBackdrop />
         <ScopeGlyph icon={ERROR_ICON[code]} />
         <div className="flex max-w-md flex-col items-center gap-4 text-center landscape:items-start landscape:text-left">
-          <span className="text-[13px] font-semibold tracking-[0.34em] text-white/85">
+          <span className="animate-rise-in text-[13px] font-semibold tracking-[0.34em] text-white/85 [animation-delay:120ms] motion-reduce:animate-none">
             {WORDMARK}
           </span>
-          <h1 className="text-2xl font-bold leading-[1.05] tracking-wide text-white/90 landscape:text-3xl">
+          <h1 className="animate-rise-in text-2xl font-bold leading-[1.05] tracking-wide text-white/90 [animation-delay:200ms] motion-reduce:animate-none landscape:text-3xl">
             {title}
           </h1>
           <p
             data-testid="error-message"
-            className="text-base font-medium leading-snug text-white/70"
+            className="animate-rise-in text-base font-medium leading-snug text-white/70 [animation-delay:280ms] motion-reduce:animate-none"
           >
             {body}
           </p>
           {points && (
-            <div className="flex flex-col gap-2">
+            <div className="flex animate-rise-in flex-col gap-2 [animation-delay:360ms] motion-reduce:animate-none">
               {points.map((point) => (
                 <ErrorPointRow key={point.label} {...point} />
               ))}
             </div>
           )}
           <button
-            className="mt-1 rounded-full bg-hud-amber px-12 py-3.5 text-lg font-bold tracking-[0.24em] text-surface active:scale-95"
+            className="mt-1 animate-rise-in rounded-full bg-hud-amber px-12 py-3.5 text-lg font-bold tracking-[0.24em] text-surface [animation-delay:440ms] [animation-duration:0.6s] active:scale-95 motion-reduce:animate-none"
             onClick={() => window.location.reload()}
           >
             TRY AGAIN

@@ -67,9 +67,7 @@ export const CameraPermissionScreen = ({
   <main className="fixed inset-0 overflow-y-auto bg-surface">
     <div className="relative flex min-h-full flex-col items-center justify-center gap-6 px-8 py-6 landscape:flex-row landscape:gap-12">
       <RadarBackdrop />
-      <div className="shrink-0 animate-scope-in motion-reduce:animate-none">
-        <ScopeGlyph icon={Camera} />
-      </div>
+      <ScopeGlyph icon={Camera} />
       <div className="flex max-w-md flex-col items-center gap-4 text-center landscape:items-start landscape:text-left">
         <h1 className="animate-rise-in text-2xl font-bold leading-[1.05] tracking-wide text-white/90 [animation-delay:120ms] motion-reduce:animate-none landscape:text-3xl">
           YOUR CAMERA IS THE DETECTOR
