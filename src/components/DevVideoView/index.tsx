@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
 type DevVideoViewProps = {
-  /** URL of the dev clip served by the devVideo Vite plugin. */
+  /**
+   * URL of the current feed source: the DASHRADAR_VIDEO dev-server route, or
+   * an object URL for a file dropped onto the window or picked from
+   * Developer options.
+   */
   src: string;
   onStream: (video: HTMLVideoElement) => void;
   /** Fires when the video's intrinsic dimensions change; mirrors CameraView. */
@@ -15,20 +19,24 @@ type DevVideoViewProps = {
 };
 
 /**
- * Dev-only stand-in for CameraView: plays a local video file (served at
- * DEV_VIDEO_URL) as the detection feed. The same element doubles as a visible
- * corner player with native controls, so the clip can be paused and scrubbed;
+ * Stand-in for CameraView: plays a video file as the detection feed instead
+ * of the camera. Renders whenever DevVideoContext hands back a source,
+ * whether that's the DASHRADAR_VIDEO dev clip at startup or a file dropped
+ * onto the window or picked from the settings Video file row later; the row
+ * ships in production and works on a phone, though dragging a file onto the
+ * window is a desktop-only gesture. The same element doubles as a visible
+ * corner player with native controls, sized for mouse use rather than the
+ * dash-mount touch-target rules, so the clip can be paused and scrubbed;
  * capture reads the full intrinsic resolution regardless of display size.
- * This mode only ever runs on a desktop browser, so the player is sized for
- * mouse use, not for the dash-mount touch-target rules. Pausing legitimately
- * stops new frames; DetectionContext disables the camera-stall machinery in
- * dev video mode so that never triggers recovery. Playback does not start on
- * mount: it waits for the first `scanning` transition so the clip's opening
- * seconds aren't consumed while the model is still downloading or compiling.
- * The player is also kept invisible until that same transition, so the load
- * and compile phase shows only the radar backdrop, matching the camera path.
- * Camera errors do not exist in this mode: a rejected play() just logs to the
- * console, and the already-visible native controls are the manual recovery.
+ * Pausing legitimately stops new frames; DetectionContext disables the
+ * camera-stall machinery while a video source is active so that never
+ * triggers recovery. Playback does not start on mount: it waits for the
+ * first `scanning` transition so the clip's opening seconds aren't consumed
+ * while the model is still downloading or compiling. The player is also kept
+ * invisible until that same transition, so the load and compile phase shows
+ * only the radar backdrop, matching the camera path. Camera errors do not
+ * exist in this mode: a rejected play() just logs to the console, and the
+ * already-visible native controls are the manual recovery.
  */
 export const DevVideoView = ({
   src,
