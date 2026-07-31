@@ -1,8 +1,11 @@
+import { useEffect } from "react";
+import type { ReactNode } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsButton } from "@/components/SettingsButton";
 import { SettingsScreen } from "@/components/SettingsScreen";
+import { DevVideoProvider, useDevVideo } from "@/context/DevVideoContext";
 import {
   SETTINGS_VERSION,
   SettingsProvider,
@@ -11,8 +14,24 @@ import {
 import type { PersistedSettings } from "@/context/SettingsContext";
 import { MODEL_REVISION } from "@/workers/detection/consts";
 
+/** Stands in for DetectionContext's feed swap, which needs no worker here. */
+const swapVideoSource = vi.fn();
+
+vi.mock("@/context/DetectionContext", () => ({
+  useDetection: () => ({ swapVideoSource }),
+}));
+
 afterEach(() => {
   window.localStorage.clear();
+});
+
+beforeEach(() => {
+  swapVideoSource.mockClear();
+  let created = 0;
+  // jsdom implements neither, and DevVideoProvider's whole job is their
+  // lifecycle.
+  URL.createObjectURL = vi.fn(() => `blob:mock/${(created += 1)}`);
+  URL.revokeObjectURL = vi.fn();
 });
 
 /**
@@ -40,16 +59,57 @@ const persisted = (overrides: Partial<PersistedSettings> = {}) =>
     ...overrides,
   });
 
-const renderScreen = () =>
+/**
+ * Calls the real DevVideoProvider's `setVideoFile` once on mount, so a test
+ * needing an "already overridden" row exercises actual context state instead
+ * of a mocked context value.
+ */
+const DevVideoSeed = ({ file }: { file: File }) => {
+  const { setVideoFile } = useDevVideo();
+  useEffect(() => {
+    setVideoFile(file);
+  }, [file, setVideoFile]);
+  return null;
+};
+
+/** Renders the settings panel under the providers it consumes, `extra` mounted alongside for tests that need to seed real context state before the panel opens. */
+const renderScreen = (extra?: ReactNode) =>
   render(
     <SettingsProvider>
-      <SettingsButton />
-      <SettingsScreen />
+      <DevVideoProvider>
+        {extra}
+        <SettingsButton />
+        <SettingsScreen />
+      </DevVideoProvider>
     </SettingsProvider>,
   );
 
 const open = async (user: ReturnType<typeof userEvent.setup>) => {
   await user.click(screen.getByRole("button", { name: /open settings/i }));
+};
+
+/**
+ * Opens the settings panel with developer options already on. Pass a file to
+ * seed a real override through DevVideoProvider before the panel opens, so
+ * the "already overridden" row state comes from actual context.
+ */
+const renderOpenSettingsWithDeveloperOptions = async (file?: File) => {
+  window.localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({ developerOptions: true }),
+  );
+  const user = userEvent.setup();
+  renderScreen(file ? <DevVideoSeed file={file} /> : undefined);
+  await open(user);
+  return user;
+};
+
+/** Opens the settings panel with developer options left off. */
+const renderOpenSettings = async () => {
+  const user = userEvent.setup();
+  renderScreen();
+  await open(user);
+  return user;
 };
 
 describe("SettingsScreen", () => {
@@ -332,5 +392,33 @@ describe("SettingsScreen", () => {
       JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}")
         .confidenceThreshold,
     ).toBe(0.3);
+  });
+
+  it("shows the camera as the feed until a file is chosen", async () => {
+    await renderOpenSettingsWithDeveloperOptions();
+    expect(screen.getByTestId("video-file-value")).toHaveTextContent("Camera");
+    expect(screen.queryByRole("button", { name: "CLEAR" })).toBeNull();
+  });
+
+  it("swaps the feed to a picked file and offers to clear it", async () => {
+    await renderOpenSettingsWithDeveloperOptions();
+    const file = new File(["x"], "clip.mp4", { type: "video/mp4" });
+    await userEvent.upload(screen.getByTestId("video-file-input"), file);
+    expect(swapVideoSource).toHaveBeenCalledWith(file);
+  });
+
+  it("clears back to the camera", async () => {
+    const file = new File(["x"], "clip.mp4", { type: "video/mp4" });
+    await renderOpenSettingsWithDeveloperOptions(file);
+    expect(screen.getByTestId("video-file-value")).toHaveTextContent(
+      "clip.mp4",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "CLEAR" }));
+    expect(swapVideoSource).toHaveBeenCalledWith(null);
+  });
+
+  it("hides the row when developer options are off", async () => {
+    await renderOpenSettings();
+    expect(screen.queryByTestId("video-file-value")).toBeNull();
   });
 });
