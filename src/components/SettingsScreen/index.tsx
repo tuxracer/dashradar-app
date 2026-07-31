@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { X } from "lucide-react";
 import { ShareCard } from "@/components/ShareCard";
 import { useSettings } from "@/context/SettingsContext";
-import type { DetectionBackend } from "@/workers/detection/types";
 import {
   MODEL_REPO_URL,
   MODEL_REVISION,
@@ -11,11 +10,6 @@ import {
 import { REPO_URL, ZOOM_MODE_OPTIONS } from "./consts";
 
 export * from "./consts";
-
-/** Props for SettingsScreen. */
-type SettingsScreenProps = {
-  backend: DetectionBackend | undefined;
-};
 
 /** The pill switch used by every toggle row. `on` drives the track and knob. */
 const Toggle = ({ on }: { on: boolean }) => (
@@ -41,14 +35,12 @@ const Toggle = ({ on }: { on: boolean }) => (
  * indicator, Round-trip, Raw confidence, Camera preview, Frame preview, Save
  * frames, Auto save, Throttle inference, the segmented Zoom mode picker, Min
  * confidence),
- * plus read-only
- * Detection engine, Model, and About rows.
+ * plus read-only Model and About rows.
  * Closes on the large close button or Escape. While it is open the detection
- * pump is paused (DetectionContext
- * watches `settingsOpen`) and resumes on close. Reads the backend as a prop
- * (the same way StatusBar used to) so it stays testable without the worker.
+ * pump is paused (DetectionContext watches `settingsOpen`) and resumes on
+ * close.
  */
-export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
+export const SettingsScreen = () => {
   const {
     settingsOpen,
     closeSettings,
@@ -98,12 +90,6 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
   if (!settingsOpen) {
     return null;
   }
-
-  const engineLabel = backend
-    ? backend === "webgpu"
-      ? "GPU"
-      : "CPU"
-    : "Starting…";
 
   const versionLabel = __COMMIT_SHA__;
 
@@ -370,15 +356,6 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
               </div>
             </>
           )}
-
-          <div className="flex min-h-16 items-center justify-between gap-6 py-4">
-            <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-              Detection engine
-            </span>
-            <span className="text-base font-semibold tracking-[0.12em] text-white/60">
-              {engineLabel}
-            </span>
-          </div>
 
           <a
             href={MODEL_REPO_URL}

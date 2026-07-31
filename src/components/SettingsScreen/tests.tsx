@@ -9,7 +9,6 @@ import {
   STORAGE_KEY,
 } from "@/context/SettingsContext";
 import type { PersistedSettings } from "@/context/SettingsContext";
-import type { DetectionBackend } from "@/workers/detection/types";
 import { MODEL_REVISION } from "@/workers/detection/consts";
 
 afterEach(() => {
@@ -41,11 +40,11 @@ const persisted = (overrides: Partial<PersistedSettings> = {}) =>
     ...overrides,
   });
 
-const renderScreen = (props: { backend?: DetectionBackend } = {}) =>
+const renderScreen = () =>
   render(
     <SettingsProvider>
       <SettingsButton />
-      <SettingsScreen backend={props.backend} />
+      <SettingsScreen />
     </SettingsProvider>,
   );
 
@@ -159,28 +158,6 @@ describe("SettingsScreen", () => {
     await open(user);
     await user.keyboard("{Escape}");
     expect(screen.queryByText("Audio alerts")).not.toBeInTheDocument();
-  });
-
-  it("shows the GPU engine readout without an fps figure", async () => {
-    const user = userEvent.setup();
-    renderScreen({ backend: "webgpu" });
-    await open(user);
-    expect(screen.getByText("GPU")).toBeInTheDocument();
-    expect(screen.queryByText(/FPS/)).not.toBeInTheDocument();
-  });
-
-  it("shows the CPU engine readout on the wasm fallback", async () => {
-    const user = userEvent.setup();
-    renderScreen({ backend: "wasm" });
-    await open(user);
-    expect(screen.getByText("CPU")).toBeInTheDocument();
-  });
-
-  it("shows a starting placeholder before a backend is known", async () => {
-    const user = userEvent.setup();
-    renderScreen({ backend: undefined });
-    await open(user);
-    expect(screen.getByText(/starting/i)).toBeInTheDocument();
   });
 
   it("shows the model slug with its revision", async () => {

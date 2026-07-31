@@ -252,7 +252,7 @@ const RadarScreen = () => {
         videoSize={videoSize}
         viewportSize={viewportSize}
       />
-      <SettingsScreen backend={backend} />
+      <SettingsScreen />
       {status === "loading-model" && downloadingModel && (
         <ModelLoadScreen progress={modelProgress} />
       )}
