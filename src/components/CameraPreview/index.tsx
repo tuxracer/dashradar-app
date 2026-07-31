@@ -5,7 +5,8 @@ import type { AutoZoomLevel } from "@/lib/autoZoom";
 /**
  * A video element that can mirror its playback into a MediaStream.
  * captureStream lives on HTMLMediaElement in Chromium but not in TypeScript's
- * DOM lib, so the dev video fallback narrows to it through this guard.
+ * DOM lib, and not in WebKit at all, so the video file fallback narrows to it
+ * through this guard.
  */
 type CaptureStreamVideo = HTMLVideoElement & {
   captureStream: () => MediaStream;
@@ -45,10 +46,14 @@ type CameraPreviewProps = {
  * the status-bar pills in portrait, clear of the portrait contact card at the
  * bottom. pointer-events are disabled so the meter underneath stays
  * interactive. On the camera path the preview plays the source's own
- * MediaStream; in dev video mode the source plays a file instead of a stream,
- * so the preview mirrors it via captureStream (Chromium-only, which is every
- * browser dev video mode targets). The dev corner player shows the whole
- * clip, so the preview still earns its place there by showing the crop.
+ * MediaStream; with a video file as the feed the source plays a file instead
+ * of a stream, so the preview mirrors it via captureStream. That is Chromium
+ * only. The video file feed used to be a dev-server mode, but the settings
+ * picker ships in production and works on a phone, so WebKit reaches this
+ * path: on iOS Safari captureStream does not exist, the null guard below
+ * leaves the preview without a stream, and it renders an empty box. The corner
+ * player shows the whole clip, so the preview still earns its place on the
+ * browsers where it works by showing the crop.
  */
 export const CameraPreview = ({ source, zoom }: CameraPreviewProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
