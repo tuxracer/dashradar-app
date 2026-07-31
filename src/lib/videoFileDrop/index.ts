@@ -24,9 +24,11 @@ export const attachVideoDropListeners = (
   };
   const handleDrop = (event: Event) => {
     event.preventDefault();
-    const file = pickVideoFile((event as DragEvent).dataTransfer);
-    if (file) {
-      onFile(file);
+    if ("dataTransfer" in event) {
+      const file = pickVideoFile((event as DragEvent).dataTransfer);
+      if (file) {
+        onFile(file);
+      }
     }
   };
   target.addEventListener("dragover", handleDragOver);

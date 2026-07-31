@@ -9,7 +9,10 @@ import {
 const transferWith = (...files: File[]) =>
   ({ files }) as unknown as DataTransfer;
 
+/** Factory function for a test video file. */
 const clip = () => new File(["x"], "clip.mp4", { type: "video/mp4" });
+
+/** Factory function for a test photo file. */
 const photo = () => new File(["x"], "photo.png", { type: "image/png" });
 
 /** Dispatches a drop carrying `files` and returns the dispatched event. */
