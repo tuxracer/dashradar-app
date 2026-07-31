@@ -82,6 +82,25 @@ describe("isWorkerRequest", () => {
     ).toBe(false);
   });
 
+  it("accepts detect with and without the includeCrop flag", () => {
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const frame = new FakeImageBitmap();
+    expect(isWorkerRequest({ type: "detect", frame, includeCrop: true })).toBe(
+      true,
+    );
+    expect(isWorkerRequest({ type: "detect", frame, includeCrop: false })).toBe(
+      true,
+    );
+  });
+
+  it("rejects a non-boolean includeCrop", () => {
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const frame = new FakeImageBitmap();
+    expect(isWorkerRequest({ type: "detect", frame, includeCrop: "no" })).toBe(
+      false,
+    );
+  });
+
   it("accepts a detect message carrying a numeric confidenceThreshold", () => {
     vi.stubGlobal("ImageBitmap", FakeImageBitmap);
     const frame = new FakeImageBitmap();

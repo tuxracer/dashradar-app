@@ -45,6 +45,33 @@ describe("SettingsScreen", () => {
         saveFrames: true,
         autoSaveFrames: false,
         radarAudio: false,
+        detectionImage: true,
+        throttleInference: true,
+        zoomMode: "auto",
+        confidenceThreshold: 0.5,
+        zoomIndicator: true,
+        roundTripIndicator: true,
+        cameraPreview: false,
+      }),
+    );
+  });
+
+  // A normal-drive row, so it sits beside Audio alerts rather than behind the
+  // Developer options switch.
+  it("toggles and persists the detection image from its row", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await open(user);
+    await user.click(screen.getByText("Detection image"));
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({
+        developerOptions: false,
+        showDebug: true,
+        frameThumbnails: true,
+        saveFrames: true,
+        autoSaveFrames: false,
+        radarAudio: true,
+        detectionImage: false,
         throttleInference: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
@@ -74,6 +101,7 @@ describe("SettingsScreen", () => {
         saveFrames: true,
         autoSaveFrames: false,
         radarAudio: true,
+        detectionImage: true,
         throttleInference: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
@@ -97,6 +125,7 @@ describe("SettingsScreen", () => {
         saveFrames: true,
         autoSaveFrames: false,
         radarAudio: true,
+        detectionImage: true,
         throttleInference: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
@@ -120,6 +149,9 @@ describe("SettingsScreen", () => {
     expect(screen.queryByText("Auto save")).not.toBeInTheDocument();
     expect(screen.queryByText("Throttle inference")).not.toBeInTheDocument();
     expect(screen.queryByText("Zoom")).not.toBeInTheDocument();
+    // The two driver-facing rows are not developer rows and stay put.
+    expect(screen.getByText("Audio alerts")).toBeInTheDocument();
+    expect(screen.getByText("Detection image")).toBeInTheDocument();
   });
 
   it("reveals every developer row once developer options are on", async () => {
@@ -259,6 +291,7 @@ describe("SettingsScreen", () => {
         saveFrames: true,
         autoSaveFrames: false,
         radarAudio: true,
+        detectionImage: true,
         throttleInference: false,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
@@ -286,6 +319,7 @@ describe("SettingsScreen", () => {
         saveFrames: true,
         autoSaveFrames: false,
         radarAudio: true,
+        detectionImage: true,
         throttleInference: true,
         zoomMode: "2x",
         confidenceThreshold: 0.5,
@@ -330,6 +364,7 @@ describe("SettingsScreen", () => {
         saveFrames: true,
         autoSaveFrames: false,
         radarAudio: true,
+        detectionImage: true,
         throttleInference: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
@@ -357,6 +392,7 @@ describe("SettingsScreen", () => {
         saveFrames: false,
         autoSaveFrames: false,
         radarAudio: true,
+        detectionImage: true,
         throttleInference: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
@@ -384,6 +420,7 @@ describe("SettingsScreen", () => {
         saveFrames: true,
         autoSaveFrames: true,
         radarAudio: true,
+        detectionImage: true,
         throttleInference: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,

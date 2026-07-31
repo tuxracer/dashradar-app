@@ -68,6 +68,15 @@ export type Settings = {
    */
   radarAudio: boolean;
   /**
+   * When true, a detection puts a card on the glass showing the picture the
+   * detector cut out of the frame. On by default. Off turns the card off
+   * outright: the worker skips the cutout, so no image of what was detected is
+   * ever produced. The two card-related developer options ride on top of it and
+   * do nothing while it is off, since there is no card for the per-scan preview
+   * to extend or the SAVE button to sit in.
+   */
+  detectionImage: boolean;
+  /**
    * When false, the detection pump runs inference flat-out with no pacing
    * floor. A developer option, so it only takes effect while developerOptions
    * is on and a phone can never run unthrottled otherwise. On by default: the
@@ -165,6 +174,8 @@ export type SettingsContextValue = {
   toggleAutoSaveFrames: () => void;
   radarAudio: boolean;
   toggleRadarAudio: () => void;
+  detectionImage: boolean;
+  toggleDetectionImage: () => void;
   throttleInference: boolean;
   toggleThrottleInference: () => void;
   zoomMode: ZoomMode;
@@ -206,6 +217,7 @@ export const isPersistedSettings = (
     (value.saveFrames === undefined || isBoolean(value.saveFrames)) &&
     (value.autoSaveFrames === undefined || isBoolean(value.autoSaveFrames)) &&
     (value.radarAudio === undefined || isBoolean(value.radarAudio)) &&
+    (value.detectionImage === undefined || isBoolean(value.detectionImage)) &&
     (value.throttleInference === undefined ||
       isBoolean(value.throttleInference)) &&
     (value.zoomMode === undefined || isZoomMode(value.zoomMode)) &&

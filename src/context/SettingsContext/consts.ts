@@ -29,6 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
   saveFrames: true,
   autoSaveFrames: false,
   radarAudio: true,
+  detectionImage: true,
   throttleInference: true,
   zoomMode: "auto",
   confidenceThreshold: 0.5,

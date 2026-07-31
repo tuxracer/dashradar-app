@@ -1420,6 +1420,120 @@ describe("DetectionProvider", () => {
     ).toMatchObject({ includeFrame: false, includeThumbnail: false });
   });
 
+  // The contact card is the crop's only consumer in a normal drive, so turning
+  // the detection image off stops the worker cutting one at all.
+  it("stops asking for the crop while the detection image is off", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ detectionImage: false }),
+    );
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    expect(
+      worker.posted.find((message) => message.type === "detect"),
+    ).toMatchObject({ includeCrop: false });
+  });
+
+  it("asks for the crop while the detection image is on", async () => {
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    expect(
+      worker.posted.find((message) => message.type === "detect"),
+    ).toMatchObject({ includeCrop: true });
+  });
+
+  // Auto save reads the cutout's validated detection as its signal that a scan
+  // is worth downloading, so it has to keep the request alive on its own.
+  it("keeps asking for the crop for auto save with the detection image off", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        developerOptions: true,
+        autoSaveFrames: true,
+        detectionImage: false,
+      }),
+    );
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    expect(
+      worker.posted.find((message) => message.type === "detect"),
+    ).toMatchObject({ includeCrop: true });
+  });
+
+  // The per-scan preview extends the contact card, so with no card there is
+  // nothing for it to extend and no reason to pay for the thumbnail.
+  it("stops asking for the thumbnail while the detection image is off", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        developerOptions: true,
+        frameThumbnails: true,
+        detectionImage: false,
+      }),
+    );
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    expect(
+      worker.posted.find((message) => message.type === "detect"),
+    ).toMatchObject({ includeThumbnail: false });
+  });
+
   // The two flags are separate settings, so each has to reach the worker on its
   // own rather than riding along with the debug overlay.
   it("posts includeFrame true while frame saving is on, and nothing else", async () => {
@@ -2705,6 +2819,33 @@ describe("DetectionProvider contact", () => {
     expect(screen.getByTestId("contact-direction")).toHaveTextContent("left");
     expect(screen.getByTestId("contact-frame")).toHaveTextContent("none");
   });
+
+  it("shows no contact while the detection image is off", () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ detectionImage: false }),
+    );
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const worker = new FakeWorker();
+    const image = new FakeImageBitmap();
+    render(
+      <SettingsProvider>
+        <DetectionProvider createWorker={() => worker}>
+          <ContactProbe />
+        </DetectionProvider>
+      </SettingsProvider>,
+    );
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [policeDetection(0.85, 0.15, 0.25)],
+        timing,
+        crop: { image, detectionIndex: 0 },
+      });
+    });
+    expect(screen.getByTestId("contact-direction")).toHaveTextContent("none");
+    expect(image.close).toHaveBeenCalled();
+  });
 });
 
 /** Reads the auto-save publication the save toast renders. */
@@ -2798,6 +2939,40 @@ describe("DetectionProvider auto save", () => {
       });
     });
     expect(downloadBlob).not.toHaveBeenCalled();
+  });
+
+  // Hiding the card is a display choice; a collection drive that turned it off
+  // to keep the glass clean must still get its files.
+  it("still downloads with the detection image turned off", () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        developerOptions: true,
+        autoSaveFrames: true,
+        detectionImage: false,
+      }),
+    );
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const worker = new FakeWorker();
+    render(
+      <SettingsProvider>
+        <DetectionProvider createWorker={() => worker}>
+          <ContactProbe />
+        </DetectionProvider>
+      </SettingsProvider>,
+    );
+    const frame = jpeg();
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [policeDetection(0.85)],
+        timing,
+        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
+        frame,
+      });
+    });
+    expect(downloadBlob).toHaveBeenCalledWith(frame, expect.any(String));
+    expect(screen.getByTestId("contact-direction")).toHaveTextContent("none");
   });
 
   it("downloads nothing while the setting is off", () => {

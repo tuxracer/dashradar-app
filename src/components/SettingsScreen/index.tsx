@@ -35,7 +35,8 @@ const Toggle = ({ on }: { on: boolean }) => (
 /**
  * Full-screen settings panel built for driver-first use on a dash mount, in
  * landscape. Renders nothing until the panel is opened. Large, full-width rows
- * with big tap targets: the Audio alerts and Developer options toggles, the
+ * with big tap targets: the Audio alerts, Detection image, and Developer
+ * options toggles, the
  * development-only controls Developer options reveals (Debug overlay, Zoom
  * indicator, Round-trip, Camera preview, Frame preview, Save frames, Auto
  * save, Throttle inference, the segmented Zoom mode picker, Min confidence),
@@ -62,6 +63,8 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
     toggleAutoSaveFrames,
     radarAudio,
     toggleRadarAudio,
+    detectionImage,
+    toggleDetectionImage,
     throttleInference,
     toggleThrottleInference,
     zoomMode,
@@ -133,6 +136,22 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
               </span>
             </span>
             <Toggle on={radarAudio} />
+          </button>
+
+          <button
+            type="button"
+            onClick={toggleDetectionImage}
+            className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
+          >
+            <span className="flex flex-col gap-1">
+              <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                Detection image
+              </span>
+              <span className="text-sm font-medium text-white/45">
+                Shows a picture of what was detected.
+              </span>
+            </span>
+            <Toggle on={detectionImage} />
           </button>
 
           <button

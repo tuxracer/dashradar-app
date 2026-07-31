@@ -42,6 +42,7 @@ describe("SettingsContext", () => {
         saveFrames: true,
         autoSaveFrames: false,
         radarAudio: true,
+        detectionImage: true,
         throttleInference: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
@@ -104,6 +105,7 @@ describe("SettingsContext", () => {
         saveFrames: true,
         autoSaveFrames: false,
         radarAudio: true,
+        detectionImage: true,
         throttleInference: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
@@ -131,6 +133,47 @@ describe("SettingsContext", () => {
         saveFrames: true,
         autoSaveFrames: false,
         radarAudio: false,
+        detectionImage: true,
+        throttleInference: true,
+        zoomMode: "auto",
+        confidenceThreshold: 0.5,
+        zoomIndicator: true,
+        roundTripIndicator: true,
+        cameraPreview: false,
+      }),
+    );
+  });
+
+  it("defaults detectionImage to true when storage is empty", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.detectionImage).toBe(true);
+  });
+
+  // A normal-drive setting, not a developer one: it stays exactly as the driver
+  // left it whatever the master switch does.
+  it("keeps detectionImage off while developer options are off", () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ detectionImage: false }),
+    );
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.developerOptions).toBe(false);
+    expect(result.current.detectionImage).toBe(false);
+  });
+
+  it("toggling flips detectionImage and persists it to localStorage", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleDetectionImage());
+    expect(result.current.detectionImage).toBe(false);
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({
+        developerOptions: false,
+        showDebug: true,
+        frameThumbnails: true,
+        saveFrames: true,
+        autoSaveFrames: false,
+        radarAudio: true,
+        detectionImage: false,
         throttleInference: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
@@ -159,6 +202,7 @@ describe("SettingsContext", () => {
         saveFrames: true,
         autoSaveFrames: false,
         radarAudio: true,
+        detectionImage: true,
         throttleInference: false,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
@@ -362,6 +406,7 @@ describe("SettingsContext", () => {
         saveFrames: true,
         autoSaveFrames: false,
         radarAudio: true,
+        detectionImage: true,
         throttleInference: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,

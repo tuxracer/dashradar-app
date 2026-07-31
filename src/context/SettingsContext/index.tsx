@@ -85,6 +85,9 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     () => loadSettings().autoSaveFrames,
   );
   const [radarAudio, setRadarAudio] = useState(() => loadSettings().radarAudio);
+  const [detectionImage, setDetectionImage] = useState(
+    () => loadSettings().detectionImage,
+  );
   const [storedThrottleInference, setThrottleInference] = useState(
     () => loadSettings().throttleInference,
   );
@@ -149,6 +152,7 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       saveFrames: storedSaveFrames,
       autoSaveFrames: storedAutoSaveFrames,
       radarAudio,
+      detectionImage,
       throttleInference: storedThrottleInference,
       zoomMode: storedZoomMode,
       confidenceThreshold: storedConfidenceThreshold,
@@ -168,6 +172,7 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     storedSaveFrames,
     storedAutoSaveFrames,
     radarAudio,
+    detectionImage,
     storedThrottleInference,
     storedZoomMode,
     storedConfidenceThreshold,
@@ -198,6 +203,10 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
 
   const toggleRadarAudio = useCallback(() => {
     setRadarAudio((prev) => !prev);
+  }, []);
+
+  const toggleDetectionImage = useCallback(() => {
+    setDetectionImage((prev) => !prev);
   }, []);
 
   const toggleThrottleInference = useCallback(() => {
@@ -248,6 +257,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleAutoSaveFrames,
       radarAudio,
       toggleRadarAudio,
+      detectionImage,
+      toggleDetectionImage,
       throttleInference,
       toggleThrottleInference,
       zoomMode,
@@ -277,6 +288,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleAutoSaveFrames,
       radarAudio,
       toggleRadarAudio,
+      detectionImage,
+      toggleDetectionImage,
       throttleInference,
       toggleThrottleInference,
       zoomMode,

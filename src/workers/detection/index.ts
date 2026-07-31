@@ -479,12 +479,14 @@ const detect = async ({
   frame,
   includeFrame,
   includeThumbnail,
+  includeCrop,
   zoom,
   confidenceThreshold,
 }: {
   frame: ImageBitmap;
   includeFrame: boolean;
   includeThumbnail: boolean;
+  includeCrop: boolean;
   zoom: number;
   confidenceThreshold: number;
 }) => {
@@ -557,10 +559,11 @@ const detect = async ({
 
     // Cut the highest-scoring detection out of the full-resolution frame so
     // the UI can show what was detected. Best-effort: a failed cutout never
-    // blocks the detection result.
+    // blocks the detection result. Skipped entirely when the detection image
+    // is turned off, so a card nobody sees costs no bitmap.
     let crop: DetectionCrop | undefined;
     const topIndex = topDetectionIndex(detections);
-    if (topIndex !== undefined) {
+    if (includeCrop && topIndex !== undefined) {
       const rect = cropRect(
         detections[topIndex].box,
         frame.width,
@@ -641,6 +644,7 @@ self.onmessage = (event: MessageEvent<unknown>) => {
     frame: request.frame,
     includeFrame: request.includeFrame ?? false,
     includeThumbnail: request.includeThumbnail ?? false,
+    includeCrop: request.includeCrop ?? true,
     zoom: request.zoom ?? ZOOM_OFF,
     confidenceThreshold: request.confidenceThreshold ?? CONFIDENCE_THRESHOLD,
   });

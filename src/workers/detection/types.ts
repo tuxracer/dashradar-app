@@ -75,6 +75,13 @@ export type WorkerRequest =
        */
       includeThumbnail?: boolean;
       /**
+       * When false, the worker skips cutting the top detection out of the
+       * frame, so a detection comes back without its image. Set from the
+       * detection-image setting, which turns the contact card off. Omitting it
+       * includes the cutout, the production default.
+       */
+      includeCrop?: boolean;
+      /**
        * Factor by which to shrink the centered square crop the worker feeds the
        * model, so the input covers a narrower field of view. 1 (the default
        * when omitted) is the full centered square; ZOOM_2X halves it. Set from
@@ -105,6 +112,7 @@ export const isWorkerRequest = (value: unknown): value is WorkerRequest => {
     (value.includeFrame === undefined || isBoolean(value.includeFrame)) &&
     (value.includeThumbnail === undefined ||
       isBoolean(value.includeThumbnail)) &&
+    (value.includeCrop === undefined || isBoolean(value.includeCrop)) &&
     (value.zoom === undefined || isNumber(value.zoom)) &&
     (value.confidenceThreshold === undefined ||
       isNumber(value.confidenceThreshold))

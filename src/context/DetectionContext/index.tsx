@@ -120,6 +120,7 @@ export const DetectionProvider = ({
     frameThumbnails,
     saveFrames,
     autoSaveFrames,
+    detectionImage,
     throttleInference,
     zoomMode,
     confidenceThreshold,
@@ -141,11 +142,29 @@ export const DetectionProvider = ({
     autoSaveRef.current = autoSaveFrames;
   }, [autoSaveFrames]);
   // Mirrors the frame-preview flag the same way. It asks the worker for a
-  // thumbnail of what the model saw on scans with no detection to crop.
-  const includeThumbnailRef = useRef(frameThumbnails);
+  // thumbnail of what the model saw on scans with no detection to crop. The
+  // preview extends the contact card to every scan, so it rides on the card
+  // being shown at all: with the detection image off there is nothing to
+  // extend, and asking for the thumbnail would only burn a bitmap per scan.
+  const includeThumbnailRef = useRef(frameThumbnails && detectionImage);
   useEffect(() => {
-    includeThumbnailRef.current = frameThumbnails;
-  }, [frameThumbnails]);
+    includeThumbnailRef.current = frameThumbnails && detectionImage;
+  }, [frameThumbnails, detectionImage]);
+  // Mirrors the detection-image setting for the detections handler, which shows
+  // the contact card only while it is on.
+  const detectionImageRef = useRef(detectionImage);
+  useEffect(() => {
+    detectionImageRef.current = detectionImage;
+  }, [detectionImage]);
+  // Asks the worker for the cutout of the top detection. The card needs it, and
+  // so does auto save, which uses the cutout's validated detection as the
+  // signal that a scan is worth downloading; requesting it for either keeps the
+  // two settings independent, the same way includeFrame serves both frame
+  // saving and auto save.
+  const includeCropRef = useRef(detectionImage || autoSaveFrames);
+  useEffect(() => {
+    includeCropRef.current = detectionImage || autoSaveFrames;
+  }, [detectionImage, autoSaveFrames]);
   // Mirrors the throttle flag for schedulePacedFrame, a stable callback that
   // reads it per result instead of re-subscribing. useSettings() already
   // reports the effective value: throttleInference can only be false while the
@@ -449,6 +468,7 @@ export const DetectionProvider = ({
           frame,
           includeFrame: includeFrameRef.current,
           includeThumbnail: includeThumbnailRef.current,
+          includeCrop: includeCropRef.current,
           zoom,
           confidenceThreshold: confidenceThresholdRef.current,
         },
@@ -684,15 +704,22 @@ export const DetectionProvider = ({
               confidenceThresholdRef.current,
             );
             if (cropDetection) {
-              replaceContact({
-                image: message.crop.image,
-                frame: message.frame,
-                score: cropDetection.score,
-                signal: signalFromScore(cropDetection.score),
-                box: cropDetection.box,
-                direction: contactDirection(cropDetection.box),
-                at: performance.now(),
-              });
+              // With the detection image off the cutout is only here because
+              // auto save asked for it, so close the bitmap and leave the card
+              // alone; the download below still runs.
+              if (detectionImageRef.current) {
+                replaceContact({
+                  image: message.crop.image,
+                  frame: message.frame,
+                  score: cropDetection.score,
+                  signal: signalFromScore(cropDetection.score),
+                  box: cropDetection.box,
+                  direction: contactDirection(cropDetection.box),
+                  at: performance.now(),
+                });
+              } else {
+                message.crop.image.close();
+              }
               // Auto save (developer option) downloads the frame the instant a
               // detection lands, so training data can be collected on a drive
               // without reaching for the card's SAVE button. Deliberately
@@ -716,12 +743,18 @@ export const DetectionProvider = ({
           } else if (message.frameThumbnail) {
             // Frame preview on, no detection to crop: show a bare preview so the
             // card reflects every scan. No detection metadata, so the meter
-            // stays at zero and the card's direction row stays hidden.
-            replaceContact({
-              image: message.frameThumbnail,
-              frame: message.frame,
-              at: performance.now(),
-            });
+            // stays at zero and the card's direction row stays hidden. The
+            // gate covers a frame that was already in flight when the detection
+            // image was turned off.
+            if (detectionImageRef.current) {
+              replaceContact({
+                image: message.frameThumbnail,
+                frame: message.frame,
+                at: performance.now(),
+              });
+            } else {
+              message.frameThumbnail.close();
+            }
           }
           // Report an anonymous police sighting to analytics on the leading
           // edge only: fire when police appear, then stay quiet until they have
@@ -1192,6 +1225,12 @@ export const DetectionProvider = ({
 
   const getDebugSnapshot = useCallback(() => debugRef.current, []);
 
+  // The detection-image setting decides whether there is a contact card at all,
+  // so the gate lives here rather than in the consumer: turning it off drops
+  // the card already on screen the same instant it stops the worker from
+  // cutting new ones, and every consumer sees one answer.
+  const shownContact = detectionImage ? contact : undefined;
+
   const value = useMemo(
     () => ({
       status,
@@ -1203,7 +1242,7 @@ export const DetectionProvider = ({
       hud,
       getDebugSnapshot,
       error,
-      contact,
+      contact: shownContact,
       savedFrame,
       autoZoom,
       cameraStalled,
@@ -1221,7 +1260,7 @@ export const DetectionProvider = ({
       hud,
       getDebugSnapshot,
       error,
-      contact,
+      shownContact,
       savedFrame,
       autoZoom,
       cameraStalled,
