@@ -48,14 +48,3 @@ export const attachVideoDropListeners = (
     target.removeEventListener("drop", handleDrop);
   };
 };
-
-/**
- * Whether dropping a video file is available. The dev server always allows it
- * so a local run needs no toggle hunting; a production build requires the
- * Developer options switch, which is persisted and therefore still readable on
- * the error screens that cannot reach the settings panel.
- */
-export const isVideoDropEnabled = (
-  dev: boolean,
-  developerOptions: boolean,
-): boolean => dev || developerOptions;

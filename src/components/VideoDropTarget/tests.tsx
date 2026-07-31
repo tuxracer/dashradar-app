@@ -2,7 +2,6 @@ import { render } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { VideoDropTarget } from "@/components/VideoDropTarget";
 import { DevVideoProvider } from "@/context/DevVideoContext";
-import { SettingsProvider } from "@/context/SettingsContext";
 
 /** Stands in for DetectionContext's feed swap, which needs no worker here. */
 const swapVideoSource = vi.fn();
@@ -20,14 +19,12 @@ const dropClip = () => {
   return file;
 };
 
-/** Mounts the drop target under the providers it consumes. */
+/** Mounts the drop target under the provider it consumes. */
 const renderTarget = () =>
   render(
-    <SettingsProvider>
-      <DevVideoProvider>
-        <VideoDropTarget />
-      </DevVideoProvider>
-    </SettingsProvider>,
+    <DevVideoProvider>
+      <VideoDropTarget />
+    </DevVideoProvider>,
   );
 
 beforeEach(() => {

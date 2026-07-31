@@ -363,11 +363,12 @@ export const SettingsScreen = () => {
             </>
           )}
 
-          {/* Outside the developer block on purpose: while a clip is playing
-              this row holds the only CLEAR button, so gating it on the master
-              switch alone would strand the session on a canned clip the moment
-              that switch went off. It reveals no capability by itself, so
-              showing it changes nothing about what is turned on. */}
+          {/* Outside the developer block on purpose: a clip can arrive by
+              drop with the master switch off, and this row holds the only
+              CLEAR button, so gating it on that switch would strand the
+              session on canned footage with a reload as the only exit. It
+              reveals no capability by itself, so showing it changes nothing
+              about what is turned on. */}
           {(developerOptions || source !== null) && (
             <div className="flex min-h-16 items-center justify-between gap-6 py-4">
               <button
