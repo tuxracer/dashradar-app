@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { track } from "@vercel/analytics";
 import {
   CameraPermissionScreen,
@@ -22,12 +22,13 @@ import { RoundTripIndicator } from "@/components/RoundTripIndicator";
 import { SaveToast } from "@/components/SaveToast";
 import { SettingsScreen } from "@/components/SettingsScreen";
 import { StatusBar } from "@/components/StatusBar";
+import { VideoDropTarget } from "@/components/VideoDropTarget";
 import { ZoomIndicator } from "@/components/ZoomIndicator";
 import { DetectionProvider, useDetection } from "@/context/DetectionContext";
+import { DevVideoProvider, useDevVideo } from "@/context/DevVideoContext";
 import { SettingsProvider, useSettings } from "@/context/SettingsContext";
 import type { CameraError } from "@/lib/camera";
 import type { Size } from "@/lib/detection";
-import { DEV_VIDEO_URL } from "@/lib/devVideo";
 import { hudScore, hudSignal } from "@/lib/radarSignal";
 import { createWakeLockManager } from "@/lib/wakeLock";
 import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
@@ -64,6 +65,7 @@ const RadarScreen = () => {
     start,
     cameraStalled,
     cameraEpoch,
+    clearCameraStall,
   } = useDetection();
   const {
     radarAudio,
@@ -75,16 +77,17 @@ const RadarScreen = () => {
     cameraPreview,
     rawConfidence,
   } = useSettings();
-  // Dev video mode has no camera to introduce or ask permission for, so the
+  const { source } = useDevVideo();
+  // A video file feed has no camera to introduce or ask permission for, so the
   // intro is skipped outright and the radar view loads immediately.
   const [showIntro, setShowIntro] = useState(
-    () => DEV_VIDEO_URL === null && shouldShowIntro(),
+    () => source === null && shouldShowIntro(),
   );
   // The in-app permission ask sits between the intro and the first
   // getUserMedia call, so the browser's own prompt never lands unexplained.
-  // Dev video mode never requests the camera, so it skips the ask too.
+  // A video file feed never requests the camera, so it skips the ask too.
   const [showCameraPrompt, setShowCameraPrompt] = useState(
-    () => DEV_VIDEO_URL === null && shouldShowCameraPrompt(),
+    () => source === null && shouldShowCameraPrompt(),
   );
   const [cameraPromptDeclined, setCameraPromptDeclined] = useState(false);
   const [cameraError, setCameraError] = useState<CameraError>();
@@ -129,7 +132,28 @@ const RadarScreen = () => {
     [start, updateVideoSize],
   );
 
-  if (showIntro) {
+  // Returning to the camera gives it a clean slate: a permission error or a
+  // stall recorded before the clip was loaded must not pre-empt the fresh
+  // getUserMedia call the remounting CameraView is about to make. Those two
+  // are the only screens a clip must not restore, which is why they reset here
+  // while every other camera screen is merely outranked by a source. The ref
+  // narrows this to the clip-to-camera edge, so a session that never played a
+  // clip is untouched.
+  const clipPlayedRef = useRef(false);
+  useEffect(() => {
+    if (source) {
+      clipPlayedRef.current = true;
+      return;
+    }
+    if (!clipPlayedRef.current) {
+      return;
+    }
+    clipPlayedRef.current = false;
+    setCameraError(undefined);
+    clearCameraStall();
+  }, [source, clearCameraStall]);
+
+  if (showIntro && !source) {
     return (
       <IntroScreen
         onStart={() => {
@@ -142,10 +166,10 @@ const RadarScreen = () => {
   }
   // Declining the in-app permission ask lands on the same screen as a real
   // browser-level denial; its reload button restarts the flow at the ask.
-  if (cameraPromptDeclined) {
+  if (cameraPromptDeclined && !source) {
     return <ErrorScreen code="PERMISSION_DENIED" />;
   }
-  if (showCameraPrompt) {
+  if (showCameraPrompt && !source) {
     return (
       <CameraPermissionScreen
         onAllow={() => {
@@ -160,7 +184,7 @@ const RadarScreen = () => {
       />
     );
   }
-  if (cameraError) {
+  if (cameraError && !source) {
     return <ErrorScreen code={cameraError.code} />;
   }
   if (status === "error" && error) {
@@ -168,7 +192,7 @@ const RadarScreen = () => {
   }
   // Automatic camera recovery gave up on a frozen or black feed: ask the driver
   // to clear the lens and reload rather than looping silent remounts/reloads.
-  if (cameraStalled) {
+  if (cameraStalled && !source) {
     return <ErrorScreen code="CAMERA_STALLED" />;
   }
 
@@ -179,9 +203,10 @@ const RadarScreen = () => {
   return (
     <main className="fixed inset-0 bg-surface">
       <RadarBackdrop />
-      {DEV_VIDEO_URL ? (
+      {source ? (
         <DevVideoView
-          src={DEV_VIDEO_URL}
+          key={source.url}
+          src={source.url}
           scanning={status === "running"}
           onStream={handleStream}
           onVideoResize={updateVideoSize}
@@ -263,9 +288,15 @@ const RadarScreen = () => {
 const App = () => {
   return (
     <SettingsProvider>
-      <DetectionProvider>
-        <RadarScreen />
-      </DetectionProvider>
+      {/* DevVideoProvider wraps DetectionProvider, which consumes it: outside
+          the provider the hook falls back to a value whose setters are no-ops,
+          so the wrong nesting would make every feed swap silently do nothing. */}
+      <DevVideoProvider>
+        <DetectionProvider>
+          <VideoDropTarget />
+          <RadarScreen />
+        </DetectionProvider>
+      </DevVideoProvider>
     </SettingsProvider>
   );
 };

@@ -68,6 +68,7 @@ export const CameraView = ({
   return (
     <video
       ref={videoRef}
+      data-testid="camera-view"
       autoPlay
       muted
       playsInline

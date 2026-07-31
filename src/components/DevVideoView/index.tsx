@@ -79,6 +79,7 @@ export const DevVideoView = ({
   return (
     <video
       ref={videoRef}
+      data-testid="dev-video-view"
       src={src}
       controls
       loop
