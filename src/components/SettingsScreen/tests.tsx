@@ -421,4 +421,20 @@ describe("SettingsScreen", () => {
     await renderOpenSettings();
     expect(screen.queryByTestId("video-file-value")).toBeNull();
   });
+
+  // Turning the master switch off used to take the row (and with it the only
+  // CLEAR button) away while the override survived, stranding the session on a
+  // canned clip with no way back to the camera short of a reload.
+  it("keeps the row reachable when developer options go off with a clip playing", async () => {
+    const file = new File(["x"], "clip.mp4", { type: "video/mp4" });
+    const user = await renderOpenSettingsWithDeveloperOptions(file);
+    await user.click(screen.getByText("Developer options"));
+
+    expect(screen.queryByText("Debug overlay")).not.toBeInTheDocument();
+    expect(screen.getByTestId("video-file-value")).toHaveTextContent(
+      "clip.mp4",
+    );
+    await user.click(screen.getByRole("button", { name: "CLEAR" }));
+    expect(swapVideoSource).toHaveBeenCalledWith(null);
+  });
 });

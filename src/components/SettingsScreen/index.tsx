@@ -36,7 +36,8 @@ const Toggle = ({ on }: { on: boolean }) => (
  * development-only controls Developer options reveals (Debug overlay, Zoom
  * indicator, Round-trip, Raw confidence, Camera preview, Frame preview, Save
  * frames, Auto save, Throttle inference, the segmented Zoom mode picker, Min
- * confidence, Video file),
+ * confidence), the Video file row (also shown whenever a clip is overriding
+ * the feed, so its CLEAR button survives the master switch going off),
  * plus read-only Model and About rows.
  * Closes on the large close button or Escape. While it is open the detection
  * pump is paused (DetectionContext watches `settingsOpen`) and resumes on
@@ -305,54 +306,6 @@ export const SettingsScreen = () => {
                 <Toggle on={throttleInference} />
               </button>
 
-              <div className="flex min-h-16 items-center justify-between gap-6 py-4">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex flex-1 flex-col gap-1 text-left"
-                >
-                  <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-                    Video file
-                  </span>
-                  <span className="text-sm font-medium text-white/45">
-                    Play a local video file instead of the camera.
-                  </span>
-                </button>
-                <span className="flex items-center gap-4">
-                  <span
-                    data-testid="video-file-value"
-                    className="max-w-40 truncate text-sm font-medium text-white/70"
-                  >
-                    {source ? source.name : "Camera"}
-                  </span>
-                  {overridden && (
-                    <button
-                      type="button"
-                      onClick={() => swapVideoSource(null)}
-                      className="min-h-12 rounded-lg border border-white/25 px-4 text-sm font-semibold tracking-[0.06em] text-white/90"
-                    >
-                      CLEAR
-                    </button>
-                  )}
-                </span>
-                <input
-                  ref={fileInputRef}
-                  data-testid="video-file-input"
-                  type="file"
-                  accept="video/*"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) {
-                      swapVideoSource(file);
-                    }
-                    // Clear the input so picking the same file twice still
-                    // fires change.
-                    event.target.value = "";
-                  }}
-                />
-              </div>
-
               <div className="flex min-h-16 flex-col gap-3 py-4">
                 <span className="flex flex-col gap-1">
                   <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
@@ -408,6 +361,61 @@ export const SettingsScreen = () => {
                 </span>
               </div>
             </>
+          )}
+
+          {/* Outside the developer block on purpose: while an override is
+              playing this row holds the only CLEAR button, so gating it on the
+              master switch alone would strand the session on a canned clip the
+              moment that switch went off. It reveals no capability by itself,
+              so showing it changes nothing about what is turned on. */}
+          {(developerOptions || overridden) && (
+            <div className="flex min-h-16 items-center justify-between gap-6 py-4">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex flex-1 flex-col gap-1 text-left"
+              >
+                <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                  Video file
+                </span>
+                <span className="text-sm font-medium text-white/45">
+                  Play a local video file instead of the camera.
+                </span>
+              </button>
+              <span className="flex items-center gap-4">
+                <span
+                  data-testid="video-file-value"
+                  className="max-w-40 truncate text-sm font-medium text-white/70"
+                >
+                  {source ? source.name : "Camera"}
+                </span>
+                {overridden && (
+                  <button
+                    type="button"
+                    onClick={() => swapVideoSource(null)}
+                    className="min-h-12 rounded-lg border border-white/25 px-4 text-sm font-semibold tracking-[0.06em] text-white/90"
+                  >
+                    CLEAR
+                  </button>
+                )}
+              </span>
+              <input
+                ref={fileInputRef}
+                data-testid="video-file-input"
+                type="file"
+                accept="video/*"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) {
+                    swapVideoSource(file);
+                  }
+                  // Clear the input so picking the same file twice still
+                  // fires change.
+                  event.target.value = "";
+                }}
+              />
+            </div>
           )}
 
           <a
