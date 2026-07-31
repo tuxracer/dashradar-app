@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { track } from "@vercel/analytics";
+import { useDevVideo } from "@/context/DevVideoContext";
 import { useSettings } from "@/context/SettingsContext";
 import { APP_RELEASE } from "@/lib/appRelease";
 import {
@@ -23,7 +24,6 @@ import {
 } from "@/lib/crashSentinel";
 import { initialAutoZoomState, stepAutoZoom } from "@/lib/autoZoom";
 import type { AutoZoomLevel, AutoZoomState } from "@/lib/autoZoom";
-import { DEV_VIDEO_URL } from "@/lib/devVideo";
 import type { HudModel } from "@/lib/detection";
 import { buildHudModel, toRoadDetections } from "@/lib/detection";
 import { createDetectionTracker } from "@/lib/detectionTracker";
@@ -102,11 +102,12 @@ type DetectionProviderProps = {
   /** Test seam: defaults to the real detection worker. */
   createWorker?: () => DetectionWorkerLike;
   /**
-   * True when a dev video file drives the feed instead of the camera (see
-   * src/lib/devVideo). A file-backed feed legitimately pauses and repeats
-   * frames, so the camera-stall machinery (watchdog, frozen and obscured
-   * detectors, recovery) is disabled for the whole session. The prop is a
-   * test seam; production always derives it from DEV_VIDEO_URL.
+   * Overrides whether the feed is a video file rather than the camera. A
+   * file-backed feed legitimately pauses and repeats frames, so the
+   * camera-stall machinery (watchdog, frozen and obscured detectors, recovery)
+   * is disabled while one is playing. This is a test seam; production leaves
+   * it undefined and derives the answer from DevVideoContext, which can change
+   * mid-session when a file is dropped.
    */
   devVideoMode?: boolean;
 };
@@ -114,7 +115,7 @@ type DetectionProviderProps = {
 export const DetectionProvider = ({
   children,
   createWorker = createDetectionWorker,
-  devVideoMode = DEV_VIDEO_URL !== null,
+  devVideoMode,
 }: DetectionProviderProps) => {
   const {
     frameThumbnails,
@@ -126,6 +127,20 @@ export const DetectionProvider = ({
     confidenceThreshold,
     settingsOpen,
   } = useSettings();
+  const {
+    source: devVideoSource,
+    setVideoFile,
+    clearVideoFile,
+  } = useDevVideo();
+  const devVideoActive = devVideoMode ?? devVideoSource !== null;
+  // Ref-mirrored rather than read directly: devVideoMode used to be a
+  // dependency of the worker lifecycle effect below, so making it reactive
+  // would terminate and respawn the worker (recompiling the model) on every
+  // feed swap. Same pattern as includeFrameRef below.
+  const devVideoModeRef = useRef(devVideoActive);
+  useEffect(() => {
+    devVideoModeRef.current = devVideoActive;
+  }, [devVideoActive]);
   // Mirrors the frame-saving flags for sendFrame, which is a stable callback:
   // the pump reads the current value per capture instead of re-subscribing on
   // toggles. It asks the worker for the model-input JPEG the contact card's
@@ -575,7 +590,7 @@ export const DetectionProvider = ({
     const armWatchdog = () => {
       // A paused dev video produces no results for as long as the user
       // likes; never arm the stall watchdog against a file-backed feed.
-      if (devVideoMode) {
+      if (devVideoModeRef.current) {
         return;
       }
       window.clearTimeout(watchdogTimerRef.current);
@@ -849,7 +864,7 @@ export const DetectionProvider = ({
             // paused or scrubbed dev video repeats frames legitimately. Skip
             // the accounting entirely so a tripped threshold can never take
             // the break that skips the paced re-prime below.
-            if (!devVideoMode) {
+            if (!devVideoModeRef.current) {
               const { fingerprint, brightFraction } = message;
               if (
                 fingerprint !== undefined &&
@@ -995,13 +1010,7 @@ export const DetectionProvider = ({
       // recycle has happened, not the one spawned at mount.
       workerRef.current?.terminate();
     };
-  }, [
-    createWorker,
-    devVideoMode,
-    replaceContact,
-    schedulePacedFrame,
-    sendFrame,
-  ]);
+  }, [createWorker, replaceContact, schedulePacedFrame, sendFrame]);
 
   const start = useCallback(
     (video: HTMLVideoElement) => {
@@ -1056,6 +1065,36 @@ export const DetectionProvider = ({
   }, []);
 
   /**
+   * Swaps the detection feed to `file`, or back to the startup source with
+   * null. Stops the pump first, synchronously: child effects run before parent
+   * effects, so a stop() scheduled after the state change would land after the
+   * newly mounted view had already called start() and would kill the pump it
+   * just started. stop() also resets the tracker and auto zoom, which is what
+   * you want when frames start arriving from a different world.
+   */
+  const swapVideoSource = useCallback(
+    (file: File | null) => {
+      stop();
+      if (file) {
+        setVideoFile(file);
+      } else {
+        clearVideoFile();
+      }
+    },
+    [stop, setVideoFile, clearVideoFile],
+  );
+
+  /**
+   * Forgets a camera stall. Returning to the camera after a clip has played
+   * deserves a fresh attempt rather than the terminal screen a previous stall
+   * left behind, so the attempt counter resets with it.
+   */
+  const clearCameraStall = useCallback(() => {
+    reconnectAttemptsRef.current = 0;
+    setCameraStalled(false);
+  }, []);
+
+  /**
    * Recover a dead camera feed in place, silently: nothing is shown to the
    * driver while it happens, since the meter's own pause is the only thing
    * worth their attention and an overlay would just take the glass away from
@@ -1074,7 +1113,7 @@ export const DetectionProvider = ({
     (reason: CameraStallReason) => {
       // Defense in depth alongside the disabled detectors: recovery would
       // remount the player and lose the clip's playback position.
-      if (devVideoMode || recoveringRef.current) {
+      if (devVideoModeRef.current || recoveringRef.current) {
         return;
       }
       recoveringRef.current = true;
@@ -1101,7 +1140,7 @@ export const DetectionProvider = ({
       reconnectAttemptsRef.current += 1;
       setCameraEpoch((epoch) => epoch + 1);
     },
-    [devVideoMode, stop],
+    [stop],
   );
   useEffect(() => {
     beginRecoveryRef.current = beginRecovery;
@@ -1249,6 +1288,8 @@ export const DetectionProvider = ({
       cameraEpoch,
       start,
       stop,
+      swapVideoSource,
+      clearCameraStall,
     }),
     [
       status,
@@ -1267,6 +1308,8 @@ export const DetectionProvider = ({
       cameraEpoch,
       start,
       stop,
+      swapVideoSource,
+      clearCameraStall,
     ],
   );
 

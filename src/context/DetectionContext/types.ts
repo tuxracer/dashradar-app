@@ -185,9 +185,9 @@ export type DetectionContextValue = {
   autoZoom: AutoZoomState;
   /**
    * True once automatic camera recovery has exhausted its remount attempts on a
-   * frozen or black feed. Terminal: the pump is stopped and the app shows the
-   * CAMERA_STALLED alert asking the driver to clear the lens and reload. Only a
-   * reload clears it.
+   * frozen or black feed. Terminal for the camera: the pump is stopped and the
+   * app shows the CAMERA_STALLED alert asking the driver to clear the lens and
+   * reload. Only a reload or clearCameraStall clears it.
    */
   cameraStalled: boolean;
   /**
@@ -197,6 +197,18 @@ export type DetectionContextValue = {
   cameraEpoch: number;
   start: (video: HTMLVideoElement) => void;
   stop: () => void;
+  /**
+   * Swaps the detection feed to `file`, or back to the startup source with
+   * null. Stops the pump first, so the view mounted for the new feed is the
+   * one that starts it again.
+   */
+  swapVideoSource: (file: File | null) => void;
+  /**
+   * Forgets a camera stall. Returning to the camera after a clip has played
+   * deserves a fresh attempt rather than the terminal screen a previous stall
+   * left behind.
+   */
+  clearCameraStall: () => void;
 };
 
 /**

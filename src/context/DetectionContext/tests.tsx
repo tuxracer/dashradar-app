@@ -2,7 +2,7 @@ import { track } from "@vercel/analytics";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode, useState } from "react";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DetectionProvider,
   FRAME_RETRY_MS,
@@ -16,6 +16,7 @@ import {
   WATCHDOG_MS,
   WORKER_RECYCLE_AFTER_MS,
 } from "@/context/DetectionContext";
+import { DevVideoProvider, useDevVideo } from "@/context/DevVideoContext";
 import {
   SETTINGS_VERSION,
   SettingsProvider,
@@ -3068,6 +3069,40 @@ describe("DetectionProvider auto save", () => {
   });
 });
 
+/**
+ * Drive one frozen-feed stall: repeat an identical fingerprint to the
+ * threshold, tripping recovery. Does NOT resume the pump, so it exercises the
+ * terminal escalation (which stops the pump for good) as well as the remount
+ * path.
+ */
+const driveFrozenStall = async (worker: FakeWorker, present: () => void) => {
+  for (let i = 0; i <= STALE_FRAME_THRESHOLD; i += 1) {
+    await act(async () => {
+      present();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    act(() => {
+      emitDetections(worker, 99);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS + 20);
+    });
+  }
+};
+
+/**
+ * Drive one frozen-feed recovery: stall to the threshold, then simulate the
+ * remounted CameraView delivering a fresh stream that resumes the pump. Needs
+ * a probe rendering the "start" button.
+ */
+const driveFrozenRecovery = async (worker: FakeWorker, present: () => void) => {
+  await driveFrozenStall(worker, present);
+  // Fresh stream from the remount resumes the pump.
+  act(() => {
+    screen.getByTestId("start").click();
+  });
+};
+
 describe("DetectionProvider camera recovery", () => {
   // Real timers plus MIN_FRAME_INTERVAL_MS-scale sleeps would run these tests
   // past vitest's default 5 s test timeout (STALE_FRAME_THRESHOLD-plus rounds
@@ -3360,38 +3395,6 @@ describe("DetectionProvider camera recovery", () => {
     expect(track).not.toHaveBeenCalledWith("camera_stall", expect.anything());
   });
 
-  /** Drive one frozen-feed stall: repeat an identical fingerprint to the
-   *  threshold, tripping recovery. Does NOT resume the pump, so it exercises the
-   *  terminal escalation (which stops the pump for good) as well as the remount
-   *  path. */
-  const driveFrozenStall = async (worker: FakeWorker, present: () => void) => {
-    for (let i = 0; i <= STALE_FRAME_THRESHOLD; i += 1) {
-      await act(async () => {
-        present();
-        await vi.advanceTimersByTimeAsync(0);
-      });
-      act(() => {
-        emitDetections(worker, 99);
-      });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS + 20);
-      });
-    }
-  };
-
-  /** Drive one frozen-feed recovery: stall to the threshold, then simulate the
-   *  remounted CameraView delivering a fresh stream that resumes the pump. */
-  const driveFrozenRecovery = async (
-    worker: FakeWorker,
-    present: () => void,
-  ) => {
-    await driveFrozenStall(worker, present);
-    // Fresh stream from the remount resumes the pump.
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-  };
-
   it("shows the stalled alert after MAX_RECONNECT_ATTEMPTS failed recoveries", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(
@@ -3654,5 +3657,183 @@ describe("dev video mode", () => {
     expect(
       worker.posted.filter((message) => message.type === "detect"),
     ).toHaveLength(STALE_FRAME_THRESHOLD + 1);
+  });
+});
+
+/** A dropped clip, the file a swap hands to the feed. */
+const clip = () => new File(["x"], "clip.mp4", { type: "video/mp4" });
+
+/**
+ * Probe for the feed-swap tests: starts the pump, swaps the feed to a clip or
+ * back to the startup source, clears a stall, and renders everything those
+ * touch. The feed name comes from DevVideoContext, so it shows whether the
+ * swap actually reached the provider that owns the source.
+ */
+const SwapProbe = ({ video }: { video: HTMLVideoElement }) => {
+  const {
+    status,
+    cameraStalled,
+    cameraEpoch,
+    start,
+    swapVideoSource,
+    clearCameraStall,
+  } = useDetection();
+  const { source } = useDevVideo();
+  return (
+    <>
+      <button onClick={() => start(video)} data-testid="start">
+        start
+      </button>
+      <button onClick={() => swapVideoSource(clip())} data-testid="swap">
+        swap
+      </button>
+      <button onClick={() => swapVideoSource(null)} data-testid="unswap">
+        unswap
+      </button>
+      <button onClick={() => clearCameraStall()} data-testid="clear-stall">
+        clear stall
+      </button>
+      <span data-testid="status">{status}</span>
+      <span data-testid="feed">{source ? source.name : "camera"}</span>
+      <span data-testid="camera-stalled">{String(cameraStalled)}</span>
+      <span data-testid="camera-epoch">{cameraEpoch}</span>
+    </>
+  );
+};
+
+/**
+ * Render the swap probe inside DevVideoProvider (which owns the source a swap
+ * writes to) and drive the worker to ready with the pump running. Returns the
+ * fake worker, the spy that created it, and the controlled video's frame pump,
+ * so a test can step the pump exactly as the recovery tests do.
+ */
+const renderSwapSession = () => {
+  const worker = new FakeWorker();
+  const createWorker = vi.fn(() => worker);
+  const { video, presentFrame } = videoWithControlledFrames();
+  render(
+    <SettingsProvider>
+      <DevVideoProvider>
+        <DetectionProvider createWorker={createWorker}>
+          <SwapProbe video={video} />
+        </DetectionProvider>
+      </DevVideoProvider>
+    </SettingsProvider>,
+  );
+  act(() => {
+    worker.emit({ type: "ready", backend: "webgpu" });
+  });
+  act(() => {
+    screen.getByTestId("start").click();
+  });
+  return { worker, createWorker, presentFrame };
+};
+
+describe("dev video source swaps", () => {
+  beforeEach(() => {
+    let created = 0;
+    // jsdom implements neither, and minting a URL for the file is how a swap
+    // reaches the video element.
+    URL.createObjectURL = vi.fn(() => `blob:mock/${(created += 1)}`);
+    URL.revokeObjectURL = vi.fn();
+  });
+
+  afterEach(() => {
+    // Assigned above rather than spied, so put jsdom's absence back.
+    Reflect.deleteProperty(URL, "createObjectURL");
+    Reflect.deleteProperty(URL, "revokeObjectURL");
+  });
+
+  it("keeps the same worker when the feed swaps mid-session", () => {
+    const { createWorker } = renderSwapSession();
+    expect(createWorker).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      screen.getByTestId("swap").click();
+    });
+
+    expect(screen.getByTestId("feed").textContent).toBe("clip.mp4");
+    // Respawning would terminate the worker and recompile the model on every
+    // swap, which is the whole reason the flag is ref-mirrored.
+    expect(createWorker).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops the pump before the swap so the new feed starts it", () => {
+    renderSwapSession();
+    expect(screen.getByTestId("status").textContent).toBe("running");
+
+    act(() => {
+      screen.getByTestId("swap").click();
+    });
+
+    expect(screen.getByTestId("status").textContent).toBe("ready");
+  });
+
+  it("returns the feed to the startup source when the swap clears it", () => {
+    renderSwapSession();
+    act(() => {
+      screen.getByTestId("swap").click();
+    });
+    expect(screen.getByTestId("feed").textContent).toBe("clip.mp4");
+
+    act(() => {
+      screen.getByTestId("unswap").click();
+    });
+
+    expect(screen.getByTestId("feed").textContent).toBe("camera");
+  });
+
+  it("never remounts the camera for a stalled file-backed feed", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(async () => fakeBitmap()),
+    );
+    const { presentFrame } = renderSwapSession();
+    const epoch = screen.getByTestId("camera-epoch").textContent;
+
+    act(() => {
+      screen.getByTestId("swap").click();
+    });
+    // The clip's view mounts and starts the pump on the new feed. One frame
+    // reaches the worker and no result ever comes back, which is what a paused
+    // clip looks like to the pump: on the camera that would arm the watchdog
+    // and recover.
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      presentFrame();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WATCHDOG_MS * 2);
+    });
+
+    expect(screen.getByTestId("camera-epoch").textContent).toBe(epoch);
+    expect(screen.getByTestId("camera-stalled").textContent).toBe("false");
+    expect(track).not.toHaveBeenCalledWith("camera_stall", expect.anything());
+  });
+
+  it("clears a camera stall so the camera gets a fresh chance", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(async () => fakeBitmap()),
+    );
+    const { worker, presentFrame } = renderSwapSession();
+    // Exhaust the reconnect attempts, then stall once more so recovery gives
+    // up and leaves the terminal alert behind.
+    for (let attempt = 0; attempt < MAX_RECONNECT_ATTEMPTS; attempt += 1) {
+      await driveFrozenRecovery(worker, presentFrame);
+    }
+    await driveFrozenStall(worker, presentFrame);
+    expect(screen.getByTestId("camera-stalled").textContent).toBe("true");
+
+    act(() => {
+      screen.getByTestId("clear-stall").click();
+    });
+
+    expect(screen.getByTestId("camera-stalled").textContent).toBe("false");
   });
 });
