@@ -21,7 +21,7 @@ export const CAMERA_FRAME_RATE = 15;
  * pixels to work with: at 2x the centered crop is half the frame's short edge,
  * which lands at 512 native with no upsampling. At 1x the full square
  * downsamples cleanly to 512. Capture is not the expensive part of a scan
- * (inference runs on a fixed 512x512 input either way, once every two seconds
+ * (inference runs on a fixed 512x512 input either way, once per second
  * under the pacing floor), so the extra cost is the camera's own capture power
  * plus one larger canvas draw per scan. The capture-power side is bounded by
  * CAMERA_FRAME_RATE above.

@@ -4,7 +4,8 @@ export const SEGMENT_COUNT = 14;
 /**
  * Peak-hold falloff rate, in signal-fraction per second. The held peak eases
  * back down at this rate once the raw signal drops. Detection results arrive
- * at most once every two seconds (MIN_FRAME_INTERVAL_MS), so this must be small
+ * at most once per second (MIN_FRAME_INTERVAL_MS), and slow devices' rest
+ * ratio can stretch the gap to two seconds or more, so this must be small
  * enough that the peak meaningfully bridges consecutive results: at 0.15 a
  * full-scale peak takes over 6 seconds to drain, so the meter falls about 30
  * points across a two-second gap, where the old 0.6 let it fall 60 points in a
