@@ -144,6 +144,76 @@ describe("RadarDetectorScreen", () => {
   });
 });
 
+describe("RadarDetectorScreen raw confidence readout", () => {
+  it("shows the raw model score in place of the percentage", async () => {
+    render(
+      <RadarDetectorScreen
+        confidence={0.5}
+        audioEnabled={false}
+        rawConfidence={0.75}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("0.75")).toBeInTheDocument());
+    expect(screen.queryByText(/%/)).not.toBeInTheDocument();
+  });
+
+  it("starts at a zero raw readout, not 0%", () => {
+    render(
+      <RadarDetectorScreen
+        confidence={0}
+        audioEnabled={false}
+        rawConfidence={0}
+      />,
+    );
+    expect(screen.getByText("0.00")).toBeInTheDocument();
+    expect(screen.queryByText("0%")).not.toBeInTheDocument();
+  });
+
+  it("drops the raw readout to zero the moment the detection clears, while the dial still decays", async () => {
+    const view = render(
+      <RadarDetectorScreen
+        confidence={0.8}
+        audioEnabled={false}
+        rawConfidence={0.9}
+      />,
+    );
+    expect(screen.getByText("0.90")).toBeInTheDocument();
+    // Wait for the rAF loop to register the signal (and hold its peak) before
+    // clearing the detection.
+    await waitFor(() =>
+      expect(screen.getByTestId("signal-status")).toHaveTextContent("ALERT"),
+    );
+
+    // The detection disappears: raw goes to zero immediately (no peak-hold on
+    // the readout) even though the peak-held meter is still decaying.
+    view.rerender(
+      <RadarDetectorScreen
+        confidence={0}
+        audioEnabled={false}
+        rawConfidence={0}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("0.00")).toBeInTheDocument());
+    expect(screen.getByTestId("signal-status")).toHaveTextContent("ALERT");
+  });
+
+  it("returns to the percentage when the option turns off at an idle meter", async () => {
+    const view = render(
+      <RadarDetectorScreen
+        confidence={0}
+        audioEnabled={false}
+        rawConfidence={0}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("0.00")).toBeInTheDocument());
+
+    // The meter is quiescent, so this must wake the parked loop and flush a
+    // readout rewrite with no level change behind it.
+    view.rerender(<RadarDetectorScreen confidence={0} audioEnabled={false} />);
+    await waitFor(() => expect(screen.getByText("0%")).toBeInTheDocument());
+  });
+});
+
 /** Test contact; the bitmap is a cast fake because jsdom has no ImageBitmap
  * and the component only reads width/height and draws it (draw is skipped
  * when jsdom's canvas has no 2d context). */

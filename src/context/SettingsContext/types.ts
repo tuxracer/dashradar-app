@@ -23,7 +23,7 @@ export type Settings = {
    * Master switch for the development-only settings (showDebug,
    * frameThumbnails, saveFrames, autoSaveFrames, throttleInference,
    * zoomMode, confidenceThreshold, zoomIndicator,
-   * roundTripIndicator, cameraPreview). Off by
+   * roundTripIndicator, cameraPreview, rawConfidence). Off by
    * default. While it is off, SettingsProvider
    * reports each of those at its DEVELOPER_OPTIONS_OFF value no matter what is
    * stored, so a development tweak left enabled cannot alter a normal drive.
@@ -135,6 +135,17 @@ export type Settings = {
    * device.
    */
   cameraPreview: boolean;
+  /**
+   * When true, the dial readout shows the model's raw detection score in
+   * [0, 1] instead of the percentage. The percentage derives from a remapped
+   * signal band (the [SIGNAL_FLOOR, 1] score band stretched over the full
+   * meter, see radarSignal), so it never matches the model's own confidence;
+   * this row shows the score before that remap, for judging the model rather
+   * than the meter. The ladder segments keep tracking the remapped signal
+   * either way. A developer option, so it only takes effect while
+   * developerOptions is on, and off until asked for there.
+   */
+  rawConfidence: boolean;
 };
 
 /**
@@ -162,13 +173,14 @@ export type DeveloperOptions = Pick<
   | "zoomIndicator"
   | "roundTripIndicator"
   | "cameraPreview"
+  | "rawConfidence"
 >;
 
 /**
  * Value exposed by the settings context via useSettings(). The developer
  * options (showDebug, frameThumbnails, saveFrames, autoSaveFrames,
  * throttleInference, zoomMode, confidenceThreshold,
- * zoomIndicator, roundTripIndicator, cameraPreview) are the
+ * zoomIndicator, roundTripIndicator, cameraPreview, rawConfidence) are the
  * *effective* values, already gated on developerOptions, so consumers never
  * have to repeat the gate. Each toggle (or setter) still writes the stored
  * value underneath.
@@ -202,6 +214,8 @@ export type SettingsContextValue = {
   toggleRoundTripIndicator: () => void;
   cameraPreview: boolean;
   toggleCameraPreview: () => void;
+  rawConfidence: boolean;
+  toggleRawConfidence: () => void;
   /** Whether the full-screen settings panel is open. Ephemeral, not persisted. */
   settingsOpen: boolean;
   /** Opens the full-screen settings panel. */
@@ -239,7 +253,8 @@ export const isPersistedSettings = (
     (value.zoomIndicator === undefined || isBoolean(value.zoomIndicator)) &&
     (value.roundTripIndicator === undefined ||
       isBoolean(value.roundTripIndicator)) &&
-    (value.cameraPreview === undefined || isBoolean(value.cameraPreview))
+    (value.cameraPreview === undefined || isBoolean(value.cameraPreview)) &&
+    (value.rawConfidence === undefined || isBoolean(value.rawConfidence))
   );
 };
 

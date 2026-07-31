@@ -38,8 +38,9 @@ const Toggle = ({ on }: { on: boolean }) => (
  * with big tap targets: the Audio alerts, Detection image, and Developer
  * options toggles, the
  * development-only controls Developer options reveals (Debug overlay, Zoom
- * indicator, Round-trip, Camera preview, Frame preview, Save frames, Auto
- * save, Throttle inference, the segmented Zoom mode picker, Min confidence),
+ * indicator, Round-trip, Raw confidence, Camera preview, Frame preview, Save
+ * frames, Auto save, Throttle inference, the segmented Zoom mode picker, Min
+ * confidence),
  * plus read-only
  * Detection engine, Model, and About rows.
  * Closes on the large close button or Escape. While it is open the detection
@@ -77,6 +78,8 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
     toggleRoundTripIndicator,
     cameraPreview,
     toggleCameraPreview,
+    rawConfidence,
+    toggleRawConfidence,
   } = useSettings();
 
   useEffect(() => {
@@ -213,6 +216,22 @@ export const SettingsScreen = ({ backend }: SettingsScreenProps) => {
                   </span>
                 </span>
                 <Toggle on={roundTripIndicator} />
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleRawConfidence}
+                className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
+              >
+                <span className="flex flex-col gap-1">
+                  <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                    Raw confidence
+                  </span>
+                  <span className="text-sm font-medium text-white/45">
+                    Shows the model score in the dial readout.
+                  </span>
+                </span>
+                <Toggle on={rawConfidence} />
               </button>
 
               <button

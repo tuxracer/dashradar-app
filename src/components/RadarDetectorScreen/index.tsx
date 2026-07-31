@@ -15,6 +15,7 @@ import {
   ARC_SWEEP_DEG,
   CONTACT_THRESHOLD,
   DIRECTION_DISPLAY,
+  RAW_CONFIDENCE_DECIMALS,
 } from "./consts";
 
 export * from "./consts";
@@ -44,6 +45,16 @@ type RadarDetectorScreenProps = {
    * animation stays parked until scanning actually begins.
    */
   initializing?: boolean;
+  /**
+   * Raw model score in [0, 1] to show in the dial readout in place of the
+   * percentage (the raw-confidence developer option). The percentage derives
+   * from the confidence prop, a remapped signal band that never matches the
+   * model's own score, so this is the readout for judging the model rather
+   * than the meter. Shown live with no peak-hold, so it drops to zero the
+   * moment the detection clears while the dial decays behind it. Undefined
+   * (the option off) shows the percentage.
+   */
+  rawConfidence?: number;
 };
 
 /** Arc angle for a segment, in degrees, 0 pointing straight up. */
@@ -78,12 +89,14 @@ const ALERT_RING_COLOR = `rgb(${SIGNAL_HIGH_COLOR.join(", ")})`;
  * silence instead. The contact card's direction row follows the same rule as
  * the audio: it renders only while the raw signal is nonzero (a live
  * detection), so a stale heading is never shown while the card lingers
- * through the dial's decay tail. The two developer options each add one thing
- * to the card: with frameThumbnails on it stays lit on every scan, since a
- * detection-free scan arrives as a bare frame preview (a thumbnail of the whole
- * frame) that should always reflect what the last scan saw; with saveFrames on
- * it shows a SAVE button that downloads the model's square input frame as a
- * JPEG for collecting training data.
+ * through the dial's decay tail. The two card developer options each add one
+ * thing to the card: with frameThumbnails on it stays lit on every scan, since
+ * a detection-free scan arrives as a bare frame preview (a thumbnail of the
+ * whole frame) that should always reflect what the last scan saw; with
+ * saveFrames on it shows a SAVE button that downloads the model's square input
+ * frame as a JPEG for collecting training data. A third developer option swaps
+ * the dial's percentage for the raw model score (the rawConfidence prop) while
+ * the ladder keeps tracking the peak-held signal.
  */
 export const RadarDetectorScreen = ({
   confidence,
@@ -92,12 +105,14 @@ export const RadarDetectorScreen = ({
   frameThumbnails,
   saveFrames,
   initializing,
+  rawConfidence,
 }: RadarDetectorScreenProps) => {
   const confidenceRef = useRef(confidence);
   const audioEnabledRef = useRef(audioEnabled);
   const contactRef = useRef(contact);
   const frameThumbnailsRef = useRef(frameThumbnails);
   const initializingRef = useRef(initializing);
+  const rawConfidenceRef = useRef(rawConfidence);
   const beeperRef = useRef<RadarBeeper | undefined>(undefined);
   const peakRef = useRef(0);
   const lastTimeRef = useRef<number | undefined>(undefined);
@@ -141,6 +156,11 @@ export const RadarDetectorScreen = ({
     wakeRef.current();
   }, [initializing]);
 
+  useEffect(() => {
+    rawConfidenceRef.current = rawConfidence;
+    wakeRef.current();
+  }, [rawConfidence]);
+
   // Draw the cutout into the card's canvas whenever it changes. The canvas
   // takes the bitmap's intrinsic size; CSS scales it to fit the card.
   useEffect(() => {
@@ -182,6 +202,9 @@ export const RadarDetectorScreen = ({
     let writtenLevel: number | undefined;
     let writtenContactShown: boolean | undefined;
     let writtenInitializing: boolean | undefined;
+    // Sentinel distinct from any real prop value (a number or undefined), so
+    // the first tick always flushes the readout mode.
+    let writtenRawConfidence: number | undefined | null = null;
 
     const tick = (now: number) => {
       const last = lastTimeRef.current ?? now;
@@ -214,14 +237,23 @@ export const RadarDetectorScreen = ({
       // meter, so the initializing flag gates the flush alongside the level.
       const isInitializing = initializingRef.current === true;
 
+      // The raw model score shown in place of the percentage when the
+      // raw-confidence developer option is on (undefined otherwise). Gates the
+      // flush alongside the level because it can change while the peak-held
+      // level does not (a new same-strength detection, or the option toggling
+      // at an idle meter).
+      const raw = rawConfidenceRef.current;
+
       if (
         level !== writtenLevel ||
         contactShown !== writtenContactShown ||
-        isInitializing !== writtenInitializing
+        isInitializing !== writtenInitializing ||
+        raw !== writtenRawConfidence
       ) {
         writtenLevel = level;
         writtenContactShown = contactShown;
         writtenInitializing = isInitializing;
+        writtenRawConfidence = raw;
 
         const color = signalColor(level);
         const lit = litSegments(level, SEGMENT_COUNT);
@@ -241,7 +273,10 @@ export const RadarDetectorScreen = ({
         const hasSignal = level >= CONTACT_THRESHOLD;
         const readout = readoutRef.current;
         if (readout) {
-          readout.textContent = `${Math.round(level * 100)}%`;
+          readout.textContent =
+            raw !== undefined
+              ? raw.toFixed(RAW_CONFIDENCE_DECIMALS)
+              : `${Math.round(level * 100)}%`;
           readout.style.color = hasSignal ? color : "";
         }
 
@@ -362,7 +397,9 @@ export const RadarDetectorScreen = ({
             ref={readoutRef}
             className="text-[min(17vmin,6.5rem)] font-bold leading-none tabular-nums text-white/90"
           >
-            0%
+            {rawConfidence !== undefined
+              ? rawConfidence.toFixed(RAW_CONFIDENCE_DECIMALS)
+              : "0%"}
           </span>
           <span
             ref={statusRef}

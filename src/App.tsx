@@ -28,7 +28,7 @@ import { SettingsProvider, useSettings } from "@/context/SettingsContext";
 import type { CameraError } from "@/lib/camera";
 import type { Size } from "@/lib/detection";
 import { DEV_VIDEO_URL } from "@/lib/devVideo";
-import { hudSignal } from "@/lib/radarSignal";
+import { hudScore, hudSignal } from "@/lib/radarSignal";
 import { createWakeLockManager } from "@/lib/wakeLock";
 import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 
@@ -73,6 +73,7 @@ const RadarScreen = () => {
     zoomIndicator,
     roundTripIndicator,
     cameraPreview,
+    rawConfidence,
   } = useSettings();
   // Dev video mode has no camera to introduce or ask permission for, so the
   // intro is skipped outright and the radar view loads immediately.
@@ -204,6 +205,7 @@ const RadarScreen = () => {
         frameThumbnails={frameThumbnails}
         saveFrames={saveFrames}
         initializing={status !== "running"}
+        rawConfidence={rawConfidence ? hudScore(hud) : undefined}
       />
 
       {/* The zoom mirrors sendFrame's mapping, so the preview always narrows

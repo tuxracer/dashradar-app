@@ -37,6 +37,7 @@ const persisted = (overrides: Partial<PersistedSettings> = {}) =>
     zoomIndicator: false,
     roundTripIndicator: false,
     cameraPreview: false,
+    rawConfidence: false,
     ...overrides,
   });
 

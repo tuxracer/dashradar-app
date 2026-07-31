@@ -58,12 +58,12 @@ export const contactDirection = (box: NormalizedBox): ContactDirection => {
 };
 
 /**
- * Current police-signal strength for a HUD frame, in [0, 1]. Takes the highest
- * detection score across the HUD (nearest plus the others) and remaps the
- * [SIGNAL_FLOOR, 1] score band onto [0, 1] so the ladder uses its full range.
- * Returns 0 for no HUD, no detections, or a max score at or below the floor.
+ * Highest detection score across a HUD frame (nearest plus the others), in
+ * [0, 1], before the SIGNAL_FLOOR remap the meter applies. Returns 0 for no
+ * HUD or no detections. This is what the raw-confidence developer option puts
+ * in the dial readout in place of the remapped percentage.
  */
-export const hudSignal = (hud: HudModel | undefined): number => {
+export const hudScore = (hud: HudModel | undefined): number => {
   if (!hud) {
     return 0;
   }
@@ -71,9 +71,17 @@ export const hudSignal = (hud: HudModel | undefined): number => {
   if (detections.length === 0) {
     return 0;
   }
-  const max = Math.max(...detections.map((detection) => detection.score));
-  return signalFromScore(max);
+  return Math.max(...detections.map((detection) => detection.score));
 };
+
+/**
+ * Current police-signal strength for a HUD frame, in [0, 1]. Takes the highest
+ * detection score across the HUD (nearest plus the others) and remaps the
+ * [SIGNAL_FLOOR, 1] score band onto [0, 1] so the ladder uses its full range.
+ * Returns 0 for no HUD, no detections, or a max score at or below the floor.
+ */
+export const hudSignal = (hud: HudModel | undefined): number =>
+  signalFromScore(hudScore(hud));
 
 /**
  * One peak-hold + decay step. The value snaps up to `raw` instantly and eases

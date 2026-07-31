@@ -37,6 +37,7 @@ describe("SettingsContext", () => {
     expect(result.current.zoomIndicator).toBe(false);
     expect(result.current.roundTripIndicator).toBe(false);
     expect(result.current.cameraPreview).toBe(false);
+    expect(result.current.rawConfidence).toBe(false);
     expect(result.current.throttleInference).toBe(true);
     expect(result.current.zoomMode).toBe("auto");
     expect(result.current.confidenceThreshold).toBe(0.5);
@@ -63,6 +64,7 @@ describe("SettingsContext", () => {
         zoomIndicator: false,
         roundTripIndicator: false,
         cameraPreview: false,
+        rawConfidence: false,
       }),
     );
   });
@@ -127,6 +129,7 @@ describe("SettingsContext", () => {
         zoomIndicator: false,
         roundTripIndicator: false,
         cameraPreview: false,
+        rawConfidence: false,
       }),
     );
   });
@@ -156,6 +159,7 @@ describe("SettingsContext", () => {
         zoomIndicator: false,
         roundTripIndicator: false,
         cameraPreview: false,
+        rawConfidence: false,
       }),
     );
   });
@@ -197,6 +201,7 @@ describe("SettingsContext", () => {
         zoomIndicator: false,
         roundTripIndicator: false,
         cameraPreview: false,
+        rawConfidence: false,
       }),
     );
   });
@@ -227,6 +232,7 @@ describe("SettingsContext", () => {
         zoomIndicator: false,
         roundTripIndicator: false,
         cameraPreview: false,
+        rawConfidence: false,
       }),
     );
   });
@@ -259,6 +265,7 @@ describe("SettingsContext", () => {
         zoomIndicator: true,
         roundTripIndicator: true,
         cameraPreview: true,
+        rawConfidence: true,
       }),
     );
     const { result } = renderHook(() => useSettings(), { wrapper });
@@ -270,6 +277,7 @@ describe("SettingsContext", () => {
     expect(result.current.zoomIndicator).toBe(false);
     expect(result.current.roundTripIndicator).toBe(false);
     expect(result.current.cameraPreview).toBe(false);
+    expect(result.current.rawConfidence).toBe(false);
     // A fixed-zoom override is a developer tweak; a normal drive always runs
     // the auto default.
     expect(result.current.zoomMode).toBe("auto");
@@ -431,6 +439,15 @@ describe("SettingsContext", () => {
     expect(result.current.cameraPreview).toBe(true);
   });
 
+  it("turns the raw readout on only when it is asked for by name", () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    act(() => result.current.toggleDeveloperOptions());
+    expect(result.current.rawConfidence).toBe(false);
+
+    act(() => result.current.toggleRawConfidence());
+    expect(result.current.rawConfidence).toBe(true);
+  });
+
   it("turns auto save on only when it is asked for by name", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     act(() => result.current.toggleDeveloperOptions());
@@ -496,6 +513,7 @@ describe("SettingsContext", () => {
         zoomIndicator: false,
         roundTripIndicator: false,
         cameraPreview: false,
+        rawConfidence: false,
       }),
     );
   });

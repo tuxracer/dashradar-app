@@ -22,7 +22,8 @@ export const CONFIDENCE_LEVELS = [
  * options master switch is off: nothing extra on the glass (no debug overlay,
  * no zoom or round-trip pill, no camera preview), no per-frame JPEG
  * encode, no downloads, the thermal pacing floor in place, the auto zoom (the
- * production scanning behavior), and the 0.5 confidence floor. These are also
+ * production scanning behavior), the 0.5 confidence floor, and the percentage
+ * readout. These are also
  * the values every developer option starts at (DEFAULT_SETTINGS builds on
  * them), so the two switch states agree until someone changes a row by hand.
  */
@@ -37,6 +38,7 @@ export const DEVELOPER_OPTIONS_OFF: DeveloperOptions = {
   zoomIndicator: false,
   roundTripIndicator: false,
   cameraPreview: false,
+  rawConfidence: false,
 };
 
 /**

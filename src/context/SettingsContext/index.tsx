@@ -140,6 +140,9 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const [storedCameraPreview, setCameraPreview] = useState(
     () => loadSettings().cameraPreview,
   );
+  const [storedRawConfidence, setRawConfidence] = useState(
+    () => loadSettings().rawConfidence,
+  );
 
   // The developer options report their DEVELOPER_OPTIONS_OFF value whenever
   // developerOptions is off, so a tweak left enabled (the debug overlay, the
@@ -177,6 +180,9 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const cameraPreview = developerOptions
     ? storedCameraPreview
     : DEVELOPER_OPTIONS_OFF.cameraPreview;
+  const rawConfidence = developerOptions
+    ? storedRawConfidence
+    : DEVELOPER_OPTIONS_OFF.rawConfidence;
 
   useEffect(() => {
     const next: PersistedSettings = {
@@ -194,6 +200,7 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       zoomIndicator: storedZoomIndicator,
       roundTripIndicator: storedRoundTripIndicator,
       cameraPreview: storedCameraPreview,
+      rawConfidence: storedRawConfidence,
     };
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -214,6 +221,7 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     storedZoomIndicator,
     storedRoundTripIndicator,
     storedCameraPreview,
+    storedRawConfidence,
   ]);
 
   const toggleDeveloperOptions = useCallback(() => {
@@ -268,6 +276,10 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     setCameraPreview((prev) => !prev);
   }, []);
 
+  const toggleRawConfidence = useCallback(() => {
+    setRawConfidence((prev) => !prev);
+  }, []);
+
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const openSettings = useCallback(() => {
@@ -306,6 +318,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleRoundTripIndicator,
       cameraPreview,
       toggleCameraPreview,
+      rawConfidence,
+      toggleRawConfidence,
       settingsOpen,
       openSettings,
       closeSettings,
@@ -337,6 +351,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleRoundTripIndicator,
       cameraPreview,
       toggleCameraPreview,
+      rawConfidence,
+      toggleRawConfidence,
       settingsOpen,
       openSettings,
       closeSettings,

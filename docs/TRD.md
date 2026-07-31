@@ -312,28 +312,31 @@ type SettingsContextValue = {
   toggleRoundTripIndicator: () => void;
   cameraPreview: boolean;
   toggleCameraPreview: () => void;
+  rawConfidence: boolean;
+  toggleRawConfidence: () => void;
   settingsOpen: boolean; // ephemeral, not persisted
   openSettings: () => void;
   closeSettings: () => void;
 };
 ```
 
-`developerOptions` (default off) is the master switch for the ten
+`developerOptions` (default off) is the master switch for the eleven
 development-only options: `showDebug`, `frameThumbnails`, `saveFrames`,
 `autoSaveFrames`, `throttleInference`, `zoomMode`,
-`confidenceThreshold`, `zoomIndicator`, `roundTripIndicator`, and
-`cameraPreview`.
+`confidenceThreshold`, `zoomIndicator`, `roundTripIndicator`,
+`cameraPreview`, and `rawConfidence`.
 `SettingsScreen` renders their
 rows only while it is
-on, and `SettingsProvider` reports all ten at their `DEVELOPER_OPTIONS_OFF`
+on, and `SettingsProvider` reports all eleven at their `DEVELOPER_OPTIONS_OFF`
 values while it is off, so a tweak left enabled cannot alter a normal drive.
 The gate lives in the provider, not in each consumer: `useSettings()` returns
 the already-gated effective value, so `DetectionContext` reads a bare
 `frameThumbnails`/`saveFrames`/`autoSaveFrames`/`throttleInference`/`zoomMode`/`confidenceThreshold`,
 `DebugOverlay` a bare `showDebug`, and `RadarScreen` a bare
-`zoomIndicator`/`roundTripIndicator`/`cameraPreview`
+`zoomIndicator`/`roundTripIndicator`/`cameraPreview`/`rawConfidence`
 (gating whether the on-glass zoom and round-trip pills and the live camera
-preview render at all). The stored values are left untouched
+preview render at all, and whether the dial readout shows the raw model
+score). The stored values are left untouched
 while the switch is off, so turning it back on restores the tweaks rather than
 resetting them.
 
@@ -502,6 +505,17 @@ video mode targets). The dev corner player shows the whole clip, so the
 preview still earns its place there by showing the crop.
 It defaults off because the app deliberately never shows the feed and a second
 live video surface costs compositing on a thermally constrained device.
+
+`rawConfidence` (**default off** under the master switch) swaps the dial's
+percentage readout for the model's raw detection score in [0, 1] (`hudScore`,
+the max across the HUD before `signalFromScore`'s floor remap), rendered to
+two decimals ("0.87"). The percentage never matches the model's confidence,
+because the meter stretches the `[SIGNAL_FLOOR, 1]` score band over its full
+range; this row shows the score before that remap, for judging the model
+rather than the meter. Only the readout changes: the ladder, colors, status
+word, and beeper keep following the remapped, peak-held signal. The raw
+readout is live rather than peak-held, so it drops to zero the moment a
+detection clears while the dial decays behind it.
 
 `SettingsProvider` wraps the app outside `DetectionProvider`;
 `SettingsButton` (a gear in `StatusBar`) opens the full-screen

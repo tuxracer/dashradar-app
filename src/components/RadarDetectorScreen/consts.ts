@@ -20,6 +20,13 @@ export const ALERT_THRESHOLD = 0.8;
  */
 export const CONTACT_THRESHOLD = 0.01;
 
+/**
+ * Decimal places the readout uses for a raw model score (the raw-confidence
+ * developer option), e.g. "0.87". Matches the resolution of the whole-number
+ * percentage it replaces.
+ */
+export const RAW_CONFIDENCE_DECIMALS = 2;
+
 /** Display strings for the contact card's direction row. */
 export const DIRECTION_DISPLAY: Readonly<Record<ContactDirection, string>> = {
   left: "◀ LEFT",

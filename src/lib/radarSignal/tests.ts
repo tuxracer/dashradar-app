@@ -4,6 +4,7 @@ import type { Detection } from "@/types";
 import {
   contactDirection,
   decayPeak,
+  hudScore,
   hudSignal,
   litSegments,
   signalColor,
@@ -60,6 +61,27 @@ describe("hudSignal", () => {
       0.8,
       5,
     );
+  });
+});
+
+describe("hudScore", () => {
+  it("returns 0 for an undefined HUD", () => {
+    expect(hudScore(undefined)).toBe(0);
+  });
+
+  it("returns 0 when there are no detections", () => {
+    expect(hudScore(hudOf(undefined, []))).toBe(0);
+  });
+
+  it("passes a score through without the floor remap", () => {
+    // The whole point of the raw readout: 0.75 reads as 0.75, not the 0.5 the
+    // meter's [floor, 1] stretch turns it into.
+    expect(hudScore(hudOf(det(0.75)))).toBe(0.75);
+    expect(hudScore(hudOf(det(SIGNAL_FLOOR)))).toBe(SIGNAL_FLOOR);
+  });
+
+  it("takes the max score across nearest and others", () => {
+    expect(hudScore(hudOf(det(0.6), [det(0.9), det(0.55)]))).toBe(0.9);
   });
 });
 
