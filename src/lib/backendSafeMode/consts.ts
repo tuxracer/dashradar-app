@@ -1,5 +1,5 @@
 /** localStorage key holding the WebGPU crash streak / armed safe-mode record. */
-export const SAFE_MODE_STORAGE_KEY = "dashradar:backendSafeMode";
+export const SAFE_MODE_STORAGE_KEY = "backendSafeMode";
 
 /**
  * Consecutive WebGPU crashes required before the WASM safe mode arms. A

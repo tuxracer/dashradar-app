@@ -147,7 +147,7 @@ describe("App", () => {
 
   it("skips the permission ask once it has been accepted before", () => {
     stubBrowser();
-    window.localStorage.setItem("dashradar:cameraPromptAccepted", "true");
+    window.localStorage.setItem("cameraPromptAccepted", "true");
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "START" }));
     expect(

@@ -1,5 +1,5 @@
 /** localStorage key holding the intro version the user last dismissed. */
-export const INTRO_SEEN_STORAGE_KEY = "dashradar:introSeen";
+export const INTRO_SEEN_STORAGE_KEY = "introSeen";
 
 /**
  * Version of the intro currently shipping. Bump it whenever the intro changes

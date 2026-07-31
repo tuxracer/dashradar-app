@@ -3,7 +3,7 @@
  * permission ask. While present, the custom permission screen is skipped and
  * the app goes straight to requesting the camera from the browser.
  */
-export const CAMERA_PROMPT_STORAGE_KEY = "dashradar:cameraPromptAccepted";
+export const CAMERA_PROMPT_STORAGE_KEY = "cameraPromptAccepted";
 
 /** A labeled reassurance row shown under the permission ask's body copy. */
 export type PermissionPoint = {

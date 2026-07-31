@@ -1,5 +1,5 @@
 /** sessionStorage key holding the rolling per-scan timing history. */
-export const TIMING_HISTORY_STORAGE_KEY = "dashradar:timings";
+export const TIMING_HISTORY_STORAGE_KEY = "timings";
 
 /**
  * How many scans each series keeps, and so how many a session records before
@@ -23,4 +23,4 @@ export const TIMING_BUCKET_MS = 500;
  * timings to analytics. Its presence is the whole record; the value is only
  * there to make the entry readable in devtools.
  */
-export const TIMING_ANALYTICS_STORAGE_KEY = "dashradar:timingsReported";
+export const TIMING_ANALYTICS_STORAGE_KEY = "timingsReported";

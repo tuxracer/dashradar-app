@@ -1,5 +1,5 @@
 /** localStorage key for the in-progress session heartbeat record. */
-export const SENTINEL_STORAGE_KEY = "dashradar:sessionSentinel";
+export const SENTINEL_STORAGE_KEY = "sessionSentinel";
 
 /** Cadence of heartbeat writes while detection is running. */
 export const HEARTBEAT_INTERVAL_MS = 5_000;

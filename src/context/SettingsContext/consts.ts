@@ -1,7 +1,7 @@
 import type { DeveloperOptions, Settings } from "./types";
 
 /** localStorage key holding the JSON-serialized Settings. */
-export const STORAGE_KEY = "dashradar:settings";
+export const STORAGE_KEY = "settings";
 
 /**
  * Schema version stamped on the persisted blob, so a one-time migration can
