@@ -21,6 +21,13 @@ Primary use case: **landscape, on a dash mount**. The driver interacts by reachi
 
 **The budget covers always-on UI work, not just inference.** Sessions run for hours and idle scanning is the dominant state, so "cheap" per-frame work compounds: a rAF loop or timer that runs for the whole session must park itself once its output is a fixed point and be woken by change (see the `RadarDetectorScreen` meter loop), and per-tick DOM writes must be skipped while the values behind them are unchanged. Don't add unconditionally scheduled per-frame loops, polling timers, or always-on CSS animations without weighing their idle-state cost; CSS animations run on the compositor but still keep the display refreshing.
 
+### Rejected ideas (do not re-propose)
+
+Ideas evaluated in feature brainstorms and rejected. Don't bring these up again:
+
+- **Detecting red/blue flashing emergency lights** (strobe/flicker detection, "active lights" alerts, reflected-strobe or cloud-bounce detection, or anything similar). A vehicle running its emergency lights is already the most visually obvious thing on the road; the driver needs no help noticing it, so the feature adds cost without value.
+- **Windshield-reflection HUD mode** (mirroring the display so it reflects off the windshield). The phone is also the camera: laying it face-up on the dash to project the UI points the camera at the ceiling, so the detector stops working the moment the mode is used.
+
 ## Architecture
 
 Client-only **Vite 8 React SPA** with no server runtime (the build is a static `dist/`). Data flow: `src/App.tsx` → `DetectionProvider` (consumed via `useDetection()`) → `src/workers/detection` (RF-DETR ONNX on raw onnxruntime-web in a Web Worker, WebGPU or WASM) → `src/lib/detection` road-class filter → `src/lib/detectionTracker` coasting smoother → `src/lib/detection` HUD shaping (all pure, no React). `DetectionContext` owns the worker lifecycle and frame pump; components only ever read `useDetection()`.
