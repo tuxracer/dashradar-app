@@ -29,6 +29,7 @@ vi.mock("@/context/DetectionContext", async (importOriginal) => {
 });
 
 afterEach(() => {
+  workerOnMessage = null;
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   window.localStorage.clear();
@@ -43,13 +44,35 @@ beforeEach(() => {
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
 });
 
+/**
+ * The message handler DetectionContext installs on its worker, captured by
+ * FakeWorker's setter so a test can deliver worker responses by hand.
+ */
+let workerOnMessage: ((event: { data: unknown }) => void) | null = null;
+
 /** Worker stub: the real detection worker cannot run under jsdom. */
 class FakeWorker {
-  onmessage = null;
   onerror = null;
+  set onmessage(handler: ((event: { data: unknown }) => void) | null) {
+    workerOnMessage = handler;
+  }
+  get onmessage() {
+    return workerOnMessage;
+  }
   postMessage() {}
   terminate() {}
 }
+
+/**
+ * Drives the worker to ready, which moves the pump to running and is the edge
+ * that starts a dropped clip playing.
+ */
+const reachScanning = async () => {
+  await waitFor(() => expect(workerOnMessage).not.toBeNull());
+  await act(async () => {
+    workerOnMessage?.({ data: { type: "ready", backend: "wasm" } });
+  });
+};
 
 /** getUserMedia stand-in resolving to a stream whose tracks can be stopped. */
 const grantedCamera = () =>
@@ -130,6 +153,33 @@ describe("App", () => {
     expect(
       screen.queryByRole("button", { name: "ALLOW CAMERA" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("autoplays a dropped clip once the model is ready", async () => {
+    stubBrowser(grantedCamera);
+    render(<App />);
+    acceptFirstRunScreens();
+    await screen.findByTestId("camera-view");
+    act(() => dropClipOnWindow());
+    const player = await screen.findByTestId("dev-video-view");
+    await reachScanning();
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
+    expect(player).not.toHaveClass("invisible");
+  });
+
+  it("autoplays a clip dropped into an already scanning session", async () => {
+    stubBrowser(grantedCamera);
+    render(<App />);
+    acceptFirstRunScreens();
+    await screen.findByTestId("camera-view");
+    await reachScanning();
+    vi.mocked(HTMLMediaElement.prototype.play).mockClear();
+    act(() => dropClipOnWindow());
+    const player = await screen.findByTestId("dev-video-view");
+    await waitFor(() =>
+      expect(HTMLMediaElement.prototype.play).toHaveBeenCalled(),
+    );
+    expect(player).not.toHaveClass("invisible");
   });
 
   it("plays a dropped clip instead of the camera", async () => {

@@ -20,6 +20,40 @@ describe("DevVideoView", () => {
     expect(playSpy).not.toHaveBeenCalled();
   });
 
+  it("retries playback once when the pending load aborts the first play", async () => {
+    const playSpy = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockRejectedValueOnce(new DOMException("interrupted", "AbortError"))
+      .mockResolvedValue();
+    const { container, rerender } = render(
+      <DevVideoView src="blob:clip" scanning={false} onStream={() => {}} />,
+    );
+    rerender(
+      <DevVideoView src="blob:clip" scanning={true} onStream={() => {}} />,
+    );
+    await waitFor(() => expect(playSpy).toHaveBeenCalledTimes(1));
+    const video = container.querySelector("video");
+    fireEvent(video!, new Event("canplay"));
+    await waitFor(() => expect(playSpy).toHaveBeenCalledTimes(2));
+  });
+
+  it("gives up when playback is refused rather than interrupted", async () => {
+    const playSpy = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockRejectedValue(new DOMException("blocked", "NotAllowedError"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { container, rerender } = render(
+      <DevVideoView src="blob:clip" scanning={false} onStream={() => {}} />,
+    );
+    rerender(
+      <DevVideoView src="blob:clip" scanning={true} onStream={() => {}} />,
+    );
+    await waitFor(() => expect(playSpy).toHaveBeenCalledTimes(1));
+    fireEvent(container.querySelector("video")!, new Event("canplay"));
+    await waitFor(() => expect(console.error).toHaveBeenCalled());
+    expect(playSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("starts playback once on the first scanning transition", async () => {
     const playSpy = vi
       .spyOn(HTMLMediaElement.prototype, "play")

@@ -27,6 +27,13 @@ type DevVideoViewProps = {
 };
 
 /**
+ * True for the AbortError a play() rejects with when the element's own
+ * pending load interrupts it, as opposed to a refused or failed playback.
+ */
+const isAbortError = (error: unknown): boolean =>
+  error instanceof DOMException && error.name === "AbortError";
+
+/**
  * Stand-in for CameraView: plays a video file as the detection feed instead
  * of the camera. Renders whenever DevVideoContext hands back a source, which
  * means a file was dropped onto the window or picked from the settings Video
@@ -45,8 +52,10 @@ type DevVideoViewProps = {
  * only the radar backdrop, matching the camera path. Camera errors do not
  * exist in this mode, but a file the browser cannot decode does: the element's
  * `error` event reports it through onError so the caller can put the feed
- * back. A rejected play() only logs, and the already-visible native controls
- * are the manual recovery for it.
+ * back. A play() the element's own pending load interrupts is retried once
+ * on canplay, so a clip never sits paused because it lost that race; any
+ * other rejection only logs, with the visible native controls as the manual
+ * recovery.
  */
 export const DevVideoView = ({
   src,
@@ -119,9 +128,32 @@ export const DevVideoView = ({
     }
     startedRef.current = true;
     setStarted(true);
-    video.play().catch((error: unknown) => {
-      console.error("dev video playback failed", error);
-    });
+    let cancelled = false;
+    let retried = false;
+    const startPlayback = () => {
+      video.play().catch((error: unknown) => {
+        if (cancelled) {
+          return;
+        }
+        // A play() the element's own pending load interrupts rejects with
+        // AbortError, which a freshly mounted player pointed at a new object
+        // URL can lose the race to. The one-shot guard means nothing would
+        // ever start the clip again, so retry once the element reports it can
+        // play. Every other rejection is final (a real autoplay block, a
+        // decode failure), and the visible native controls are the recovery.
+        if (retried || !isAbortError(error)) {
+          console.error("dev video playback failed", error);
+          return;
+        }
+        retried = true;
+        video.addEventListener("canplay", startPlayback, { once: true });
+      });
+    };
+    startPlayback();
+    return () => {
+      cancelled = true;
+      video.removeEventListener("canplay", startPlayback);
+    };
   }, [scanning]);
 
   return (
