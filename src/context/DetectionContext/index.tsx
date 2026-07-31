@@ -595,12 +595,16 @@ export const DetectionProvider = ({
      * so it never fires during a paused pump or the recycle load window.
      */
     const armWatchdog = () => {
-      // A paused dev video produces no results for as long as the user
+      // Clearing precedes the file-feed bail so a camera-to-clip swap can never
+      // leave the previous timer running. stop() clears it on every source
+      // change today, and beginRecovery vetoes a stray firing, but this way the
+      // helper is correct on its own rather than by arrangement.
+      window.clearTimeout(watchdogTimerRef.current);
+      // A paused video file produces no results for as long as the user
       // likes; never arm the stall watchdog against a file-backed feed.
       if (devVideoModeRef.current) {
         return;
       }
-      window.clearTimeout(watchdogTimerRef.current);
       watchdogTimerRef.current = window.setTimeout(() => {
         if (runningRef.current && workerLoadedRef.current) {
           beginRecoveryRef.current("watchdog");

@@ -11,6 +11,15 @@ export const pickVideoFile = (transfer: DataTransfer | null): File | null =>
     : null;
 
 /**
+ * Narrows a listener's Event to the DragEvent a drop actually delivers.
+ * Listeners are typed against plain Event because `target` is an EventTarget,
+ * and `"dataTransfer" in event` on its own narrows only to an Event carrying an
+ * unknown-typed property, which still needs an assertion to read.
+ */
+const isDragEvent = (event: Event): event is DragEvent =>
+  "dataTransfer" in event;
+
+/**
  * Wires drag-and-drop of a video file onto `target` and returns a teardown.
  * Both handlers cancel the event: without it the browser navigates away from
  * the app to the dropped file, which ends the session.
@@ -24,11 +33,12 @@ export const attachVideoDropListeners = (
   };
   const handleDrop = (event: Event) => {
     event.preventDefault();
-    if ("dataTransfer" in event) {
-      const file = pickVideoFile((event as DragEvent).dataTransfer);
-      if (file) {
-        onFile(file);
-      }
+    if (!isDragEvent(event)) {
+      return;
+    }
+    const file = pickVideoFile(event.dataTransfer);
+    if (file) {
+      onFile(file);
     }
   };
   target.addEventListener("dragover", handleDragOver);
