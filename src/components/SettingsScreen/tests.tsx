@@ -61,8 +61,8 @@ const persisted = (overrides: Partial<PersistedSettings> = {}) =>
 
 /**
  * Calls the real DevVideoProvider's `setVideoFile` once on mount, so a test
- * needing an "already overridden" row exercises actual context state instead
- * of a mocked context value.
+ * needing a "clip already playing" row exercises actual context state
+ * instead of a mocked context value.
  */
 const DevVideoSeed = ({ file }: { file: File }) => {
   const { setVideoFile } = useDevVideo();
@@ -90,8 +90,8 @@ const open = async (user: ReturnType<typeof userEvent.setup>) => {
 
 /**
  * Opens the settings panel with developer options already on. Pass a file to
- * seed a real override through DevVideoProvider before the panel opens, so
- * the "already overridden" row state comes from actual context.
+ * seed a real clip through DevVideoProvider before the panel opens, so the
+ * "clip already playing" row state comes from actual context.
  */
 const renderOpenSettingsWithDeveloperOptions = async (file?: File) => {
   window.localStorage.setItem(

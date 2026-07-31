@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import type { ReactNode } from "react";
-import { DEV_VIDEO_FALLBACK, ENV_VIDEO_SOURCE } from "./consts";
+import { DEV_VIDEO_FALLBACK } from "./consts";
 import type { DevVideoContextValue, DevVideoSource } from "./types";
 
 export * from "./consts";
@@ -21,42 +21,36 @@ export const useDevVideo = (): DevVideoContextValue =>
   useContext(DevVideoContext);
 
 /**
- * Owns which video file, if any, stands in for the camera. The source is the
- * startup feed (DASHRADAR_VIDEO, or the camera) unless a dropped or picked
- * file overrides it, so clearing an override always restores what the session
- * started with. An override cannot survive a reload: object URLs die with the
- * page and a File handle is not serializable.
+ * Owns which video file, if any, stands in for the camera. Every session
+ * starts on the camera; a dropped or picked file replaces it until cleared.
+ * The choice cannot survive a reload: object URLs die with the page and a File
+ * handle is not serializable.
  */
 export const DevVideoProvider = ({ children }: { children: ReactNode }) => {
-  const [override, setOverride] = useState<DevVideoSource | null>(null);
+  const [source, setSource] = useState<DevVideoSource | null>(null);
 
-  // Revoke the object URL of an override that has been replaced or cleared.
+  // Revoke the object URL of a source that has been replaced or cleared.
   // Cleanup runs after the next render commits, by which point the <video>
   // element using the old URL has unmounted. Revoking inline in the setter
   // would pull the source out from under an element still on screen.
   useEffect(() => {
-    if (!override) {
+    if (!source) {
       return;
     }
-    return () => URL.revokeObjectURL(override.url);
-  }, [override]);
+    return () => URL.revokeObjectURL(source.url);
+  }, [source]);
 
   const setVideoFile = useCallback((file: File) => {
-    setOverride({ url: URL.createObjectURL(file), name: file.name });
+    setSource({ url: URL.createObjectURL(file), name: file.name });
   }, []);
 
   const clearVideoFile = useCallback(() => {
-    setOverride(null);
+    setSource(null);
   }, []);
 
   const value = useMemo(
-    () => ({
-      source: override ?? ENV_VIDEO_SOURCE,
-      overridden: override !== null,
-      setVideoFile,
-      clearVideoFile,
-    }),
-    [override, setVideoFile, clearVideoFile],
+    () => ({ source, setVideoFile, clearVideoFile }),
+    [source, setVideoFile, clearVideoFile],
   );
 
   return (

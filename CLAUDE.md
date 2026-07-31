@@ -36,9 +36,9 @@ Module map (internals in TRD §4 and §5):
 
 - `src/context/DetectionContext/`: worker lifecycle and frame-pump state machine; pacing, periodic worker recycle, camera-stall detection and recovery, crash-sentinel heartbeat, auto zoom stepping, contact/saved-frame state, ref-backed debug snapshot.
 - `src/context/SettingsContext/`: localStorage-backed settings (`dashradar:settings`) behind the `developerOptions` master switch. The provider hands out already-gated effective values, so consumers never repeat the gate. Every developer option starts at its `DEVELOPER_OPTIONS_OFF` value, so turning the master switch on reveals rows without turning anything on; a `settingsVersion` migration clears the five that used to default on.
-- `src/context/DevVideoContext/`: owns the video-file source that stands in for the camera. The source is `DASHRADAR_VIDEO` at startup (or the camera), unless a dropped or settings-picked file overrides it; clearing the override restores the startup source. Consume via `useDevVideo()`.
+- `src/context/DevVideoContext/`: owns the video-file source that stands in for the camera. Every session starts on the camera; a dropped or settings-picked file replaces it until cleared. Consume via `useDevVideo()`.
 - `src/workers/detection/`: downloads the ONNX weights, runs inference; pure preprocess/decode in `inference.ts`, constants in `consts.ts`, typed message protocol in `types.ts`.
-- `src/lib/`: React-free domain modules, one directory each: `detection`, `detectionTracker`, `autoZoom`, `radarSignal`, `radarAudio`, `camera`, `crashSentinel`, `backendSafeMode`, `browserEngine`, `devVideo`, `videoFileDrop`, `pwaInstall`, `saveFrame`, `serviceWorker`, `timingHistory`, `wakeLock`, and friends.
+- `src/lib/`: React-free domain modules, one directory each: `detection`, `detectionTracker`, `autoZoom`, `radarSignal`, `radarAudio`, `camera`, `crashSentinel`, `backendSafeMode`, `browserEngine`, `videoFileDrop`, `pwaInstall`, `saveFrame`, `serviceWorker`, `timingHistory`, `wakeLock`, and friends.
 - `src/components/`: `CameraView` (hidden `<video>`, the feed is never shown), `RadarDetectorScreen` (the only detection UI; rAF peak-hold loop writing straight to the DOM, drives the beeper and contact card), `StatusBar` + indicator pills, `SettingsScreen`, `DebugOverlay`, `SaveToast`, intro/permission/load/error screens.
 - `src/types/`: shared detection types and guards.
 
@@ -54,8 +54,6 @@ Module map (internals in TRD §4 and §5):
 
 ```bash
 pnpm dev         # Vite dev server, http://localhost:5173
-DASHRADAR_VIDEO=<path> pnpm dev   # Dev-video mode: a local clip substitutes for the camera (see src/lib/devVideo)
-                                   # A clip can also be dropped on the window or picked from Developer options at runtime, overriding the startup feed (see src/context/DevVideoContext)
 pnpm build       # Production build (vite build → dist/)
 pnpm start       # Serve the production build (vite preview)
 pnpm test        # Run tests once (vitest run)

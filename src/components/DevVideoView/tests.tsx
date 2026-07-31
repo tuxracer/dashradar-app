@@ -13,7 +13,7 @@ describe("DevVideoView", () => {
       .mockResolvedValue();
     const onStream = vi.fn();
     const { container } = render(
-      <DevVideoView src="/__dev-video" scanning={false} onStream={onStream} />,
+      <DevVideoView src="blob:clip" scanning={false} onStream={onStream} />,
     );
     const video = container.querySelector("video");
     expect(onStream).toHaveBeenCalledWith(video);
@@ -26,22 +26,22 @@ describe("DevVideoView", () => {
       .mockResolvedValue();
     const onStream = vi.fn();
     const { rerender } = render(
-      <DevVideoView src="/__dev-video" scanning={false} onStream={onStream} />,
+      <DevVideoView src="blob:clip" scanning={false} onStream={onStream} />,
     );
     expect(onStream).toHaveBeenCalled();
     expect(playSpy).not.toHaveBeenCalled();
 
     rerender(
-      <DevVideoView src="/__dev-video" scanning={true} onStream={onStream} />,
+      <DevVideoView src="blob:clip" scanning={true} onStream={onStream} />,
     );
     await waitFor(() => expect(playSpy).toHaveBeenCalledTimes(1));
 
     // Later transitions, including going back to scanning, must not replay.
     rerender(
-      <DevVideoView src="/__dev-video" scanning={false} onStream={onStream} />,
+      <DevVideoView src="blob:clip" scanning={false} onStream={onStream} />,
     );
     rerender(
-      <DevVideoView src="/__dev-video" scanning={true} onStream={onStream} />,
+      <DevVideoView src="blob:clip" scanning={true} onStream={onStream} />,
     );
     expect(playSpy).toHaveBeenCalledTimes(1);
   });
@@ -52,12 +52,12 @@ describe("DevVideoView", () => {
     );
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const { container, rerender } = render(
-      <DevVideoView src="/__dev-video" scanning={false} onStream={() => {}} />,
+      <DevVideoView src="blob:clip" scanning={false} onStream={() => {}} />,
     );
     expect(errorSpy).not.toHaveBeenCalled();
 
     rerender(
-      <DevVideoView src="/__dev-video" scanning={true} onStream={() => {}} />,
+      <DevVideoView src="blob:clip" scanning={true} onStream={() => {}} />,
     );
     await waitFor(() => expect(errorSpy).toHaveBeenCalled());
     // The player stays up with its native controls as the manual recovery.
@@ -69,7 +69,7 @@ describe("DevVideoView", () => {
     const onError = vi.fn();
     const { container } = render(
       <DevVideoView
-        src="/__dev-video"
+        src="blob:clip"
         scanning={false}
         onStream={() => {}}
         onError={onError}
@@ -97,7 +97,7 @@ describe("DevVideoView", () => {
     const onError = vi.fn();
     const { rerender } = render(
       <DevVideoView
-        src="/__dev-video"
+        src="blob:clip"
         scanning={false}
         onStream={() => {}}
         onError={onError}
@@ -105,7 +105,7 @@ describe("DevVideoView", () => {
     );
     rerender(
       <DevVideoView
-        src="/__dev-video"
+        src="blob:clip"
         scanning={true}
         onStream={() => {}}
         onError={onError}
@@ -118,20 +118,20 @@ describe("DevVideoView", () => {
   it("hides the player until scanning starts, then shows it with controls", async () => {
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
     const { container, rerender } = render(
-      <DevVideoView src="/__dev-video" scanning={false} onStream={() => {}} />,
+      <DevVideoView src="blob:clip" scanning={false} onStream={() => {}} />,
     );
     const video = container.querySelector("video");
     expect(video).not.toBeNull();
     // Mounted (the pump needs the element) but not shown during model load.
     expect(video).toHaveClass("invisible");
-    expect(video?.getAttribute("src")).toBe("/__dev-video");
+    expect(video?.getAttribute("src")).toBe("blob:clip");
     expect(video?.muted).toBe(true);
     expect(video?.loop).toBe(true);
     expect(video?.controls).toBe(true);
     expect(video?.hasAttribute("autoplay")).toBe(false);
 
     rerender(
-      <DevVideoView src="/__dev-video" scanning={true} onStream={() => {}} />,
+      <DevVideoView src="blob:clip" scanning={true} onStream={() => {}} />,
     );
     await waitFor(() => expect(video).not.toHaveClass("invisible"));
     expect(video).not.toHaveClass("opacity-0");
@@ -139,7 +139,7 @@ describe("DevVideoView", () => {
     // Once shown, the player stays visible through later scanning flips (it
     // belongs to the user then, like the one-shot playback start).
     rerender(
-      <DevVideoView src="/__dev-video" scanning={false} onStream={() => {}} />,
+      <DevVideoView src="blob:clip" scanning={false} onStream={() => {}} />,
     );
     expect(video).not.toHaveClass("invisible");
   });
@@ -149,7 +149,7 @@ describe("DevVideoView", () => {
     const onVideoResize = vi.fn();
     const { container } = render(
       <DevVideoView
-        src="/__dev-video"
+        src="blob:clip"
         scanning={false}
         onStream={onStream}
         onVideoResize={onVideoResize}

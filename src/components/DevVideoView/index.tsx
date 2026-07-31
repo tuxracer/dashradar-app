@@ -2,9 +2,8 @@ import { useEffect, useRef, useState } from "react";
 
 type DevVideoViewProps = {
   /**
-   * URL of the current feed source: the DASHRADAR_VIDEO dev-server route, or
-   * an object URL for a file dropped onto the window or picked from
-   * Developer options.
+   * Object URL of the file dropped onto the window or picked from Developer
+   * options.
    */
   src: string;
   onStream: (video: HTMLVideoElement) => void;
@@ -29,12 +28,12 @@ type DevVideoViewProps = {
 
 /**
  * Stand-in for CameraView: plays a video file as the detection feed instead
- * of the camera. Renders whenever DevVideoContext hands back a source,
- * whether that's the DASHRADAR_VIDEO dev clip at startup or a file dropped
- * onto the window or picked from the settings Video file row later; the row
- * ships in production and works on a phone, though dragging a file onto the
- * window is a desktop-only gesture. The same element doubles as a visible
- * corner player with native controls, sized for mouse use rather than the
+ * of the camera. Renders whenever DevVideoContext hands back a source, which
+ * means a file was dropped onto the window or picked from the settings Video
+ * file row; the row ships in production and works on a phone, though dragging
+ * a file onto the window is a desktop-only gesture. The same element doubles
+ * as a visible corner player with native controls, sized for mouse use
+ * rather than the
  * dash-mount touch-target rules, so the clip can be paused and scrubbed;
  * capture reads the full intrinsic resolution regardless of display size.
  * Pausing legitimately stops new frames; DetectionContext disables the

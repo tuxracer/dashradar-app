@@ -79,16 +79,15 @@ const RadarScreen = () => {
     rawConfidence,
   } = useSettings();
   const { source } = useDevVideo();
-  // A video file feed has no camera to introduce or ask permission for, so the
-  // intro is skipped outright and the radar view loads immediately.
-  const [showIntro, setShowIntro] = useState(
-    () => source === null && shouldShowIntro(),
-  );
+  // No check on `source` in either initializer: a session always starts on the
+  // camera, since the only ways to reach a file feed are a drop or the
+  // settings picker, both of which need the app running first. A file chosen
+  // later outranks these screens through the `!source` guards below.
+  const [showIntro, setShowIntro] = useState(shouldShowIntro);
   // The in-app permission ask sits between the intro and the first
   // getUserMedia call, so the browser's own prompt never lands unexplained.
-  // A video file feed never requests the camera, so it skips the ask too.
   const [showCameraPrompt, setShowCameraPrompt] = useState(
-    () => source === null && shouldShowCameraPrompt(),
+    shouldShowCameraPrompt,
   );
   const [cameraPromptDeclined, setCameraPromptDeclined] = useState(false);
   const [cameraError, setCameraError] = useState<CameraError>();
@@ -134,10 +133,9 @@ const RadarScreen = () => {
   );
 
   // A file the browser cannot decode presents no frames at all, so the feed
-  // goes back to whatever the session started with (the camera, or the
-  // DASHRADAR_VIDEO clip). Leaving it in place would park the pump on a frame
-  // callback that never fires, with the stall watchdog disabled for a file
-  // feed, and the meter would read SCANNING for the rest of the drive.
+  // goes back to the camera. Leaving it in place would park the pump on a
+  // frame callback that never fires, with the stall watchdog disabled for a
+  // file feed, and the meter would read SCANNING for the rest of the drive.
   const handleDevVideoError = useCallback(() => {
     swapVideoSource(null);
   }, [swapVideoSource]);

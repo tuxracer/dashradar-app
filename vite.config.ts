@@ -4,16 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { execFileSync } from "node:child_process";
-import {
-  accessSync,
-  constants as fsConstants,
-  createReadStream,
-  existsSync,
-  readFileSync,
-  statSync,
-} from "node:fs";
-import { homedir } from "node:os";
-import { extname, join, resolve } from "node:path";
+import { readFileSync } from "node:fs";
 import type { Plugin } from "vite";
 
 // Headers that make the page cross-origin isolated. Without these,
@@ -107,116 +98,6 @@ const ortRuntime = (): Plugin => ({
         source: readFileSync(ortRuntimePath(file)),
       });
     }
-  },
-});
-
-/** Dev-server route the devVideo plugin serves the DASHRADAR_VIDEO file at. */
-const DEV_VIDEO_ROUTE = "/__dev-video";
-
-/** Content types for the video containers a browser will actually play. */
-const VIDEO_CONTENT_TYPES: Record<string, string> = {
-  ".mp4": "video/mp4",
-  ".m4v": "video/mp4",
-  ".webm": "video/webm",
-  ".mov": "video/quicktime",
-};
-
-/**
- * Absolute path of the dev video file named by DASHRADAR_VIDEO, or undefined
- * when the env var is unset. A set-but-unreadable path (missing, not a file,
- * or lacking read permission) fails config load, so a bad path stops the dev
- * server at startup instead of crashing mid-request.
- */
-const resolveDevVideoPath = (): string | undefined => {
-  const raw = process.env.DASHRADAR_VIDEO;
-  if (!raw) {
-    return undefined;
-  }
-  const expanded = raw.startsWith("~") ? join(homedir(), raw.slice(1)) : raw;
-  const absolute = resolve(expanded);
-  const unreadable = new Error(
-    `DASHRADAR_VIDEO does not point to a readable file: ${absolute}`,
-  );
-  if (!existsSync(absolute) || !statSync(absolute).isFile()) {
-    throw unreadable;
-  }
-  try {
-    accessSync(absolute, fsConstants.R_OK);
-  } catch {
-    throw unreadable;
-  }
-  return absolute;
-};
-
-/**
- * Dev-only: serve the DASHRADAR_VIDEO file at /__dev-video so a local video
- * can substitute for the camera feed (see src/components/DevVideoView). Range
- * requests are honored with 206 responses because <video> seeking (scrubbing)
- * only works against a server that supports them. Serve-only: production
- * builds never include the route, and __DEV_VIDEO_URL__ compiles to null.
- * Takes the resolved path rather than resolving it itself, so the resolution
- * (and the config-load-time throw on a bad path) only ever runs for a real
- * `pnpm dev` run; a build or a Vitest run with DASHRADAR_VIDEO set always
- * gets the null define instead.
- */
-const devVideo = (path: string | undefined): Plugin => ({
-  name: "dev-video",
-  apply: "serve",
-  configureServer(server) {
-    if (!path) {
-      return;
-    }
-    server.middlewares.use((req, res, next) => {
-      const [pathname] = (req.url ?? "").split("?");
-      if (pathname !== DEV_VIDEO_ROUTE) {
-        next();
-        return;
-      }
-      const { size } = statSync(path);
-      res.setHeader(
-        "Content-Type",
-        VIDEO_CONTENT_TYPES[extname(path).toLowerCase()] ??
-          "application/octet-stream",
-      );
-      res.setHeader("Accept-Ranges", "bytes");
-      // A read failure mid-stream (file deleted or permissions changed after
-      // startup) must end the response, not crash the dev server: pipe() does
-      // not forward 'error' events from its source.
-      const pipeOrFail = (stream: ReturnType<typeof createReadStream>) => {
-        stream.on("error", () => {
-          if (!res.headersSent) {
-            res.statusCode = 500;
-          }
-          res.end();
-        });
-        stream.pipe(res);
-      };
-      const match = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? "");
-      if (match && (match[1] !== "" || match[2] !== "")) {
-        // "bytes=a-b", "bytes=a-" (open end), or "bytes=-n" (suffix).
-        const start =
-          match[1] === ""
-            ? Math.max(0, size - Number(match[2]))
-            : Number(match[1]);
-        const end =
-          match[1] === "" || match[2] === ""
-            ? size - 1
-            : Math.min(Number(match[2]), size - 1);
-        if (start >= size || start > end) {
-          res.statusCode = 416;
-          res.setHeader("Content-Range", `bytes */${size}`);
-          res.end();
-          return;
-        }
-        res.statusCode = 206;
-        res.setHeader("Content-Range", `bytes ${start}-${end}/${size}`);
-        res.setHeader("Content-Length", end - start + 1);
-        pipeOrFail(createReadStream(path, { start, end }));
-        return;
-      }
-      res.setHeader("Content-Length", size);
-      pipeOrFail(createReadStream(path));
-    });
   },
 });
 
@@ -350,50 +231,30 @@ const sentrySourceMaps = (): Plugin[] =>
       })
     : [];
 
-export default defineConfig(({ command, isPreview }) => {
-  // Resolved (and validated) only for a real `pnpm dev` run. Vite also
-  // resolves this config with command "serve" for both Vitest and
-  // `vite preview` (`pnpm start`), so both must be excluded: the VITEST env
-  // var Vitest sets, and isPreview, which ConfigEnv sets for preview. Without
-  // excluding them, a build, test, or preview run with a stale/invalid
-  // DASHRADAR_VIDEO left over in the environment would throw at config load
-  // instead of degrading to the null define below. Preview serves the built
-  // output, where the define is already null and this configureServer-only
-  // plugin is inert either way, so excluding it here only avoids the startup
-  // throw, not a real behavior change.
-  const devVideoPath =
-    command === "serve" && !isPreview && !process.env.VITEST
-      ? resolveDevVideoPath()
-      : undefined;
-  return {
-    define: {
-      __APP_VERSION__: JSON.stringify(APP_VERSION),
-      __COMMIT_SHA__: JSON.stringify(SHORT_COMMIT_SHA),
-      // Non-null only for a dev-server run with DASHRADAR_VIDEO set, so every
-      // production branch keyed on it is statically dead and minified away.
-      __DEV_VIDEO_URL__: JSON.stringify(devVideoPath ? DEV_VIDEO_ROUTE : null),
-    },
-    // "hidden" emits source maps but strips the sourceMappingURL comment, so
-    // browsers never load them; the Sentry plugin uploads them and deletes the
-    // .map files from dist afterward. Off entirely when the token is absent.
-    build: { sourcemap: SENTRY_SOURCE_MAPS_ENABLED ? "hidden" : false },
-    plugins: [
-      react(),
-      tailwindcss(),
-      commitShaMeta(),
-      ortRuntime(),
-      devVideo(devVideoPath),
-      pwa(),
-      ...sentrySourceMaps(),
-    ],
-    resolve: { tsconfigPaths: true },
-    server: { headers: CROSS_ORIGIN_ISOLATION_HEADERS, open: true },
-    preview: { headers: CROSS_ORIGIN_ISOLATION_HEADERS },
-    test: {
-      environment: "jsdom",
-      globals: true,
-      setupFiles: ["./vitest.setup.ts"],
-      include: ["**/*.{test,spec}.?(c|m)[jt]s?(x)", "**/tests.[jt]s?(x)"],
-    },
-  };
+export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+    __COMMIT_SHA__: JSON.stringify(SHORT_COMMIT_SHA),
+  },
+  // "hidden" emits source maps but strips the sourceMappingURL comment, so
+  // browsers never load them; the Sentry plugin uploads them and deletes the
+  // .map files from dist afterward. Off entirely when the token is absent.
+  build: { sourcemap: SENTRY_SOURCE_MAPS_ENABLED ? "hidden" : false },
+  plugins: [
+    react(),
+    tailwindcss(),
+    commitShaMeta(),
+    ortRuntime(),
+    pwa(),
+    ...sentrySourceMaps(),
+  ],
+  resolve: { tsconfigPaths: true },
+  server: { headers: CROSS_ORIGIN_ISOLATION_HEADERS, open: true },
+  preview: { headers: CROSS_ORIGIN_ISOLATION_HEADERS },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: ["./vitest.setup.ts"],
+    include: ["**/*.{test,spec}.?(c|m)[jt]s?(x)", "**/tests.[jt]s?(x)"],
+  },
 });
