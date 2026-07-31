@@ -8,6 +8,7 @@ import {
   IMAGENET_MEAN,
   IMAGENET_STD,
   INPUT_SIZE,
+  MIN_BOX_EDGE_PX,
   POLICE_LABEL,
 } from "./consts";
 
@@ -141,7 +142,8 @@ const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
  *
  * `dets` is `[1,N,4]` cxcywh boxes (normalized 0..1). `labels` is `[1,N,2]` raw
  * class logits; class index 1 is the police vehicle (index 0 is an unused
- * background slot). A query is emitted when `sigmoid(policeLogit) >= threshold`.
+ * background slot). A query is emitted when `sigmoid(policeLogit) >= threshold`
+ * and its box's shorter edge spans at least MIN_BOX_EDGE_PX of the input.
  * RF-DETR is set-based, so no NMS is applied.
  */
 export const decodeDetections = (
@@ -160,16 +162,18 @@ export const decodeDetections = (
     const cy = dets[q * 4 + 1];
     const w = dets[q * 4 + 2];
     const h = dets[q * 4 + 3];
-    detections.push({
-      label: POLICE_LABEL,
-      score,
-      box: {
-        xmin: clamp01(cx - w / 2),
-        ymin: clamp01(cy - h / 2),
-        xmax: clamp01(cx + w / 2),
-        ymax: clamp01(cy + h / 2),
-      },
-    });
+    const box = {
+      xmin: clamp01(cx - w / 2),
+      ymin: clamp01(cy - h / 2),
+      xmax: clamp01(cx + w / 2),
+      ymax: clamp01(cy + h / 2),
+    };
+    const minEdgePx =
+      Math.min(box.xmax - box.xmin, box.ymax - box.ymin) * INPUT_SIZE;
+    if (minEdgePx < MIN_BOX_EDGE_PX) {
+      continue;
+    }
+    detections.push({ label: POLICE_LABEL, score, box });
   }
   return detections;
 };

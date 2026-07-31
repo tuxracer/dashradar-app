@@ -87,6 +87,18 @@ export const WEBGPU_GRAPH_CAPTURE = true;
 export const INPUT_SIZE = 512;
 
 /**
+ * Shortest box edge, in model-input pixels, a decoded detection needs to be
+ * kept. Below this a vehicle covers too few pixels of the 512x512 input to
+ * carry class-distinguishing detail (a police Tahoe and a civilian Tahoe read
+ * the same at that size), so tiny boxes are dropped as false-positive fuel
+ * rather than alerted on. Applied in decode, where boxes are still in crop
+ * space: the gate measures the pixels the model actually saw, so the 2x zoom
+ * genuinely rescues distant vehicles instead of being cancelled out by the
+ * full-frame remap.
+ */
+export const MIN_BOX_EDGE_PX = 15;
+
+/**
  * Crop factor the 2x zoom applies: the centered square fed to the
  * model shrinks to half its side, so the same 512x512 input covers half the
  * field of view and a distant vehicle occupies twice the linear size in the

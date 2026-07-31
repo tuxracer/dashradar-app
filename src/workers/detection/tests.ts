@@ -15,6 +15,7 @@ import {
   IMAGENET_MEAN,
   IMAGENET_STD,
   INPUT_SIZE,
+  MIN_BOX_EDGE_PX,
   ZOOM_2X,
 } from "@/workers/detection/consts";
 import { isWorkerRequest, isWorkerResponse } from "@/workers/detection/types";
@@ -403,6 +404,35 @@ describe("decodeDetections", () => {
       sigmoid(4),
       sigmoid(5),
     ]);
+  });
+
+  it("drops a confident detection whose box is too small to classify", () => {
+    const labels = makeLabels([[-8, 4]]);
+    // A square just under the minimum edge: too few input pixels to tell a
+    // police vehicle from a civilian one, whatever the score says.
+    const side = (MIN_BOX_EDGE_PX - 1) / INPUT_SIZE;
+    const boxes = makeBoxes([[0.5, 0.5, side, side]]);
+
+    expect(decodeDetections(boxes, labels, 0.5)).toHaveLength(0);
+  });
+
+  it("drops a wide box whose short edge is under the minimum", () => {
+    const labels = makeLabels([[-8, 4]]);
+    // Plenty of width, sliver of height: the short edge is what carries the
+    // detail, so the box is still unclassifiable.
+    const boxes = makeBoxes([
+      [0.5, 0.5, 0.5, (MIN_BOX_EDGE_PX - 1) / INPUT_SIZE],
+    ]);
+
+    expect(decodeDetections(boxes, labels, 0.5)).toHaveLength(0);
+  });
+
+  it("keeps a box exactly at the minimum edge", () => {
+    const labels = makeLabels([[-8, 4]]);
+    const side = MIN_BOX_EDGE_PX / INPUT_SIZE;
+    const boxes = makeBoxes([[0.5, 0.5, side, side]]);
+
+    expect(decodeDetections(boxes, labels, 0.5)).toHaveLength(1);
   });
 });
 
