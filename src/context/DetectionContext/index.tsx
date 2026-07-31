@@ -229,6 +229,13 @@ export const DetectionProvider = ({
   useEffect(() => {
     confidenceThresholdRef.current = confidenceThreshold;
   }, [confidenceThreshold]);
+  // Mirrors the panel state for start(), which is a stable callback the views
+  // call from their own effects. Reading the ref keeps start() out of the
+  // settings effect's dependency chain.
+  const settingsOpenRef = useRef(settingsOpen);
+  useEffect(() => {
+    settingsOpenRef.current = settingsOpen;
+  }, [settingsOpen]);
 
   const [status, setStatus] = useState<DetectionStatus>("loading-model");
   const [backend, setBackend] = useState<DetectionBackend>();
@@ -1016,6 +1023,12 @@ export const DetectionProvider = ({
     (video: HTMLVideoElement) => {
       videoRef.current = video;
       if (runningRef.current) {
+        return;
+      }
+      // A feed swapped in while the settings panel is open must honor the
+      // pause: the panel's close effect starts the pump against videoRef.
+      if (settingsOpenRef.current) {
+        pausedBySettingsRef.current = true;
         return;
       }
       runningRef.current = true;

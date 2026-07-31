@@ -2101,6 +2101,49 @@ describe("settings pause", () => {
       worker.posted.filter((message) => message.type === "detect"),
     ).toHaveLength(0);
   });
+
+  it("leaves the pump paused when a feed arrives while settings are open", async () => {
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(
+      <>
+        <Probe />
+        <StartOnReady />
+        <SettingsToggle />
+      </>,
+    );
+    act(() => {
+      worker.emit({ type: "ready", backend: "wasm" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    act(() => {
+      screen.getByTestId("open-settings").click();
+    });
+    expect(screen.getByTestId("status").textContent).toBe("ready");
+    // A feed swap while the panel is open (e.g. picking a video file mid-scan)
+    // must not resume the pump behind it: it should defer, leaving the panel's
+    // own close effect to start the pump against the newly swapped element.
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    expect(screen.getByTestId("status").textContent).toBe("ready");
+    // Closing the panel is what actually starts the pump.
+    act(() => {
+      screen.getByTestId("close-settings").click();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("status").textContent).toBe("running");
+    });
+  });
 });
 
 describe("crash sentinel heartbeat", () => {
