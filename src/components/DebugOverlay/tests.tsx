@@ -1,7 +1,11 @@
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DebugOverlay } from "@/components/DebugOverlay";
-import { SettingsProvider, STORAGE_KEY } from "@/context/SettingsContext";
+import {
+  SETTINGS_VERSION,
+  SettingsProvider,
+  STORAGE_KEY,
+} from "@/context/SettingsContext";
 import type { DebugSnapshot } from "@/context/DetectionContext";
 import type { BackendProbe } from "@/workers/detection/types";
 
@@ -12,7 +16,11 @@ afterEach(() => {
 const enableDebug = () =>
   window.localStorage.setItem(
     STORAGE_KEY,
-    JSON.stringify({ developerOptions: true, showDebug: true }),
+    JSON.stringify({
+      settingsVersion: SETTINGS_VERSION,
+      developerOptions: true,
+      showDebug: true,
+    }),
   );
 
 const debug: DebugSnapshot = {
@@ -164,6 +172,7 @@ describe("DebugOverlay", () => {
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
+        settingsVersion: SETTINGS_VERSION,
         developerOptions: true,
         showDebug: true,
         throttleInference: false,

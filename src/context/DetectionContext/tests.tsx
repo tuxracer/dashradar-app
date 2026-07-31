@@ -17,6 +17,7 @@ import {
   WORKER_RECYCLE_AFTER_MS,
 } from "@/context/DetectionContext";
 import {
+  SETTINGS_VERSION,
   SettingsProvider,
   STORAGE_KEY,
   useSettings,
@@ -1508,6 +1509,7 @@ describe("DetectionProvider", () => {
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
+        settingsVersion: SETTINGS_VERSION,
         developerOptions: true,
         frameThumbnails: true,
         detectionImage: false,
@@ -1540,6 +1542,7 @@ describe("DetectionProvider", () => {
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
+        settingsVersion: SETTINGS_VERSION,
         developerOptions: true,
         saveFrames: true,
         frameThumbnails: false,
@@ -1602,6 +1605,7 @@ describe("DetectionProvider", () => {
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
+        settingsVersion: SETTINGS_VERSION,
         developerOptions: true,
         saveFrames: false,
         frameThumbnails: true,

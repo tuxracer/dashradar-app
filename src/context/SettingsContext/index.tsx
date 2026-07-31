@@ -8,8 +8,18 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { isPlainObject } from "remeda";
-import { DEFAULT_SETTINGS, DEVELOPER_OPTIONS_OFF, STORAGE_KEY } from "./consts";
-import type { Settings, SettingsContextValue, ZoomMode } from "./types";
+import {
+  DEFAULT_SETTINGS,
+  DEVELOPER_OPTIONS_OFF,
+  SETTINGS_VERSION,
+  STORAGE_KEY,
+} from "./consts";
+import type {
+  PersistedSettings,
+  Settings,
+  SettingsContextValue,
+  ZoomMode,
+} from "./types";
 import { isPersistedSettings, snapConfidence } from "./types";
 
 export * from "./consts";
@@ -30,11 +40,31 @@ export const useSettings = (): SettingsContextValue => {
 };
 
 /**
+ * Turns off the developer options that used to default on: the debug overlay,
+ * the per-scan frame preview, frame saving, and the two status pills. A blob
+ * written before SETTINGS_VERSION 1 stores those as true whether or not anyone
+ * asked for them, because they were the defaults, so turning Developer options
+ * on would light all five up on a device that never chose any of them. The
+ * other developer options are left alone: they already defaulted to their off
+ * value, so a stored value there could only have come from someone setting it.
+ */
+const clearLegacyDefaultOnOptions = (settings: Settings): Settings => ({
+  ...settings,
+  showDebug: DEVELOPER_OPTIONS_OFF.showDebug,
+  frameThumbnails: DEVELOPER_OPTIONS_OFF.frameThumbnails,
+  saveFrames: DEVELOPER_OPTIONS_OFF.saveFrames,
+  zoomIndicator: DEVELOPER_OPTIONS_OFF.zoomIndicator,
+  roundTripIndicator: DEVELOPER_OPTIONS_OFF.roundTripIndicator,
+});
+
+/**
  * Reads and validates settings from localStorage, falling back to defaults when
  * storage is empty, corrupt, or unavailable (private mode / quota). A valid but
  * partial blob (for example one stored before showDebug existed) is merged over
  * DEFAULT_SETTINGS, so missing fields take their default instead of resetting
- * everything.
+ * everything. A blob older than SETTINGS_VERSION runs through the migration
+ * above before anything reads it; the next persist stamps the current version,
+ * so that happens exactly once.
  */
 const loadSettings = (): Settings => {
   try {
@@ -50,13 +80,17 @@ const loadSettings = (): Settings => {
     if (!isPersistedSettings(parsed)) {
       return DEFAULT_SETTINGS;
     }
+    const { settingsVersion, ...stored } = parsed;
     const zoomMode =
-      parsed.zoomMode ?? (legacyZoom2x ? "2x" : DEFAULT_SETTINGS.zoomMode);
-    const merged = { ...DEFAULT_SETTINGS, ...parsed, zoomMode };
-    return {
+      stored.zoomMode ?? (legacyZoom2x ? "2x" : DEFAULT_SETTINGS.zoomMode);
+    const merged = { ...DEFAULT_SETTINGS, ...stored, zoomMode };
+    const settings: Settings = {
       ...merged,
       confidenceThreshold: snapConfidence(merged.confidenceThreshold),
     };
+    return (settingsVersion ?? 0) < SETTINGS_VERSION
+      ? clearLegacyDefaultOnOptions(settings)
+      : settings;
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -145,7 +179,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     : DEVELOPER_OPTIONS_OFF.cameraPreview;
 
   useEffect(() => {
-    const next: Settings = {
+    const next: PersistedSettings = {
+      settingsVersion: SETTINGS_VERSION,
       developerOptions,
       showDebug: storedShowDebug,
       frameThumbnails: storedFrameThumbnails,

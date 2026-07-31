@@ -28,28 +28,31 @@ export type Settings = {
    * reports each of those at its DEVELOPER_OPTIONS_OFF value no matter what is
    * stored, so a development tweak left enabled cannot alter a normal drive.
    * Their stored values survive, so turning this back on restores the tweaks
-   * rather than resetting them.
+   * rather than resetting them. Turning it on has no other effect: every
+   * developer option starts at its off value, so the switch reveals the rows
+   * and nothing more until someone taps one.
    */
   developerOptions: boolean;
   /**
    * When true, an on-screen debug overlay renders performance and development
    * diagnostics (timing, detection counts, system info). A developer option, so
-   * it only takes effect while developerOptions is on, and on by default there:
-   * turning developer options on is itself the request to see the diagnostics.
+   * it only takes effect while developerOptions is on, and off until asked for
+   * there.
    */
   showDebug: boolean;
   /**
    * When true, the contact card shows a thumbnail of what the model saw on
    * every scan, including scans with no detection, and stays lit rather than
    * fading out with the meter. A developer option, so it only takes effect
-   * while developerOptions is on, and on by default there.
+   * while developerOptions is on, and off until asked for there.
    */
   frameThumbnails: boolean;
   /**
    * When true, the contact card carries a SAVE button that downloads the
    * model's square input frame as a JPEG, for collecting training data. Costs
    * a JPEG encode inside every detect round trip, so it is a developer option
-   * and only takes effect while developerOptions is on.
+   * and only takes effect while developerOptions is on, off until asked for
+   * there.
    */
   saveFrames: boolean;
   /**
@@ -57,8 +60,8 @@ export type Settings = {
    * frame automatically, with no tap on SAVE. For collecting training data on
    * a drive, where reaching for the button on each detection is not practical
    * and the false positives are exactly what needs reviewing later. Implies
-   * the frame encode saveFrames asks for. Off by default even under
-   * developerOptions, since it downloads a file per detection.
+   * the frame encode saveFrames asks for, and downloads a file per detection,
+   * so it is worth turning on deliberately.
    */
   autoSaveFrames: boolean;
   /**
@@ -109,7 +112,7 @@ export type Settings = {
    * When true, an amber pill on the status bar line shows the crop factor the
    * detector is scanning at, including the auto mode's live level and lock
    * state. A developer option, so it only takes effect while developerOptions
-   * is on, and on by default there: it is the on-glass counterpart of the
+   * is on, and off until asked for there: it is the on-glass counterpart of the
    * debug overlay's zoom row.
    */
   zoomIndicator: boolean;
@@ -117,7 +120,7 @@ export type Settings = {
    * When true, an amber pill on the status bar line shows the last scan's
    * round-trip time, the whole detect message round trip rather than the model
    * time alone. A developer option, so it only takes effect while
-   * developerOptions is on, and on by default there: it is the on-glass
+   * developerOptions is on, and off until asked for there: it is the on-glass
    * counterpart of the debug overlay's round-trip row, for watching pacing on
    * a phone without the full panel covering the meter.
    */
@@ -127,11 +130,20 @@ export type Settings = {
    * centered square crop, narrowed further under the digital zoom) renders on
    * the glass: on the left edge in landscape, top center under the status
    * pills in portrait. A developer option, so it only takes effect while
-   * developerOptions is on. Off by default even there: the app deliberately
-   * never shows the feed, and a second live video surface costs compositing
-   * on a thermally constrained device, so it is worth asking for by name.
+   * developerOptions is on: the app deliberately never shows the feed, and a
+   * second live video surface costs compositing on a thermally constrained
+   * device.
    */
   cameraPreview: boolean;
+};
+
+/**
+ * The settings blob as it lives in localStorage: the settings themselves plus
+ * the schema version a load-time migration keys off. The version is not a
+ * setting, so it never reaches consumers.
+ */
+export type PersistedSettings = Settings & {
+  settingsVersion: number;
 };
 
 /**
@@ -207,9 +219,10 @@ export type SettingsContextValue = {
  */
 export const isPersistedSettings = (
   value: unknown,
-): value is Partial<Settings> => {
+): value is Partial<PersistedSettings> => {
   return (
     isPlainObject(value) &&
+    (value.settingsVersion === undefined || isNumber(value.settingsVersion)) &&
     (value.developerOptions === undefined ||
       isBoolean(value.developerOptions)) &&
     (value.showDebug === undefined || isBoolean(value.showDebug)) &&

@@ -3,13 +3,42 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { SettingsButton } from "@/components/SettingsButton";
 import { SettingsScreen } from "@/components/SettingsScreen";
-import { SettingsProvider, STORAGE_KEY } from "@/context/SettingsContext";
+import {
+  SETTINGS_VERSION,
+  SettingsProvider,
+  STORAGE_KEY,
+} from "@/context/SettingsContext";
+import type { PersistedSettings } from "@/context/SettingsContext";
 import type { DetectionBackend } from "@/workers/detection/types";
 import { MODEL_REVISION } from "@/workers/detection/consts";
 
 afterEach(() => {
   window.localStorage.clear();
 });
+
+/**
+ * The blob a fresh install writes to localStorage, with the rows a test changed
+ * spread over it. Written in the key order SettingsProvider persists, so the
+ * result compares against the stored JSON string directly.
+ */
+const persisted = (overrides: Partial<PersistedSettings> = {}) =>
+  JSON.stringify({
+    settingsVersion: SETTINGS_VERSION,
+    developerOptions: false,
+    showDebug: false,
+    frameThumbnails: false,
+    saveFrames: false,
+    autoSaveFrames: false,
+    radarAudio: true,
+    detectionImage: true,
+    throttleInference: true,
+    zoomMode: "auto",
+    confidenceThreshold: 0.5,
+    zoomIndicator: false,
+    roundTripIndicator: false,
+    cameraPreview: false,
+    ...overrides,
+  });
 
 const renderScreen = (props: { backend?: DetectionBackend } = {}) =>
   render(
@@ -38,21 +67,7 @@ describe("SettingsScreen", () => {
     await open(user);
     await user.click(screen.getByText("Audio alerts"));
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        developerOptions: false,
-        showDebug: true,
-        frameThumbnails: true,
-        saveFrames: true,
-        autoSaveFrames: false,
-        radarAudio: false,
-        detectionImage: true,
-        throttleInference: true,
-        zoomMode: "auto",
-        confidenceThreshold: 0.5,
-        zoomIndicator: true,
-        roundTripIndicator: true,
-        cameraPreview: false,
-      }),
+      persisted({ radarAudio: false }),
     );
   });
 
@@ -64,21 +79,7 @@ describe("SettingsScreen", () => {
     await open(user);
     await user.click(screen.getByText("Detection image"));
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        developerOptions: false,
-        showDebug: true,
-        frameThumbnails: true,
-        saveFrames: true,
-        autoSaveFrames: false,
-        radarAudio: true,
-        detectionImage: false,
-        throttleInference: true,
-        zoomMode: "auto",
-        confidenceThreshold: 0.5,
-        zoomIndicator: true,
-        roundTripIndicator: true,
-        cameraPreview: false,
-      }),
+      persisted({ detectionImage: false }),
     );
   });
 
@@ -90,25 +91,10 @@ describe("SettingsScreen", () => {
     const user = userEvent.setup();
     renderScreen();
     await open(user);
-    // The overlay is on by default under developer options, so the tap turns
-    // it off.
+    // The overlay starts off under developer options, so the tap turns it on.
     await user.click(screen.getByText("Debug overlay"));
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        developerOptions: true,
-        showDebug: false,
-        frameThumbnails: true,
-        saveFrames: true,
-        autoSaveFrames: false,
-        radarAudio: true,
-        detectionImage: true,
-        throttleInference: true,
-        zoomMode: "auto",
-        confidenceThreshold: 0.5,
-        zoomIndicator: true,
-        roundTripIndicator: true,
-        cameraPreview: false,
-      }),
+      persisted({ developerOptions: true, showDebug: true }),
     );
   });
 
@@ -117,22 +103,10 @@ describe("SettingsScreen", () => {
     renderScreen();
     await open(user);
     await user.click(screen.getByText("Developer options"));
+    // The master switch changes nothing but itself: every developer row is
+    // stored exactly as it was.
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        developerOptions: true,
-        showDebug: true,
-        frameThumbnails: true,
-        saveFrames: true,
-        autoSaveFrames: false,
-        radarAudio: true,
-        detectionImage: true,
-        throttleInference: true,
-        zoomMode: "auto",
-        confidenceThreshold: 0.5,
-        zoomIndicator: true,
-        roundTripIndicator: true,
-        cameraPreview: false,
-      }),
+      persisted({ developerOptions: true }),
     );
   });
 
@@ -234,12 +208,11 @@ describe("SettingsScreen", () => {
     const user = userEvent.setup();
     renderScreen();
     await open(user);
-    // On by default under developer options, so the tap turns it off.
     await user.click(screen.getByText("Zoom indicator"));
     expect(
       JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}")
         .zoomIndicator,
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("toggles and persists the round-trip indicator setting from its row", async () => {
@@ -250,12 +223,11 @@ describe("SettingsScreen", () => {
     const user = userEvent.setup();
     renderScreen();
     await open(user);
-    // On by default under developer options, so the tap turns it off.
     await user.click(screen.getByText("Round-trip"));
     expect(
       JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}")
         .roundTripIndicator,
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("toggles and persists the camera preview setting from its row", async () => {
@@ -266,7 +238,6 @@ describe("SettingsScreen", () => {
     const user = userEvent.setup();
     renderScreen();
     await open(user);
-    // Off by default even under developer options, so the tap turns it on.
     await user.click(screen.getByText("Camera preview"));
     expect(
       JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}")
@@ -284,21 +255,7 @@ describe("SettingsScreen", () => {
     await open(user);
     await user.click(screen.getByText("Throttle inference"));
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        developerOptions: true,
-        showDebug: true,
-        frameThumbnails: true,
-        saveFrames: true,
-        autoSaveFrames: false,
-        radarAudio: true,
-        detectionImage: true,
-        throttleInference: false,
-        zoomMode: "auto",
-        confidenceThreshold: 0.5,
-        zoomIndicator: true,
-        roundTripIndicator: true,
-        cameraPreview: false,
-      }),
+      persisted({ developerOptions: true, throttleInference: false }),
     );
   });
 
@@ -312,21 +269,7 @@ describe("SettingsScreen", () => {
     await open(user);
     await user.click(screen.getByRole("button", { name: "2X" }));
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        developerOptions: true,
-        showDebug: true,
-        frameThumbnails: true,
-        saveFrames: true,
-        autoSaveFrames: false,
-        radarAudio: true,
-        detectionImage: true,
-        throttleInference: true,
-        zoomMode: "2x",
-        confidenceThreshold: 0.5,
-        zoomIndicator: true,
-        roundTripIndicator: true,
-        cameraPreview: false,
-      }),
+      persisted({ developerOptions: true, zoomMode: "2x" }),
     );
   });
 
@@ -357,21 +300,7 @@ describe("SettingsScreen", () => {
     await open(user);
     await user.click(screen.getByText("Frame preview"));
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        developerOptions: true,
-        showDebug: true,
-        frameThumbnails: false,
-        saveFrames: true,
-        autoSaveFrames: false,
-        radarAudio: true,
-        detectionImage: true,
-        throttleInference: true,
-        zoomMode: "auto",
-        confidenceThreshold: 0.5,
-        zoomIndicator: true,
-        roundTripIndicator: true,
-        cameraPreview: false,
-      }),
+      persisted({ developerOptions: true, frameThumbnails: true }),
     );
   });
 
@@ -385,21 +314,7 @@ describe("SettingsScreen", () => {
     await open(user);
     await user.click(screen.getByText("Save frames"));
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        developerOptions: true,
-        showDebug: true,
-        frameThumbnails: true,
-        saveFrames: false,
-        autoSaveFrames: false,
-        radarAudio: true,
-        detectionImage: true,
-        throttleInference: true,
-        zoomMode: "auto",
-        confidenceThreshold: 0.5,
-        zoomIndicator: true,
-        roundTripIndicator: true,
-        cameraPreview: false,
-      }),
+      persisted({ developerOptions: true, saveFrames: true }),
     );
   });
 
@@ -413,21 +328,7 @@ describe("SettingsScreen", () => {
     await open(user);
     await user.click(screen.getByText("Auto save"));
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        developerOptions: true,
-        showDebug: true,
-        frameThumbnails: true,
-        saveFrames: true,
-        autoSaveFrames: true,
-        radarAudio: true,
-        detectionImage: true,
-        throttleInference: true,
-        zoomMode: "auto",
-        confidenceThreshold: 0.5,
-        zoomIndicator: true,
-        roundTripIndicator: true,
-        cameraPreview: false,
-      }),
+      persisted({ developerOptions: true, autoSaveFrames: true }),
     );
   });
 

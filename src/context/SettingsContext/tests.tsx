@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   CONFIDENCE_LEVELS,
+  SETTINGS_VERSION,
   SettingsProvider,
   snapConfidence,
   STORAGE_KEY,
@@ -23,31 +24,44 @@ describe("SettingsContext", () => {
     expect(result.current.showDebug).toBe(false);
   });
 
-  it("turns showDebug on with developerOptions, with nothing else to tap", () => {
+  // Turning the master switch on reveals the developer rows and does nothing
+  // else: every one of them stays where it was until someone taps it.
+  it("turns nothing on when developerOptions is switched on", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     act(() => result.current.toggleDeveloperOptions());
-    expect(result.current.showDebug).toBe(true);
+    expect(result.current.developerOptions).toBe(true);
+    expect(result.current.showDebug).toBe(false);
+    expect(result.current.frameThumbnails).toBe(false);
+    expect(result.current.saveFrames).toBe(false);
+    expect(result.current.autoSaveFrames).toBe(false);
+    expect(result.current.zoomIndicator).toBe(false);
+    expect(result.current.roundTripIndicator).toBe(false);
+    expect(result.current.cameraPreview).toBe(false);
+    expect(result.current.throttleInference).toBe(true);
+    expect(result.current.zoomMode).toBe("auto");
+    expect(result.current.confidenceThreshold).toBe(0.5);
   });
 
   it("toggling flips showDebug and persists it to localStorage", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     act(() => result.current.toggleDeveloperOptions());
     act(() => result.current.toggleShowDebug());
-    expect(result.current.showDebug).toBe(false);
+    expect(result.current.showDebug).toBe(true);
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
+        settingsVersion: SETTINGS_VERSION,
         developerOptions: true,
-        showDebug: false,
-        frameThumbnails: true,
-        saveFrames: true,
+        showDebug: true,
+        frameThumbnails: false,
+        saveFrames: false,
         autoSaveFrames: false,
         radarAudio: true,
         detectionImage: true,
         throttleInference: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
-        zoomIndicator: true,
-        roundTripIndicator: true,
+        zoomIndicator: false,
+        roundTripIndicator: false,
         cameraPreview: false,
       }),
     );
@@ -99,18 +113,19 @@ describe("SettingsContext", () => {
     act(() => result.current.openSettings());
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
+        settingsVersion: SETTINGS_VERSION,
         developerOptions: false,
-        showDebug: true,
-        frameThumbnails: true,
-        saveFrames: true,
+        showDebug: false,
+        frameThumbnails: false,
+        saveFrames: false,
         autoSaveFrames: false,
         radarAudio: true,
         detectionImage: true,
         throttleInference: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
-        zoomIndicator: true,
-        roundTripIndicator: true,
+        zoomIndicator: false,
+        roundTripIndicator: false,
         cameraPreview: false,
       }),
     );
@@ -127,18 +142,19 @@ describe("SettingsContext", () => {
     expect(result.current.radarAudio).toBe(false);
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
+        settingsVersion: SETTINGS_VERSION,
         developerOptions: false,
-        showDebug: true,
-        frameThumbnails: true,
-        saveFrames: true,
+        showDebug: false,
+        frameThumbnails: false,
+        saveFrames: false,
         autoSaveFrames: false,
         radarAudio: false,
         detectionImage: true,
         throttleInference: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
-        zoomIndicator: true,
-        roundTripIndicator: true,
+        zoomIndicator: false,
+        roundTripIndicator: false,
         cameraPreview: false,
       }),
     );
@@ -167,18 +183,19 @@ describe("SettingsContext", () => {
     expect(result.current.detectionImage).toBe(false);
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
+        settingsVersion: SETTINGS_VERSION,
         developerOptions: false,
-        showDebug: true,
-        frameThumbnails: true,
-        saveFrames: true,
+        showDebug: false,
+        frameThumbnails: false,
+        saveFrames: false,
         autoSaveFrames: false,
         radarAudio: true,
         detectionImage: false,
         throttleInference: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
-        zoomIndicator: true,
-        roundTripIndicator: true,
+        zoomIndicator: false,
+        roundTripIndicator: false,
         cameraPreview: false,
       }),
     );
@@ -196,18 +213,19 @@ describe("SettingsContext", () => {
     expect(result.current.throttleInference).toBe(false);
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
+        settingsVersion: SETTINGS_VERSION,
         developerOptions: true,
-        showDebug: true,
-        frameThumbnails: true,
-        saveFrames: true,
+        showDebug: false,
+        frameThumbnails: false,
+        saveFrames: false,
         autoSaveFrames: false,
         radarAudio: true,
         detectionImage: true,
         throttleInference: false,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
-        zoomIndicator: true,
-        roundTripIndicator: true,
+        zoomIndicator: false,
+        roundTripIndicator: false,
         cameraPreview: false,
       }),
     );
@@ -308,6 +326,70 @@ describe("SettingsContext", () => {
     expect(result.current.zoomMode).toBe("1x");
   });
 
+  // A blob from before the developer options stopped defaulting on stores the
+  // five display options as true whether or not anyone chose them, so it is
+  // migrated to off on load.
+  it("turns off the developer options a pre-version blob defaulted on", () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        developerOptions: true,
+        showDebug: true,
+        frameThumbnails: true,
+        saveFrames: true,
+        zoomIndicator: true,
+        roundTripIndicator: true,
+      }),
+    );
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.developerOptions).toBe(true);
+    expect(result.current.showDebug).toBe(false);
+    expect(result.current.frameThumbnails).toBe(false);
+    expect(result.current.saveFrames).toBe(false);
+    expect(result.current.zoomIndicator).toBe(false);
+    expect(result.current.roundTripIndicator).toBe(false);
+  });
+
+  it("keeps the deliberate options a pre-version blob stored", () => {
+    // None of these could be there by default, so each one is a choice someone
+    // made and the migration leaves it alone.
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        developerOptions: true,
+        autoSaveFrames: true,
+        cameraPreview: true,
+        throttleInference: false,
+        zoomMode: "1x",
+        confidenceThreshold: 0.2,
+        radarAudio: false,
+        detectionImage: false,
+      }),
+    );
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    expect(result.current.autoSaveFrames).toBe(true);
+    expect(result.current.cameraPreview).toBe(true);
+    expect(result.current.throttleInference).toBe(false);
+    expect(result.current.zoomMode).toBe("1x");
+    expect(result.current.confidenceThreshold).toBe(0.2);
+    expect(result.current.radarAudio).toBe(false);
+    expect(result.current.detectionImage).toBe(false);
+  });
+
+  it("does not re-run the migration over a choice made after it", () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true, showDebug: true }),
+    );
+    const first = renderHook(() => useSettings(), { wrapper });
+    expect(first.result.current.showDebug).toBe(false);
+    act(() => first.result.current.toggleShowDebug());
+    first.unmount();
+
+    const second = renderHook(() => useSettings(), { wrapper });
+    expect(second.result.current.showDebug).toBe(true);
+  });
+
   it("falls back to the auto mode when a stored zoomMode is invalid", () => {
     window.localStorage.setItem(
       STORAGE_KEY,
@@ -323,41 +405,35 @@ describe("SettingsContext", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     act(() => result.current.toggleDeveloperOptions());
     act(() => result.current.toggleShowDebug());
-    expect(result.current.showDebug).toBe(false);
-    expect(result.current.frameThumbnails).toBe(true);
+    expect(result.current.showDebug).toBe(true);
+    expect(result.current.frameThumbnails).toBe(false);
 
     act(() => result.current.toggleFrameThumbnails());
-    expect(result.current.frameThumbnails).toBe(false);
-    expect(result.current.saveFrames).toBe(true);
+    expect(result.current.frameThumbnails).toBe(true);
+    expect(result.current.saveFrames).toBe(false);
   });
 
   it("toggles frame saving independently of the debug overlay", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     act(() => result.current.toggleDeveloperOptions());
     act(() => result.current.toggleSaveFrames());
-    expect(result.current.saveFrames).toBe(false);
-    expect(result.current.showDebug).toBe(true);
-    expect(result.current.frameThumbnails).toBe(true);
+    expect(result.current.saveFrames).toBe(true);
+    expect(result.current.showDebug).toBe(false);
+    expect(result.current.frameThumbnails).toBe(false);
   });
 
-  // The camera preview puts a live video surface on the glass, so like auto
-  // save it stays off until asked for by name.
-  it("keeps the camera preview off even once developer options are on", () => {
+  it("turns the camera preview on only when it is asked for by name", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     act(() => result.current.toggleDeveloperOptions());
-    expect(result.current.showDebug).toBe(true);
     expect(result.current.cameraPreview).toBe(false);
 
     act(() => result.current.toggleCameraPreview());
     expect(result.current.cameraPreview).toBe(true);
   });
 
-  // Auto save downloads a file per detection, so unlike the other three
-  // display options it stays off until asked for by name.
-  it("keeps auto save off even once developer options are on", () => {
+  it("turns auto save on only when it is asked for by name", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     act(() => result.current.toggleDeveloperOptions());
-    expect(result.current.saveFrames).toBe(true);
     expect(result.current.autoSaveFrames).toBe(false);
 
     act(() => result.current.toggleAutoSaveFrames());
@@ -367,11 +443,16 @@ describe("SettingsContext", () => {
   it("tolerates a stored blob predating the frame preview and saving options", () => {
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ developerOptions: true, showDebug: false }),
+      JSON.stringify({
+        settingsVersion: SETTINGS_VERSION,
+        developerOptions: true,
+        showDebug: true,
+      }),
     );
     const { result } = renderHook(() => useSettings(), { wrapper });
-    expect(result.current.frameThumbnails).toBe(true);
-    expect(result.current.saveFrames).toBe(true);
+    expect(result.current.showDebug).toBe(true);
+    expect(result.current.frameThumbnails).toBe(false);
+    expect(result.current.saveFrames).toBe(false);
     expect(result.current.autoSaveFrames).toBe(false);
   });
 
@@ -379,6 +460,7 @@ describe("SettingsContext", () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     act(() => result.current.toggleDeveloperOptions());
     act(() => result.current.toggleThrottleInference());
+    act(() => result.current.toggleShowDebug());
     expect(result.current.throttleInference).toBe(false);
     expect(result.current.showDebug).toBe(true);
 
@@ -400,18 +482,19 @@ describe("SettingsContext", () => {
     act(() => result.current.toggleDeveloperOptions());
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
       JSON.stringify({
+        settingsVersion: SETTINGS_VERSION,
         developerOptions: false,
-        showDebug: true,
-        frameThumbnails: false,
-        saveFrames: true,
+        showDebug: false,
+        frameThumbnails: true,
+        saveFrames: false,
         autoSaveFrames: false,
         radarAudio: true,
         detectionImage: true,
         throttleInference: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
-        zoomIndicator: true,
-        roundTripIndicator: true,
+        zoomIndicator: false,
+        roundTripIndicator: false,
         cameraPreview: false,
       }),
     );
