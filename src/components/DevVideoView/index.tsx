@@ -11,6 +11,15 @@ type DevVideoViewProps = {
   /** Fires when the video's intrinsic dimensions change; mirrors CameraView. */
   onVideoResize?: (video: HTMLVideoElement) => void;
   /**
+   * Fires when the browser cannot load or decode the file, so the caller can
+   * put the feed back. A file's `video/*` MIME type is the OS's word, not the
+   * browser's: ProRes .mov, H.265 .mp4, and .mkv all pass the pick filter and
+   * none of them decode. Such a file never presents a frame, and the pump
+   * would wait on a frame callback that never fires while the meter reads
+   * SCANNING.
+   */
+  onError?: () => void;
+  /**
    * True while detection is running. The first rising edge starts playback;
    * later transitions never auto-play or auto-pause, since the video is the
    * user's to control by then.
@@ -35,13 +44,16 @@ type DevVideoViewProps = {
  * while the model is still downloading or compiling. The player is also kept
  * invisible until that same transition, so the load and compile phase shows
  * only the radar backdrop, matching the camera path. Camera errors do not
- * exist in this mode: a rejected play() just logs to the console, and the
- * already-visible native controls are the manual recovery.
+ * exist in this mode, but a file the browser cannot decode does: the element's
+ * `error` event reports it through onError so the caller can put the feed
+ * back. A rejected play() only logs, and the already-visible native controls
+ * are the manual recovery for it.
  */
 export const DevVideoView = ({
   src,
   onStream,
   onVideoResize,
+  onError,
   scanning,
 }: DevVideoViewProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -68,6 +80,23 @@ export const DevVideoView = ({
       video.removeEventListener("resize", handleVideoResize);
     };
   }, [onStream, onVideoResize]);
+
+  // The element's error event is the only path to onError. A rejected play()
+  // observes the same undecodable file a second time, but it also rejects when
+  // the element is torn down mid-play, so reporting from there would swap the
+  // feed twice on one failure and could clear a clip the user had just picked.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+    const handleError = () => {
+      console.error("dev video source failed to load", video.error?.message);
+      onError?.();
+    };
+    video.addEventListener("error", handleError);
+    return () => video.removeEventListener("error", handleError);
+  }, [onError]);
 
   // One-shot: start playback on the first rising edge of `scanning` only.
   // Later transitions (settings panel pausing the pump, page hidden, etc.)

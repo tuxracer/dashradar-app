@@ -162,6 +162,26 @@ describe("App", () => {
     expect(await screen.findByTestId("dev-video-view")).toBeInTheDocument();
   });
 
+  // A video/* file the browser cannot decode (ProRes .mov, H.265 .mp4, .mkv)
+  // passes the drop filter, and the pump then waits forever on a frame
+  // callback that never fires, with the stall watchdog off for a file feed.
+  it("returns to the camera when the dropped clip cannot be decoded", async () => {
+    stubBrowser(grantedCamera);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(<App />);
+    acceptFirstRunScreens();
+    act(() => dropClipOnWindow());
+    const player = await screen.findByTestId("dev-video-view");
+
+    act(() => {
+      fireEvent.error(player);
+    });
+
+    expect(await screen.findByTestId("camera-view")).toBeInTheDocument();
+    expect(screen.queryByTestId("dev-video-view")).not.toBeInTheDocument();
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
   it("asks the camera again after a clip stood in for a failed one", async () => {
     const getUserMedia = deniedThenGrantedCamera();
     stubBrowser(getUserMedia);

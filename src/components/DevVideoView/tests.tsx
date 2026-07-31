@@ -1,4 +1,4 @@
-import { render, waitFor } from "@testing-library/react";
+import { fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DevVideoView } from "@/components/DevVideoView";
 
@@ -62,6 +62,56 @@ describe("DevVideoView", () => {
     await waitFor(() => expect(errorSpy).toHaveBeenCalled());
     // The player stays up with its native controls as the manual recovery.
     expect(container.querySelector("video")).not.toHaveClass("invisible");
+  });
+
+  it("reports a source the browser cannot decode", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const onError = vi.fn();
+    const { container } = render(
+      <DevVideoView
+        src="/__dev-video"
+        scanning={false}
+        onStream={() => {}}
+        onError={onError}
+      />,
+    );
+    const video = container.querySelector("video");
+    if (!video) {
+      throw new Error("video element not found");
+    }
+    fireEvent.error(video);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  // The media error event owns the fallback. A rejected play() reports the same
+  // condition a second time, and also fires when the element is torn down
+  // mid-play, so routing it to onError would swap the feed twice or clear a
+  // clip the user had just swapped in.
+  it("does not report an error when only play() rejects", async () => {
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockRejectedValue(
+      new Error("no supported source"),
+    );
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const onError = vi.fn();
+    const { rerender } = render(
+      <DevVideoView
+        src="/__dev-video"
+        scanning={false}
+        onStream={() => {}}
+        onError={onError}
+      />,
+    );
+    rerender(
+      <DevVideoView
+        src="/__dev-video"
+        scanning={true}
+        onStream={() => {}}
+        onError={onError}
+      />,
+    );
+    await waitFor(() => expect(errorSpy).toHaveBeenCalled());
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("hides the player until scanning starts, then shows it with controls", async () => {

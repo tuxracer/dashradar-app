@@ -66,6 +66,7 @@ const RadarScreen = () => {
     cameraStalled,
     cameraEpoch,
     clearCameraStall,
+    swapVideoSource,
   } = useDetection();
   const {
     radarAudio,
@@ -131,6 +132,15 @@ const RadarScreen = () => {
     },
     [start, updateVideoSize],
   );
+
+  // A file the browser cannot decode presents no frames at all, so the feed
+  // goes back to whatever the session started with (the camera, or the
+  // DASHRADAR_VIDEO clip). Leaving it in place would park the pump on a frame
+  // callback that never fires, with the stall watchdog disabled for a file
+  // feed, and the meter would read SCANNING for the rest of the drive.
+  const handleDevVideoError = useCallback(() => {
+    swapVideoSource(null);
+  }, [swapVideoSource]);
 
   // Returning to the camera gives it a clean slate: a permission error or a
   // stall recorded before the clip was loaded must not pre-empt the fresh
@@ -210,6 +220,7 @@ const RadarScreen = () => {
           scanning={status === "running"}
           onStream={handleStream}
           onVideoResize={updateVideoSize}
+          onError={handleDevVideoError}
         />
       ) : (
         <CameraView
