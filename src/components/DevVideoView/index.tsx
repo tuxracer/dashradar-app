@@ -85,15 +85,27 @@ export const DevVideoView = ({
   // observes the same undecodable file a second time, but it also rejects when
   // the element is torn down mid-play, so reporting from there would swap the
   // feed twice on one failure and could clear a clip the user had just picked.
+  // reportedRef keeps that promise across effect re-runs: this element's
+  // failure is terminal, so it is worth reporting exactly once.
+  const reportedRef = useRef(false);
   useEffect(() => {
     const video = videoRef.current;
     if (!video) {
       return;
     }
     const handleError = () => {
+      if (reportedRef.current) {
+        return;
+      }
+      reportedRef.current = true;
       console.error("dev video source failed to load", video.error?.message);
       onError?.();
     };
+    // An error that landed before this effect ran leaves no event to catch,
+    // only the element's error property, so read it once on attach.
+    if (video.error) {
+      handleError();
+    }
     video.addEventListener("error", handleError);
     return () => video.removeEventListener("error", handleError);
   }, [onError]);

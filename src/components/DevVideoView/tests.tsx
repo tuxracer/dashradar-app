@@ -80,8 +80,9 @@ describe("DevVideoView", () => {
       throw new Error("video element not found");
     }
     fireEvent.error(video);
+    fireEvent.error(video);
     expect(onError).toHaveBeenCalledTimes(1);
-    expect(errorSpy).toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledTimes(1);
   });
 
   // The media error event owns the fallback. A rejected play() reports the same
