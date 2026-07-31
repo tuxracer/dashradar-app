@@ -1,4 +1,4 @@
-import { render, waitFor } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CameraView } from "@/components/CameraView";
 import { isCameraError } from "@/lib/camera";
@@ -65,6 +65,41 @@ describe("CameraView", () => {
     expect(onVideoResize).toHaveBeenCalledWith(video);
     expect(video.videoWidth).toBe(1080);
     expect(video.videoHeight).toBe(1920);
+  });
+
+  // A feed swap unmounts this component while play() is still pending. If the
+  // late resolution still reported the element, the pump would be handed a
+  // detached video whose frames never arrive, and with the stall watchdog off
+  // for a file feed nothing would ever recover it.
+  it("does not report the video element when it unmounts mid-play", async () => {
+    const fakeStream = {
+      getTracks: () => [{ stop: () => {} }],
+    } as unknown as MediaStream;
+    vi.stubGlobal("navigator", {
+      mediaDevices: { getUserMedia: vi.fn(() => Promise.resolve(fakeStream)) },
+    });
+    let finishPlay = () => {};
+    const playSpy = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finishPlay = resolve;
+          }),
+      );
+
+    const onStream = vi.fn();
+    const { unmount } = render(
+      <CameraView onStream={onStream} onError={() => {}} />,
+    );
+    await waitFor(() => expect(playSpy).toHaveBeenCalled());
+    expect(onStream).not.toHaveBeenCalled();
+
+    unmount();
+    await act(async () => {
+      finishPlay();
+    });
+    expect(onStream).not.toHaveBeenCalled();
   });
 
   it("reports a typed camera error", async () => {

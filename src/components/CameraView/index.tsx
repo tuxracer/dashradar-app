@@ -46,6 +46,13 @@ export const CameraView = ({
         }
         video.srcObject = stream;
         await video.play();
+        // A feed swap (or a recovery remount) can unmount this component while
+        // play() is still pending. Reporting the element afterwards would hand
+        // the pump a detached video that never produces another frame, so the
+        // late resolution is dropped the same way the one above it is.
+        if (cancelled) {
+          return;
+        }
         onStream(video);
         video.addEventListener("resize", handleVideoResize);
       } catch (error) {
