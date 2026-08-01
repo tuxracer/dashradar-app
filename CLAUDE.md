@@ -67,6 +67,14 @@ pnpm format      # Auto-fix formatting (prettier --write)
 
 **Documentation**: When making major changes (architecture, new modules, API changes), update [docs/TRD.md](docs/TRD.md).
 
+**The TRD is written for a human, and it has to stay that way.** Its reader is a working software engineer who has never seen this codebase and has the source open in the next window. Write for that person, in plain English, reaching for jargon only where the concept genuinely has no plainer name. It grew to 22,000 words of dense paragraphs once and had to be rewritten from scratch; the way that happens is one reasonable-looking addition at a time, so hold the line on every edit:
+
+- **Explain, don't transcribe.** Say what a part does and why the non-obvious choices are what they are. The reasoning is the whole value, because it is the only thing not recoverable by reading the code. Skip anything the reader could learn faster by opening the file: what each ref holds, what every branch of a handler does, which fields a type has.
+- **Prefer names over values for anything tunable.** A named threshold or interval can be looked up and won't be wrong after someone tunes it. Spell out a number only when it is structurally load-bearing (the scan floor, the model input size, the confidence floor) and the reader can't follow the argument without it.
+- **Keep the shape friendly.** Short sections with descriptive headings, a sentence or two of orientation before any list, tables for anything enumerable, and paragraphs that stay under about five lines. If a section needs sub-sub-sections, it wants splitting instead.
+- **Cut before you add.** New material usually means something nearby is now redundant. A section that has slowly turned into a wall is a bug to fix, not a style to match.
+- **Read it back as a stranger.** If a paragraph only makes sense to someone who already knows the answer, rewrite it.
+
 **Never mention this file in human-facing documents.** README, TRD, code comments, commit messages, PR descriptions, and in-app copy are written for people, and a pointer to the agent instruction file is noise to every one of them: it either sends the reader somewhere that answers a question they didn't ask, or it advertises how the file was written. State the rule where it belongs instead. If the reader needs the commands, they're in the README; if they need a convention, write the convention; if a piece of code is load-bearing for a reason that isn't obvious, say the reason rather than pointing at a list of gotchas. Same for `.claude/`, skills, plans under `docs/superpowers/`, and any other agent-facing path.
 
 ## Git Workflow
