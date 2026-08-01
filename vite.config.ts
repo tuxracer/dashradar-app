@@ -256,6 +256,10 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
-    include: ["**/*.{test,spec}.?(c|m)[jt]s?(x)", "**/tests.[jt]s?(x)"],
+    // Sidecar `tests.ts`/`tests.tsx` only, matching the module-structure
+    // convention in CLAUDE.md. The default `*.test.*`/`*.spec.*` patterns are
+    // deliberately absent: leaving them in let an off-convention file be
+    // written and still run green, which is how src/App.test.tsx survived.
+    include: ["**/tests.[jt]s?(x)"],
   },
 });

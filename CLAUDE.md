@@ -31,7 +31,7 @@ Ideas evaluated in feature brainstorms and rejected. Don't bring these up again:
 
 ## Architecture
 
-Client-only **Vite 8 React SPA** with no server runtime (the build is a static `dist/`). Data flow: `src/App.tsx` → `DetectionProvider` (consumed via `useDetection()`) → `src/workers/detection` (RF-DETR ONNX on raw onnxruntime-web in a Web Worker, WebGPU only) → `src/lib/detection` road-class filter → `src/lib/detectionTracker` coasting smoother → `src/lib/detection` HUD shaping (all pure, no React). `DetectionContext` owns the worker lifecycle and frame pump; components only ever read `useDetection()`.
+Client-only **Vite 8 React SPA** with no server runtime (the build is a static `dist/`). Data flow: `src/App` → `DetectionProvider` (consumed via `useDetection()`) → `src/workers/detection` (RF-DETR ONNX on raw onnxruntime-web in a Web Worker, WebGPU only) → `src/lib/detection` road-class filter → `src/lib/detectionTracker` coasting smoother → `src/lib/detection` HUD shaping (all pure, no React). `DetectionContext` owns the worker lifecycle and frame pump; components only ever read `useDetection()`.
 
 Module map (internals in TRD §4 and §5):
 
@@ -39,7 +39,7 @@ Module map (internals in TRD §4 and §5):
 - `src/context/SettingsContext/`: localStorage-backed settings (`settings`) behind the `developerOptions` master switch. The provider hands out already-gated effective values, so consumers never repeat the gate. Every developer option starts at its `DEVELOPER_OPTIONS_OFF` value, so turning the master switch on reveals rows without turning anything on; a `settingsVersion` migration clears the five that used to default on.
 - `src/context/DevVideoContext/`: owns the video-file source that stands in for the camera. Every session starts on the camera; a dropped or settings-picked file replaces it until cleared. Consume via `useDevVideo()`.
 - `src/workers/detection/`: downloads the ONNX weights, runs inference; pure preprocess/decode in `inference.ts`, constants in `consts.ts`, typed message protocol in `types.ts`.
-- `src/lib/`: React-free domain modules, one directory each: `detection`, `detectionTracker`, `autoZoom`, `radarSignal`, `radarAudio`, `camera`, `crashSentinel`, `browserEngine`, `videoFileDrop`, `pwaInstall`, `saveFrame`, `serviceWorker`, `timingHistory`, `wakeLock`, and friends.
+- `src/lib/`: React-free domain modules, one directory each: `detection`, `detectionTracker`, `autoZoom`, `radarSignal`, `radarAudio`, `camera`, `crashSentinel`, `videoFileDrop`, `pwaInstall`, `saveFrame`, `serviceWorker`, `timingHistory`, `wakeLock`, and friends.
 - `src/components/`: `CameraView` (hidden `<video>`, the feed is never shown), `RadarDetectorScreen` (the only detection UI; rAF peak-hold loop writing straight to the DOM, drives the beeper and contact card), `StatusBar` + indicator pills, `SettingsScreen`, `DebugOverlay`, `SaveToast`, `ShareTarget` (the handoff cluster: SCAN TO OPEN annunciator, QR in lock-on brackets, Web Share button; shared by the desktop intro and `UnsupportedScreen` so the app's two handoffs cannot drift apart), `UnsupportedScreen` (the WEBGPU_UNSUPPORTED handoff, framed as an invitation rather than an error), intro/permission/load/error screens.
 - `src/types/`: shared detection types and guards.
 
@@ -114,7 +114,7 @@ A custom **RF-DETR Small** checkpoint fine-tuned on Las Vegas Metro police vehic
 - **Reserve the `use` prefix for React hooks**: boolean options are `systemFont`/`enableCache`, not `useSystemFont`.
 - **Named imports**: `import { pipe, filter } from "remeda"`, never `import * as R` (tree-shaking).
 - **Import paths**: cross-module imports use the `@/` alias; relative paths only within a module. Import from the module, not internal files (`@/lib/detection`, not `@/lib/detection/consts`), with `src/workers/detection` as the one exception above.
-- **Module structure**: modules are directories named after their primary export, containing `index.ts` plus optional `consts.ts` (every exported constant lives here, never in `index.ts`), `types.ts` (types and guards), and `tests.ts` (`.tsx` when tests render JSX). `index.ts` re-exports types and consts. No barrel-only files.
+- **Module structure**: modules are directories named after their primary export, containing `index.ts` plus optional `consts.ts` (every exported constant lives here, never in `index.ts`), `types.ts` (types and guards), and `tests.ts` (`.tsx` when tests render JSX). `index.ts` re-exports types and consts. No barrel-only files. This holds for `src/App` too, and there are no `*.test.ts`/`*.spec.ts` files anywhere: vitest's `include` is narrowed to `**/tests.[jt]s?(x)` so an off-convention filename simply never runs, rather than passing green and going unnoticed.
 - **React context over prop drilling** for app-wide state (see `DetectionContext`).
 - **Remeda utilities** over manual loops where readability wins.
 - **Named constants**, no magic numbers; underscore separators for numbers 1000 and up (`1_500`).

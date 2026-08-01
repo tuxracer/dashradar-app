@@ -323,6 +323,37 @@ const createCaptureModel = async (weights: Uint8Array): Promise<ModelIo> => {
   }
 };
 
+/**
+ * Run a plain session once on the (still zeroed) input buffer before reporting
+ * it ready. The first run of a WebGPU session is the heaviest moment the GPU
+ * process sees all session: it compiles the model's hundreds of WGSL shaders
+ * and allocates every intermediate buffer at once. Without this it lands on the
+ * driver's first scanned frame, concurrent with a live camera stream, the frame
+ * pump, and the meter's rAF loop, which is exactly where the field crashes
+ * cluster (DASHRADAR-2: every kill inside ~21 s of scanning, four of them
+ * before a single detection result came back). Warming up moves that peak to a
+ * quiet moment when nothing else is running and no frame is riding on it.
+ *
+ * The capture path already gets this for free: `createCaptureModel`'s first run
+ * performs the capture and doubles as the same warm-up. This is what gives the
+ * fallback path parity.
+ *
+ * Failure propagates rather than being swallowed. A session that cannot run
+ * once on zeroed input cannot detect anything, so surfacing it here as
+ * MODEL_LOAD_FAILED (with the reason on the backend probe) reports the same
+ * outcome the first real frame would have produced, only sooner and named more
+ * accurately than a per-frame INFERENCE_FAILED.
+ */
+const warmUpSession = async (io: ModelIo): Promise<void> => {
+  const input = new Tensor("float32", inputBuffer, [
+    1,
+    3,
+    INPUT_SIZE,
+    INPUT_SIZE,
+  ]);
+  await io.session.run({ [io.inputName]: input });
+};
+
 /** Download and instantiate the WebGPU session. */
 const createModel = async (): Promise<ModelIo> => {
   const cached = await matchCachedModel(MODEL_URL);
@@ -359,7 +390,9 @@ const createModel = async (): Promise<ModelIo> => {
   const session = await InferenceSession.create(weights, {
     executionProviders: ["webgpu"],
   });
-  return { session, ...resolveIoNames(session), captureError };
+  const io = { session, ...resolveIoNames(session), captureError };
+  await warmUpSession(io);
+  return io;
 };
 
 /**

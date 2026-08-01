@@ -64,10 +64,12 @@ class FakeWorker {
 }
 
 /**
- * Drives the worker to ready, which moves the pump to running and is the edge
- * that starts a dropped clip playing.
+ * Drives the worker to ready. This is the edge that starts a dropped clip
+ * playing, and it is also the precondition for the camera existing at all: the
+ * app holds getUserMedia back until the model is loaded and warmed, so no
+ * camera-view element is in the tree before this resolves.
  */
-const reachScanning = async () => {
+const reachModelReady = async () => {
   await waitFor(() => expect(workerOnMessage).not.toBeNull());
   await act(async () => {
     workerOnMessage?.({ data: { type: "ready" } });
@@ -128,11 +130,28 @@ describe("App", () => {
     stubBrowser();
     render(<App />);
     acceptFirstRunScreens();
+    await reachModelReady();
     await waitFor(() =>
       expect(
         screen.getByText(/browser can't access the camera/i),
       ).toBeInTheDocument(),
     );
+  });
+
+  it("leaves the camera alone until the model is ready", async () => {
+    const getUserMedia = vi.fn(grantedCamera);
+    stubBrowser(getUserMedia);
+    render(<App />);
+    acceptFirstRunScreens();
+    await waitFor(() => expect(workerOnMessage).not.toBeNull());
+    // Session creation and the worker's warm-up run are the heaviest moment
+    // the GPU process sees; a live camera stream must not be holding buffers
+    // through it. Asking early is what put both peaks on the same instant.
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("camera-view")).not.toBeInTheDocument();
+    await reachModelReady();
+    await screen.findByTestId("camera-view");
+    expect(getUserMedia).toHaveBeenCalled();
   });
 
   it("still shows the intro to a device that cannot run inference", async () => {
@@ -207,10 +226,11 @@ describe("App", () => {
     stubBrowser(grantedCamera);
     render(<App />);
     acceptFirstRunScreens();
-    await screen.findByTestId("camera-view");
+    // Dropped while the model is still loading, so the ready edge below is
+    // what starts it playing. The camera does not exist yet at this point.
     act(() => dropClipOnWindow());
     const player = await screen.findByTestId("dev-video-view");
-    await reachScanning();
+    await reachModelReady();
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
     expect(player).not.toHaveClass("invisible");
   });
@@ -219,8 +239,8 @@ describe("App", () => {
     stubBrowser(grantedCamera);
     render(<App />);
     acceptFirstRunScreens();
+    await reachModelReady();
     await screen.findByTestId("camera-view");
-    await reachScanning();
     vi.mocked(HTMLMediaElement.prototype.play).mockClear();
     act(() => dropClipOnWindow());
     const player = await screen.findByTestId("dev-video-view");
@@ -234,6 +254,7 @@ describe("App", () => {
     stubBrowser(grantedCamera);
     render(<App />);
     acceptFirstRunScreens();
+    await reachModelReady();
     await screen.findByTestId("camera-view");
     act(() => dropClipOnWindow());
     expect(await screen.findByTestId("dev-video-view")).toBeInTheDocument();
@@ -244,6 +265,7 @@ describe("App", () => {
     stubBrowser(grantedCamera);
     render(<App />);
     acceptFirstRunScreens();
+    await reachModelReady();
     act(() => dropClipOnWindow());
     await screen.findByTestId("dev-video-view");
     act(() => detection.swapVideoSource(null));
@@ -255,6 +277,7 @@ describe("App", () => {
     stubBrowser(deniedCamera);
     render(<App />);
     acceptFirstRunScreens();
+    await reachModelReady();
     await screen.findByRole("heading", { name: /camera access needed/i });
     act(() => dropClipOnWindow());
     expect(await screen.findByTestId("dev-video-view")).toBeInTheDocument();
@@ -268,6 +291,7 @@ describe("App", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     render(<App />);
     acceptFirstRunScreens();
+    await reachModelReady();
     act(() => dropClipOnWindow());
     const player = await screen.findByTestId("dev-video-view");
 
@@ -285,6 +309,7 @@ describe("App", () => {
     stubBrowser(getUserMedia);
     render(<App />);
     acceptFirstRunScreens();
+    await reachModelReady();
     await screen.findByRole("heading", { name: /camera access needed/i });
     act(() => dropClipOnWindow());
     await screen.findByTestId("dev-video-view");

@@ -216,8 +216,14 @@ const RadarScreen = () => {
     return <ErrorScreen code="CAMERA_STALLED" />;
   }
 
-  // The camera feed stays mounted but invisible while the model loads, so
-  // getUserMedia fires right after the intro's START tap.
+  // The camera is acquired only once the model is loaded and warmed, never
+  // alongside it. Session creation plus the worker's warm-up run is the
+  // heaviest moment the GPU process sees, and a live 1024x1024 stream holds
+  // buffers of its own throughout; overlapping the two put both peaks on the
+  // same instant, which is where every field crash landed (DASHRADAR-2). The
+  // cost is that the browser's permission prompt now follows the model load
+  // rather than racing it, which on a first visit means it appears after the
+  // download screen instead of over it.
   const modelLoading = status === "loading-model";
 
   return (
@@ -233,12 +239,19 @@ const RadarScreen = () => {
           onError={handleDevVideoError}
         />
       ) : (
-        <CameraView
-          key={cameraEpoch}
-          onStream={handleStream}
-          onError={setCameraError}
-          onVideoResize={updateVideoSize}
-        />
+        // Held back until the model is ready (see modelLoading above). The
+        // "ready" handler parks at status "ready" when no camera has started,
+        // and this mount's start() is what advances it to "running", so the
+        // ordering has no deadlock. A worker recycle never returns status to
+        // "loading-model", so it cannot tear the camera back down mid-drive.
+        !modelLoading && (
+          <CameraView
+            key={cameraEpoch}
+            onStream={handleStream}
+            onError={setCameraError}
+            onVideoResize={updateVideoSize}
+          />
+        )
       )}
       {/* The meter mounts immediately so the first paint past the permission
           flow is the instrument reading INITIALIZING, not a blank backdrop;
