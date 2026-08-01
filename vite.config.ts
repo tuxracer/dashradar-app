@@ -162,7 +162,12 @@ const pwa = () =>
       ],
     },
     workbox: {
-      globPatterns: ["**/*.{js,css,html,svg,png,woff,woff2}"],
+      // woff2 only, no legacy woff. @fontsource emits both per subset and the
+      // CSS lists woff2 first, so the woff copies are never requested by any
+      // browser that gets this far: WebGPU support (which probeWebGpu requires
+      // before the app runs at all) postdates universal woff2 support by years.
+      // Precaching them just doubled the font entries on every install.
+      globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
       maximumFileSizeToCacheInBytes: PRECACHE_MAX_FILE_SIZE,
       runtimeCaching: [
         {

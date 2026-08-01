@@ -279,16 +279,22 @@ const resolveIoNames = (
  *
  * The first run here is deliberate: it performs the actual capture, doubles as
  * shader warm-up, and surfaces run-time capture incompatibility (which does
- * not always fail at session creation) while the caller can still fall back
- * to a plain session cheaply, with the weights still in scope. Throws on any
- * failure after releasing whatever was created.
+ * not always fail at session creation) while the caller can still fall back to
+ * a plain session. Throws on any failure after releasing whatever was created.
+ *
+ * `onSessionCreated` fires the instant the session exists, which is the point
+ * the caller's copy of the weights stops being needed (see `createModel`).
  */
-const createCaptureModel = async (weights: Uint8Array): Promise<ModelIo> => {
+const createCaptureModel = async (
+  weights: Uint8Array,
+  onSessionCreated: () => void,
+): Promise<ModelIo> => {
   const session = await InferenceSession.create(weights, {
     executionProviders: ["webgpu"],
     enableGraphCapture: true,
     preferredOutputLocation: "gpu-buffer",
   });
+  onSessionCreated();
   let inputGpuBuffer: GPUBuffer | undefined;
   try {
     // The device must come from ORT after session creation so the buffer is
@@ -354,7 +360,25 @@ const warmUpSession = async (io: ModelIo): Promise<void> => {
   await io.session.run({ [io.inputName]: input });
 };
 
-/** Download and instantiate the WebGPU session. */
+/**
+ * Download and instantiate the WebGPU session.
+ *
+ * The weights buffer is dropped as soon as a session has copied it into ORT's
+ * own heap, rather than being held until this function returns. That matters
+ * because what follows session creation is the first run (the capture run, or
+ * `warmUpSession`), which compiles the model's shaders and allocates every
+ * intermediate at once. Keeping the ~57 MB JS buffer reachable across that
+ * instant stacks a redundant copy onto the highest peak of the whole session,
+ * on a platform that kills the page for crossing its budget with no warning.
+ *
+ * Only a cache-backed load releases, because only it can hand the bytes back
+ * for free: the capture fallback below re-matches the very CacheStorage entry
+ * this read came from. A fresh download has no such second source, so it keeps
+ * the buffer across the first run exactly as before rather than risk paying for
+ * 57 MB twice. That costs nothing in practice for a driving session: a first
+ * visit loads once, while every worker recycle after it reads from cache and so
+ * takes the releasing path.
+ */
 const createModel = async (): Promise<ModelIo> => {
   const cached = await matchCachedModel(MODEL_URL);
   // Tell the context whether this is a network download so it can show the
@@ -362,7 +386,7 @@ const createModel = async (): Promise<ModelIo> => {
   // reading already-cached weights (a cache read still takes a beat to compile
   // the ONNX session, which otherwise flashes a misleading "downloading" UI).
   post({ type: "model-load-start", fromCache: cached !== undefined });
-  let weights: Uint8Array<ArrayBuffer>;
+  let weights: Uint8Array<ArrayBuffer> | undefined;
   if (cached) {
     weights = new Uint8Array(await cached.arrayBuffer());
   } else {
@@ -377,19 +401,35 @@ const createModel = async (): Promise<ModelIo> => {
     });
     await cacheModelInDev(weights);
   }
+  const releaseWeights = () => {
+    if (cached) {
+      weights = undefined;
+    }
+  };
   let captureError: string | undefined;
   if (WEBGPU_GRAPH_CAPTURE) {
     try {
-      return await createCaptureModel(weights);
+      return await createCaptureModel(weights, releaseWeights);
     } catch (error) {
       // Capture may not work on this device or export; fall back to a plain
       // WebGPU session and record why for the debug overlay.
       captureError = describeError(error);
     }
   }
+  if (!weights) {
+    // The capture attempt released the buffer after building its session, so
+    // re-read the entry it came from. Guaranteed present: this same cache was
+    // matched moments ago, and the miss branch never releases.
+    const entry = await matchCachedModel(MODEL_URL);
+    if (!entry) {
+      throw new DetectionError("MODEL_LOAD_FAILED");
+    }
+    weights = new Uint8Array(await entry.arrayBuffer());
+  }
   const session = await InferenceSession.create(weights, {
     executionProviders: ["webgpu"],
   });
+  releaseWeights();
   const io = { session, ...resolveIoNames(session), captureError };
   await warmUpSession(io);
   return io;

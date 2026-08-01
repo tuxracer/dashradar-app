@@ -8,9 +8,17 @@ import { Analytics } from "@vercel/analytics/react";
 import { isTrackingOptedOut } from "privacy-signals";
 import { trackPwaInstall } from "@/lib/pwaInstall";
 import { requestPersistentStorage } from "@/lib/serviceWorker";
-import "@fontsource/rajdhani/500.css";
-import "@fontsource/rajdhani/600.css";
-import "@fontsource/rajdhani/700.css";
+// Latin subsets only. Rajdhani is a Devanagari-and-Latin typeface, and the
+// unqualified 500/600/700 entrypoints pull every subset: 234 KB of the 319 KB
+// of font bytes were Devanagari glyphs that the Workbox precache stored on
+// every install and nothing ever rendered, since the HUD is uppercase Latin.
+// latin-ext stays (38 KB) as cheap cover for accented characters.
+import "@fontsource/rajdhani/latin-500.css";
+import "@fontsource/rajdhani/latin-600.css";
+import "@fontsource/rajdhani/latin-700.css";
+import "@fontsource/rajdhani/latin-ext-500.css";
+import "@fontsource/rajdhani/latin-ext-600.css";
+import "@fontsource/rajdhani/latin-ext-700.css";
 import "./globals.css";
 import App from "./App";
 
