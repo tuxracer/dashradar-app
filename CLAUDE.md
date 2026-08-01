@@ -33,7 +33,7 @@ Ideas evaluated in feature brainstorms and rejected. Don't bring these up again:
 
 Client-only **Vite 8 React SPA** with no server runtime (the build is a static `dist/`). Data flow: `src/App` → `DetectionProvider` (consumed via `useDetection()`) → `src/workers/detection` (RF-DETR ONNX on raw onnxruntime-web in a Web Worker, WebGPU only) → `src/lib/detection` road-class filter → `src/lib/detectionTracker` coasting smoother → `src/lib/detection` HUD shaping (all pure, no React). `DetectionContext` owns the worker lifecycle and frame pump; components only ever read `useDetection()`.
 
-Module map (internals in TRD §4 and §5):
+Module map (internals in the TRD's Architecture and Detection domain sections):
 
 - `src/context/DetectionContext/`: worker lifecycle and frame-pump state machine; pacing, periodic worker recycle, camera-stall detection and recovery, crash-sentinel heartbeat, auto zoom stepping, contact/saved-frame state, ref-backed debug snapshot.
 - `src/context/SettingsContext/`: localStorage-backed settings (`settings`) behind the `developerOptions` master switch. The provider hands out already-gated effective values, so consumers never repeat the gate. Every developer option starts at its `DEVELOPER_OPTIONS_OFF` value, so turning the master switch on reveals rows without turning anything on; a `settingsVersion` migration clears the five that used to default on.
