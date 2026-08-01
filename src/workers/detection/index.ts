@@ -27,7 +27,7 @@ import {
   preprocess,
   topDetectionIndex,
 } from "./inference";
-import type { BackendProbe, DetectionCrop, WorkerResponse } from "./types";
+import type { DetectionCrop, WorkerResponse } from "./types";
 import { DetectionError, isWorkerRequest } from "./types";
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -86,14 +86,11 @@ const post = (message: WorkerResponse, transfer: Transferable[] = []) => {
   self.postMessage(message, transfer);
 };
 
-/** Per-stage evidence from the GPU probe, before any session exists. */
-type GpuProbe = Omit<
-  BackendProbe,
-  "sessionError" | "graphCapture" | "graphCaptureError"
->;
-
-/** Whether the device can run the detector, plus the evidence for the answer. */
-type GpuProbeResult = { supported: boolean; probe: GpuProbe };
+/** wasm-runtime facts reported alongside every session result. */
+const wasmRuntime = {
+  crossOriginIsolated: self.crossOriginIsolated,
+  threads: wasmThreads,
+};
 
 /**
  * Decide whether this device can run the detector, by actually acquiring a
@@ -115,40 +112,22 @@ type GpuProbeResult = { supported: boolean; probe: GpuProbe };
  *
  * Runs in the worker scope, which is where onnxruntime-web needs WebGPU: some
  * browsers expose `navigator.gpu` on the main thread but not inside a worker.
- * The returned `probe` records how far each stage got, so the debug overlay
- * can say where acquisition failed on a device whose main thread claims
- * WebGPU support.
  */
-const probeWebGpu = async (): Promise<GpuProbeResult> => {
-  const probe: GpuProbe = {
-    workerGpu: false,
-    adapter: false,
-    device: false,
-    shaderF16: false,
-    crossOriginIsolated: self.crossOriginIsolated,
-    threads: wasmThreads,
-  };
+const probeWebGpu = async (): Promise<boolean> => {
   if (!("gpu" in navigator) || !navigator.gpu) {
-    return { supported: false, probe };
+    return false;
   }
-  probe.workerGpu = true;
   try {
     const adapter = await navigator.gpu.requestAdapter();
-    if (!adapter) {
-      return { supported: false, probe };
-    }
-    probe.adapter = true;
-    probe.shaderF16 = adapter.features.has("shader-f16");
-    if (!probe.shaderF16) {
-      return { supported: false, probe };
+    if (!adapter || !adapter.features.has("shader-f16")) {
+      return false;
     }
     const device = await adapter.requestDevice();
-    probe.device = true;
     // Release the probe device; onnxruntime-web acquires its own.
     device.destroy();
-    return { supported: true, probe };
+    return true;
   } catch {
-    return { supported: false, probe };
+    return false;
   }
 };
 
@@ -157,9 +136,8 @@ const probeWebGpu = async (): Promise<GpuProbeResult> => {
  * Acquiring an adapter and device is not free, and `load` must see exactly the
  * verdict `probe` already reported rather than re-deciding.
  */
-let gpuProbeResult: Promise<GpuProbeResult> | undefined;
-const gpuProbe = (): Promise<GpuProbeResult> =>
-  (gpuProbeResult ??= probeWebGpu());
+let gpuProbeResult: Promise<boolean> | undefined;
+const gpuProbe = (): Promise<boolean> => (gpuProbeResult ??= probeWebGpu());
 
 /**
  * Report that this device cannot run the detector. Idempotent, because both
@@ -167,12 +145,11 @@ const gpuProbe = (): Promise<GpuProbeResult> =>
  * context must not see the terminal error twice.
  */
 let unsupportedReported = false;
-const reportUnsupported = (probe: GpuProbe) => {
+const reportUnsupported = () => {
   if (unsupportedReported) {
     return;
   }
   unsupportedReported = true;
-  post({ type: "backend-probe", probe: { ...probe, graphCapture: false } });
   post({ type: "worker-error", code: "WEBGPU_UNSUPPORTED" });
 };
 
@@ -391,9 +368,8 @@ const createModel = async (): Promise<ModelIo> => {
 };
 
 const loadModel = async () => {
-  const { supported, probe } = await gpuProbe();
-  if (!supported) {
-    reportUnsupported(probe);
+  if (!(await gpuProbe())) {
+    reportUnsupported();
     return;
   }
   try {
@@ -401,7 +377,7 @@ const loadModel = async () => {
     post({
       type: "backend-probe",
       probe: {
-        ...probe,
+        ...wasmRuntime,
         graphCapture: model.capture !== undefined,
         graphCaptureError: model.captureError,
       },
@@ -415,7 +391,7 @@ const loadModel = async () => {
     post({
       type: "backend-probe",
       probe: {
-        ...probe,
+        ...wasmRuntime,
         sessionError: describeError(error),
         graphCapture: false,
       },
@@ -627,11 +603,11 @@ self.onmessage = (event: MessageEvent<unknown>) => {
   }
   if (request.type === "probe") {
     // Answer only when the device cannot run the detector. A pass stays silent
-    // and waits for `load`, which reports the probe alongside the session and
-    // graph-capture results rather than sending a half-filled one twice.
-    void gpuProbe().then(({ supported, probe }) => {
+    // and waits for `load`, which reports the backend once the session and
+    // graph-capture results are known.
+    void gpuProbe().then((supported) => {
       if (!supported) {
-        reportUnsupported(probe);
+        reportUnsupported();
       }
     });
     return;

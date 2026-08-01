@@ -31,7 +31,6 @@ const renderOverlay = () =>
     <SettingsProvider>
       <DebugOverlay
         backendProbe={undefined}
-        mainThreadWebGpu="no-adapter"
         modelProgress={{ loadedBytes: 0, totalBytes: 0 }}
         getDebug={() => debug}
         videoSize={{ width: 1280, height: 720 }}

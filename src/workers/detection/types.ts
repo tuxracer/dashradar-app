@@ -54,8 +54,8 @@ export type WorkerRequest =
    * anything. Sent as soon as the worker exists, ahead of `load`, so an
    * unsupported device is told so before the app asks for the camera and
    * before a byte of the model is fetched. On failure the worker answers with
-   * `backend-probe` plus a WEBGPU_UNSUPPORTED `worker-error`; on success it
-   * stays quiet and waits for `load`.
+   * a WEBGPU_UNSUPPORTED `worker-error`; on success it stays quiet and waits
+   * for `load`.
    */
   | { type: "probe" }
   | { type: "load" }
@@ -167,32 +167,12 @@ const isDetectionCrop = (value: unknown): value is DetectionCrop => {
 };
 
 /**
- * Outcome of the WebGPU probe, reported once per worker so the debug overlay
- * can explain why a device whose main thread reports WebGPU support was still
- * turned away. Each flag records how far the probe got inside the worker scope
- * (where onnxruntime-web actually runs), and `sessionError` carries the
- * InferenceSession.create failure message when every stage passed but the
- * session still would not build.
- *
- * Sent at two different moments depending on the outcome: immediately after
- * the probe when it failed (paired with a WEBGPU_UNSUPPORTED `worker-error`,
- * with no session fields to report), or after `load` when it passed, carrying
- * the session and graph-capture results as well.
+ * How the detector's backend came up, reported once per worker after `load`.
+ * The GPU probe's own verdict is not in here: a device that fails it never
+ * reaches this message, it gets WEBGPU_UNSUPPORTED and the unsupported-device
+ * screen, so anything reading this probe is already running on WebGPU.
  */
 export type BackendProbe = {
-  /** `navigator.gpu` is present in the worker's own global scope. */
-  workerGpu: boolean;
-  /** `requestAdapter()` returned a usable adapter. */
-  adapter: boolean;
-  /** `requestDevice()` succeeded. */
-  device: boolean;
-  /**
-   * The adapter advertises the `shader-f16` feature. Load-bearing: the model
-   * is a mixed-precision fp16 build, whose fp16 tensors make onnxruntime-web
-   * require this feature at session creation, so an adapter without it is
-   * turned away here rather than failing the session after a 57 MB download.
-   */
-  shaderF16: boolean;
   /** InferenceSession.create failure message for the WebGPU attempt, if any. */
   sessionError?: string;
   /**
@@ -200,8 +180,7 @@ export type BackendProbe = {
    * dispatches recorded on the first run and replayed on later runs). False
    * means either the `WEBGPU_GRAPH_CAPTURE` flag is off (no attempt was made)
    * or the attempt failed and the worker fell back to a plain WebGPU session;
-   * `graphCaptureError` is set only in the failed case. Always false on a
-   * probe that never reached session creation.
+   * `graphCaptureError` is set only in the failed case.
    */
   graphCapture: boolean;
   /** Failure message from the graph-capture attempt when it fell back. */
@@ -224,10 +203,6 @@ export type BackendProbe = {
 const isBackendProbe = (value: unknown): value is BackendProbe => {
   return (
     isPlainObject(value) &&
-    isBoolean(value.workerGpu) &&
-    isBoolean(value.adapter) &&
-    isBoolean(value.device) &&
-    isBoolean(value.shaderF16) &&
     (value.sessionError === undefined || isString(value.sessionError)) &&
     isBoolean(value.graphCapture) &&
     (value.graphCaptureError === undefined ||

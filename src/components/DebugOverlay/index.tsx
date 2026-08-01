@@ -1,54 +1,17 @@
 import { useEffect, useState } from "react";
 import { useSettings } from "@/context/SettingsContext";
-import type {
-  DebugSnapshot,
-  MainThreadWebGpu,
-  ModelProgress,
-} from "@/context/DetectionContext";
+import type { DebugSnapshot, ModelProgress } from "@/context/DetectionContext";
 import type { Size } from "@/lib/detection";
 import type { BackendProbe } from "@/workers/detection/types";
 
 /** Props for DebugOverlay. Data is passed in so it renders without the worker. */
 type DebugOverlayProps = {
   backendProbe: BackendProbe | undefined;
-  mainThreadWebGpu: MainThreadWebGpu | undefined;
   modelProgress: ModelProgress;
   /** Latest per-frame diagnostics; polled on the readout tick. */
   getDebug: () => DebugSnapshot;
   videoSize: Size | undefined;
   viewportSize: Size;
-};
-
-/** Compact per-stage summary of the WebGPU probe, e.g. "gpu·adp·dev·f16". */
-const probeStages = (probe: BackendProbe): string => {
-  const stage = (ok: boolean, label: string): string =>
-    ok ? label : `no-${label}`;
-  return [
-    stage(probe.workerGpu, "gpu"),
-    stage(probe.adapter, "adp"),
-    stage(probe.device, "dev"),
-    stage(probe.shaderF16, "f16"),
-  ].join(" ");
-};
-
-/**
- * Plain-language verdict on the `shader-f16` WebGPU feature from the worker's
- * GPU probe. Any fp16 tensor in a model graph makes onnxruntime-web require
- * the feature at session creation, and the only build shipped is
- * mixed-precision fp16, so `probeWebGpu` gates on it: "unsupported" means the
- * device is turned away with WEBGPU_UNSUPPORTED even though WebGPU exists.
- */
-const f16Support = (probe: BackendProbe | undefined): string => {
-  if (!probe) {
-    return "probing";
-  }
-  if (!probe.workerGpu) {
-    return "no webgpu";
-  }
-  if (!probe.adapter) {
-    return "no adapter";
-  }
-  return probe.shaderF16 ? "supported" : "unsupported";
 };
 
 /**
@@ -84,13 +47,12 @@ const Row = ({ label, value }: { label: string; value: string }) => (
 /**
  * Development diagnostics panel pinned to the top-left, below the wordmark line.
  * Rendered only when the showDebug setting is on. pointer-events are disabled so
- * it never intercepts taps meant for the HUD. Data comes in as props (the GPU
- * probe, model progress, the per-frame debug snapshot, and the current sizes)
- * so the panel stays testable without the detection worker.
+ * it never intercepts taps meant for the HUD. Data comes in as props (the
+ * backend probe, model progress, the per-frame debug snapshot, and the current
+ * sizes) so the panel stays testable without the detection worker.
  */
 export const DebugOverlay = ({
   backendProbe,
-  mainThreadWebGpu,
   modelProgress,
   getDebug,
   videoSize,
@@ -139,12 +101,7 @@ export const DebugOverlay = ({
       <div className="mb-1 font-semibold tracking-[0.2em] text-white/60">
         DEBUG
       </div>
-      {backendProbe && (
-        <Row label="wgpu probe" value={probeStages(backendProbe)} />
-      )}
-      <Row label="shader-f16" value={f16Support(backendProbe)} />
       <Row label="graph capture" value={captureSupport(backendProbe)} />
-      <Row label="wgpu main" value={mainThreadWebGpu ?? "probing"} />
       {backendProbe && (
         <Row
           label="ort wasm"
@@ -198,7 +155,6 @@ export const DebugOverlay = ({
       />
       <Row label="video" value={videoLabel} />
       <Row label="dpr" value={`${window.devicePixelRatio}`} />
-      <Row label="webgpu" value={"gpu" in navigator ? "yes" : "no"} />
       <Row label="model" value={modelPercent} />
     </div>
   );

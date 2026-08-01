@@ -10,22 +10,6 @@ import type {
 
 export type DetectionStatus = "loading-model" | "ready" | "running" | "error";
 
-/**
- * Result of probing WebGPU on the main thread. Complements the worker's
- * `BackendProbe`, whose verdict is the authoritative one (onnxruntime-web runs
- * in the worker, and some browsers expose `navigator.gpu` on the main thread
- * but not inside a worker). Comparing the two tells a device with no WebGPU
- * anywhere ("no-adapter" here as well) apart from a worker-only limitation
- * ("adapter" here but the worker still could not acquire one), which is the
- * difference between "this phone cannot run it" and "this browser build has a
- * worker bug".
- */
-export type MainThreadWebGpu =
-  | "unsupported"
-  | "no-adapter"
-  | "adapter"
-  | "error";
-
 export type ModelProgress = { loadedBytes: number; totalBytes: number };
 
 /**
@@ -134,17 +118,10 @@ export type DebugSnapshot = {
 export type DetectionContextValue = {
   status: DetectionStatus;
   /**
-   * WebGPU probe result, reported once per worker. Undefined until the worker
-   * finishes probing. Surfaced in the debug overlay to explain which stage
-   * turned away a device whose main thread reports WebGPU support.
+   * How the detector's backend came up, reported once per worker. Undefined
+   * until the session is built. Surfaced in the debug overlay.
    */
   backendProbe: BackendProbe | undefined;
-  /**
-   * WebGPU adapter availability on the main thread, probed once at startup.
-   * Undefined until the probe resolves. Read against `backendProbe` in the
-   * debug overlay to locate where WebGPU acquisition fails.
-   */
-  mainThreadWebGpu: MainThreadWebGpu | undefined;
   /**
    * True only while the model weights are being downloaded over the network.
    * False when the weights load from cache, so the UI can suppress the

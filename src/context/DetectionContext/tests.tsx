@@ -2219,10 +2219,6 @@ describe("crash sentinel heartbeat", () => {
   });
 
   const backendProbe = () => ({
-    workerGpu: false,
-    adapter: false,
-    device: false,
-    shaderF16: false,
     graphCapture: false,
     crossOriginIsolated: true,
     threads: 4,
