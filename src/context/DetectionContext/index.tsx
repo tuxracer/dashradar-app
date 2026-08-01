@@ -56,6 +56,7 @@ import {
   STALE_FRAME_THRESHOLD,
   SW_CONTROL_TIMEOUT_MS,
   WATCHDOG_MS,
+  WATCHDOG_ROUND_TRIP_MULTIPLE,
   WORKER_RECYCLE_AFTER_MS,
 } from "./consts";
 import type {
@@ -297,7 +298,7 @@ export const DetectionProvider = ({
   // Holds the latest armWatchdog (a closure inside the worker effect) so start()
   // can arm the watchdog when it primes the pump, not only the ready/detections
   // handlers inside the effect. Mirrors the beginRecoveryRef idiom.
-  const armWatchdogRef = useRef<() => void>(() => {});
+  const armWatchdogRef = useRef<(lastRoundTripMs?: number) => void>(() => {});
 
   /** Swap in the next contact (or none), closing the previous crop bitmap. */
   const replaceContact = useCallback((next: Contact | undefined) => {
@@ -576,8 +577,13 @@ export const DetectionProvider = ({
      * while the pump is live; if it lapses (rVFC stopped firing, so no result
      * came back) it recovers the camera. Gated on runningRef + workerLoadedRef
      * so it never fires during a paused pump or the recycle load window.
+     *
+     * The window scales with the round trip that preceded it, floored at
+     * WATCHDOG_MS, so a device slow enough to space its results wider than the
+     * floor is not permanently past its own deadline. Arming before a session
+     * has produced a result has no round trip to scale from and uses the floor.
      */
-    const armWatchdog = () => {
+    const armWatchdog = (lastRoundTripMs = 0) => {
       // Clearing precedes the file-feed bail so a camera-to-clip swap can never
       // leave the previous timer running. stop() clears it on every source
       // change today, and beginRecovery vetoes a stray firing, but this way the
@@ -588,11 +594,15 @@ export const DetectionProvider = ({
       if (devVideoModeRef.current) {
         return;
       }
+      const timeoutMs = Math.max(
+        WATCHDOG_MS,
+        WATCHDOG_ROUND_TRIP_MULTIPLE * lastRoundTripMs,
+      );
       watchdogTimerRef.current = window.setTimeout(() => {
         if (runningRef.current && workerLoadedRef.current) {
           beginRecoveryRef.current("watchdog");
         }
-      }, WATCHDOG_MS);
+      }, timeoutMs);
     };
     armWatchdogRef.current = armWatchdog;
 
@@ -837,7 +847,7 @@ export const DetectionProvider = ({
           // healthy frame and, after enough of them, proves a prior recovery
           // worked.
           if (runningRef.current) {
-            armWatchdog();
+            armWatchdog(roundTripMs);
             // Stall detectors are meaningless against a file-backed feed: a
             // paused or scrubbed dev video repeats frames legitimately. Skip
             // the accounting entirely so a tripped threshold can never take

@@ -14,6 +14,7 @@ import {
   STALE_FRAME_THRESHOLD,
   useDetection,
   WATCHDOG_MS,
+  WATCHDOG_ROUND_TRIP_MULTIPLE,
   WORKER_RECYCLE_AFTER_MS,
 } from "@/context/DetectionContext";
 import { DevVideoProvider, useDevVideo } from "@/context/DevVideoContext";
@@ -3280,6 +3281,48 @@ describe("DetectionProvider camera recovery", () => {
     });
     expect(screen.getByTestId("camera-epoch").textContent).toBe("1");
     // A full stall reports the same event, tagged as a watchdog trip.
+    expect(track).toHaveBeenCalledWith("camera_stall", { reason: "watchdog" });
+  });
+
+  it("stretches the watchdog window to fit a slow device's round trip", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(async () => fakeBitmap()),
+    );
+    const { video, presentFrame } = videoWithControlledFrames();
+    const worker = renderWithProvider(<RecoveryProbe video={video} />);
+    act(() => {
+      worker.emit({ type: "ready" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      presentFrame();
+      await Promise.resolve();
+    });
+    // A slow device: the result lands 8 s after the frame was posted, so
+    // pacing will space this device's results roughly 16 s apart.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8_000);
+    });
+    act(() => {
+      emitDetections(worker, 1);
+    });
+    // Then the feed stalls for longer than the floor. Recovering here would
+    // tear down a camera whose own results are legitimately wider than that,
+    // and since every later result would land past the deadline too, the
+    // device could never prove a recovery worked.
+    act(() => {
+      vi.advanceTimersByTime(WATCHDOG_MS + 50);
+    });
+    expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
+    // Past the stretched window, a genuine stall still recovers.
+    act(() => {
+      vi.advanceTimersByTime(WATCHDOG_ROUND_TRIP_MULTIPLE * 8_000);
+    });
+    expect(screen.getByTestId("camera-epoch").textContent).toBe("1");
     expect(track).toHaveBeenCalledWith("camera_stall", { reason: "watchdog" });
   });
 

@@ -106,18 +106,32 @@ export const MAX_RECONNECT_ATTEMPTS = 3;
 export const RECOVERY_HEALTHY_FRAMES = 5;
 
 /**
- * Maximum time the pump may go without a detection result while it is live
- * before the camera is assumed fully stalled (requestVideoFrameCallback
- * stopped firing, so the pump is hung waiting for a new frame) and recovery
- * runs. Set well above the worst-case interval between two legitimate results
- * on a slow device: pacing rests a full round trip (PACING_REST_RATIO) before
- * the next capture and a slow phone's inference round trip can be a few
- * seconds, so real results can legitimately be 6-8 seconds apart. It is also deliberately larger than the
+ * Floor for the stalled-feed watchdog: the shortest window the pump may go
+ * without a detection result while it is live before the camera is assumed
+ * fully stalled (requestVideoFrameCallback stopped firing, so the pump is hung
+ * waiting for a new frame) and recovery runs. Healthy devices are governed by
+ * this floor alone; slower ones scale past it (see
+ * WATCHDOG_ROUND_TRIP_MULTIPLE). Set well above the interval between two
+ * legitimate results on such a device, and deliberately larger than the
  * crash-sentinel HEARTBEAT_INTERVAL_MS so a heartbeat-length gap never trips
- * the watchdog. A truly stalled feed never recovers, so a longer detection
- * latency here is a safe trade for not false-firing on a slow-but-alive device.
+ * the watchdog. A truly stalled feed never recovers on its own, so a longer
+ * detection latency here is a safe trade for not false-firing on a
+ * slow-but-alive device.
  */
 export const WATCHDOG_MS = 15_000;
+
+/**
+ * Multiple of the last result's round trip the watchdog waits when that
+ * exceeds the WATCHDOG_MS floor. Pacing puts results about 2x the round trip
+ * apart (PACING_REST_RATIO), so a fixed window would make every result on a
+ * slow enough device land after its own deadline: recovery would run
+ * continuously, never collect RECOVERY_HEALTHY_FRAMES to prove it worked, and
+ * escalate to reloading a phone that was slow but scanning fine. Scaling the
+ * window with the device leaves a real stall (which produces no result at all,
+ * ever) as the only thing that can trip it, and the headroom above the 2x
+ * pacing interval absorbs the jitter of one unusually slow scan.
+ */
+export const WATCHDOG_ROUND_TRIP_MULTIPLE = 3;
 
 /**
  * brightFraction below which an inference frame counts as "dark" for the
