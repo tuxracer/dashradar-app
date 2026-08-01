@@ -4,7 +4,6 @@
 // JSEP has no TopK kernel, which parks this graph's TopK on the CPU EP and
 // makes graph capture impossible; the native EP has one.
 import { env, InferenceSession, Tensor } from "onnxruntime-web/webgpu";
-import { isWebKitUa } from "@/lib/browserEngine";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 import {
   CROP_MAX_EDGE,
@@ -348,11 +347,7 @@ const createModel = async (): Promise<ModelIo> => {
     await cacheModelInDev(weights);
   }
   let captureError: string | undefined;
-  // Never attempt graph capture on WebKit: crash telemetry (DASHRADAR-2)
-  // shows iOS Safari killing the page within seconds of scanning with
-  // capture on, and capture was only ever verified on Chrome. The plain
-  // WebGPU session below is the WebKit path until telemetry clears capture.
-  if (WEBGPU_GRAPH_CAPTURE && !isWebKitUa(navigator.userAgent)) {
+  if (WEBGPU_GRAPH_CAPTURE) {
     try {
       return await createCaptureModel(weights);
     } catch (error) {

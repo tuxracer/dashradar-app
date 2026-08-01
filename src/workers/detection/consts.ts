@@ -84,36 +84,25 @@ export const DEV_MODEL_CACHE_NAME = "model-cache-dev";
  * worker falls back to a plain WebGPU session and the debug overlay's
  * "graph capture" row reads "failed" with the reason.
  *
- * WebKit is excluded regardless of this flag (`isWebKitUa` in
- * `src/lib/browserEngine`, checked in `createModel`): crash telemetry
- * (Sentry DASHRADAR-2) showed iOS Safari 26 killing the page within seconds
- * of scanning with capture on, and capture has only ever been verified on
- * Chrome. WebKit runs a plain WebGPU session and the overlay row reads
- * "disabled" there. Re-verify on a real iPhone before lifting the exclusion.
+ * This flag is engine-blind on purpose. WebKit was excluded from capture for a
+ * while after Sentry DASHRADAR-2 opened, and that exclusion was a mistake worth
+ * recording: it rested on one event, the first crash the sentinel ever wrote,
+ * which happened to carry `graphCapture: true`. Reading the whole issue later
+ * showed nine of the ten iOS crashes had capture off, several on builds that
+ * shipped after the exclusion, so capture never separated a crashing session
+ * from a healthy one. What those ten do share is uptime: none survived past
+ * ~21 s of scanning and four died before the second heartbeat. That is a
+ * startup signature (shader compilation, the first run's buffer allocation,
+ * camera acquisition) rather than anything capture changes about steady-state
+ * frames, which is why the exclusion never moved the crash rate.
  *
- * Why capture in particular would kill an iPhone is a theory, not a diagnosis:
- * separating these needs a tethered device, and what the sentinel can see is
- * only that the page died with capture on. The page being killed rather than
- * an error being thrown is itself the clue, since a WebGPU error inside a run
- * surfaces as INFERENCE_FAILED instead. Something above the JS layer ends the
- * process, which on iOS means memory or the GPU process. The candidates:
- *
- * - Capture pins memory a plain session recycles. The recorded dispatches
- *   reference fixed buffers and pre-built bind groups, so the intermediate
- *   allocation plan stays resident for the life of the session instead of
- *   being reused between runs. Safari kills a tab that crosses its memory
- *   budget with no warning, and this app already spends that budget on a live
- *   camera stream, per-frame ImageBitmaps, a getImageData readback, and JPEG
- *   encodes for contact cards.
- * - Replaying hundreds of small kernels with less CPU work between them tends
- *   toward fewer, longer GPU submissions, and Metal aborts a command buffer
- *   that runs too long, taking the GPU process with it. The ~35 ms/frame that
- *   made capture worth having was measured on a desktop GPU; a throttled phone
- *   on a sunlit dash is far slower.
- * - Capture forces the least-tested path through a WebGPU implementation that
- *   shipped months ago: GPU-located IO only, one persistent input GPUBuffer
- *   written per frame, outputs read back through mapAsync, long-lived bind
- *   groups. Chrome has years of onnxruntime traffic through that path.
+ * So capture on WebKit is unverified, not implicated, and it fails safe: a
+ * device that cannot initialize or run it falls back to a plain session on its
+ * own. The sentinel's `graphCapture` tag is what settles it in the field. If
+ * iOS crashes start arriving tagged `graphCapture: true` with uptimes off the
+ * startup window, capture is implicated for real and this flag is the lever. If
+ * they keep the same early uptimes whatever the tag says, capture was never the
+ * variable.
  */
 export const WEBGPU_GRAPH_CAPTURE = true;
 
