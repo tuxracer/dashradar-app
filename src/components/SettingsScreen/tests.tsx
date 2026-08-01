@@ -106,7 +106,7 @@ const TOGGLE_ROWS: ReadonlyArray<{
   {
     label: "Detection image",
     key: "detectionImage",
-    afterTap: false,
+    afterTap: true,
     developer: false,
   },
   {

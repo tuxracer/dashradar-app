@@ -1444,6 +1444,10 @@ describe("DetectionProvider", () => {
   });
 
   it("asks for the crop while the detection image is on", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ detectionImage: true }),
+    );
     vi.stubGlobal(
       "createImageBitmap",
       vi.fn(() => Promise.resolve(fakeBitmap())),
@@ -1603,6 +1607,9 @@ describe("DetectionProvider", () => {
         developerOptions: true,
         saveFrames: false,
         frameThumbnails: true,
+        // The preview extends the contact card, so the card has to be on for
+        // the thumbnail request to be worth making.
+        detectionImage: true,
       }),
     );
     vi.stubGlobal(
@@ -2713,6 +2720,15 @@ const ContactProbe = () => {
 };
 
 describe("DetectionProvider contact", () => {
+  // The card is off on a fresh install, so every test about what the card shows
+  // has to turn it on first.
+  beforeEach(() => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ detectionImage: true }),
+    );
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
   });

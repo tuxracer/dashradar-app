@@ -72,11 +72,12 @@ export type Settings = {
   radarAudio: boolean;
   /**
    * When true, a detection puts a card on the glass showing the picture the
-   * detector cut out of the frame. On by default. Off turns the card off
-   * outright: the worker skips the cutout, so no image of what was detected is
-   * ever produced. The two card-related developer options ride on top of it and
-   * do nothing while it is off, since there is no card for the per-scan preview
-   * to extend or the SAVE button to sit in.
+   * detector cut out of the frame. Off by default: the meter alone is what a
+   * driver reads at a glance, and the card costs a crop on every detection.
+   * Off turns the card off outright rather than hiding it, so no image of what
+   * was detected is ever produced. The two card-related developer options ride
+   * on top of it and do nothing while it is off, since there is no card for the
+   * per-scan preview to extend or the SAVE button to sit in.
    */
   detectionImage: boolean;
   /**

@@ -106,7 +106,7 @@ const TOGGLES: ReadonlyArray<{
   {
     key: "detectionImage",
     toggle: "toggleDetectionImage",
-    fresh: true,
+    fresh: false,
     developer: false,
   },
 ];
@@ -161,7 +161,7 @@ describe("SettingsContext", () => {
         saveFrames: false,
         autoSaveFrames: false,
         radarAudio: true,
-        detectionImage: true,
+        detectionImage: false,
         throttleInference: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
@@ -200,10 +200,10 @@ describe("SettingsContext", () => {
   // A normal-drive setting, not a developer one: it stays exactly as the driver
   // left it whatever the master switch does.
   it("keeps the driver-facing settings where they were left", () => {
-    const { result } = mount({ radarAudio: false, detectionImage: false });
+    const { result } = mount({ radarAudio: false, detectionImage: true });
     expect(result.current.developerOptions).toBe(false);
     expect(result.current.radarAudio).toBe(false);
-    expect(result.current.detectionImage).toBe(false);
+    expect(result.current.detectionImage).toBe(true);
   });
 
   it("restores the stored developer options when developerOptions comes back on", () => {
@@ -256,7 +256,7 @@ describe("SettingsContext stored blob", () => {
     const { result } = mount({ radarAudio: false });
     expect(result.current.radarAudio).toBe(false);
     expect(result.current.throttleInference).toBe(true);
-    expect(result.current.detectionImage).toBe(true);
+    expect(result.current.detectionImage).toBe(false);
   });
 
   it("falls back to defaults when stored JSON is corrupt", () => {
@@ -340,7 +340,7 @@ describe("SettingsContext migrations", () => {
       zoomMode: "1x",
       confidenceThreshold: 0.2,
       radarAudio: false,
-      detectionImage: false,
+      detectionImage: true,
     });
     expect(result.current.autoSaveFrames).toBe(true);
     expect(result.current.cameraPreview).toBe(true);
@@ -348,7 +348,7 @@ describe("SettingsContext migrations", () => {
     expect(result.current.zoomMode).toBe("1x");
     expect(result.current.confidenceThreshold).toBe(0.2);
     expect(result.current.radarAudio).toBe(false);
-    expect(result.current.detectionImage).toBe(false);
+    expect(result.current.detectionImage).toBe(true);
   });
 
   it("does not re-run the migration over a choice made after it", () => {

@@ -51,6 +51,6 @@ export const DEVELOPER_OPTIONS_OFF: DeveloperOptions = {
 export const DEFAULT_SETTINGS: Settings = {
   developerOptions: false,
   radarAudio: true,
-  detectionImage: true,
+  detectionImage: false,
   ...DEVELOPER_OPTIONS_OFF,
 };
