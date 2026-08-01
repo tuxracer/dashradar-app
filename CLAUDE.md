@@ -71,6 +71,7 @@ pnpm format      # Auto-fix formatting (prettier --write)
 
 - **Always rebase when integrating to `main`, never create merge commits** (`git rebase`, `git merge --ff-only`). Keep history linear.
 - **Already on `main` and asked to commit? Commit straight to `main`.** Don't create a branch first. Branching only to fast-forward `main` right back is a pointless round trip: the commit lands in the same place, just after two extra steps and a deleted branch. Branch only when there's a real reason (asked for, work already on one, or genuine isolation for a long or risky change); a big diff is not a reason on its own.
+- **Commit finished work without asking.** When a requested change is done, verified (`pnpm check` and `pnpm test` green), and forms an atomic unit, commit it. Don't end a turn with "nothing is committed, want me to commit?" or otherwise hold finished work waiting for permission. A commit is trivially revertible, so the cost of one that isn't wanted is far lower than the friction of asking every time. Split the work into atomic commits where it genuinely covers separate concerns, and say what was committed rather than asking whether to.
 
 ## Tech Stack
 
