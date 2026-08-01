@@ -69,7 +69,7 @@ Real camera video, sustained frame rates against real-world objects, and on-devi
 | UI kit | Bespoke Tailwind-styled elements; `lucide-react` for the settings gear icon | No `src/components/ui/` primitives or shadcn/Radix components; the only icon-library use is the `Settings` and `X` glyphs in `SettingsButton` / `SettingsScreen` (named import, tree-shaken). |
 | Fonts | **Rajdhani** | Self-hosted via `@fontsource/rajdhani` (weights 500/600/700), imported in `src/main.tsx` via the unqualified `500.css`/`600.css`/`700.css`. Those carry a `unicode-range` per subset, which is what keeps a browser from ever fetching the Devanagari half of this Devanagari-and-Latin typeface. Do not switch to the per-subset `latin-*.css` files: they declare the same @font-face without a `unicode-range`, so importing two of them leaves one silently overriding the other. Devanagari is kept out of the Workbox precache by `globIgnores` instead (the precache globs files and cannot read `unicode-range`, so it was storing 234 KB nothing would fetch). Only font in the app. |
 | Utilities | **remeda** | Type guards (`isString`, `isNumber`, `isPlainObject`) validating worker messages crossing the `postMessage` boundary. |
-| Analytics | **`@vercel/analytics`** | `inject()` in `src/main.tsx`. Anonymous events only, never camera frames, detection boxes, or location: page views, UI events (`intro_start`, `camera_prompt_allow`, `camera_prompt_decline`, `settings_open`, `share_click`), health events (`model_downloaded`, `model_ready`, `first_inference`, `first_round_trip`, `error`, `pwa_installed`), and a debounced `police_detected` sighting count. See §4.2. |
+| Analytics | **`@vercel/analytics`** | `inject()` in `src/main.tsx`. Anonymous events only, never camera frames, detection boxes, or location: page views, UI events (`intro_start`, `camera_prompt_allow`, `camera_prompt_decline`, `settings_open`, `settings_reset`, `share_click`), health events (`model_downloaded`, `model_ready`, `first_inference`, `first_round_trip`, `error`, `pwa_installed`), and a debounced `police_detected` sighting count. See §4.2. |
 | Testing | **vitest** + **@testing-library/react** | jsdom environment; the worker, onnxruntime-web inference, and camera are stubbed or injected (see §9). The pure preprocess/decode helpers are unit-tested directly. |
 
 > **Build note:** `package.json` scripts: `pnpm dev` → `vite`, `pnpm build` → `vite build`, `pnpm start` → `vite preview`. `pnpm test` runs vitest. `pnpm check` runs format + lint + typecheck and must pass before commits. A local video file can substitute for the camera feed at runtime, by drag-and-drop or the settings picker (§4.3).
@@ -546,7 +546,12 @@ workers, then reloads. The steps settle independently, so a store that is
 unavailable or rejects cannot leave the app on a half-cleared state neither it
 nor anyone else has seen; the reload fires either way, because a launch on
 partially cleared state is still closer to first run than staying on the
-current one. It exists to reproduce a genuine first visit (the intro, the
+current one. A `settings_reset` event is tracked once the confirm is accepted
+and before the clearing pass starts, so the request has the length of that pass
+to leave before the reload can cut it; it is also the only signal separating a
+fresh install from a wiped one, which are otherwise indistinguishable in the
+funnel (both produce `intro_start`, a permission ask, and a cold
+`model_downloaded`). It exists to reproduce a genuine first visit (the intro, the
 camera ask, the model download through Workbox's runtime cache) without
 reaching for browser devtools on a phone, which is where the app actually
 runs.

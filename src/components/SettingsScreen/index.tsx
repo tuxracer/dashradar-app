@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { track } from "@vercel/analytics";
 import { X } from "lucide-react";
 import { ShareCard } from "@/components/ShareCard";
 import { useDetection } from "@/context/DetectionContext";
@@ -39,6 +40,12 @@ const handleReset = () => {
   if (!window.confirm(RESET_CONFIRM_MESSAGE)) {
     return;
   }
+  // Sent before the clearing pass rather than after it: the reload can cut an
+  // in-flight request, so the pass (deleting the ~57 MB weights among the rest)
+  // is the widest window this event will get. It is also the only signal that
+  // separates a fresh install from a wiped one, which otherwise look
+  // identical in the funnel.
+  track("settings_reset");
   void resetAppData().finally(() => window.location.reload());
 };
 
