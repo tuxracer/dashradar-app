@@ -45,7 +45,7 @@ const handleReset = () => {
   // is the widest window this event will get. It is also the only signal that
   // separates a fresh install from a wiped one, which otherwise look
   // identical in the funnel.
-  track("settings_reset");
+  track("reset");
   void resetAppData().finally(() => window.location.reload());
 };
 
