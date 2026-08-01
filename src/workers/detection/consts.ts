@@ -90,6 +90,30 @@ export const DEV_MODEL_CACHE_NAME = "model-cache-dev";
  * of scanning with capture on, and capture has only ever been verified on
  * Chrome. WebKit runs a plain WebGPU session and the overlay row reads
  * "disabled" there. Re-verify on a real iPhone before lifting the exclusion.
+ *
+ * Why capture in particular would kill an iPhone is a theory, not a diagnosis:
+ * separating these needs a tethered device, and what the sentinel can see is
+ * only that the page died with capture on. The page being killed rather than
+ * an error being thrown is itself the clue, since a WebGPU error inside a run
+ * surfaces as INFERENCE_FAILED instead. Something above the JS layer ends the
+ * process, which on iOS means memory or the GPU process. The candidates:
+ *
+ * - Capture pins memory a plain session recycles. The recorded dispatches
+ *   reference fixed buffers and pre-built bind groups, so the intermediate
+ *   allocation plan stays resident for the life of the session instead of
+ *   being reused between runs. Safari kills a tab that crosses its memory
+ *   budget with no warning, and this app already spends that budget on a live
+ *   camera stream, per-frame ImageBitmaps, a getImageData readback, and JPEG
+ *   encodes for contact cards.
+ * - Replaying hundreds of small kernels with less CPU work between them tends
+ *   toward fewer, longer GPU submissions, and Metal aborts a command buffer
+ *   that runs too long, taking the GPU process with it. The ~35 ms/frame that
+ *   made capture worth having was measured on a desktop GPU; a throttled phone
+ *   on a sunlit dash is far slower.
+ * - Capture forces the least-tested path through a WebGPU implementation that
+ *   shipped months ago: GPU-located IO only, one persistent input GPUBuffer
+ *   written per frame, outputs read back through mapAsync, long-lived bind
+ *   groups. Chrome has years of onnxruntime traffic through that path.
  */
 export const WEBGPU_GRAPH_CAPTURE = true;
 
