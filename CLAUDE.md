@@ -80,7 +80,7 @@ pnpm format      # Auto-fix formatting (prettier --write)
 - **onnxruntime-web** in a Web Worker; hand-rolled preprocess/decode (no Transformers.js)
 - **remeda** (utilities and the type guards that validate worker messages), **@vercel/analytics**, **@sentry/react** (release-stamped with `APP_RELEASE`)
 - Build-time stamps `__APP_VERSION__`/`__COMMIT_SHA__` from `vite.config.ts`, shown in the settings About row
-- **Rajdhani** via `@fontsource/rajdhani` (500/600/700), the only font; import the `latin-`/`latin-ext-` subset entrypoints, never the unqualified ones, which drag in Devanagari the HUD can never render
+- **Rajdhani** via `@fontsource/rajdhani` (500/600/700), the only font; import the **unqualified** entrypoints, never the per-subset `latin-*.css` ones (those ship no `unicode-range`, so two of them declare competing rules for one family+weight and the last silently wins, leaving the HUD on a subset with no ASCII)
 - Tests: **vitest** + **@testing-library/react** (jsdom; see Gotchas for what it can't run)
 
 ## Model

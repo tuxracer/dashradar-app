@@ -168,6 +168,14 @@ const pwa = () =>
       // before the app runs at all) postdates universal woff2 support by years.
       // Precaching them just doubled the font entries on every install.
       globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+      // Rajdhani is a Devanagari-and-Latin typeface, and its @font-face rules
+      // carry a unicode-range, so a browser rendering this app's uppercase
+      // Latin HUD never requests the Devanagari subsets. The precache does not
+      // read unicode-range though: it globs files, so it was storing 234 KB of
+      // glyphs on every install that nothing would ever fetch. Excluding them
+      // here fixes that without touching how the font is declared, which is
+      // load-bearing (see the import note in main.tsx).
+      globIgnores: ["**/*devanagari*"],
       maximumFileSizeToCacheInBytes: PRECACHE_MAX_FILE_SIZE,
       runtimeCaching: [
         {

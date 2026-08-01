@@ -8,17 +8,17 @@ import { Analytics } from "@vercel/analytics/react";
 import { isTrackingOptedOut } from "privacy-signals";
 import { trackPwaInstall } from "@/lib/pwaInstall";
 import { requestPersistentStorage } from "@/lib/serviceWorker";
-// Latin subsets only. Rajdhani is a Devanagari-and-Latin typeface, and the
-// unqualified 500/600/700 entrypoints pull every subset: 234 KB of the 319 KB
-// of font bytes were Devanagari glyphs that the Workbox precache stored on
-// every install and nothing ever rendered, since the HUD is uppercase Latin.
-// latin-ext stays (38 KB) as cheap cover for accented characters.
-import "@fontsource/rajdhani/latin-500.css";
-import "@fontsource/rajdhani/latin-600.css";
-import "@fontsource/rajdhani/latin-700.css";
-import "@fontsource/rajdhani/latin-ext-500.css";
-import "@fontsource/rajdhani/latin-ext-600.css";
-import "@fontsource/rajdhani/latin-ext-700.css";
+// The unqualified entrypoints, never the per-subset ones. These carry a
+// `unicode-range` per subset, which is what lets the browser download only the
+// subset a glyph actually needs (Latin, here, and never Devanagari). The
+// `latin-*.css` / `latin-ext-*.css` files ship the same @font-face without any
+// unicode-range, so importing two of them declares competing rules for one
+// family+weight and the last one silently wins, leaving the HUD with a subset
+// that has no ASCII in it. Devanagari is kept out of the Workbox precache by
+// globIgnores in vite.config.ts instead, which is where that cost really was.
+import "@fontsource/rajdhani/500.css";
+import "@fontsource/rajdhani/600.css";
+import "@fontsource/rajdhani/700.css";
 import "./globals.css";
 import App from "./App";
 
