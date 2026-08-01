@@ -1,7 +1,5 @@
 # dashradar: Technical Reference
 
-How the app is put together, and why the odd parts are the way they are. It does not describe every file or constant; the source is right there.
-
 ## 1. What it is
 
 A phone on a dash mount runs object detection on its rear camera and shows a full-screen signal meter styled like a radar detector. The camera feed is never drawn on screen; a detection adds a small card with a cutout of what was seen. Everything runs in the browser: a Vite React SPA with no backend, no accounts, and no network traffic beyond the app shell and the model weights. It is a computer-vision detector, not a radar detector.
