@@ -1,5 +1,8 @@
+import { track } from "@vercel/analytics";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createWakeLockManager } from "@/lib/wakeLock";
+
+vi.mock("@vercel/analytics", () => ({ track: vi.fn() }));
 
 type FakeSentinel = { release: ReturnType<typeof vi.fn> };
 
@@ -8,6 +11,13 @@ const stubWakeLock = () => {
   const request = vi.fn(() => Promise.resolve(sentinel));
   vi.stubGlobal("navigator", { wakeLock: { request } });
   return { request, sentinel };
+};
+
+/** Stub a wake lock that refuses every request with `name`. */
+const stubRefusedWakeLock = (name: string) => {
+  const request = vi.fn(() => Promise.reject(new DOMException("no", name)));
+  vi.stubGlobal("navigator", { wakeLock: { request } });
+  return { request };
 };
 
 const listeners: Array<[string, EventListener]> = [];
@@ -48,6 +58,7 @@ afterEach(() => {
   document.addEventListener = originalAddEventListener;
   document.removeEventListener = originalRemoveEventListener;
   vi.unstubAllGlobals();
+  vi.mocked(track).mockClear();
 });
 
 describe("createWakeLockManager", () => {
@@ -89,5 +100,42 @@ describe("createWakeLockManager", () => {
     const manager = createWakeLockManager();
     await expect(manager.acquire()).resolves.toBeUndefined();
     await expect(manager.release()).resolves.toBeUndefined();
+  });
+});
+
+describe("wake lock failure reporting", () => {
+  it("reports a platform that has no Wake Lock API", async () => {
+    vi.stubGlobal("navigator", {});
+    await createWakeLockManager().acquire();
+    expect(track).toHaveBeenCalledWith("wake_lock_failed", {
+      reason: "unsupported",
+    });
+  });
+
+  it("reports a refused lock under the rejection's name", async () => {
+    stubRefusedWakeLock("NotAllowedError");
+    await createWakeLockManager().acquire();
+    expect(track).toHaveBeenCalledWith("wake_lock_failed", {
+      reason: "NotAllowedError",
+    });
+  });
+
+  it("stays quiet when the lock is granted", async () => {
+    stubWakeLock();
+    await createWakeLockManager().acquire();
+    expect(track).not.toHaveBeenCalled();
+  });
+
+  // The visibility handler re-requests for the length of a drive, so without
+  // the guard a platform that refuses emits an event per app switch.
+  it("reports only the first failure of a manager's life", async () => {
+    stubRefusedWakeLock("NotAllowedError");
+    const manager = createWakeLockManager();
+    await manager.acquire();
+    document.dispatchEvent(new Event("visibilitychange"));
+    await Promise.resolve();
+    await manager.release();
+    await manager.acquire();
+    expect(track).toHaveBeenCalledTimes(1);
   });
 });
