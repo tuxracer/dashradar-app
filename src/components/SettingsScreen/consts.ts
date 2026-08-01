@@ -4,8 +4,7 @@ import type { ZoomMode } from "@/context/SettingsContext";
 export const REPO_URL = "https://github.com/tuxracer/dashradar-app";
 
 /** Confirmation prompt shown before the Reset app data row wipes the install. */
-export const RESET_CONFIRM_MESSAGE =
-  "Erase all app data and reload? Settings, caches, and the downloaded model will be removed.";
+export const RESET_CONFIRM_MESSAGE = "Erase all app data and reload?";
 
 /**
  * Segments of the Zoom row's mode picker, in display order. Labels are the
