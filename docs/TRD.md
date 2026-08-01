@@ -2,15 +2,11 @@
 
 How the app is put together, and why the odd parts are the way they are. It does not describe every file or constant; the source is right there.
 
----
-
 ## 1. What it is
 
 A phone on a dash mount runs object detection on its rear camera and shows a full-screen signal meter styled like a radar detector. The camera feed is never drawn on screen; a detection adds a small card with a cutout of what was seen. Everything runs in the browser: a Vite React SPA with no backend, no accounts, and no network traffic beyond the app shell and the model weights. It is a computer-vision detector, not a radar detector.
 
 Inference runs in a Web Worker so it never blocks the video element. The app works offline once the model has downloaded, keeps the screen awake while scanning, and stays inside the thermal and battery budget of a phone clamped to a windshield in the sun. Deliberately absent: recording, history, sync, a backend picker (WebGPU or nothing, §2), and confidence numbers in the driver-facing UI. The only state surviving a reload is the cached weights and a small `localStorage` settings object.
-
----
 
 ## 2. Device support
 
@@ -21,8 +17,6 @@ Target: a modern iPhone on Safari or an Android phone on Chrome, landscape, dash
 The probe acquires a real device, in the worker scope, because some browsers expose the API on the main thread but not in workers, and some expose it and then fail device creation. It is posted separately from `load` so the verdict never waits behind service-worker control (§11).
 
 `UnsupportedScreen` renders after the intro and before every camera screen. Nothing on it is fixable on the device in hand, so it is a handoff, not an error: it leads with "open it on another phone" and carries the `ShareTarget` cluster (QR plus Web Share). Its tests enforce the copy rules: never name "browser" or "GPU", never say "your phone" (the reader is holding the phone that failed), never ask for a "newer" phone (a current budget phone can fail where an older flagship passes).
-
----
 
 ## 3. Stack
 
@@ -38,22 +32,16 @@ The probe acquires a real device, in the worker scope, because some browsers exp
 
 Commands are in the [README](../README.md). `pnpm check` must pass before a commit.
 
----
-
 ## 4. Architecture
 
-```
-App
- └─ DetectionProvider ──► detection worker (RF-DETR on onnxruntime-web, WebGPU)
-                            │
-                            ▼
-                   toRoadDetections (road-class filter, confidence floor)
-                            │
-                            ▼
-                   detectionTracker (coasting flicker smoother)
-                            │
-                            ▼
-                   buildHudModel ──► RadarDetectorScreen
+```mermaid
+flowchart TB
+    App --> DP[DetectionProvider]
+    DP --> W["detection worker<br>(RF-DETR on onnxruntime-web, WebGPU)"]
+    W --> F["toRoadDetections<br>(road-class filter, confidence floor)"]
+    F --> T["detectionTracker<br>(coasting flicker smoother)"]
+    T --> H[buildHudModel]
+    H --> R[RadarDetectorScreen]
 ```
 
 Everything below the provider is pure: no React, no DOM. Components read `useDetection()` and never touch the worker. Modules are directories named after their primary export (`index.ts` plus optional `consts.ts`, `types.ts`, `tests.ts`); contexts own lifecycle and state (`DetectionContext`: worker and frame pump; `SettingsContext`: gated settings; `DevVideoContext`: the stand-in video file), `lib/*` holds the React-free domain logic (detection filter and HUD shaping, tracker, auto zoom, radar signal and audio, camera, crash sentinel, scan clock, and small single-purpose helpers), and `RadarDetectorScreen` is the only detection UI with `CameraView` holding the hidden `<video>`. Never import `workers/detection/index.ts` from app code (it pulls in onnxruntime-web); import protocol types from `workers/detection/types`.
@@ -61,8 +49,6 @@ Everything below the provider is pure: no React, no DOM. Components read `useDet
 `useDetection()` hands out status, download progress, the `HudModel`, the current `contact`, the last saved frame, an error code, a camera epoch (forces a `CameraView` remount), `start(video)` / `stop()`, and `getDebugSnapshot()`. The snapshot is a ref read on demand, not context state: per-frame timing through state would re-render every consumer for numbers nobody is showing.
 
 **Video file feed.** A video file can stand in for the camera (drag a clip in, or pick one in settings), for desk testing and replaying dashcam footage. It ships in production; every session starts on the camera, since a file choice cannot survive a reload. While a file plays, `CameraView` never mounts, so camera errors cannot happen. Playback starts on the first rising edge of scanning (so the clip's opening seconds are not consumed while the model compiles) and that start is one-shot; later pump pauses never auto-play or auto-pause what the user now drives by hand. Swapping the source stops the pump first, synchronously: React runs a child's effects before its parent's, so a stop scheduled after the swap would kill the pump the swap just started. Camera-stall recovery (§5) is off entirely on a file feed, where pausing and scrubbing legitimately stop and repeat frames.
-
----
 
 ## 5. The frame pump
 
@@ -79,8 +65,6 @@ Everything below the provider is pure: no React, no DOM. Components read `useDet
 **Pauses.** The pump stops when the page goes hidden and when settings open (a same-page overlay fires no `visibilitychange`). Each pauser only resumes a session it paused itself, so the two compose.
 
 **Race invariants.** One frame in flight (`inFlightRef`), a generation counter invalidating captures from before a `stop()`, and no side effects inside `setState` updaters (StrictMode double-invokes them). Hard-won fixes for real races; understand what each protects before touching them.
-
----
 
 ## 6. Worker protocol
 
@@ -103,8 +87,6 @@ The `detections` extras: the **cutout** (top detection's box, padded, clamped, d
 
 `WORKER_CRASHED` is set by `DetectionContext` from `worker.onerror` for exceptions the worker's try/catch missed. WebKit runs WebGPU in a separate process that can die under a healthy page; the worker awaits `device.lost` once per session and turns it into `GPU_DEVICE_LOST`, ignoring the `"destroyed"` reason (deliberate teardown, not a loss).
 
----
-
 ## 7. The model
 
 A custom **RF-DETR Small** checkpoint fine-tuned on Las Vegas Metro police vehicles, published at [`tuxracer/las-vegas-metro-rfdetr-small-t1`](https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1) and exported from the sibling repo of the same name. The worker streams `model_fp16.onnx` (~57 MB) from Hugging Face. Signature: input `[1,3,512,512]` fp32 NCHW, ImageNet-normalized; outputs `dets [1,300,4]` (cxcywh, normalized) and `labels [1,300,2]` (raw logits). No NMS; RF-DETR is set-based.
@@ -116,8 +98,6 @@ A custom **RF-DETR Small** checkpoint fine-tuned on Las Vegas Metro police vehic
 **Graph capture.** Records the first run's kernel dispatches and replays them, cutting the CPU cost of hundreds of small dispatches. On everywhere, no engine check, falling back to a plain session on failure. It requires the native C++ WebGPU EP, which is why the worker imports `onnxruntime-web/webgpu`: the root import's JSEP registry has no TopK, this graph has one, so under JSEP that node lands on CPU and capture fails deterministically. `ORT_RUNTIME_FILES` in `vite.config.ts` must track the import. A WebKit exclusion once shipped on one crash event and was lifted when the full data showed nine of ten iOS crashes had capture *off*, all inside the first ~21 s of scanning, pointing at startup rather than capture; do not re-add an engine check without telemetry separating the two.
 
 **Startup sequencing.** Three changes from that crash cluster, all about not stacking peaks: the weights buffer is released before the first run, exactly when ORT allocates every intermediate at once (cache-backed loads only, since only they can reproduce the bytes for the fallback path); the plain session gets a warm-up run on zeroed input before `ready`, so the first-run shader-compilation storm does not land on the first real camera frame; and the camera is acquired only after status leaves `loading-model`, so `getUserMedia` never fires while the session compiles.
-
----
 
 ## 8. Detection domain
 
@@ -133,8 +113,6 @@ Zoom is a digital crop, never an upscale: `CAMERA_CONSTRAINTS` asks for ~1024 pe
 
 **HUD shaping.** `buildHudModel` picks the nearest detection by normalized box area and keeps the rest in `others` so the meter can consider the highest score anywhere in frame. The NEAR flag and `mapBoxToViewport` are retained from the earlier bounding-box HUD and nothing currently reads them; `mapBoxToViewport` assumes `object-fit: cover` on the video element.
 
----
-
 ## 9. UI
 
 One opaque full-screen instrument, dark only, amber the single accent, Rajdhani throughout. Landscape-first, the intro the deliberate exception (a first-time user holds the phone in their hand). No nav, no dialogs.
@@ -145,8 +123,6 @@ One opaque full-screen instrument, dark only, amber the single accent, Rajdhani 
 
 Other surfaces: the status bar (wordmark, settings gear, optional slot for the zoom and round-trip pills), the debug overlay, the model load screen (delayed to avoid a flash; DOWNLOADING and PREPARING phases), the error screens, the camera permission ask (so the browser's own prompt never lands unexplained; the camera is requested only after the ALLOW CAMERA tap), and the intro with its Canvas 2D night-drive scene. Intro dismissal persists as a version number, so bumping the constant walks returning users through a reworked intro once.
 
----
-
 ## 10. Settings
 
 `localStorage`, validated on read: a corrupt blob falls back to defaults entirely, a partial one fills missing fields from defaults, so a build that adds a field cannot wipe stored values.
@@ -156,8 +132,6 @@ Other surfaces: the status bar (wordmark, settings gear, optional slot for the z
 Two driver-facing rows are visible with the switch off: **Audio alerts** gates the beeper (beeping while the dial shows nothing is impossible by construction; the audio floor sits at or above the dial's contact threshold), and **Detection image** (default on) turns the contact card off end to end when disabled: the worker is told not to cut a crop, not just the UI hiding one.
 
 Developer rows with real behavior behind them: **Auto save** downloads a detection's model-input frame with no tap, for collecting training data on a drive; it fires only on scans that detected something, keeps the crop request alive even with the detection image off, and shows a toast per save, since a browser download is otherwise invisible on a phone. **Camera preview** plays a second video element cropped to exactly the scanned region, for checking aim; it defaults off because a second live surface costs compositing on a thermally constrained device. **Reset app data**, behind a confirm, empties both web storages, deletes every cache and IndexedDB database, unregisters service workers, and reloads, each step settling independently so one failure cannot strand the app half-cleared; it reproduces a genuine first visit on a phone, where devtools are not an option.
-
----
 
 ## 11. Offline and PWA
 
@@ -170,8 +144,6 @@ Workbox via `vite-plugin-pwa`, registered with `autoUpdate` (silent background u
 **Cross-origin isolation.** COOP `same-origin` plus COEP `require-corp` (from `vercel.json` in production, Vite config in dev) enables `SharedArrayBuffer`, which lets the ORT wasm runtime run multi-threaded; without it ORT silently clamps to one thread. Inference is on the GPU, but the runtime hosting the WebGPU EP is itself wasm and runs any node the EP cannot take. `require-corp` beat `credentialless` for Safari support, viable because nothing needs an exemption; a cross-origin script or `no-cors` fetch will be blocked.
 
 Verify in a real browser: after a fresh load, Cache Storage holds the precache plus both runtime caches, and an offline hard reload cold-loads the app and runs live inference with no network requests.
-
----
 
 ## 12. Telemetry
 
@@ -196,8 +168,6 @@ Timing values are bucketed to the nearest half second so jitter collapses and a 
 
 **Crash sentinel.** iOS sometimes kills the page mid-scan with no JS running at kill time, so Sentry never sees it. While scanning, the app writes a heartbeat to localStorage and clears it on every clean exit, including a synchronous `pagehide` path (React never flushes effect cleanups during unload, and the auto-updating service worker reloads sessions routinely). Only a real OS kill leaves a stale record; the next launch classifies it by gap length (short: crash, since iOS relaunches a killed foreground tab within seconds; long: unclean shutdown). The heartbeat runs fast for the first 30 s of scanning and slow after, because every field kill so far landed within ~21 s of the pump starting and a flat slow cadence could not resolve where in startup the page died.
 
----
-
 ## 13. Error handling
 
 Typed error classes with a machine-readable `code`, never string-matched messages.
@@ -208,15 +178,11 @@ Typed error classes with a machine-readable `code`, never string-matched message
 
 Each code maps to a headline, body copy, optional reassurance rows, and a glyph. Every error screen offers one exit, a full page reload; no soft in-app retry. `WEBGPU_UNSUPPORTED` is excluded from the type the error screen accepts, so routing it into the generic panel is a compile error rather than a lookup that finds no copy.
 
----
-
 ## 14. Testing
 
 Vitest and Testing Library, behavior-focused. jsdom has no camera, no real worker, no WebGPU, and no layout engine, so those seams are stubbed or injected: unit tests cover the pure detection helpers, tracker, auto-zoom rules, camera error mapping, the worker's preprocess and decode against known inputs, the message guards, the scan clock, the full status machine and pump invariants against an injected fake worker, and settings persistence and gating.
 
 A real browser (chrome-devtools against a built preview) verifies the model load screen, the GPU probe, first-visit caching, offline cold load, graph capture, and reference-image scores after any model change. Only the user can verify on-device: real camera video, sustained frame rates in traffic, both orientations, and thermal and battery behavior on a dash mount.
-
----
 
 ## 15. Acceptance
 
