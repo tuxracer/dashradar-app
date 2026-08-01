@@ -1,6 +1,6 @@
 # dashradar: Technical Reference
 
-Conventions and non-negotiable gotchas live in [CLAUDE.md](../CLAUDE.md). This document explains how the app is put together and why the odd parts are the way they are. It does not try to describe every file or constant; the source is right there.
+How the app is put together, and why the odd parts are the way they are. It does not try to describe every file or constant; the source is right there.
 
 **Status:** shipped (v1) · **Owner:** Derek Petersen
 
@@ -64,7 +64,7 @@ Copy rules for that screen, enforced by its tests: do not name "browser" or "GPU
 | Telemetry | Vercel Analytics and Sentry, both gated on Do Not Track / GPC and off in dev |
 | Tests | vitest + Testing Library (jsdom) |
 
-Commands are in [CLAUDE.md](../CLAUDE.md). `pnpm check` must pass before a commit.
+Commands are in the [README](../README.md). `pnpm check` (format, lint, typecheck) must pass before a commit.
 
 ---
 
@@ -165,7 +165,7 @@ Recovery is silent: it stops the pump and bumps `cameraEpoch`, which `App` uses 
 
 **Pauses.** The pump stops when the page goes hidden and when the settings panel opens (a same-page overlay fires no `visibilitychange`). Each pauser has its own flag and only resumes a session it paused itself, so the two compose without stepping on each other or starting a pump the user never started.
 
-**Race invariants.** One frame in flight (`inFlightRef`), a generation counter that invalidates captures from before a `stop()`, and no side effects inside `setState` updaters (StrictMode double-invokes them). These are hard-won fixes for real races. Read the Gotchas in CLAUDE.md before touching them.
+**Race invariants.** One frame in flight (`inFlightRef`), a generation counter that invalidates captures from before a `stop()`, and no side effects inside `setState` updaters (StrictMode double-invokes them). These are hard-won fixes for real races. Understand what each one is protecting against before touching them.
 
 ---
 

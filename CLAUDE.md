@@ -67,6 +67,8 @@ pnpm format      # Auto-fix formatting (prettier --write)
 
 **Documentation**: When making major changes (architecture, new modules, API changes), update [docs/TRD.md](docs/TRD.md).
 
+**Never mention this file in human-facing documents.** README, TRD, code comments, commit messages, PR descriptions, and in-app copy are written for people, and a pointer to the agent instruction file is noise to every one of them: it either sends the reader somewhere that answers a question they didn't ask, or it advertises how the file was written. State the rule where it belongs instead. If the reader needs the commands, they're in the README; if they need a convention, write the convention; if a piece of code is load-bearing for a reason that isn't obvious, say the reason rather than pointing at a list of gotchas. Same for `.claude/`, skills, plans under `docs/superpowers/`, and any other agent-facing path.
+
 ## Git Workflow
 
 - **Always rebase when integrating to `main`, never create merge commits** (`git rebase`, `git merge --ff-only`). Keep history linear.
