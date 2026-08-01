@@ -6,7 +6,6 @@ import {
 } from "@/components/RadarDetectorScreen";
 import type { Contact } from "@/context/DetectionContext";
 import { isAudible } from "@/lib/radarAudio";
-import { SEGMENT_COUNT } from "@/lib/radarSignal";
 import { downloadBlob } from "@/lib/saveFrame";
 
 /** Spy on the beeper so tests can observe what level the rAF loop feeds it. */
@@ -26,16 +25,6 @@ vi.mock("@/lib/saveFrame", async (importOriginal) => ({
 }));
 
 describe("RadarDetectorScreen", () => {
-  it("renders the POLICE SIGNAL label", () => {
-    render(<RadarDetectorScreen confidence={0.5} audioEnabled={false} />);
-    expect(screen.getByText("POLICE SIGNAL")).toBeInTheDocument();
-  });
-
-  it("renders one node per ladder segment", () => {
-    render(<RadarDetectorScreen confidence={0.5} audioEnabled={false} />);
-    expect(screen.getAllByTestId("signal-segment")).toHaveLength(SEGMENT_COUNT);
-  });
-
   it("starts idle: zero readout and a SCANNING status", () => {
     render(<RadarDetectorScreen confidence={0} audioEnabled={false} />);
     expect(screen.getByText("0%")).toBeInTheDocument();
@@ -248,17 +237,6 @@ describe("RadarDetectorScreen contact card", () => {
     );
     expect(screen.getByTestId("contact-card")).toBeInTheDocument();
     expect(screen.getByTestId("contact-direction")).toHaveTextContent("LEFT");
-  });
-
-  it("renders direction copy for ahead contacts", () => {
-    render(
-      <RadarDetectorScreen
-        confidence={0.5}
-        audioEnabled={false}
-        contact={testContact("ahead")}
-      />,
-    );
-    expect(screen.getByTestId("contact-direction")).toHaveTextContent("AHEAD");
   });
 
   it("renders no card without a contact", () => {

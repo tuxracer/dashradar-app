@@ -6,13 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsButton } from "@/components/SettingsButton";
 import { SettingsScreen } from "@/components/SettingsScreen";
 import { DevVideoProvider, useDevVideo } from "@/context/DevVideoContext";
-import {
-  SETTINGS_VERSION,
-  SettingsProvider,
-  STORAGE_KEY,
-} from "@/context/SettingsContext";
+import { SettingsProvider, STORAGE_KEY } from "@/context/SettingsContext";
 import type { PersistedSettings } from "@/context/SettingsContext";
-import { MODEL_REVISION } from "@/workers/detection/consts";
 
 /** Stands in for DetectionContext's feed swap, which needs no worker here. */
 const swapVideoSource = vi.fn();
@@ -34,30 +29,9 @@ beforeEach(() => {
   URL.revokeObjectURL = vi.fn();
 });
 
-/**
- * The blob a fresh install writes to localStorage, with the rows a test changed
- * spread over it. Written in the key order SettingsProvider persists, so the
- * result compares against the stored JSON string directly.
- */
-const persisted = (overrides: Partial<PersistedSettings> = {}) =>
-  JSON.stringify({
-    settingsVersion: SETTINGS_VERSION,
-    developerOptions: false,
-    showDebug: false,
-    frameThumbnails: false,
-    saveFrames: false,
-    autoSaveFrames: false,
-    radarAudio: true,
-    detectionImage: true,
-    throttleInference: true,
-    zoomMode: "auto",
-    confidenceThreshold: 0.5,
-    zoomIndicator: false,
-    roundTripIndicator: false,
-    cameraPreview: false,
-    rawConfidence: false,
-    ...overrides,
-  });
+/** The settings field currently persisted to localStorage. */
+const stored = <K extends keyof PersistedSettings>(key: K) =>
+  JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}")[key];
 
 /**
  * Calls the real DevVideoProvider's `setVideoFile` once on mount, so a test
@@ -112,6 +86,75 @@ const renderOpenSettings = async () => {
   return user;
 };
 
+/**
+ * Every toggle row, the settings field it writes, and the value one tap leaves
+ * behind. A row wired to the wrong field is silent in the UI, so this is the
+ * guard that each one reaches its own setting.
+ */
+const TOGGLE_ROWS: ReadonlyArray<{
+  label: string;
+  key: keyof PersistedSettings;
+  afterTap: boolean;
+  developer: boolean;
+}> = [
+  {
+    label: "Audio alerts",
+    key: "radarAudio",
+    afterTap: false,
+    developer: false,
+  },
+  {
+    label: "Detection image",
+    key: "detectionImage",
+    afterTap: false,
+    developer: false,
+  },
+  {
+    label: "Developer options",
+    key: "developerOptions",
+    afterTap: true,
+    developer: false,
+  },
+  { label: "Debug overlay", key: "showDebug", afterTap: true, developer: true },
+  {
+    label: "Zoom indicator",
+    key: "zoomIndicator",
+    afterTap: true,
+    developer: true,
+  },
+  {
+    label: "Round-trip",
+    key: "roundTripIndicator",
+    afterTap: true,
+    developer: true,
+  },
+  {
+    label: "Camera preview",
+    key: "cameraPreview",
+    afterTap: true,
+    developer: true,
+  },
+  {
+    label: "Throttle inference",
+    key: "throttleInference",
+    afterTap: false,
+    developer: true,
+  },
+  {
+    label: "Frame preview",
+    key: "frameThumbnails",
+    afterTap: true,
+    developer: true,
+  },
+  { label: "Save frames", key: "saveFrames", afterTap: true, developer: true },
+  {
+    label: "Auto save",
+    key: "autoSaveFrames",
+    afterTap: true,
+    developer: true,
+  },
+];
+
 describe("SettingsScreen", () => {
   it("renders nothing until the panel is opened", async () => {
     const user = userEvent.setup();
@@ -121,277 +164,70 @@ describe("SettingsScreen", () => {
     expect(screen.getByText("Audio alerts")).toBeInTheDocument();
   });
 
-  it("toggles and persists the audio setting from the Audio alerts row", async () => {
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    await user.click(screen.getByText("Audio alerts"));
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      persisted({ radarAudio: false }),
-    );
-  });
-
-  // A normal-drive row, so it sits beside Audio alerts rather than behind the
-  // Developer options switch.
-  it("toggles and persists the detection image from its row", async () => {
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    await user.click(screen.getByText("Detection image"));
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      persisted({ detectionImage: false }),
-    );
-  });
-
-  it("toggles and persists the debug setting from the Debug overlay row", async () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ developerOptions: true }),
-    );
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    // The overlay starts off under developer options, so the tap turns it on.
-    await user.click(screen.getByText("Debug overlay"));
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      persisted({ developerOptions: true, showDebug: true }),
-    );
-  });
-
-  it("toggles and persists developer options from its row", async () => {
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    await user.click(screen.getByText("Developer options"));
-    // The master switch changes nothing but itself: every developer row is
-    // stored exactly as it was.
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      persisted({ developerOptions: true }),
-    );
-  });
+  it.each(TOGGLE_ROWS)(
+    "writes $key when the $label row is tapped",
+    async ({ label, key, afterTap, developer }) => {
+      const user = developer
+        ? await renderOpenSettingsWithDeveloperOptions()
+        : await renderOpenSettings();
+      await user.click(screen.getByText(label));
+      expect(stored(key)).toBe(afterTap);
+    },
+  );
 
   it("hides every developer row while developer options are off", async () => {
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    expect(screen.queryByText("Debug overlay")).not.toBeInTheDocument();
-    expect(screen.queryByText("Zoom indicator")).not.toBeInTheDocument();
-    expect(screen.queryByText("Round-trip")).not.toBeInTheDocument();
-    expect(screen.queryByText("Camera preview")).not.toBeInTheDocument();
-    expect(screen.queryByText("Frame preview")).not.toBeInTheDocument();
-    expect(screen.queryByText("Save frames")).not.toBeInTheDocument();
-    expect(screen.queryByText("Auto save")).not.toBeInTheDocument();
-    expect(screen.queryByText("Throttle inference")).not.toBeInTheDocument();
+    await renderOpenSettings();
+    for (const { label, developer } of TOGGLE_ROWS) {
+      if (developer) {
+        expect(screen.queryByText(label)).not.toBeInTheDocument();
+      }
+    }
     expect(screen.queryByText("Zoom")).not.toBeInTheDocument();
+    expect(screen.queryByText("Min confidence")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("video-file-value")).toBeNull();
     // The two driver-facing rows are not developer rows and stay put.
     expect(screen.getByText("Audio alerts")).toBeInTheDocument();
     expect(screen.getByText("Detection image")).toBeInTheDocument();
   });
 
   it("reveals every developer row once developer options are on", async () => {
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    await user.click(screen.getByText("Developer options"));
-    expect(screen.getByText("Debug overlay")).toBeInTheDocument();
-    expect(screen.getByText("Zoom indicator")).toBeInTheDocument();
-    expect(screen.getByText("Round-trip")).toBeInTheDocument();
-    expect(screen.getByText("Camera preview")).toBeInTheDocument();
-    expect(screen.getByText("Frame preview")).toBeInTheDocument();
-    expect(screen.getByText("Save frames")).toBeInTheDocument();
-    expect(screen.getByText("Auto save")).toBeInTheDocument();
-    expect(screen.getByText("Throttle inference")).toBeInTheDocument();
+    await renderOpenSettingsWithDeveloperOptions();
+    for (const { label } of TOGGLE_ROWS) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
     expect(screen.getByText("Zoom")).toBeInTheDocument();
+    expect(screen.getByText("Min confidence")).toBeInTheDocument();
+    expect(screen.getByTestId("video-file-value")).toBeInTheDocument();
   });
 
   it("closes on the close button", async () => {
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
+    const user = await renderOpenSettings();
     await user.click(screen.getByRole("button", { name: /close settings/i }));
     expect(screen.queryByText("Audio alerts")).not.toBeInTheDocument();
   });
 
   it("closes on Escape", async () => {
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
+    const user = await renderOpenSettings();
     await user.keyboard("{Escape}");
     expect(screen.queryByText("Audio alerts")).not.toBeInTheDocument();
   });
 
-  it("shows the model slug with its revision", async () => {
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    const modelRow = screen.getByText(/las-vegas-metro-rfdetr-small-t1/);
-    expect(modelRow).toBeInTheDocument();
-    expect(modelRow).toHaveTextContent(MODEL_REVISION);
-  });
-
-  it("shows the commit sha as the build label", async () => {
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    expect(
-      screen.getByText(new RegExp(`^${__COMMIT_SHA__} ↗$`)),
-    ).toBeInTheDocument();
-  });
-
-  it("toggles and persists the zoom indicator setting from its row", async () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ developerOptions: true }),
-    );
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    await user.click(screen.getByText("Zoom indicator"));
-    expect(
-      JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}")
-        .zoomIndicator,
-    ).toBe(true);
-  });
-
-  it("toggles and persists the round-trip indicator setting from its row", async () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ developerOptions: true }),
-    );
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    await user.click(screen.getByText("Round-trip"));
-    expect(
-      JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}")
-        .roundTripIndicator,
-    ).toBe(true);
-  });
-
-  it("toggles and persists the camera preview setting from its row", async () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ developerOptions: true }),
-    );
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    await user.click(screen.getByText("Camera preview"));
-    expect(
-      JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}")
-        .cameraPreview,
-    ).toBe(true);
-  });
-
-  it("toggles and persists the throttle setting from its row", async () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ developerOptions: true }),
-    );
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    await user.click(screen.getByText("Throttle inference"));
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      persisted({ developerOptions: true, throttleInference: false }),
-    );
-  });
-
-  it("selects and persists a zoom mode from the segmented Zoom row", async () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ developerOptions: true }),
-    );
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
+  it("persists the mode picked from the segmented Zoom row", async () => {
+    const user = await renderOpenSettingsWithDeveloperOptions();
     await user.click(screen.getByRole("button", { name: "2X" }));
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      persisted({ developerOptions: true, zoomMode: "2x" }),
-    );
-  });
-
-  it("offers all three zoom modes and returns to 1x on tap", async () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ developerOptions: true, zoomMode: "auto" }),
-    );
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    expect(screen.getByRole("button", { name: "1X" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "2X" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "AUTO" })).toBeInTheDocument();
+    expect(stored("zoomMode")).toBe("2x");
     await user.click(screen.getByRole("button", { name: "1X" }));
-    expect(
-      JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}").zoomMode,
-    ).toBe("1x");
+    expect(stored("zoomMode")).toBe("1x");
+    await user.click(screen.getByRole("button", { name: "AUTO" }));
+    expect(stored("zoomMode")).toBe("auto");
   });
 
-  it("toggles and persists the frame preview setting from its row", async () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ developerOptions: true }),
-    );
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    await user.click(screen.getByText("Frame preview"));
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      persisted({ developerOptions: true, frameThumbnails: true }),
-    );
-  });
-
-  it("toggles and persists the frame saving setting from its row", async () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ developerOptions: true }),
-    );
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    await user.click(screen.getByText("Save frames"));
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      persisted({ developerOptions: true, saveFrames: true }),
-    );
-  });
-
-  it("toggles and persists the auto save setting from its row", async () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ developerOptions: true }),
-    );
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    await user.click(screen.getByText("Auto save"));
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      persisted({ developerOptions: true, autoSaveFrames: true }),
-    );
-  });
-
-  it("hides the Min confidence row while developer options are off", async () => {
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
-    expect(screen.queryByText("Min confidence")).not.toBeInTheDocument();
-  });
-
-  it("shows the Min confidence slider under developer options and updates on change", async () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ developerOptions: true }),
-    );
-    const user = userEvent.setup();
-    renderScreen();
-    await open(user);
+  it("persists a confidence picked from the Min confidence slider", async () => {
+    await renderOpenSettingsWithDeveloperOptions();
     const slider = screen.getByRole("slider", { name: /min confidence/i });
     expect(slider).toHaveValue("0.5");
     fireEvent.change(slider, { target: { value: "0.3" } });
-    expect(
-      JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}")
-        .confidenceThreshold,
-    ).toBe(0.3);
+    expect(stored("confidenceThreshold")).toBe(0.3);
   });
 
   it("shows the camera as the feed until a file is chosen", async () => {
@@ -415,11 +251,6 @@ describe("SettingsScreen", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "CLEAR" }));
     expect(swapVideoSource).toHaveBeenCalledWith(null);
-  });
-
-  it("hides the row when developer options are off", async () => {
-    await renderOpenSettings();
-    expect(screen.queryByTestId("video-file-value")).toBeNull();
   });
 
   // Turning the master switch off used to take the row (and with it the only

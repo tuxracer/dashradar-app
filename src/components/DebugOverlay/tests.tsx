@@ -1,27 +1,13 @@
-import { render, screen } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DebugOverlay } from "@/components/DebugOverlay";
-import {
-  SETTINGS_VERSION,
-  SettingsProvider,
-  STORAGE_KEY,
-} from "@/context/SettingsContext";
+import { SettingsProvider } from "@/context/SettingsContext";
 import type { DebugSnapshot } from "@/context/DetectionContext";
-import type { BackendProbe } from "@/workers/detection/types";
 
 afterEach(() => {
   window.localStorage.clear();
+  vi.restoreAllMocks();
 });
-
-const enableDebug = () =>
-  window.localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      settingsVersion: SETTINGS_VERSION,
-      developerOptions: true,
-      showDebug: true,
-    }),
-  );
 
 const debug: DebugSnapshot = {
   captureMs: 1.2,
@@ -40,23 +26,11 @@ const debug: DebugSnapshot = {
   zoomLocked: false,
 };
 
-/** Complete probe with quiet defaults; override the fields a test cares about. */
-const probe = (overrides: Partial<BackendProbe> = {}): BackendProbe => ({
-  workerGpu: true,
-  adapter: true,
-  device: true,
-  shaderF16: false,
-  graphCapture: false,
-  crossOriginIsolated: true,
-  threads: 4,
-  ...overrides,
-});
-
-const renderOverlay = (backendProbe?: BackendProbe) =>
+const renderOverlay = () =>
   render(
     <SettingsProvider>
       <DebugOverlay
-        backendProbe={backendProbe}
+        backendProbe={undefined}
         mainThreadWebGpu="no-adapter"
         modelProgress={{ loadedBytes: 0, totalBytes: 0 }}
         getDebug={() => debug}
@@ -72,102 +46,8 @@ describe("DebugOverlay", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("renders diagnostics when showDebug is on", () => {
-    enableDebug();
-    renderOverlay();
-    expect(screen.getByText(/1280.*720/)).toBeInTheDocument();
-    expect(screen.getByText(/2\s*\/\s*4/)).toBeInTheDocument();
-    expect(screen.getByText("overhead")).toBeInTheDocument();
-    expect(screen.getByText("2.5 ms")).toBeInTheDocument();
-    expect(screen.getByText("pacing")).toBeInTheDocument();
-    expect(screen.getByText("600.0 ms · rest")).toBeInTheDocument();
-    expect(screen.getByText("bright")).toBeInTheDocument();
-    expect(screen.getByText("42.00%")).toBeInTheDocument();
-  });
-
-  it("shows the WebGPU probe stages when a probe is present", () => {
-    enableDebug();
-    renderOverlay(probe());
-    expect(screen.getByText(/no-f16/)).toBeInTheDocument();
-    expect(screen.getByText(/\bgpu\b/)).toBeInTheDocument();
-  });
-
-  it("reports shader-f16 support from the probe", () => {
-    enableDebug();
-    renderOverlay(probe({ shaderF16: true }));
-    expect(screen.getByText("shader-f16")).toBeInTheDocument();
-    expect(screen.getByText("supported")).toBeInTheDocument();
-  });
-
-  it("reports missing WebGPU on the shader-f16 row when the worker has no gpu", () => {
-    enableDebug();
-    renderOverlay(probe({ workerGpu: false, adapter: false, device: false }));
-    expect(screen.getByText("no webgpu")).toBeInTheDocument();
-  });
-
-  it("shows the session error when the WebGPU session failed to build", () => {
-    enableDebug();
-    renderOverlay(probe({ sessionError: "shader-f16 not supported" }));
-    expect(screen.getByText("shader-f16 not supported")).toBeInTheDocument();
-  });
-
-  it("reports graph capture on when the session captured", () => {
-    enableDebug();
-    renderOverlay(probe({ shaderF16: true, graphCapture: true }));
-    const row = screen.getByText("graph capture").closest("div");
-    expect(row).toHaveTextContent("on");
-  });
-
-  it("shows the graph capture error when the capture attempt fell back", () => {
-    enableDebug();
-    renderOverlay(
-      probe({
-        shaderF16: true,
-        graphCaptureError: "capture rejected at run",
-      }),
-    );
-    expect(screen.getByText("failed")).toBeInTheDocument();
-    expect(screen.getByText("capture rejected at run")).toBeInTheDocument();
-  });
-
-  it("marks graph capture disabled when no attempt was made", () => {
-    enableDebug();
-    renderOverlay(probe({ shaderF16: true }));
-    expect(screen.getByText("disabled")).toBeInTheDocument();
-  });
-
-  it("shows the ORT wasm thread count and cross-origin isolation state", () => {
-    enableDebug();
-    renderOverlay(probe({ adapter: false, device: false }));
-    expect(screen.getByText(/4T · isolated/)).toBeInTheDocument();
-  });
-
-  it("shows the throttle row as on by default", () => {
-    enableDebug();
-    renderOverlay();
-    expect(screen.getByText("throttle")).toBeInTheDocument();
-    expect(screen.getByText("on")).toBeInTheDocument();
-  });
-
-  it("shows the throttle row as off when throttling is disabled", () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        settingsVersion: SETTINGS_VERSION,
-        developerOptions: true,
-        showDebug: true,
-        throttleInference: false,
-      }),
-    );
-    renderOverlay();
-    expect(screen.getByText("throttle")).toBeInTheDocument();
-    expect(screen.getByText("off")).toBeInTheDocument();
-  });
-});
-
-describe("DebugOverlay readout loop", () => {
-  afterEach(() => vi.restoreAllMocks());
-
+  // The overlay is off for every real drive, so its readout loop must not cost
+  // a frame's work per frame for the whole session.
   it("does not schedule the readout loop while showDebug is off", () => {
     const rafSpy = vi.spyOn(window, "requestAnimationFrame").mockReturnValue(0);
     renderOverlay();

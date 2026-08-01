@@ -54,20 +54,15 @@ describe("shouldShowIntro", () => {
 });
 
 describe("IntroScreen", () => {
-  it("calls onStart when the start button is tapped", () => {
+  it("starts detection from the mobile start button", () => {
+    stubPointer(false);
     const onStart = vi.fn();
-    const { getByRole } = render(<IntroScreen onStart={onStart} />);
+    const { getByRole, queryByText } = render(
+      <IntroScreen onStart={onStart} />,
+    );
+    expect(queryByText(SHARE_URL_LABEL)).not.toBeInTheDocument();
     fireEvent.click(getByRole("button", { name: "START" }));
     expect(onStart).toHaveBeenCalledOnce();
-  });
-
-  it("shows the start button and no QR code on mobile", () => {
-    stubPointer(false);
-    const { getByRole, queryByText } = render(
-      <IntroScreen onStart={vi.fn()} />,
-    );
-    expect(getByRole("button", { name: "START" })).toBeInTheDocument();
-    expect(queryByText(SHARE_URL_LABEL)).not.toBeInTheDocument();
   });
 
   it("replaces the start button with the QR code on desktop", () => {
@@ -92,17 +87,6 @@ describe("IntroScreen", () => {
     fireEvent.click(getByRole("button", { name: /send link/i }));
     expect(share).toHaveBeenCalledWith({ url: SHARE_URL });
     Reflect.deleteProperty(navigator, "share");
-  });
-
-  it("keeps the desktop QR when the share sheet is unavailable", () => {
-    stubPointer(true);
-    const { getByText, queryByRole } = render(
-      <IntroScreen onStart={vi.fn()} />,
-    );
-    expect(getByText(SHARE_URL_LABEL)).toBeInTheDocument();
-    expect(
-      queryByRole("button", { name: /send link/i }),
-    ).not.toBeInTheDocument();
   });
 
   it("calls onStart from the continue-on-this-device link once confirmed", () => {

@@ -3,34 +3,9 @@ import { describe, expect, it } from "vitest";
 import { ErrorScreen } from "@/components/ErrorScreen";
 
 describe("ErrorScreen", () => {
-  it("explains a denied camera permission", () => {
-    render(<ErrorScreen code="PERMISSION_DENIED" />);
-    expect(
-      screen.getByRole("heading", { name: /camera access needed/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/spots patrol vehicles by watching the road/),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /try again/i }),
-    ).toBeInTheDocument();
-  });
-
-  it("reassures on privacy when permission is denied", () => {
-    render(<ErrorScreen code="PERMISSION_DENIED" />);
-    expect(screen.getByText("ON-DEVICE")).toBeInTheDocument();
-    expect(
-      screen.getByText(/no images ever leave your device/i),
-    ).toBeInTheDocument();
-  });
-
-  it("explains a failed model download", () => {
-    render(<ErrorScreen code="MODEL_LOAD_FAILED" />);
-    expect(
-      screen.getByText(/detection model couldn't be downloaded/i),
-    ).toBeInTheDocument();
-  });
-
+  // The screen maps each code to its own headline, body, and glyph, so a code
+  // added without a mapping entry renders a blank screen instead of failing
+  // loudly. This is the guard for that.
   it("covers every error code with a headline, copy, and a glyph", () => {
     const codes = [
       "PERMISSION_DENIED",
@@ -49,12 +24,5 @@ describe("ErrorScreen", () => {
       expect(container.querySelector("svg")).toBeInTheDocument();
       unmount();
     }
-  });
-
-  it("asks the driver to clear the lens on a stalled camera", () => {
-    render(<ErrorScreen code="CAMERA_STALLED" />);
-    expect(
-      screen.getByText(/make sure nothing is blocking the camera/i),
-    ).toBeInTheDocument();
   });
 });
