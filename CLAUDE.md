@@ -40,7 +40,7 @@ Module map (internals in TRD §4 and §5):
 - `src/context/DevVideoContext/`: owns the video-file source that stands in for the camera. Every session starts on the camera; a dropped or settings-picked file replaces it until cleared. Consume via `useDevVideo()`.
 - `src/workers/detection/`: downloads the ONNX weights, runs inference; pure preprocess/decode in `inference.ts`, constants in `consts.ts`, typed message protocol in `types.ts`.
 - `src/lib/`: React-free domain modules, one directory each: `detection`, `detectionTracker`, `autoZoom`, `radarSignal`, `radarAudio`, `camera`, `crashSentinel`, `browserEngine`, `videoFileDrop`, `pwaInstall`, `saveFrame`, `serviceWorker`, `timingHistory`, `wakeLock`, and friends.
-- `src/components/`: `CameraView` (hidden `<video>`, the feed is never shown), `RadarDetectorScreen` (the only detection UI; rAF peak-hold loop writing straight to the DOM, drives the beeper and contact card), `StatusBar` + indicator pills, `SettingsScreen`, `DebugOverlay`, `SaveToast`, `UnsupportedScreen` (the WEBGPU_UNSUPPORTED handoff: intro scene, QR in lock-on brackets, share button, framed as an invitation rather than an error), intro/permission/load/error screens.
+- `src/components/`: `CameraView` (hidden `<video>`, the feed is never shown), `RadarDetectorScreen` (the only detection UI; rAF peak-hold loop writing straight to the DOM, drives the beeper and contact card), `StatusBar` + indicator pills, `SettingsScreen`, `DebugOverlay`, `SaveToast`, `ShareTarget` (the handoff cluster: SCAN TO OPEN annunciator, QR in lock-on brackets, Web Share button; shared by the desktop intro and `UnsupportedScreen` so the app's two handoffs cannot drift apart), `UnsupportedScreen` (the WEBGPU_UNSUPPORTED handoff, framed as an invitation rather than an error), intro/permission/load/error screens.
 - `src/types/`: shared detection types and guards.
 
 **Frame pump**: only one frame is ever in flight (latest wins, no queue). Captures are at least `MIN_FRAME_INTERVAL_MS` (1000 ms) apart, and slow devices additionally rest `PACING_REST_RATIO` (0.5) of the last round trip. The dev-only `throttleInference` off state drops the delay to 0; turning Developer options off always restores the floor. The pump pauses when the page goes hidden and while settings are open, each pauser resuming only sessions it paused. Workers are recycled every `WORKER_RECYCLE_AFTER_MS` (15 min) at a result boundary to bound native memory growth; one-time analytics events are ref-gated so recycles never re-fire them.
@@ -70,6 +70,7 @@ pnpm format      # Auto-fix formatting (prettier --write)
 ## Git Workflow
 
 - **Always rebase when integrating to `main`, never create merge commits** (`git rebase`, `git merge --ff-only`). Keep history linear.
+- **Already on `main` and asked to commit? Commit straight to `main`.** Don't create a branch first. Branching only to fast-forward `main` right back is a pointless round trip: the commit lands in the same place, just after two extra steps and a deleted branch. Branch only when there's a real reason (asked for, work already on one, or genuine isolation for a long or risky change); a big diff is not a reason on its own.
 
 ## Tech Stack
 

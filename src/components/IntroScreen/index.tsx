@@ -1,6 +1,6 @@
 import { IntroScene } from "@/components/IntroScene";
 import { RadarBackdrop } from "@/components/RadarBackdrop";
-import { ShareQr } from "@/components/ShareCard";
+import { ShareTarget } from "@/components/ShareTarget";
 import { WORDMARK } from "@/lib/branding";
 import { isDesktopDevice } from "@/lib/deviceType";
 import {
@@ -48,9 +48,11 @@ type IntroScreenProps = {
  * DetectionProvider while the user reads. The copy powers on in the same
  * one-shot staggered cascade as the permission ask and error screens, so the
  * whole panel family enters the same way. On a desktop the START button is
- * replaced by the share QR code, since the app is built for a phone on a dash:
- * scanning it moves the user to mobile, and a small link below still lets them
- * continue on the desktop.
+ * replaced by the `ShareTarget` handoff, since the app is built for a phone on
+ * a dash: scanning the code (or sending the link) moves the user to mobile,
+ * and a small link below still lets them continue on the desktop. That cluster
+ * is shared with the unsupported-device screen so the app's two handoffs look
+ * and behave identically.
  */
 export const IntroScreen = ({ onStart }: IntroScreenProps) => {
   const desktop = isDesktopDevice();
@@ -81,11 +83,8 @@ export const IntroScreen = ({ onStart }: IntroScreenProps) => {
             On-device computer vision. Nothing leaves your phone.
           </p>
           {desktop ? (
-            <div className="mt-1 flex animate-rise-in flex-col items-center gap-3 [animation-delay:360ms] motion-reduce:animate-none">
-              <p className="text-sm font-semibold tracking-[0.06em] text-white/80">
-                Scan with your phone to continue on mobile.
-              </p>
-              <ShareQr />
+            <div className="mt-1 flex animate-rise-in flex-col items-center gap-4 [animation-delay:360ms] motion-reduce:animate-none">
+              <ShareTarget />
               <button
                 type="button"
                 onClick={handleContinueOnDesktop}

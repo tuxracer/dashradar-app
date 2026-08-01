@@ -8,7 +8,7 @@ import {
   markIntroSeen,
   shouldShowIntro,
 } from "@/components/IntroScreen";
-import { SHARE_URL_LABEL } from "@/components/ShareCard";
+import { SHARE_URL, SHARE_URL_LABEL } from "@/components/ShareCard";
 
 /** Makes isDesktopDevice see a desktop (fine pointer) or mobile (coarse). */
 const stubPointer = (desktop: boolean) => {
@@ -77,6 +77,32 @@ describe("IntroScreen", () => {
     );
     expect(getByText(SHARE_URL_LABEL)).toBeInTheDocument();
     expect(queryByRole("button", { name: "START" })).not.toBeInTheDocument();
+  });
+
+  it("offers the same handoff the unsupported screen does on desktop", () => {
+    stubPointer(true);
+    const share = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, "share", {
+      value: share,
+      configurable: true,
+    });
+    const { getByText, getByRole } = render(<IntroScreen onStart={vi.fn()} />);
+    expect(getByText(/scan to open/i)).toBeInTheDocument();
+    expect(getByText(SHARE_URL_LABEL)).toBeInTheDocument();
+    fireEvent.click(getByRole("button", { name: /send link/i }));
+    expect(share).toHaveBeenCalledWith({ url: SHARE_URL });
+    Reflect.deleteProperty(navigator, "share");
+  });
+
+  it("keeps the desktop QR when the share sheet is unavailable", () => {
+    stubPointer(true);
+    const { getByText, queryByRole } = render(
+      <IntroScreen onStart={vi.fn()} />,
+    );
+    expect(getByText(SHARE_URL_LABEL)).toBeInTheDocument();
+    expect(
+      queryByRole("button", { name: /send link/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("calls onStart from the continue-on-this-device link once confirmed", () => {

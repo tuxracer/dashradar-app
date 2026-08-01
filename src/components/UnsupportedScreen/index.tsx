@@ -1,36 +1,7 @@
-import { Share } from "lucide-react";
 import { IntroScene } from "@/components/IntroScene";
 import { RadarBackdrop } from "@/components/RadarBackdrop";
-import { canShareApp, ShareQr, shareApp } from "@/components/ShareCard";
+import { ShareTarget } from "@/components/ShareTarget";
 import { WORDMARK } from "@/lib/branding";
-
-/** Amber bloom on the lock-on corners, matching the intro scene's bracket. */
-const CORNER_GLOW = "drop-shadow-[0_0_6px_rgba(255,179,64,0.8)]";
-
-/**
- * Frames its child in the HUD's lock-on brackets, the same four amber corners
- * the intro scene snaps onto a contact. Applied to the QR card so the code
- * reads as a target the instrument has acquired rather than a white sticker
- * pasted onto the panel: on this screen the thing worth locking onto is the
- * phone that can actually run the detector.
- */
-const LockedTarget = ({ children }: { children: React.ReactNode }) => (
-  <div className="relative animate-scope-in motion-reduce:animate-none">
-    {children}
-    <span
-      className={`pointer-events-none absolute -left-2.5 -top-2.5 size-8 border-l-2 border-t-2 border-hud-amber ${CORNER_GLOW}`}
-    />
-    <span
-      className={`pointer-events-none absolute -right-2.5 -top-2.5 size-8 border-r-2 border-t-2 border-hud-amber ${CORNER_GLOW}`}
-    />
-    <span
-      className={`pointer-events-none absolute -bottom-2.5 -left-2.5 size-8 border-b-2 border-l-2 border-hud-amber ${CORNER_GLOW}`}
-    />
-    <span
-      className={`pointer-events-none absolute -bottom-2.5 -right-2.5 size-8 border-b-2 border-r-2 border-hud-amber ${CORNER_GLOW}`}
-    />
-  </div>
-);
 
 /**
  * Shown when the GPU probe finds no device that can run inference
@@ -49,7 +20,6 @@ const LockedTarget = ({ children }: { children: React.ReactNode }) => (
  * so the rAF loop costs nothing the intro does not already spend.
  */
 export const UnsupportedScreen = () => {
-  const shareable = canShareApp();
   return (
     <main className="fixed inset-0 overflow-y-auto bg-surface">
       <div className="relative flex min-h-full flex-col items-center justify-center gap-8 px-8 py-8 landscape:flex-row landscape:gap-14">
@@ -86,25 +56,7 @@ export const UnsupportedScreen = () => {
         </div>
 
         <div className="relative flex shrink-0 animate-rise-in flex-col items-center gap-4 [animation-delay:400ms] motion-reduce:animate-none">
-          <span className="text-[11px] font-semibold tracking-[0.28em] text-hud-amber">
-            SCAN TO OPEN
-          </span>
-          <LockedTarget>
-            <ShareQr />
-          </LockedTarget>
-          {shareable && (
-            <button
-              type="button"
-              onClick={shareApp}
-              // mt clears the lock-on corners, which overhang the card by 10px:
-              // without it the button crowds the bracket and the target stops
-              // reading as one framed object.
-              className="mt-3 inline-flex min-h-14 items-center justify-center gap-3 rounded-full bg-hud-amber px-10 text-base font-bold tracking-[0.24em] text-surface active:scale-95"
-            >
-              <Share className="h-5 w-5" strokeWidth={2.25} />
-              SEND LINK
-            </button>
-          )}
+          <ShareTarget />
         </div>
       </div>
     </main>
