@@ -15,7 +15,7 @@ import { APP_RELEASE } from "@/lib/appRelease";
 import { waitForNextVideoFrame } from "@/lib/camera";
 import {
   clearSentinel,
-  HEARTBEAT_INTERVAL_MS,
+  heartbeatDelayMs,
   writeHeartbeat,
 } from "@/lib/crashSentinel";
 import { initialAutoZoomState, stepAutoZoom } from "@/lib/autoZoom";
@@ -45,6 +45,7 @@ import type {
 import { isWorkerResponse } from "@/workers/detection/types";
 import {
   DARK_BRIGHT_FRACTION,
+  ERROR_DETAIL_MAX_LENGTH,
   FRAME_RETRY_MS,
   INITIAL_DEBUG,
   MAX_RECONNECT_ATTEMPTS,
@@ -911,7 +912,15 @@ export const DetectionProvider = ({
           break;
         }
         case "worker-error": {
-          track("error", { code: message.code });
+          // The cause rides along only for codes that carry one (the GPUDevice
+          // lost reason today), truncated because a platform string is not
+          // something to hand an analytics property unbounded.
+          track("error", {
+            code: message.code,
+            ...(message.detail && {
+              detail: message.detail.slice(0, ERROR_DETAIL_MAX_LENGTH),
+            }),
+          });
           setError(message.code);
           statusRef.current = "error";
           setStatus("error");
@@ -1216,10 +1225,25 @@ export const DetectionProvider = ({
     };
     window.addEventListener("pagehide", handlePageHide);
     beat();
-    const intervalId = window.setInterval(beat, HEARTBEAT_INTERVAL_MS);
+    // Self-rescheduling rather than a fixed interval, because the cadence is
+    // not fixed: heartbeatDelayMs beats every second through the startup window
+    // and every five after it. That buys one-second resolution on the uptime a
+    // crash reports exactly where the crashes are, without adding a single
+    // write to the hours of steady scanning that follow.
+    let beatTimerId = 0;
+    const scheduleBeat = () => {
+      beatTimerId = window.setTimeout(
+        () => {
+          beat();
+          scheduleBeat();
+        },
+        heartbeatDelayMs(Date.now() - startedAt),
+      );
+    };
+    scheduleBeat();
     return () => {
       window.removeEventListener("pagehide", handlePageHide);
-      window.clearInterval(intervalId);
+      window.clearTimeout(beatTimerId);
       clearSentinel();
     };
   }, [status]);

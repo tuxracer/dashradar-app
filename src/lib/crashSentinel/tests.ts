@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   CRASH_RELAUNCH_WINDOW_MS,
   clearSentinel,
+  heartbeatDelayMs,
   readPreviousSessionEnd,
   SENTINEL_STORAGE_KEY,
+  STARTUP_HEARTBEAT_WINDOW_MS,
   writeHeartbeat,
 } from "@/lib/crashSentinel";
 
@@ -109,6 +111,32 @@ describe("writeHeartbeat / readPreviousSessionEnd", () => {
     writeHeartbeat({ startedAt: 0, lastBeatAt: 0, framesProcessed: 0 });
     const result = readPreviousSessionEnd(CRASH_RELAUNCH_WINDOW_MS + 1);
     expect(result?.outcome).toBe("unclean");
+  });
+});
+
+describe("heartbeatDelayMs", () => {
+  it("beats faster inside the startup window than after it", () => {
+    expect(heartbeatDelayMs(0)).toBeLessThan(
+      heartbeatDelayMs(STARTUP_HEARTBEAT_WINDOW_MS),
+    );
+  });
+
+  it("keeps the fast cadence up to the last moment of the window", () => {
+    expect(heartbeatDelayMs(STARTUP_HEARTBEAT_WINDOW_MS - 1)).toBe(
+      heartbeatDelayMs(0),
+    );
+  });
+
+  it("holds the steady cadence indefinitely once the window has passed", () => {
+    const settled = heartbeatDelayMs(STARTUP_HEARTBEAT_WINDOW_MS);
+    expect(heartbeatDelayMs(STARTUP_HEARTBEAT_WINDOW_MS * 100)).toBe(settled);
+  });
+
+  it("resolves uptime finely enough to separate crashes inside the window", () => {
+    // The crashes this cadence exists to explain all landed under ~21 s, where
+    // the steady cadence recorded only 0 / 5001 / 10002. Every beat in the
+    // window must be short enough to tell one second of startup from the next.
+    expect(heartbeatDelayMs(0)).toBeLessThanOrEqual(1_000);
   });
 });
 

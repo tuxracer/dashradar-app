@@ -367,6 +367,42 @@ const createModel = async (): Promise<ModelIo> => {
   return { session, ...resolveIoNames(session), captureError };
 };
 
+/**
+ * Report the WebGPU device backing the session being lost, for as long as this
+ * worker lives. WebKit runs WebGPU in its own GPU process, so that process
+ * dying takes the device out from under an otherwise healthy page; the app
+ * would otherwise notice a frame later, as a generic INFERENCE_FAILED, and once
+ * per frame after that. Naming it is the point: a GPU-process death reports
+ * something, while the OS killing the whole page reports nothing at all (no JS
+ * runs), so the two finally look different in telemetry.
+ *
+ * `device.lost` resolves at most once and never in a healthy session, so the
+ * await simply parks until termination. A "destroyed" reason means something
+ * deliberately tore the device down rather than losing it, so it is not a
+ * failure to report; nothing in this worker destroys the session device, but
+ * the probe destroys its own by design.
+ */
+const watchDeviceLoss = async () => {
+  try {
+    const device = await env.webgpu.device;
+    if (!device) {
+      return;
+    }
+    const { reason, message } = await device.lost;
+    if (reason === "destroyed") {
+      return;
+    }
+    post({
+      type: "worker-error",
+      code: "GPU_DEVICE_LOST",
+      detail: `${reason}: ${message}`,
+    });
+  } catch {
+    // No device exposed to watch. The session still runs; a real loss just
+    // surfaces per frame as INFERENCE_FAILED, exactly as it did before.
+  }
+};
+
 const loadModel = async () => {
   if (!(await gpuProbe())) {
     reportUnsupported();
@@ -374,6 +410,9 @@ const loadModel = async () => {
   }
   try {
     model = await createModel();
+    // Watch only once the session exists, so the device being resolved is the
+    // one the backend actually runs on.
+    void watchDeviceLoss();
     post({
       type: "backend-probe",
       probe: {

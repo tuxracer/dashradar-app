@@ -64,6 +64,10 @@ export const ERROR_COPY: Readonly<Record<AppErrorCode, ErrorCopy>> = {
     title: "DETECTION STOPPED",
     body: "Detection stopped unexpectedly. Reload to restart it.",
   },
+  GPU_DEVICE_LOST: {
+    title: "DETECTION STOPPED",
+    body: "This phone's graphics system dropped the detector. Reload to restart it.",
+  },
   WORKER_CRASHED: {
     title: "DETECTION STOPPED",
     body: "Detection stopped unexpectedly. Reload to restart it.",

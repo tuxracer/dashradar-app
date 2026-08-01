@@ -141,6 +141,13 @@ describe("isWorkerResponse", () => {
     expect(
       isWorkerResponse({ type: "worker-error", code: "MODEL_LOAD_FAILED" }),
     ).toBe(true);
+    expect(
+      isWorkerResponse({
+        type: "worker-error",
+        code: "GPU_DEVICE_LOST",
+        detail: "unknown: the GPU process exited",
+      }),
+    ).toBe(true);
   });
 
   it("rejects malformed messages", () => {
@@ -152,6 +159,13 @@ describe("isWorkerResponse", () => {
     expect(isWorkerResponse({ type: "worker-error", code: "NOPE" })).toBe(
       false,
     );
+    expect(
+      isWorkerResponse({
+        type: "worker-error",
+        code: "GPU_DEVICE_LOST",
+        detail: 42,
+      }),
+    ).toBe(false);
     expect(isWorkerResponse({ type: "model-progress", progress: {} })).toBe(
       false,
     );

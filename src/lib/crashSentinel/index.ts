@@ -1,9 +1,26 @@
-import { CRASH_RELAUNCH_WINDOW_MS, SENTINEL_STORAGE_KEY } from "./consts";
+import {
+  CRASH_RELAUNCH_WINDOW_MS,
+  HEARTBEAT_INTERVAL_MS,
+  SENTINEL_STORAGE_KEY,
+  STARTUP_HEARTBEAT_INTERVAL_MS,
+  STARTUP_HEARTBEAT_WINDOW_MS,
+} from "./consts";
 import { isSentinelRecord } from "./types";
 import type { PreviousSessionEnd, SentinelRecord } from "./types";
 
 export * from "./consts";
 export * from "./types";
+
+/**
+ * Delay until the next heartbeat, given how long the session has been scanning.
+ * Beats fast through the startup window, where every crash observed so far
+ * lands, and settles to the steady cadence past it so the rest of a drive costs
+ * what it always did.
+ */
+export const heartbeatDelayMs = (uptimeMs: number): number =>
+  uptimeMs < STARTUP_HEARTBEAT_WINDOW_MS
+    ? STARTUP_HEARTBEAT_INTERVAL_MS
+    : HEARTBEAT_INTERVAL_MS;
 
 /**
  * Writes the current heartbeat record to localStorage under

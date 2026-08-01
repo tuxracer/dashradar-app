@@ -21,6 +21,7 @@ const ERROR_ICON: Readonly<Record<AppErrorCode, LucideIcon>> = {
   UNSUPPORTED: CameraOff,
   MODEL_LOAD_FAILED: CloudOff,
   INFERENCE_FAILED: TriangleAlert,
+  GPU_DEVICE_LOST: TriangleAlert,
   WORKER_CRASHED: TriangleAlert,
   CAMERA_STALLED: CameraOff,
 };

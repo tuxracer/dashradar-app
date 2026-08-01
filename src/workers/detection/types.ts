@@ -11,17 +11,28 @@ import { isRawDetection } from "@/types";
  * measuring ~10 s round trips against WebGPU's ~500 ms on the same phone,
  * which is far too slow to be worth shipping (a detector that scans once every
  * ten seconds misses most of what it drives past).
+ *
+ * GPU_DEVICE_LOST is raised when the WebGPU device backing an already-loaded
+ * session is lost. WebKit runs WebGPU in a separate GPU process, so that
+ * process dying (a Metal command-buffer abort, its own memory pressure, a
+ * driver fault) takes the device while the page itself keeps running. Without
+ * it the app notices only on the next frame, as a generic INFERENCE_FAILED that
+ * cannot be told apart from a decode fault. Naming the cause is what lets
+ * telemetry separate a GPU-process death from the OS killing the whole page,
+ * which runs no JS at all and so reports nothing beyond the crash sentinel.
  */
 export type DetectionErrorCode =
   | "WEBGPU_UNSUPPORTED"
   | "MODEL_LOAD_FAILED"
   | "INFERENCE_FAILED"
+  | "GPU_DEVICE_LOST"
   | "WORKER_CRASHED";
 
 const DETECTION_ERROR_CODES: readonly DetectionErrorCode[] = [
   "WEBGPU_UNSUPPORTED",
   "MODEL_LOAD_FAILED",
   "INFERENCE_FAILED",
+  "GPU_DEVICE_LOST",
   "WORKER_CRASHED",
 ];
 
@@ -262,7 +273,18 @@ export type WorkerResponse =
        */
       brightFraction?: number;
     }
-  | { type: "worker-error"; code: DetectionErrorCode };
+  | {
+      type: "worker-error";
+      code: DetectionErrorCode;
+      /**
+       * What the platform said about the failure, for the codes that have
+       * something to report (today only GPU_DEVICE_LOST, carrying the
+       * GPUDevice lost reason and message). Diagnostic only: nothing branches
+       * on it, it rides along to analytics so a field failure names its own
+       * cause instead of arriving as a bare code.
+       */
+      detail?: string;
+    };
 
 export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
   if (!isPlainObject(value)) {
@@ -293,7 +315,10 @@ export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
         (value.brightFraction === undefined || isNumber(value.brightFraction))
       );
     case "worker-error":
-      return isDetectionErrorCode(value.code);
+      return (
+        isDetectionErrorCode(value.code) &&
+        (value.detail === undefined || isString(value.detail))
+      );
     default:
       return false;
   }
