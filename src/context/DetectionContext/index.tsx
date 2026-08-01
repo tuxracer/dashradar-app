@@ -23,11 +23,18 @@ import type { AutoZoomLevel, AutoZoomState } from "@/lib/autoZoom";
 import type { HudModel } from "@/lib/detection";
 import { buildHudModel, toRoadDetections } from "@/lib/detection";
 import { createDetectionTracker } from "@/lib/detectionTracker";
+import { isStandalone } from "@/lib/pwaInstall";
 import { contactDirection, signalFromScore } from "@/lib/radarSignal";
 import { downloadBlob, frameFilename } from "@/lib/saveFrame";
+import {
+  createScanClock,
+  SCAN_REPORT_MIN_MS,
+  toBucketedMinutes,
+} from "@/lib/scanClock";
 import { waitForServiceWorkerControl } from "@/lib/serviceWorker";
 import {
   recordTimings,
+  takeLateTimingReport,
   takeTimingReport,
   toBucketedSeconds,
 } from "@/lib/timingHistory";
@@ -387,6 +394,12 @@ export const DetectionProvider = ({
   // a baseline captured when it starts, so framesProcessed in the sentinel
   // record counts only frames from the current running span.
   const framesTotalRef = useRef(0);
+  // How long the pump has actually spent scanning this page load, which is not
+  // page time: it excludes the settings panel, a hidden page, and the gap
+  // between a stall and its recovery. Read by the late timing report (drift
+  // under sustained load is what the thermal budget turns on) and drained by
+  // the `scan_session` event below.
+  const scanClockRef = useRef(createScanClock());
   // Capture duration of the most recently posted frame and the timestamp it was
   // posted, paired with the next detections result for the debug snapshot.
   const lastCaptureMsRef = useRef(0);
@@ -805,12 +818,25 @@ export const DetectionProvider = ({
           // fleet-wide numbers cover every drive. takeTimingReport is the
           // once-per-session guard, so this stays quiet for the rest of the
           // drive no matter how long it scans.
-          const report = takeTimingReport(
-            recordTimings({ roundTripMs, inferenceMs }),
-          );
+          const timings = recordTimings({ roundTripMs, inferenceMs });
+          const report = takeTimingReport(timings);
           if (report) {
             track("timing_round_trip", { seconds: report.roundTrip });
             track("timing_inference", { seconds: report.inference });
+          }
+          // The same window again, a quarter hour of scanning later. The early
+          // report is by construction the coldest reading of the drive, so on
+          // its own it cannot show the one thing the pacing floor and rest
+          // ratio exist to hold back: a phone clamped to a windshield in the
+          // sun throttling as it heats. Reading the two side by side is the
+          // fleet-wide view of that drift. Also once per session.
+          const lateReport = takeLateTimingReport(
+            timings,
+            scanClockRef.current.elapsedMs(),
+          );
+          if (lateReport) {
+            track("timing_round_trip_late", { seconds: lateReport.roundTrip });
+            track("timing_inference_late", { seconds: lateReport.inference });
           }
           // Camera-health check. Only while the pump is live: a late in-flight
           // result arriving after stop() (e.g. mid-recovery) has runningRef
@@ -1127,6 +1153,63 @@ export const DetectionProvider = ({
   useEffect(() => {
     beginRecoveryRef.current = beginRecovery;
   }, [beginRecovery]);
+
+  // Bracket the pump's running window on the scan clock. Keyed on [status]
+  // alone, which is exactly the window: stop() takes "running" back to "ready"
+  // for every pause the app has (settings open, page hidden, stall recovery,
+  // feed swap), so none of that dead time is counted as drive time.
+  useEffect(() => {
+    if (status !== "running") {
+      return;
+    }
+    const clock = scanClockRef.current;
+    clock.start();
+    return () => {
+      clock.stop();
+    };
+  }, [status]);
+
+  // Report how long this drive actually scanned, when it goes away. Without it
+  // the event stream has no denominator: `police_detected` counts are
+  // uninterpretable when nothing says whether the fleet scanned five hours or
+  // five hundred, and nothing else answers whether a session survives a drive
+  // or dies minutes in, which for a detector meant to run for hours on a dash
+  // mount is the question. Both listeners are the same report, because neither
+  // alone covers the ways a drive ends: `pagehide` catches a navigation or
+  // reload, and a page going hidden catches the far more common one, the phone
+  // backgrounded or locked at the end of a trip. Draining the clock is what
+  // keeps them from double-counting, and what makes an interrupted drive
+  // report each of its stretches once instead of losing everything after the
+  // interruption. An OS kill mid-scan fires neither, by design: that session
+  // is the crash sentinel's to report, and this event counting only endings
+  // the page survived is what keeps the two readings separable.
+  useEffect(() => {
+    const reportScanSession = () => {
+      const scannedMs =
+        scanClockRef.current.takeUnreportedMs(SCAN_REPORT_MIN_MS);
+      if (scannedMs === 0) {
+        return;
+      }
+      track("scan_session", {
+        minutes: toBucketedMinutes(scannedMs),
+        // Whether the drive ran from the installed PWA or a browser tab. The
+        // one-shot `pwa_installed` event counts installs, never use, so this
+        // is the only read on which of the two the app is actually used from.
+        standalone: isStandalone(),
+      });
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        reportScanSession();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", reportScanSession);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", reportScanSession);
+    };
+  }, []);
 
   // Pause the pump while the page is hidden (app switched away, screen off).
   // rAF loops throttle on their own, but the pump is driven by worker results,

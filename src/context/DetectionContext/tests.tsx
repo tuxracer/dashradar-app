@@ -30,7 +30,11 @@ import {
   SENTINEL_STORAGE_KEY,
 } from "@/lib/crashSentinel";
 import { downloadBlob } from "@/lib/saveFrame";
-import { readTimingHistory, TIMING_HISTORY_LIMIT } from "@/lib/timingHistory";
+import {
+  LATE_TIMING_AFTER_MS,
+  readTimingHistory,
+  TIMING_HISTORY_LIMIT,
+} from "@/lib/timingHistory";
 import type { RawDetection } from "@/types";
 import {
   MODEL_REVISION,
@@ -251,6 +255,37 @@ const videoWithControlledFrames = () => {
     }
   };
   return { video, presentFrame };
+};
+
+/**
+ * Run `count` scans through the pump, each reporting a one-second inference.
+ * Fingerprints run from `firstFingerprint` and must differ between rounds, or
+ * the frozen-feed detector reads the repeat as a stalled camera.
+ */
+const runScans = async (
+  worker: FakeWorker,
+  presentFrame: () => void,
+  count: number,
+  firstFingerprint: number,
+) => {
+  for (let scan = 0; scan < count; scan += 1) {
+    await act(async () => {
+      presentFrame();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 1, inferenceMs: 1_000, decodeMs: 1 },
+        fingerprint: firstFingerprint + scan,
+        brightFraction: 0.5,
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    });
+  }
 };
 
 /** Fake the page's visibility state and fire the matching event. */
@@ -1112,28 +1147,6 @@ describe("DetectionProvider", () => {
       screen.getByTestId("start").click();
     });
 
-    /** Run `count` scans, each reporting a one-second inference. */
-    const runScans = async (count: number, firstFingerprint: number) => {
-      for (let scan = 0; scan < count; scan += 1) {
-        await act(async () => {
-          presentFrame();
-          await vi.advanceTimersByTimeAsync(0);
-        });
-        act(() => {
-          worker.emit({
-            type: "detections",
-            detections: [],
-            timing: { preprocessMs: 1, inferenceMs: 1_000, decodeMs: 1 },
-            // Distinct each scan, so the frozen-feed detector never fires.
-            fingerprint: firstFingerprint + scan,
-            brightFraction: 0.5,
-          });
-        });
-        await act(async () => {
-          await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
-        });
-      }
-    };
     const timingEvents = () =>
       vi
         .mocked(track)
@@ -1141,11 +1154,11 @@ describe("DetectionProvider", () => {
 
     // A partial window reports nothing: a median of a couple of readings is
     // not worth an event.
-    await runScans(TIMING_HISTORY_LIMIT - 1, 1);
+    await runScans(worker, presentFrame, TIMING_HISTORY_LIMIT - 1, 1);
     expect(timingEvents()).toHaveLength(0);
 
     // The next scan fills the window and reports both medians.
-    await runScans(1, 100);
+    await runScans(worker, presentFrame, 1, 100);
     expect(timingEvents()).toEqual([
       ["timing_round_trip", { seconds: expect.any(Number) }],
       ["timing_inference", { seconds: 1 }],
@@ -1153,8 +1166,49 @@ describe("DetectionProvider", () => {
 
     // The drive keeps scanning, and the window keeps rolling; neither event
     // may fire a second time.
-    await runScans(TIMING_HISTORY_LIMIT, 200);
+    await runScans(worker, presentFrame, TIMING_HISTORY_LIMIT, 200);
     expect(timingEvents()).toHaveLength(2);
+  });
+
+  it("reports the medians a second time once the drive has scanned long enough", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const { video, presentFrame } = videoWithControlledFrames();
+    // devVideoMode keeps the stall watchdog from arming: this test sits idle
+    // for a quarter hour of fake time, which a live camera would call a stall.
+    const worker = renderWithProvider(<StartStopWithVideo video={video} />, {
+      devVideoMode: true,
+    });
+    act(() => {
+      worker.emit({ type: "ready" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    const lateEvents = () =>
+      vi.mocked(track).mock.calls.filter(([event]) => event.endsWith("_late"));
+
+    // The early report fires here; the late one is not due on scan count.
+    await runScans(worker, presentFrame, TIMING_HISTORY_LIMIT, 1);
+    expect(lateEvents()).toHaveLength(0);
+
+    // A quarter hour of scanning later, the same rolling window reports again,
+    // which is the pair of readings that shows thermal drift.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(LATE_TIMING_AFTER_MS);
+    });
+    await runScans(worker, presentFrame, 1, 100);
+    expect(lateEvents()).toEqual([
+      ["timing_round_trip_late", { seconds: expect.any(Number) }],
+      ["timing_inference_late", { seconds: 1 }],
+    ]);
+
+    // Still once per session, however much longer the drive runs.
+    await runScans(worker, presentFrame, TIMING_HISTORY_LIMIT, 200);
+    expect(lateEvents()).toHaveLength(2);
   });
 
   it("runs unthrottled (zero pacing delay) when developer options are on and throttling is off", async () => {
@@ -2082,6 +2136,130 @@ describe("settings pause", () => {
     await waitFor(() => {
       expect(screen.getByTestId("status").textContent).toBe("running");
     });
+  });
+});
+
+describe("scan session reporting", () => {
+  const MINUTE = 60_000;
+
+  /**
+   * Mount with the pump running. devVideoMode is on so the camera-stall
+   * watchdog never arms: these tests advance minutes of fake time with no
+   * frames coming back, which a live camera would rightly call a stall and
+   * recover from, stopping the very clock under test.
+   */
+  const startScanning = async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(<StartStop />, { devVideoMode: true });
+    act(() => {
+      worker.emit({ type: "ready" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    return worker;
+  };
+
+  const scanSessions = () =>
+    vi.mocked(track).mock.calls.filter(([name]) => name === "scan_session");
+
+  const advance = async (ms: number) => {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  };
+
+  it("reports how long the drive scanned when the page goes hidden", async () => {
+    await startScanning();
+    await advance(10 * MINUTE);
+    act(() => {
+      setDocumentVisibility("hidden");
+    });
+    expect(scanSessions()).toEqual([
+      ["scan_session", { minutes: 10, standalone: false }],
+    ]);
+  });
+
+  it("reports on an unload that no hidden event preceded", async () => {
+    await startScanning();
+    await advance(5 * MINUTE);
+    act(() => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+    expect(scanSessions()).toEqual([
+      ["scan_session", { minutes: 5, standalone: false }],
+    ]);
+  });
+
+  // The two listeners fire in sequence on an ordinary close: backgrounded,
+  // then unloaded. Draining the clock is what keeps that one drive from being
+  // counted as two.
+  it("does not count the same stretch again when the page then unloads", async () => {
+    await startScanning();
+    await advance(5 * MINUTE);
+    act(() => {
+      setDocumentVisibility("hidden");
+    });
+    act(() => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+    expect(scanSessions()).toHaveLength(1);
+  });
+
+  it("counts nothing for a session that never scanned", async () => {
+    vi.useFakeTimers();
+    renderWithProvider(<StartStop />, { devVideoMode: true });
+    await advance(30 * MINUTE);
+    act(() => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+    expect(scanSessions()).toEqual([]);
+  });
+
+  // Time on the settings panel, on a stalled camera, or with the app in the
+  // background is not time the detector watched the road.
+  it("leaves out the time the pump was stopped", async () => {
+    await startScanning();
+    await advance(10 * MINUTE);
+    act(() => {
+      screen.getByTestId("stop").click();
+    });
+    await advance(60 * MINUTE);
+    act(() => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+    expect(scanSessions()).toEqual([
+      ["scan_session", { minutes: 10, standalone: false }],
+    ]);
+  });
+
+  // An interruption mid-drive (a call, a glance at another app) must not cost
+  // the rest of the drive: the stretch after it is its own report.
+  it("reports the stretch after an interruption too", async () => {
+    await startScanning();
+    await advance(2 * MINUTE);
+    act(() => {
+      setDocumentVisibility("hidden");
+    });
+    await advance(10 * MINUTE);
+    act(() => {
+      setDocumentVisibility("visible");
+    });
+    await advance(30 * MINUTE);
+    act(() => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+    expect(scanSessions()).toEqual([
+      ["scan_session", { minutes: 2, standalone: false }],
+      ["scan_session", { minutes: 30, standalone: false }],
+    ]);
   });
 });
 

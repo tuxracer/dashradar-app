@@ -1,4 +1,6 @@
 import {
+  LATE_TIMING_AFTER_MS,
+  LATE_TIMING_ANALYTICS_STORAGE_KEY,
   TIMING_ANALYTICS_STORAGE_KEY,
   TIMING_BUCKET_MS,
   TIMING_HISTORY_LIMIT,
@@ -100,33 +102,74 @@ export const medianSeconds = (series: number[]): number => {
   return Math.round(median * 2) / 2;
 };
 
+/** Whether both series hold a full window, so their medians mean something. */
+const isWindowFull = (history: TimingHistory): boolean =>
+  history.roundTrip.length >= TIMING_HISTORY_LIMIT &&
+  history.inference.length >= TIMING_HISTORY_LIMIT;
+
 /**
- * The one-and-only analytics summary for this session, or undefined when it
- * isn't due: the window has yet to fill (a session that scanned once or twice
- * reports nothing rather than a median of its first reading), or this session
- * already reported. Claiming it marks the session reported in sessionStorage,
- * so the caller may fire the events unconditionally on a defined result, and a
- * later full window (the drive keeps scanning long past five) never reports
- * again. Session-scoped by construction: a new tab starts fresh, which is the
+ * Claims `key` for this session, returning false when it was already claimed
+ * or when storage cannot answer. A session whose storage cannot record the
+ * mark claims nothing and so reports nothing, rather than risk an event on
+ * every scan for the rest of the drive.
+ */
+const claimOnce = (key: string): boolean => {
+  try {
+    if (window.sessionStorage.getItem(key) !== null) {
+      return false;
+    }
+    window.sessionStorage.setItem(key, "true");
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * The session's early analytics summary, or undefined when it isn't due: the
+ * window has yet to fill (a session that scanned once or twice reports nothing
+ * rather than a median of its first reading), or this session already
+ * reported. Claiming it marks the session reported in sessionStorage, so the
+ * caller may fire the events unconditionally on a defined result, and a later
+ * full window (the drive keeps scanning long past five) never reports again.
+ * Session-scoped by construction: a new tab starts fresh, which is the
  * granularity the events are counted at.
  */
 export const takeTimingReport = (
   history: TimingHistory,
 ): TimingReport | undefined => {
-  if (
-    history.roundTrip.length < TIMING_HISTORY_LIMIT ||
-    history.inference.length < TIMING_HISTORY_LIMIT
-  ) {
+  if (!isWindowFull(history) || !claimOnce(TIMING_ANALYTICS_STORAGE_KEY)) {
     return undefined;
   }
-  try {
-    if (window.sessionStorage.getItem(TIMING_ANALYTICS_STORAGE_KEY) !== null) {
-      return undefined;
-    }
-    window.sessionStorage.setItem(TIMING_ANALYTICS_STORAGE_KEY, "true");
-  } catch {
-    // Storage unavailable, so "already reported" cannot be recorded or read.
-    // Report nothing rather than risk an event on every scan past the fifth.
+  return {
+    roundTrip: medianSeconds(history.roundTrip),
+    inference: medianSeconds(history.inference),
+  };
+};
+
+/**
+ * The session's second summary, due once `scannedMs` of scanning has
+ * accumulated ({@link LATE_TIMING_AFTER_MS}), or undefined when it isn't. Same
+ * rolling window as the early report, which is the point: five scans in, that
+ * window holds a cold device, and a quarter hour of continuous inference later
+ * it holds the same device at whatever clock the thermal governor has settled
+ * it to. The difference between the two reports is the fleet-wide view of
+ * throttling, which the early report alone cannot show and which the pacing
+ * floor and rest ratio are set against.
+ *
+ * The window-full check is not redundant with the elapsed one: a session can
+ * cross fifteen minutes with a near-empty window after scanning, stopping, and
+ * sitting on the settings panel or a stalled camera.
+ */
+export const takeLateTimingReport = (
+  history: TimingHistory,
+  scannedMs: number,
+): TimingReport | undefined => {
+  if (
+    scannedMs < LATE_TIMING_AFTER_MS ||
+    !isWindowFull(history) ||
+    !claimOnce(LATE_TIMING_ANALYTICS_STORAGE_KEY)
+  ) {
     return undefined;
   }
   return {

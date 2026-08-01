@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  LATE_TIMING_AFTER_MS,
   medianSeconds,
   readTimingHistory,
   recordTimings,
   TIMING_ANALYTICS_STORAGE_KEY,
   TIMING_HISTORY_LIMIT,
   TIMING_HISTORY_STORAGE_KEY,
+  takeLateTimingReport,
   takeTimingReport,
   toBucketedSeconds,
 } from "@/lib/timingHistory";
@@ -177,5 +179,68 @@ describe("takeTimingReport", () => {
       },
     });
     expect(takeTimingReport(history)).toBeUndefined();
+  });
+});
+
+describe("takeLateTimingReport", () => {
+  /** Fill the window with scans whose round trip is `roundTripMs`. */
+  const fillWindow = (roundTripMs = 4_000, inferenceMs = 2_000) => {
+    let history = readTimingHistory();
+    for (let scan = 0; scan < TIMING_HISTORY_LIMIT; scan += 1) {
+      history = recordTimings({ roundTripMs, inferenceMs });
+    }
+    return history;
+  };
+
+  it("reports nothing before the session has scanned long enough", () => {
+    const history = fillWindow();
+    expect(takeLateTimingReport(history, 0)).toBeUndefined();
+    expect(
+      takeLateTimingReport(history, LATE_TIMING_AFTER_MS - 1),
+    ).toBeUndefined();
+  });
+
+  it("reports the current window's medians once the session is old enough", () => {
+    expect(takeLateTimingReport(fillWindow(), LATE_TIMING_AFTER_MS)).toEqual({
+      roundTrip: 4,
+      inference: 2,
+    });
+  });
+
+  // A session can pass the elapsed mark with a near-empty window: scan a
+  // little, then sit on the settings panel or a stalled camera.
+  it("waits for a full window even past the elapsed mark", () => {
+    let history = readTimingHistory();
+    for (let scan = 0; scan < TIMING_HISTORY_LIMIT - 1; scan += 1) {
+      history = recordTimings({ roundTripMs: 4_000, inferenceMs: 2_000 });
+      expect(
+        takeLateTimingReport(history, LATE_TIMING_AFTER_MS * 2),
+      ).toBeUndefined();
+    }
+    history = recordTimings({ roundTripMs: 4_000, inferenceMs: 2_000 });
+    expect(takeLateTimingReport(history, LATE_TIMING_AFTER_MS * 2)).toEqual({
+      roundTrip: 4,
+      inference: 2,
+    });
+  });
+
+  it("reports only once, however long the drive runs past the mark", () => {
+    expect(
+      takeLateTimingReport(fillWindow(), LATE_TIMING_AFTER_MS),
+    ).toBeDefined();
+    for (let scan = 0; scan < TIMING_HISTORY_LIMIT * 2; scan += 1) {
+      const history = recordTimings({ roundTripMs: 500, inferenceMs: 500 });
+      expect(
+        takeLateTimingReport(history, LATE_TIMING_AFTER_MS * 3),
+      ).toBeUndefined();
+    }
+  });
+
+  // The two reports are separate one-shots: an early report must not consume
+  // the late one, or the drift measurement never lands.
+  it("is not blocked by the early report having fired", () => {
+    const history = fillWindow();
+    expect(takeTimingReport(history)).toBeDefined();
+    expect(takeLateTimingReport(history, LATE_TIMING_AFTER_MS)).toBeDefined();
   });
 });
