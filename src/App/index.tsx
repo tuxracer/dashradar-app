@@ -31,6 +31,11 @@ import { SettingsProvider, useSettings } from "@/context/SettingsContext";
 import type { CameraError } from "@/lib/camera";
 import type { Size } from "@/lib/detection";
 import { hudScore, hudSignal } from "@/lib/radarSignal";
+import {
+  UPDATE_CHECK_TIMEOUT_MS,
+  UPDATE_PENDING_TIMEOUT_MS,
+  waitForUpdateSettled,
+} from "@/lib/serviceWorker";
 import { createWakeLockManager } from "@/lib/wakeLock";
 import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 
@@ -97,6 +102,29 @@ const RadarScreen = () => {
   const [cameraVideo, setCameraVideo] = useState<HTMLVideoElement>();
   const viewportSize = useViewportSize();
   const wakeLock = useMemo(() => createWakeLockManager(), []);
+
+  // iOS forgets camera permission between launches of an installed web app,
+  // so every launch re-prompts. When an app update is found at launch, the
+  // silent auto-update reload lands right after the driver taps Allow and
+  // prompts them a second time. Holding the camera until the launch update
+  // check settles reorders that launch to reload first, one prompt total;
+  // with no update pending, the check resolves during the model load and
+  // delays nothing.
+  const [updateSettled, setUpdateSettled] = useState(false);
+  useEffect(() => {
+    let disposed = false;
+    void waitForUpdateSettled({
+      checkTimeoutMs: UPDATE_CHECK_TIMEOUT_MS,
+      pendingTimeoutMs: UPDATE_PENDING_TIMEOUT_MS,
+    }).then(() => {
+      if (!disposed) {
+        setUpdateSettled(true);
+      }
+    });
+    return () => {
+      disposed = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (status === "running") {
@@ -239,12 +267,14 @@ const RadarScreen = () => {
           onError={handleDevVideoError}
         />
       ) : (
-        // Held back until the model is ready (see modelLoading above). The
-        // "ready" handler parks at status "ready" when no camera has started,
-        // and this mount's start() is what advances it to "running", so the
-        // ordering has no deadlock. A worker recycle never returns status to
+        // Held back until the model is ready (see modelLoading above) and the
+        // launch update check settles (see updateSettled above). The "ready"
+        // handler parks at status "ready" when no camera has started, and this
+        // mount's start() is what advances it to "running", so the ordering
+        // has no deadlock. A worker recycle never returns status to
         // "loading-model", so it cannot tear the camera back down mid-drive.
-        !modelLoading && (
+        !modelLoading &&
+        updateSettled && (
           <CameraView
             key={cameraEpoch}
             onStream={handleStream}

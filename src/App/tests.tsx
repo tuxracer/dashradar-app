@@ -154,6 +154,51 @@ describe("App", () => {
     expect(getUserMedia).toHaveBeenCalled();
   });
 
+  it("holds the camera back while a launch update is installing", async () => {
+    const getUserMedia = vi.fn(grantedCamera);
+    // A page controlled by a previous build, with an update mid-install. On
+    // iOS the camera permission prompt repeats every launch, so asking before
+    // the update's reload would make the driver answer it twice.
+    const listeners = new Set<() => void>();
+    const installing = {
+      state: "installing",
+      addEventListener: (_type: string, listener: () => void) => {
+        listeners.add(listener);
+      },
+      removeEventListener: (_type: string, listener: () => void) => {
+        listeners.delete(listener);
+      },
+    };
+    vi.stubGlobal("Worker", FakeWorker);
+    vi.stubGlobal("navigator", {
+      mediaDevices: { getUserMedia },
+      serviceWorker: {
+        controller: {},
+        getRegistration: () =>
+          Promise.resolve({
+            installing,
+            waiting: null,
+            update: () => Promise.resolve(),
+          }),
+      },
+    });
+    render(<App />);
+    acceptFirstRunScreens();
+    await reachModelReady();
+    expect(screen.queryByTestId("camera-view")).not.toBeInTheDocument();
+    expect(getUserMedia).not.toHaveBeenCalled();
+    // The install dying means the update's reload is never coming, which is
+    // one of the gate's release edges; the camera then proceeds as normal.
+    await act(async () => {
+      installing.state = "redundant";
+      for (const listener of [...listeners]) {
+        listener();
+      }
+    });
+    await screen.findByTestId("camera-view");
+    expect(getUserMedia).toHaveBeenCalled();
+  });
+
   it("still shows the intro to a device that cannot run inference", async () => {
     stubBrowser(grantedCamera);
     render(<App />);
