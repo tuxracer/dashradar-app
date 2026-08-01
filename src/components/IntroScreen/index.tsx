@@ -79,11 +79,19 @@ export const IntroScreen = ({ onStart }: IntroScreenProps) => {
             <span>POLICE DETECTION</span>{" "}
             <span className="block">ON YOUR DASH</span>
           </h1>
-          <p className="animate-rise-in whitespace-pre-line text-base font-medium leading-snug text-white/70 [animation-delay:280ms] motion-reduce:animate-none">
-            {
-              "Mount your phone on the dash, camera facing the road.\nOn-device computer vision. Nothing leaves your phone."
-            }
-          </p>
+          {/* Each sentence gets its own line on a narrow phone, where the two
+              lines would otherwise wrap mid-clause; wider viewports keep the
+              tighter one-sentence-per-line shape. */}
+          <div className="flex animate-rise-in flex-col gap-3 text-base font-medium leading-snug text-white/70 [animation-delay:280ms] motion-reduce:animate-none sm:gap-0">
+            <p>
+              Mount your phone on the dash,
+              <br className="sm:hidden" /> camera facing the road.
+            </p>
+            <p>
+              On-device computer vision.
+              <br className="sm:hidden" /> Nothing leaves your phone.
+            </p>
+          </div>
           {desktop ? (
             <div className="mt-1 flex animate-rise-in flex-col items-center gap-4 [animation-delay:360ms] motion-reduce:animate-none">
               <ShareTarget />
