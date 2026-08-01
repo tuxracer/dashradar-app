@@ -7,7 +7,7 @@ export const INTRO_SEEN_STORAGE_KEY = "introSeen";
  * non-numeric one, which is what every pre-versioning "true" reads as) shows
  * the intro to returning users once more.
  */
-export const INTRO_VERSION = 2;
+export const INTRO_VERSION = 3;
 
 /** Shown in the confirm dialog before dismissing the intro on a desktop. */
 export const DESKTOP_CONTINUE_CONFIRM_MESSAGE =

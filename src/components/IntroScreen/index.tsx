@@ -79,8 +79,10 @@ export const IntroScreen = ({ onStart }: IntroScreenProps) => {
             <span>POLICE DETECTION</span>{" "}
             <span className="block">ON YOUR DASH</span>
           </h1>
-          <p className="animate-rise-in text-base font-medium leading-snug text-white/70 [animation-delay:280ms] motion-reduce:animate-none">
-            On-device computer vision. Nothing leaves your phone.
+          <p className="animate-rise-in whitespace-pre-line text-base font-medium leading-snug text-white/70 [animation-delay:280ms] motion-reduce:animate-none">
+            {
+              "Mount your phone on the dash, camera facing the road.\nOn-device computer vision. Nothing leaves your phone."
+            }
           </p>
           {desktop ? (
             <div className="mt-1 flex animate-rise-in flex-col items-center gap-4 [animation-delay:360ms] motion-reduce:animate-none">
