@@ -2,8 +2,6 @@
 
 How the app is put together, and why the odd parts are the way they are. It does not try to describe every file or constant; the source is right there.
 
-**Status:** shipped (v1) · **Owner:** Derek Petersen
-
 ---
 
 ## 1. What it is
