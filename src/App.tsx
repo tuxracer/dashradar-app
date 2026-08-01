@@ -22,6 +22,7 @@ import { RoundTripIndicator } from "@/components/RoundTripIndicator";
 import { SaveToast } from "@/components/SaveToast";
 import { SettingsScreen } from "@/components/SettingsScreen";
 import { StatusBar } from "@/components/StatusBar";
+import { UnsupportedScreen } from "@/components/UnsupportedScreen";
 import { VideoDropTarget } from "@/components/VideoDropTarget";
 import { ZoomIndicator } from "@/components/ZoomIndicator";
 import { DetectionProvider, useDetection } from "@/context/DetectionContext";
@@ -51,7 +52,6 @@ const useViewportSize = (): Size => {
 const RadarScreen = () => {
   const {
     status,
-    backend,
     backendProbe,
     mainThreadWebGpu,
     downloadingModel,
@@ -172,6 +172,19 @@ const RadarScreen = () => {
       />
     );
   }
+  // This device cannot run inference at all, so nothing past here has anything
+  // to show, video file included. Sits directly after the intro and ahead of
+  // every camera screen: everyone still gets told what the app is for, but
+  // nobody is asked for camera access their phone can't make use of. The
+  // worker's GPU probe answers within milliseconds of mount, well inside the
+  // time the intro is on screen, so in practice this is the screen the START
+  // tap lands on rather than a late interruption. Its own screen rather than an
+  // ErrorScreen code, since there is nothing to retry here, only somewhere
+  // better to go; narrowing it here is also what lets the ErrorScreen below
+  // typecheck, as AppErrorCode excludes it.
+  if (error === "WEBGPU_UNSUPPORTED") {
+    return <UnsupportedScreen />;
+  }
   // Declining the in-app permission ask lands on the same screen as a real
   // browser-level denial; its reload button restarts the flow at the ask.
   if (cameraPromptDeclined && !source) {
@@ -278,7 +291,6 @@ const RadarScreen = () => {
         }
       />
       <DebugOverlay
-        backend={backend}
         backendProbe={backendProbe}
         mainThreadWebGpu={mainThreadWebGpu}
         modelProgress={modelProgress}

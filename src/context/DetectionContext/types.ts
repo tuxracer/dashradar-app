@@ -4,7 +4,6 @@ import type { ContactDirection } from "@/lib/radarSignal";
 import type { NormalizedBox } from "@/types";
 import type {
   BackendProbe,
-  DetectionBackend,
   DetectionErrorCode,
   WorkerRequest,
 } from "@/workers/detection/types";
@@ -13,9 +12,13 @@ export type DetectionStatus = "loading-model" | "ready" | "running" | "error";
 
 /**
  * Result of probing WebGPU on the main thread. Complements the worker's
- * `BackendProbe`: comparing the two tells a device with no WebGPU anywhere
- * ("no-adapter" here as well) apart from a worker-only limitation ("adapter"
- * here but the worker still could not acquire one).
+ * `BackendProbe`, whose verdict is the authoritative one (onnxruntime-web runs
+ * in the worker, and some browsers expose `navigator.gpu` on the main thread
+ * but not inside a worker). Comparing the two tells a device with no WebGPU
+ * anywhere ("no-adapter" here as well) apart from a worker-only limitation
+ * ("adapter" here but the worker still could not acquire one), which is the
+ * difference between "this phone cannot run it" and "this browser build has a
+ * worker bug".
  */
 export type MainThreadWebGpu =
   | "unsupported"
@@ -130,11 +133,10 @@ export type DebugSnapshot = {
 
 export type DetectionContextValue = {
   status: DetectionStatus;
-  backend: DetectionBackend | undefined;
   /**
-   * WebGPU backend probe result, reported once at load. Undefined until the
-   * worker finishes probing. Surfaced in the debug overlay to explain a CPU
-   * fallback on a device whose main thread reports WebGPU support.
+   * WebGPU probe result, reported once per worker. Undefined until the worker
+   * finishes probing. Surfaced in the debug overlay to explain which stage
+   * turned away a device whose main thread reports WebGPU support.
    */
   backendProbe: BackendProbe | undefined;
   /**

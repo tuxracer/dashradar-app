@@ -47,8 +47,6 @@ const probe = (overrides: Partial<BackendProbe> = {}): BackendProbe => ({
   device: true,
   shaderF16: false,
   graphCapture: false,
-  chosen: "wasm",
-  safeMode: false,
   crossOriginIsolated: true,
   threads: 4,
   ...overrides,
@@ -58,7 +56,6 @@ const renderOverlay = (backendProbe?: BackendProbe) =>
   render(
     <SettingsProvider>
       <DebugOverlay
-        backend="webgpu"
         backendProbe={backendProbe}
         mainThreadWebGpu="no-adapter"
         modelProgress={{ loadedBytes: 0, totalBytes: 0 }}
@@ -78,7 +75,6 @@ describe("DebugOverlay", () => {
   it("renders diagnostics when showDebug is on", () => {
     enableDebug();
     renderOverlay();
-    expect(screen.getByText("GPU")).toBeInTheDocument();
     expect(screen.getByText(/1280.*720/)).toBeInTheDocument();
     expect(screen.getByText(/2\s*\/\s*4/)).toBeInTheDocument();
     expect(screen.getByText("overhead")).toBeInTheDocument();
@@ -96,15 +92,9 @@ describe("DebugOverlay", () => {
     expect(screen.getByText(/\bgpu\b/)).toBeInTheDocument();
   });
 
-  it("marks the engine row when safe mode forced the wasm backend", () => {
-    enableDebug();
-    renderOverlay(probe({ safeMode: true }));
-    expect(screen.getByText(/safe mode/)).toBeInTheDocument();
-  });
-
   it("reports shader-f16 support from the probe", () => {
     enableDebug();
-    renderOverlay(probe({ shaderF16: true, chosen: "webgpu" }));
+    renderOverlay(probe({ shaderF16: true }));
     expect(screen.getByText("shader-f16")).toBeInTheDocument();
     expect(screen.getByText("supported")).toBeInTheDocument();
   });
@@ -121,11 +111,9 @@ describe("DebugOverlay", () => {
     expect(screen.getByText("shader-f16 not supported")).toBeInTheDocument();
   });
 
-  it("reports graph capture on when the webgpu session captured", () => {
+  it("reports graph capture on when the session captured", () => {
     enableDebug();
-    renderOverlay(
-      probe({ shaderF16: true, graphCapture: true, chosen: "webgpu" }),
-    );
+    renderOverlay(probe({ shaderF16: true, graphCapture: true }));
     const row = screen.getByText("graph capture").closest("div");
     expect(row).toHaveTextContent("on");
   });
@@ -135,7 +123,6 @@ describe("DebugOverlay", () => {
     renderOverlay(
       probe({
         shaderF16: true,
-        chosen: "webgpu",
         graphCaptureError: "capture rejected at run",
       }),
     );
@@ -143,19 +130,13 @@ describe("DebugOverlay", () => {
     expect(screen.getByText("capture rejected at run")).toBeInTheDocument();
   });
 
-  it("marks graph capture disabled when no attempt was made on webgpu", () => {
+  it("marks graph capture disabled when no attempt was made", () => {
     enableDebug();
-    renderOverlay(probe({ shaderF16: true, chosen: "webgpu" }));
+    renderOverlay(probe({ shaderF16: true }));
     expect(screen.getByText("disabled")).toBeInTheDocument();
   });
 
-  it("marks graph capture n/a on the wasm backend", () => {
-    enableDebug();
-    renderOverlay(probe());
-    expect(screen.getByText("n/a")).toBeInTheDocument();
-  });
-
-  it("shows the WASM thread count and cross-origin isolation state", () => {
+  it("shows the ORT wasm thread count and cross-origin isolation state", () => {
     enableDebug();
     renderOverlay(probe({ adapter: false, device: false }));
     expect(screen.getByText(/4T · isolated/)).toBeInTheDocument();

@@ -13,7 +13,7 @@ Crowd-sourced apps like Waze depend on a large, active userbase reporting sighti
 - **Radar-detector view**: a signal meter that climbs as a patrol vehicle appears, with an optional beep. Glanceable, no scene to parse.
 - **On-device detection**: inference runs in the browser through onnxruntime-web. Camera frames and detections never leave the device. (See [Privacy](#privacy).)
 - **Offline PWA**: install it to the home screen and it works with no connection after the first launch.
-- **WebGPU with WASM fallback**: uses the GPU when available, falls back to WebAssembly automatically. No setup either way.
+- **WebGPU accelerated**: inference runs on the phone's GPU, which is what keeps a scan under a second. Devices without WebGPU are told so up front rather than handed a detector too slow to be useful. No setup either way.
 - **Screen wake lock**: keeps the screen on so the phone doesn't sleep mid-drive.
 
 ## Getting started
@@ -42,7 +42,7 @@ Detection uses a custom **RF-DETR Small** checkpoint published as ONNX at [`tuxr
 
 Camera frames, images, and detection boxes never leave the device. No account, no login, no per-user tracking. Network traffic is limited to the app's static files (including the same-origin ONNX runtime), the one-time model download (huggingface.co), and anonymous analytics (Vercel).
 
-The analytics are aggregate and tied to no identity: page views, a few usage milestones (inference backend, model ready, PWA installed, errors), and a coarse `police_detected` counter. That counter is a plain increment with no payload: no image, no location, nothing about the sighting. It tells us a detection happened somewhere, not where, what, or by whom.
+The analytics are aggregate and tied to no identity: page views, a few usage milestones (model ready, PWA installed, errors), and a coarse `police_detected` counter. That counter is a plain increment with no payload: no image, no location, nothing about the sighting. It tells us a detection happened somewhere, not where, what, or by whom.
 
 ## Contact
 

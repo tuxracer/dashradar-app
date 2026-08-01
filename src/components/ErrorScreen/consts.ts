@@ -10,10 +10,17 @@ import type { DetectionErrorCode } from "@/workers/detection/types";
  */
 export type AppLevelErrorCode = "CAMERA_STALLED";
 
-export type AppErrorCode =
-  | CameraErrorCode
-  | DetectionErrorCode
-  | AppLevelErrorCode;
+/**
+ * Codes this generic panel renders. WEBGPU_UNSUPPORTED is deliberately
+ * excluded: it is not a fault to report but a handoff to a device that can run
+ * the detector, and it has its own screen (`UnsupportedScreen`). Excluding it
+ * here makes routing it into this panel a compile error rather than a lookup
+ * that finds no copy.
+ */
+export type AppErrorCode = Exclude<
+  CameraErrorCode | DetectionErrorCode | AppLevelErrorCode,
+  "WEBGPU_UNSUPPORTED"
+>;
 
 /** A labeled reassurance row shown under an error's body copy. */
 export type ErrorPoint = {

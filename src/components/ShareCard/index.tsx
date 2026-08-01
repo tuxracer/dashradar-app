@@ -32,20 +32,34 @@ export const ShareQr = () => (
 );
 
 /**
+ * Whether the native share sheet is available (iOS/Android and desktop Safari).
+ * Callers that offer sharing need this to pick a fallback, so it is exported
+ * rather than checked inline: the unsupported-device screen shows the QR code
+ * instead where it reads false, so that screen is never a dead end.
+ */
+export const canShareApp = (): boolean => typeof navigator.share === "function";
+
+/**
+ * Open the native share sheet with {@link SHARE_URL}. Shared by the settings
+ * share row and the unsupported-device screen so both report the same event
+ * and swallow the same rejection; only the button styling differs between
+ * them, so the action is extracted rather than the whole control.
+ */
+export const shareApp = () => {
+  track("share_click");
+  // Dismissing the native share sheet rejects with AbortError; there is
+  // nothing to recover from, so swallow the rejection.
+  navigator.share({ url: SHARE_URL }).catch(() => undefined);
+};
+
+/**
  * Share row for handing the app to someone else. Two paths: a static QR code
  * (they point a camera at the phone and {@link SHARE_URL} opens) and, where the
- * Web Share API exists (iOS/Android and desktop Safari), a large SHARE button
- * that opens the native share sheet with the same URL.
+ * Web Share API exists, a large SHARE button that opens the native share sheet
+ * with the same URL.
  */
 export const ShareCard = () => {
-  const supportsShare = typeof navigator.share === "function";
-
-  const handleShare = () => {
-    track("share_click");
-    // Dismissing the native share sheet rejects with AbortError; there is
-    // nothing to recover from, so swallow the rejection.
-    navigator.share({ url: SHARE_URL }).catch(() => undefined);
-  };
+  const supportsShare = canShareApp();
 
   return (
     <div className="flex min-h-16 items-center justify-between gap-6 py-4">
@@ -59,7 +73,7 @@ export const ShareCard = () => {
         {supportsShare && (
           <button
             type="button"
-            onClick={handleShare}
+            onClick={shareApp}
             className="mt-3 inline-flex min-h-14 items-center justify-center gap-3 self-start rounded-2xl bg-hud-amber px-8 text-base font-semibold tracking-[0.18em] text-surface transition-opacity hover:opacity-90"
           >
             <Share className="h-5 w-5" strokeWidth={2.25} />

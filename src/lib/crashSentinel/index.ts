@@ -63,7 +63,6 @@ export const readPreviousSessionEnd = (
     gapMs,
     uptimeMs: parsed.lastBeatAt - parsed.startedAt,
     framesProcessed: parsed.framesProcessed,
-    backend: parsed.backend,
     graphCapture: parsed.graphCapture,
     release: parsed.release,
   };

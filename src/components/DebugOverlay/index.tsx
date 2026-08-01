@@ -6,11 +6,10 @@ import type {
   ModelProgress,
 } from "@/context/DetectionContext";
 import type { Size } from "@/lib/detection";
-import type { BackendProbe, DetectionBackend } from "@/workers/detection/types";
+import type { BackendProbe } from "@/workers/detection/types";
 
 /** Props for DebugOverlay. Data is passed in so it renders without the worker. */
 type DebugOverlayProps = {
-  backend: DetectionBackend | undefined;
   backendProbe: BackendProbe | undefined;
   mainThreadWebGpu: MainThreadWebGpu | undefined;
   modelProgress: ModelProgress;
@@ -34,11 +33,10 @@ const probeStages = (probe: BackendProbe): string => {
 
 /**
  * Plain-language verdict on the `shader-f16` WebGPU feature from the worker's
- * backend probe. Any fp16 tensor in a model graph makes onnxruntime-web
- * require the feature at session creation, so `resolveBackend` gates the
- * WebGPU backend on it: "supported" means this device is eligible for GPU
- * inference, "unsupported" means it runs the WASM path even though WebGPU
- * exists.
+ * GPU probe. Any fp16 tensor in a model graph makes onnxruntime-web require
+ * the feature at session creation, and the only build shipped is
+ * mixed-precision fp16, so `probeWebGpu` gates on it: "unsupported" means the
+ * device is turned away with WEBGPU_UNSUPPORTED even though WebGPU exists.
  */
 const f16Support = (probe: BackendProbe | undefined): string => {
   if (!probe) {
@@ -60,15 +58,11 @@ const f16Support = (probe: BackendProbe | undefined): string => {
  * is excluded pending crash telemetry (see the flag's doc in the worker's
  * consts.ts); "failed" means the attempt was made and
  * the worker fell back to a plain session, with the probe's `graphCaptureError`
- * block below the rows saying why. Not applicable on the wasm backend, which
- * has no capture concept.
+ * block below the rows saying why.
  */
 const captureSupport = (probe: BackendProbe | undefined): string => {
   if (!probe) {
     return "probing";
-  }
-  if (probe.chosen !== "webgpu") {
-    return "n/a";
   }
   if (probe.graphCapture) {
     return "on";
@@ -90,12 +84,11 @@ const Row = ({ label, value }: { label: string; value: string }) => (
 /**
  * Development diagnostics panel pinned to the top-left, below the wordmark line.
  * Rendered only when the showDebug setting is on. pointer-events are disabled so
- * it never intercepts taps meant for the HUD. Data comes in as props (backend,
- * model progress, the per-frame debug snapshot, and the current sizes) so the
- * panel stays testable without the detection worker.
+ * it never intercepts taps meant for the HUD. Data comes in as props (the GPU
+ * probe, model progress, the per-frame debug snapshot, and the current sizes)
+ * so the panel stays testable without the detection worker.
  */
 export const DebugOverlay = ({
-  backend,
   backendProbe,
   mainThreadWebGpu,
   modelProgress,
@@ -133,11 +126,6 @@ export const DebugOverlay = ({
     return null;
   }
 
-  const backendLabel = backend
-    ? backend === "webgpu"
-      ? "GPU"
-      : "CPU"
-    : "starting";
   const modelPercent =
     modelProgress.totalBytes > 0
       ? `${Math.round((modelProgress.loadedBytes / modelProgress.totalBytes) * 100)}%`
@@ -151,10 +139,6 @@ export const DebugOverlay = ({
       <div className="mb-1 font-semibold tracking-[0.2em] text-white/60">
         DEBUG
       </div>
-      <Row
-        label="engine"
-        value={`${backendLabel}${backendProbe?.safeMode ? " (safe mode)" : ""}`}
-      />
       {backendProbe && (
         <Row label="wgpu probe" value={probeStages(backendProbe)} />
       )}
@@ -163,7 +147,7 @@ export const DebugOverlay = ({
       <Row label="wgpu main" value={mainThreadWebGpu ?? "probing"} />
       {backendProbe && (
         <Row
-          label="wasm"
+          label="ort wasm"
           value={`${backendProbe.threads}T · ${
             backendProbe.crossOriginIsolated ? "isolated" : "not isolated"
           }`}

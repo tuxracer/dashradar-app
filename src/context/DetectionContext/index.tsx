@@ -12,10 +12,6 @@ import { track } from "@vercel/analytics";
 import { useDevVideo } from "@/context/DevVideoContext";
 import { useSettings } from "@/context/SettingsContext";
 import { APP_RELEASE } from "@/lib/appRelease";
-import {
-  isWasmSafeModeArmed,
-  resetWebGpuCrashStreak,
-} from "@/lib/backendSafeMode";
 import { waitForNextVideoFrame } from "@/lib/camera";
 import {
   clearSentinel,
@@ -44,7 +40,6 @@ import {
 } from "@/workers/detection/consts";
 import type {
   BackendProbe,
-  DetectionBackend,
   DetectionErrorCode,
 } from "@/workers/detection/types";
 import { isWorkerResponse } from "@/workers/detection/types";
@@ -238,7 +233,6 @@ export const DetectionProvider = ({
   }, [settingsOpen]);
 
   const [status, setStatus] = useState<DetectionStatus>("loading-model");
-  const [backend, setBackend] = useState<DetectionBackend>();
   const [backendProbe, setBackendProbe] = useState<BackendProbe>();
   const [mainThreadWebGpu, setMainThreadWebGpu] = useState<MainThreadWebGpu>();
   const [downloadingModel, setDownloadingModel] = useState(false);
@@ -312,16 +306,12 @@ export const DetectionProvider = ({
     setContact(next);
   }, []);
 
-  // Mirror backend and the probe's graph-capture flag into refs so the crash
-  // sentinel heartbeat effect below can key on [status] alone. Keying it on
-  // backend/backendProbe too would tear the effect down and restart it every
-  // time a recycled worker re-reports them, resetting startedAt and the frames
-  // baseline mid-session and destroying the uptime the sentinel exists to
-  // collect. The heartbeat reads these refs inside its interval instead.
-  const backendRef = useRef(backend);
-  useEffect(() => {
-    backendRef.current = backend;
-  }, [backend]);
+  // Mirror the probe's graph-capture flag into a ref so the crash sentinel
+  // heartbeat effect below can key on [status] alone. Keying it on
+  // backendProbe too would tear the effect down and restart it every time a
+  // recycled worker re-reports it, resetting startedAt and the frames baseline
+  // mid-session and destroying the uptime the sentinel exists to collect. The
+  // heartbeat reads this ref inside its interval instead.
   const graphCaptureRef = useRef(backendProbe?.graphCapture);
   useEffect(() => {
     graphCaptureRef.current = backendProbe?.graphCapture;
@@ -344,19 +334,15 @@ export const DetectionProvider = ({
   // explicit rather than inferred from status. Set in spawnWorker and the
   // `ready`/error handlers.
   const workerLoadedRef = useRef(false);
-  // Guards the one-time ready analytics (backend_resolved/model_ready) so a
-  // recycled worker's `ready` does not re-fire them, which would otherwise
-  // inflate the counts every WORKER_RECYCLE_AFTER_MS of a scanning session.
+  // Guards the one-time ready analytics (model_ready) so a recycled worker's
+  // `ready` does not re-fire it, which would otherwise inflate the count every
+  // WORKER_RECYCLE_AFTER_MS of a scanning session.
   const readyTrackedRef = useRef(false);
   // Guards the one-time model_downloaded analytics. A page load downloads the
   // weights at most once in practice (later loads read the runtime cache), but
   // a device whose cache never sticks would otherwise re-download and re-fire
   // the event on every periodic worker recycle.
   const modelDownloadTrackedRef = useRef(false);
-  // Whether this page load's `load` posts carried forceWasm (the WASM safe
-  // mode was armed). Captured at post time so the ready handler can report
-  // the safe_mode_load analytics event without re-reading localStorage.
-  const safeModeLoadRef = useRef(false);
   // Guards the one-time first_inference / first_round_trip analytics so only
   // the first result of the page load is counted, not every scan (which would
   // be one event every couple of seconds for the whole drive). One ref for
@@ -580,11 +566,7 @@ export const DetectionProvider = ({
         if (cancelled) {
           return;
         }
-        // forceWasm re-reads per load post (mount and each recycle), so a
-        // safe mode armed at startup governs every session of this page load.
-        const forceWasm = isWasmSafeModeArmed();
-        safeModeLoadRef.current = forceWasm;
-        worker.postMessage({ type: "load", forceWasm });
+        worker.postMessage({ type: "load" });
       });
     };
 
@@ -634,7 +616,6 @@ export const DetectionProvider = ({
             track("model_downloaded", {
               model: MODEL_SLUG,
               revision: MODEL_REVISION,
-              backend: message.backend,
               seconds: Math.round(message.durationMs / 1_000),
             });
           }
@@ -662,29 +643,17 @@ export const DetectionProvider = ({
           // Mark the worker loaded before priming the pump below, so the
           // sendFrame() call in the running branch is not itself bailed.
           workerLoadedRef.current = true;
-          setBackend(message.backend);
-          // Report which execution provider this device resolved to and how
-          // the weights loaded. The two are the app's core health signals: with
-          // no backend there is no other view into the GPU/CPU split or how
-          // often the runtime cache is actually hit. Emitted from the message
-          // handler body, not a setState updater, so StrictMode's double-invoke
-          // of updaters can't double-count them. Gated to the first ready of the
-          // page load: a periodic worker recycle produces a fresh `ready` every
-          // WORKER_RECYCLE_AFTER_MS, which must not re-fire these events.
+          // Report how the weights loaded. With no backend there is no other
+          // view into how often the runtime cache is actually hit, which is
+          // the difference between a first-visit download and an instant
+          // start. Emitted from the message handler body, not a setState
+          // updater, so StrictMode's double-invoke of updaters can't
+          // double-count it. Gated to the first ready of the page load: a
+          // periodic worker recycle produces a fresh `ready` every
+          // WORKER_RECYCLE_AFTER_MS, which must not re-fire the event.
           if (!readyTrackedRef.current) {
             readyTrackedRef.current = true;
-            track("backend_resolved", { backend: message.backend });
-            track("model_ready", {
-              backend: message.backend,
-              fromCache: modelFromCacheRef.current,
-            });
-            // Count sessions that had to run in the WASM safe mode after a
-            // detected WebGPU crash, so the fleet-wide fallback rate is
-            // visible without opening Sentry. Fires only when the model
-            // actually became ready under safe mode, not merely on arming.
-            if (safeModeLoadRef.current) {
-              track("safe_mode_load");
-            }
+            track("model_ready", { fromCache: modelFromCacheRef.current });
           }
           if (runningRef.current) {
             statusRef.current = "running";
@@ -837,13 +806,10 @@ export const DetectionProvider = ({
           // updater, which StrictMode double-invokes.
           if (!firstResultTrackedRef.current) {
             firstResultTrackedRef.current = true;
-            const backend = backendRef.current ?? null;
             track("first_inference", {
-              backend,
               seconds: toBucketedSeconds(inferenceMs),
             });
             track("first_round_trip", {
-              backend,
               seconds: toBucketedSeconds(roundTripMs),
             });
           }
@@ -1006,6 +972,14 @@ export const DetectionProvider = ({
       workerLoadedRef.current = false;
       worker.onmessage = handleMessage;
       worker.onerror = handleError;
+      // Ask whether this device can run the detector at all, immediately and
+      // separately from `load`. The load below waits on service-worker control
+      // so the weights land in the runtime cache, but that wait must not delay
+      // the verdict: a device without usable WebGPU has to reach the
+      // unsupported screen before the app asks for the camera, and must never
+      // download a model it cannot run. The worker stays silent when the probe
+      // passes and reports the full probe with `load` instead.
+      worker.postMessage({ type: "probe" });
       return worker;
     };
 
@@ -1226,8 +1200,8 @@ export const DetectionProvider = ({
   // OS-level kill mid-scan (no JS runs, so nothing else can react) leaves the
   // last heartbeat in place for the next launch to read and report to Sentry.
   // Keyed on [status] alone so startedAt and the frames baseline span the whole
-  // running session: backend and graphCapture are read from refs inside the
-  // interval instead of being deps, because a periodic worker recycle re-posts
+  // running session: graphCapture is read from a ref inside the interval
+  // instead of being a dep, because a periodic worker recycle re-posts
   // backend-probe and would otherwise restart this effect every recycle,
   // resetting the uptime the sentinel exists to collect.
   useEffect(() => {
@@ -1241,33 +1215,22 @@ export const DetectionProvider = ({
         startedAt,
         lastBeatAt: Date.now(),
         framesProcessed: framesTotalRef.current - baseline,
-        backend: backendRef.current,
         graphCapture: graphCaptureRef.current,
-        // Stamp the writing build: the safe-mode arming decision only trusts
-        // records from its own release (see shouldCountWebGpuCrash).
+        // Stamp the writing build, so a crash report names the deploy that
+        // produced it rather than the one that happens to read the record.
         release: APP_RELEASE,
       });
     };
     // A reload or navigation away mid-scan unloads the page without ever
     // running this effect's cleanup (React does not flush cleanups during
     // unload), which would orphan the record and make the next launch read a
-    // plain reload as a crash, wrongly arming the WASM safe mode. pagehide is
-    // the last synchronous chance to clear it, and a real crash never fires
-    // pagehide, so genuine kills still leave the record behind. If the page
-    // returns from the bfcache instead of unloading, the still-running
-    // interval rewrites the record on its next tick, restoring coverage.
-    // A clean end of a scanning session (any exit from "running" other than
-    // the page dying) also resets a below-threshold WebGPU crash streak: the
-    // session just proved the backend does not take the page down, so an
-    // earlier isolated crash stops counting toward safe mode. An armed record
-    // is kept (resetWebGpuCrashStreak refuses to disarm), since armed
-    // sessions run WASM and prove nothing about WebGPU.
-    const endCleanly = () => {
-      clearSentinel();
-      resetWebGpuCrashStreak();
-    };
+    // plain reload as a crash. pagehide is the last synchronous chance to
+    // clear it, and a real crash never fires pagehide, so genuine kills still
+    // leave the record behind. If the page returns from the bfcache instead of
+    // unloading, the still-running interval rewrites the record on its next
+    // tick, restoring coverage.
     const handlePageHide = () => {
-      endCleanly();
+      clearSentinel();
     };
     window.addEventListener("pagehide", handlePageHide);
     beat();
@@ -1275,7 +1238,7 @@ export const DetectionProvider = ({
     return () => {
       window.removeEventListener("pagehide", handlePageHide);
       window.clearInterval(intervalId);
-      endCleanly();
+      clearSentinel();
     };
   }, [status]);
 
@@ -1290,7 +1253,6 @@ export const DetectionProvider = ({
   const value = useMemo(
     () => ({
       status,
-      backend,
       backendProbe,
       mainThreadWebGpu,
       downloadingModel,
@@ -1310,7 +1272,6 @@ export const DetectionProvider = ({
     }),
     [
       status,
-      backend,
       backendProbe,
       mainThreadWebGpu,
       downloadingModel,

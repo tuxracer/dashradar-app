@@ -1,9 +1,5 @@
 import * as Sentry from "@sentry/react";
 import { APP_RELEASE } from "@/lib/appRelease";
-import {
-  recordWebGpuCrash,
-  shouldCountWebGpuCrash,
-} from "@/lib/backendSafeMode";
 import { readPreviousSessionEnd } from "@/lib/crashSentinel";
 import { isTrackingOptedOut } from "privacy-signals";
 
@@ -22,18 +18,6 @@ const TRACES_SAMPLE_RATE = 1.0;
  * only chance the NEXT launch gets to notice and report it.
  */
 const previousSessionEnd = readPreviousSessionEnd();
-
-/**
- * A same-release crash on the WebGPU backend counts toward the WASM safe
- * mode's crash streak; at SAFE_MODE_CRASH_THRESHOLD consecutive crashes the
- * release's remaining sessions run detection on the CPU instead of the GPU
- * path that (by the strongest available signal) keeps taking the page down.
- * A local stability decision, not telemetry, so it sits outside the DNT gate
- * below.
- */
-if (shouldCountWebGpuCrash(previousSessionEnd)) {
-  recordWebGpuCrash();
-}
 
 /**
  * Initialize Sentry as a side effect at import time, so instrumentation is in
@@ -75,20 +59,12 @@ if (!import.meta.env.DEV && isTrackingOptedOut() === false) {
   // restart, deliberate shutdown), which cannot be told apart from a genuine
   // crash by gap alone but is far less likely to be one.
   if (previousSessionEnd) {
-    const {
-      outcome,
-      gapMs,
-      uptimeMs,
-      framesProcessed,
-      backend,
-      graphCapture,
-      release,
-    } = previousSessionEnd;
+    const { outcome, gapMs, uptimeMs, framesProcessed, graphCapture, release } =
+      previousSessionEnd;
     Sentry.captureMessage("Previous session terminated while scanning", {
       level: outcome === "crash" ? "error" : "warning",
       tags: {
         sessionEnd: outcome,
-        backend: backend ?? "unknown",
         graphCapture: String(graphCapture ?? "unknown"),
         // The build that wrote the record, versus the event's own release
         // tag (the build reporting it): they differ when a deploy landed

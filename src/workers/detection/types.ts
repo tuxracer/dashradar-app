@@ -2,24 +2,24 @@ import { isBoolean, isNumber, isPlainObject, isString } from "remeda";
 import type { RawDetection } from "@/types";
 import { isRawDetection } from "@/types";
 
-export type DetectionBackend = "webgpu" | "wasm";
-
-const DETECTION_BACKENDS: readonly DetectionBackend[] = ["webgpu", "wasm"];
-
-export const isDetectionBackend = (
-  value: unknown,
-): value is DetectionBackend => {
-  return (
-    isString(value) && DETECTION_BACKENDS.includes(value as DetectionBackend)
-  );
-};
-
+/**
+ * WEBGPU_UNSUPPORTED is raised by the GPU probe, before any weights are
+ * fetched, on a device that cannot run the detector at all: no `navigator.gpu`
+ * in the worker scope, no adapter or device, or an adapter without
+ * `shader-f16`. It is terminal rather than a fallback because there is no
+ * second execution path left — CPU (wasm) inference was dropped after
+ * measuring ~10 s round trips against WebGPU's ~500 ms on the same phone,
+ * which is far too slow to be worth shipping (a detector that scans once every
+ * ten seconds misses most of what it drives past).
+ */
 export type DetectionErrorCode =
+  | "WEBGPU_UNSUPPORTED"
   | "MODEL_LOAD_FAILED"
   | "INFERENCE_FAILED"
   | "WORKER_CRASHED";
 
 const DETECTION_ERROR_CODES: readonly DetectionErrorCode[] = [
+  "WEBGPU_UNSUPPORTED",
   "MODEL_LOAD_FAILED",
   "INFERENCE_FAILED",
   "WORKER_CRASHED",
@@ -49,16 +49,16 @@ export const isDetectionError = (error: unknown): error is DetectionError => {
 };
 
 export type WorkerRequest =
-  | {
-      type: "load";
-      /**
-       * When true, skip the WebGPU probe entirely and load the wasm backend.
-       * Set by the WASM safe mode (src/lib/backendSafeMode) after the crash
-       * sentinel attributes the previous session's crash to WebGPU. Carried
-       * on the message because the worker cannot read localStorage itself.
-       */
-      forceWasm?: boolean;
-    }
+  /**
+   * Resolve whether this device can run the detector, without downloading
+   * anything. Sent as soon as the worker exists, ahead of `load`, so an
+   * unsupported device is told so before the app asks for the camera and
+   * before a byte of the model is fetched. On failure the worker answers with
+   * `backend-probe` plus a WEBGPU_UNSUPPORTED `worker-error`; on success it
+   * stays quiet and waits for `load`.
+   */
+  | { type: "probe" }
+  | { type: "load" }
   | {
       type: "detect";
       frame: ImageBitmap;
@@ -102,8 +102,8 @@ export const isWorkerRequest = (value: unknown): value is WorkerRequest => {
   if (!isPlainObject(value)) {
     return false;
   }
-  if (value.type === "load") {
-    return value.forceWasm === undefined || isBoolean(value.forceWasm);
+  if (value.type === "probe" || value.type === "load") {
+    return true;
   }
   return (
     value.type === "detect" &&
@@ -167,13 +167,17 @@ const isDetectionCrop = (value: unknown): value is DetectionCrop => {
 };
 
 /**
- * Outcome of the WebGPU backend probe, reported once at load so the debug
- * overlay can explain why the CPU (wasm) fallback was chosen on a device whose
- * main thread reports WebGPU support. Each flag records how far the probe got
- * inside the worker scope (where onnxruntime-web actually runs), and
- * `sessionError` carries the InferenceSession.create failure message when the
- * probe succeeded but the WebGPU session still would not build (e.g. the fp16
- * build needs the `shader-f16` GPU feature the adapter lacks).
+ * Outcome of the WebGPU probe, reported once per worker so the debug overlay
+ * can explain why a device whose main thread reports WebGPU support was still
+ * turned away. Each flag records how far the probe got inside the worker scope
+ * (where onnxruntime-web actually runs), and `sessionError` carries the
+ * InferenceSession.create failure message when every stage passed but the
+ * session still would not build.
+ *
+ * Sent at two different moments depending on the outcome: immediately after
+ * the probe when it failed (paired with a WEBGPU_UNSUPPORTED `worker-error`,
+ * with no session fields to report), or after `load` when it passed, carrying
+ * the session and graph-capture results as well.
  */
 export type BackendProbe = {
   /** `navigator.gpu` is present in the worker's own global scope. */
@@ -183,40 +187,37 @@ export type BackendProbe = {
   /** `requestDevice()` succeeded. */
   device: boolean;
   /**
-   * The adapter advertises the `shader-f16` feature. Load-bearing: the WebGPU
-   * backend serves the mixed-precision fp16 build, whose fp16 tensors make
-   * onnxruntime-web require this feature at session creation, so a device
-   * without it goes straight to wasm instead of failing the session.
+   * The adapter advertises the `shader-f16` feature. Load-bearing: the model
+   * is a mixed-precision fp16 build, whose fp16 tensors make onnxruntime-web
+   * require this feature at session creation, so an adapter without it is
+   * turned away here rather than failing the session after a 57 MB download.
    */
   shaderF16: boolean;
   /** InferenceSession.create failure message for the WebGPU attempt, if any. */
   sessionError?: string;
   /**
    * The WebGPU session was created with graph capture enabled (kernel
-   * dispatches recorded on the first run and replayed on later runs). Always
-   * false on the wasm backend. False on webgpu means either the
-   * `WEBGPU_GRAPH_CAPTURE` flag is off (no attempt was made) or the attempt
-   * failed and the worker fell back to a plain WebGPU session;
-   * `graphCaptureError` is set only in the failed case.
+   * dispatches recorded on the first run and replayed on later runs). False
+   * means either the `WEBGPU_GRAPH_CAPTURE` flag is off (no attempt was made)
+   * or the attempt failed and the worker fell back to a plain WebGPU session;
+   * `graphCaptureError` is set only in the failed case. Always false on a
+   * probe that never reached session creation.
    */
   graphCapture: boolean;
   /** Failure message from the graph-capture attempt when it fell back. */
   graphCaptureError?: string;
-  /** Backend actually selected after probing and any fallback. */
-  chosen: DetectionBackend;
-  /**
-   * The load request forced the wasm backend (WASM safe mode after a WebGPU
-   * crash; see src/lib/backendSafeMode). When true the WebGPU probe stages
-   * above were skipped, not failed.
-   */
-  safeMode: boolean;
   /**
    * `self.crossOriginIsolated` in the worker. False here means SharedArrayBuffer
-   * is unavailable, so the WASM backend is stuck at one thread regardless of
-   * `threads` below.
+   * is unavailable, so onnxruntime-web's wasm runtime is stuck at one thread
+   * regardless of `threads` below.
    */
   crossOriginIsolated: boolean;
-  /** WASM thread count configured for onnxruntime-web (`env.wasm.numThreads`). */
+  /**
+   * Thread count configured for onnxruntime-web's wasm runtime
+   * (`env.wasm.numThreads`). Inference itself runs on the GPU, but the runtime
+   * hosting the WebGPU execution provider is still a wasm module and runs any
+   * node the provider cannot take.
+   */
   threads: number;
 };
 
@@ -231,8 +232,6 @@ const isBackendProbe = (value: unknown): value is BackendProbe => {
     isBoolean(value.graphCapture) &&
     (value.graphCaptureError === undefined ||
       isString(value.graphCaptureError)) &&
-    isDetectionBackend(value.chosen) &&
-    isBoolean(value.safeMode) &&
     isBoolean(value.crossOriginIsolated) &&
     isNumber(value.threads)
   );
@@ -247,9 +246,9 @@ export type WorkerResponse =
    * read, so the context can count fresh downloads (and how long they took)
    * separately from sessions that started from cached bytes.
    */
-  | { type: "model-downloaded"; backend: DetectionBackend; durationMs: number }
+  | { type: "model-downloaded"; durationMs: number }
   | { type: "backend-probe"; probe: BackendProbe }
-  | { type: "ready"; backend: DetectionBackend }
+  | { type: "ready" }
   | {
       type: "detections";
       detections: RawDetection[];
@@ -300,11 +299,11 @@ export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
     case "model-progress":
       return isModelFileProgress(value.progress);
     case "model-downloaded":
-      return isDetectionBackend(value.backend) && isNumber(value.durationMs);
+      return isNumber(value.durationMs);
     case "backend-probe":
       return isBackendProbe(value.probe);
     case "ready":
-      return isDetectionBackend(value.backend);
+      return true;
     case "detections":
       return (
         Array.isArray(value.detections) &&

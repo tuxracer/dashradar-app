@@ -25,11 +25,6 @@ import {
 } from "@/context/SettingsContext";
 import { APP_RELEASE } from "@/lib/appRelease";
 import {
-  recordWebGpuCrash,
-  SAFE_MODE_CRASH_THRESHOLD,
-  SAFE_MODE_STORAGE_KEY,
-} from "@/lib/backendSafeMode";
-import {
   HEARTBEAT_INTERVAL_MS,
   SENTINEL_STORAGE_KEY,
 } from "@/lib/crashSentinel";
@@ -42,13 +37,6 @@ import {
   ZOOM_2X,
   ZOOM_OFF,
 } from "@/workers/detection/consts";
-
-/** Arms the WASM safe mode by recording a full crash streak. */
-const armSafeMode = () => {
-  for (let i = 0; i < SAFE_MODE_CRASH_THRESHOLD; i += 1) {
-    recordWebGpuCrash();
-  }
-};
 
 vi.mock("@vercel/analytics", () => ({ track: vi.fn() }));
 vi.mock("@/lib/saveFrame", async (importOriginal) => ({
@@ -78,12 +66,11 @@ class FakeWorker implements DetectionWorkerLike {
 }
 
 const Probe = () => {
-  const { status, backend, downloadingModel, modelProgress, hud, error } =
+  const { status, downloadingModel, modelProgress, hud, error } =
     useDetection();
   return (
     <div>
       <span data-testid="status">{status}</span>
-      <span data-testid="backend">{backend ?? "none"}</span>
       <span data-testid="downloading">{String(downloadingModel)}</span>
       <span data-testid="loaded">{modelProgress.loadedBytes}</span>
       <span data-testid="objects">
@@ -298,43 +285,25 @@ describe("DetectionProvider", () => {
     // The load message is deferred to a microtask (Promise.resolve in tests),
     // so wait for it rather than asserting synchronously.
     await waitFor(() => {
-      expect(worker.posted).toContainEqual({ type: "load", forceWasm: false });
+      expect(worker.posted).toContainEqual({ type: "load" });
     });
   });
 
-  it("requests the wasm backend when the safe mode is armed", async () => {
-    armSafeMode();
+  it("asks whether the device is supported before waiting to load", () => {
+    // The GPU verdict decides whether the app is usable at all, so it must not
+    // sit behind the load's wait for service-worker control: the probe goes out
+    // synchronously on mount, while `load` is still a pending microtask.
     const worker = renderWithProvider(<Probe />);
-    await waitFor(() => {
-      expect(worker.posted).toContainEqual({ type: "load", forceWasm: true });
-    });
+    expect(worker.posted).toEqual([{ type: "probe" }]);
   });
 
-  it("reports a safe_mode_load event when the model becomes ready under safe mode", async () => {
-    armSafeMode();
+  it("surfaces an unsupported device as a terminal error", () => {
     const worker = renderWithProvider(<Probe />);
-    await waitFor(() => {
-      expect(worker.posted).toContainEqual({ type: "load", forceWasm: true });
-    });
-    expect(track).not.toHaveBeenCalledWith("safe_mode_load");
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "worker-error", code: "WEBGPU_UNSUPPORTED" });
     });
-    expect(track).toHaveBeenCalledWith("safe_mode_load");
-    expect(
-      vi.mocked(track).mock.calls.filter(([name]) => name === "safe_mode_load"),
-    ).toHaveLength(1);
-  });
-
-  it("does not report safe_mode_load on a normal ready", async () => {
-    const worker = renderWithProvider(<Probe />);
-    await waitFor(() => {
-      expect(worker.posted).toContainEqual({ type: "load", forceWasm: false });
-    });
-    act(() => {
-      worker.emit({ type: "ready", backend: "webgpu" });
-    });
-    expect(track).not.toHaveBeenCalledWith("safe_mode_load");
+    expect(screen.getByTestId("status").textContent).toBe("error");
+    expect(screen.getByTestId("error").textContent).toBe("WEBGPU_UNSUPPORTED");
   });
 
   it("flags a network download when the model is not cached", () => {
@@ -376,10 +345,9 @@ describe("DetectionProvider", () => {
   it("moves to ready when the worker reports ready", () => {
     const worker = renderWithProvider(<Probe />);
     act(() => {
-      worker.emit({ type: "ready", backend: "webgpu" });
+      worker.emit({ type: "ready" });
     });
     expect(screen.getByTestId("status").textContent).toBe("ready");
-    expect(screen.getByTestId("backend").textContent).toBe("webgpu");
   });
 
   it("surfaces worker errors", () => {
@@ -391,47 +359,33 @@ describe("DetectionProvider", () => {
     expect(screen.getByTestId("error").textContent).toBe("MODEL_LOAD_FAILED");
   });
 
-  it("reports the resolved backend and model load on ready", () => {
+  it("reports the model load on ready", () => {
     const worker = renderWithProvider(<Probe />);
     act(() => {
       worker.emit({ type: "model-load-start", fromCache: false });
-      worker.emit({ type: "ready", backend: "webgpu" });
+      worker.emit({ type: "ready" });
     });
-    expect(track).toHaveBeenCalledWith("backend_resolved", {
-      backend: "webgpu",
-    });
-    expect(track).toHaveBeenCalledWith("model_ready", {
-      backend: "webgpu",
-      fromCache: false,
-    });
+    expect(track).toHaveBeenCalledWith("model_ready", { fromCache: false });
   });
 
   it("reports a cache hit in the model_ready event", () => {
     const worker = renderWithProvider(<Probe />);
     act(() => {
       worker.emit({ type: "model-load-start", fromCache: true });
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
-    expect(track).toHaveBeenCalledWith("model_ready", {
-      backend: "wasm",
-      fromCache: true,
-    });
+    expect(track).toHaveBeenCalledWith("model_ready", { fromCache: true });
   });
 
   it("reports the model and revision when the weights download", () => {
     const worker = renderWithProvider(<Probe />);
     act(() => {
       worker.emit({ type: "model-load-start", fromCache: false });
-      worker.emit({
-        type: "model-downloaded",
-        backend: "webgpu",
-        durationMs: 8_400,
-      });
+      worker.emit({ type: "model-downloaded", durationMs: 8_400 });
     });
     expect(track).toHaveBeenCalledWith("model_downloaded", {
       model: MODEL_SLUG,
       revision: MODEL_REVISION,
-      backend: "webgpu",
       seconds: 8,
     });
   });
@@ -439,16 +393,8 @@ describe("DetectionProvider", () => {
   it("reports a downloaded model once per page load", () => {
     const worker = renderWithProvider(<Probe />);
     act(() => {
-      worker.emit({
-        type: "model-downloaded",
-        backend: "wasm",
-        durationMs: 1_000,
-      });
-      worker.emit({
-        type: "model-downloaded",
-        backend: "wasm",
-        durationMs: 1_000,
-      });
+      worker.emit({ type: "model-downloaded", durationMs: 1_000 });
+      worker.emit({ type: "model-downloaded", durationMs: 1_000 });
     });
     expect(
       vi
@@ -460,7 +406,7 @@ describe("DetectionProvider", () => {
   it("reports the first successful inference to analytics once", () => {
     const worker = renderWithProvider(<Probe />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     expect(track).not.toHaveBeenCalledWith(
       "first_inference",
@@ -475,11 +421,9 @@ describe("DetectionProvider", () => {
       worker.emit(result);
     });
     expect(track).toHaveBeenCalledWith("first_inference", {
-      backend: "wasm",
       seconds: expect.any(Number),
     });
     expect(track).toHaveBeenCalledWith("first_round_trip", {
-      backend: "wasm",
       seconds: expect.any(Number),
     });
     // Later scans are silent: the events mark the session getting to
@@ -522,7 +466,7 @@ describe("DetectionProvider", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -570,7 +514,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -599,7 +543,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -643,7 +587,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "webgpu" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -691,7 +635,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -699,7 +643,7 @@ describe("DetectionProvider", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    // Ready emits backend_resolved/model_ready; drop those so the assertions
+    // Ready emits model_ready; drop that so the assertions
     // below count only the police event.
     vi.mocked(track).mockClear();
     // Count police sightings specifically, not every track call: the long
@@ -750,7 +694,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -758,7 +702,7 @@ describe("DetectionProvider", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    // Ready emits backend_resolved/model_ready and the first result emits
+    // Ready emits model_ready and the first result emits
     // first_inference; only the police event is under test here.
     vi.mocked(track).mockClear();
     act(() => {
@@ -779,7 +723,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartStop />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -821,7 +765,7 @@ describe("DetectionProvider", () => {
       </SettingsProvider>,
     );
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -858,7 +802,7 @@ describe("DetectionProvider", () => {
       </SettingsProvider>,
     );
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -902,7 +846,7 @@ describe("DetectionProvider", () => {
     };
     const worker = renderWithProvider(<StartStop />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -951,7 +895,7 @@ describe("DetectionProvider", () => {
       </StrictMode>,
     );
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -979,7 +923,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartStop />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1049,7 +993,7 @@ describe("DetectionProvider", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1096,7 +1040,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1128,7 +1072,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1148,14 +1092,8 @@ describe("DetectionProvider", () => {
         timing: { preprocessMs: 400, inferenceMs: 2_400, decodeMs: 400 },
       });
     });
-    expect(track).toHaveBeenCalledWith("first_inference", {
-      backend: "wasm",
-      seconds: 2.5,
-    });
-    expect(track).toHaveBeenCalledWith("first_round_trip", {
-      backend: "wasm",
-      seconds: 4,
-    });
+    expect(track).toHaveBeenCalledWith("first_inference", { seconds: 2.5 });
+    expect(track).toHaveBeenCalledWith("first_round_trip", { seconds: 4 });
   });
 
   it("reports median timings to analytics once the window first fills", async () => {
@@ -1167,7 +1105,7 @@ describe("DetectionProvider", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<StartStopWithVideo video={video} />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1235,7 +1173,7 @@ describe("DetectionProvider", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1280,7 +1218,7 @@ describe("DetectionProvider", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1315,7 +1253,7 @@ describe("DetectionProvider", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1347,7 +1285,7 @@ describe("DetectionProvider", () => {
       worker.posted.filter((message) => message.type === "detect"),
     ).toHaveLength(0);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     await waitFor(() => {
       expect(
@@ -1359,7 +1297,7 @@ describe("DetectionProvider", () => {
   it("surfaces a detection immediately on its first frame", () => {
     const worker = renderWithProvider(<Probe />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       worker.emit({
@@ -1380,7 +1318,7 @@ describe("DetectionProvider", () => {
   it("coasts a detection's box through a frame the model misses it", () => {
     const worker = renderWithProvider(<Probe />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     const detection = {
       label: "police",
@@ -1407,7 +1345,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1435,7 +1373,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1457,7 +1395,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1489,7 +1427,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1522,7 +1460,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1555,7 +1493,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1587,7 +1525,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1618,7 +1556,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1642,7 +1580,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1668,7 +1606,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1698,7 +1636,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1750,7 +1688,7 @@ describe("DetectionProvider", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1868,7 +1806,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1894,7 +1832,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1923,7 +1861,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1952,7 +1890,7 @@ describe("visibility pause", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2000,7 +1938,7 @@ describe("visibility pause", () => {
     );
     const worker = renderWithProvider(<Probe />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       setDocumentVisibility("hidden");
@@ -2032,7 +1970,7 @@ describe("settings pause", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2085,7 +2023,7 @@ describe("settings pause", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("open-settings").click();
@@ -2115,7 +2053,7 @@ describe("settings pause", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2155,7 +2093,7 @@ describe("crash sentinel heartbeat", () => {
   it("writes a sentinel record once detection starts running", () => {
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     expect(readSentinel()).toBeNull();
     act(() => {
@@ -2163,61 +2101,14 @@ describe("crash sentinel heartbeat", () => {
     });
     expect(readSentinel()).toMatchObject({
       framesProcessed: 0,
-      backend: "wasm",
       release: APP_RELEASE,
     });
-  });
-
-  it("resets a below-threshold crash streak when a session ends cleanly", () => {
-    recordWebGpuCrash();
-    expect(window.localStorage.getItem(SAFE_MODE_STORAGE_KEY)).not.toBeNull();
-    const worker = renderWithProvider(<StartStop />);
-    act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    act(() => {
-      screen.getByTestId("stop").click();
-    });
-    expect(window.localStorage.getItem(SAFE_MODE_STORAGE_KEY)).toBeNull();
-  });
-
-  it("resets a below-threshold crash streak on pagehide", () => {
-    recordWebGpuCrash();
-    const worker = renderWithProvider(<StartOnReady />);
-    act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    act(() => {
-      window.dispatchEvent(new Event("pagehide"));
-    });
-    expect(window.localStorage.getItem(SAFE_MODE_STORAGE_KEY)).toBeNull();
-  });
-
-  it("keeps an armed safe mode across a clean session end", () => {
-    armSafeMode();
-    const worker = renderWithProvider(<StartStop />);
-    act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    act(() => {
-      screen.getByTestId("stop").click();
-    });
-    expect(window.localStorage.getItem(SAFE_MODE_STORAGE_KEY)).not.toBeNull();
   });
 
   it("clears the sentinel record when stop() leaves the running state", () => {
     const worker = renderWithProvider(<StartStop />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2232,7 +2123,7 @@ describe("crash sentinel heartbeat", () => {
   it("clears the sentinel record on pagehide so a reload is not read as a crash", () => {
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2248,7 +2139,7 @@ describe("crash sentinel heartbeat", () => {
     vi.useFakeTimers();
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2275,7 +2166,7 @@ describe("crash sentinel heartbeat", () => {
       </SettingsProvider>,
     );
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2288,7 +2179,7 @@ describe("crash sentinel heartbeat", () => {
   it("does not write a sentinel record while only ready (not running)", () => {
     const worker = renderWithProvider(<Probe />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     expect(readSentinel()).toBeNull();
   });
@@ -2301,7 +2192,7 @@ describe("crash sentinel heartbeat", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2332,8 +2223,6 @@ describe("crash sentinel heartbeat", () => {
     device: false,
     shaderF16: false,
     graphCapture: false,
-    chosen: "wasm" as const,
-    safeMode: false,
     crossOriginIsolated: true,
     threads: 4,
   });
@@ -2346,7 +2235,7 @@ describe("crash sentinel heartbeat", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", backend: "wasm" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2422,7 +2311,7 @@ describe("worker recycle", () => {
     );
     const workers = renderWithWorkerFactory(<StartOnReady />);
     act(() => {
-      workers[0].emit({ type: "ready", backend: "wasm" });
+      workers[0].emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2457,7 +2346,7 @@ describe("worker recycle", () => {
     );
     const workers = renderWithWorkerFactory(<StartOnReady />);
     act(() => {
-      workers[0].emit({ type: "ready", backend: "wasm" });
+      workers[0].emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2477,15 +2366,12 @@ describe("worker recycle", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(workers[1].posted).toContainEqual({
-      type: "load",
-      forceWasm: false,
-    });
+    expect(workers[1].posted).toEqual([{ type: "probe" }, { type: "load" }]);
     // The old worker was mid-run at recycle, so no paced frame was scheduled on
     // it: the pump only resumes once the new worker reports ready.
     expect(detectCount(workers[1])).toBe(0);
     act(() => {
-      workers[1].emit({ type: "ready", backend: "wasm" });
+      workers[1].emit({ type: "ready" });
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
@@ -2508,15 +2394,9 @@ describe("worker recycle", () => {
     const workers = renderWithWorkerFactory(<StartOnReady />);
     act(() => {
       workers[0].emit({ type: "model-load-start", fromCache: false });
-      workers[0].emit({ type: "ready", backend: "webgpu" });
+      workers[0].emit({ type: "ready" });
     });
-    expect(track).toHaveBeenCalledWith("backend_resolved", {
-      backend: "webgpu",
-    });
-    expect(track).toHaveBeenCalledWith("model_ready", {
-      backend: "webgpu",
-      fromCache: false,
-    });
+    expect(track).toHaveBeenCalledWith("model_ready", { fromCache: false });
     act(() => {
       screen.getByTestId("start").click();
     });
@@ -2534,12 +2414,8 @@ describe("worker recycle", () => {
     vi.mocked(track).mockClear();
     act(() => {
       workers[1].emit({ type: "model-load-start", fromCache: true });
-      workers[1].emit({ type: "ready", backend: "webgpu" });
+      workers[1].emit({ type: "ready" });
     });
-    expect(track).not.toHaveBeenCalledWith(
-      "backend_resolved",
-      expect.anything(),
-    );
     expect(track).not.toHaveBeenCalledWith("model_ready", expect.anything());
   });
 
@@ -2553,7 +2429,7 @@ describe("worker recycle", () => {
     );
     const workers = renderWithWorkerFactory(<StartStop />);
     act(() => {
-      workers[0].emit({ type: "ready", backend: "wasm" });
+      workers[0].emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2572,7 +2448,7 @@ describe("worker recycle", () => {
       screen.getByTestId("stop").click();
     });
     act(() => {
-      workers[1].emit({ type: "ready", backend: "wasm" });
+      workers[1].emit({ type: "ready" });
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
@@ -2591,7 +2467,7 @@ describe("worker recycle", () => {
     );
     const workers = renderWithWorkerFactory(<StartStop />);
     act(() => {
-      workers[0].emit({ type: "ready", backend: "wasm" });
+      workers[0].emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2624,7 +2500,7 @@ describe("worker recycle", () => {
     // The new worker finishes loading: its ready re-primes the pump exactly
     // once (not zero: the pump would otherwise be dead; not two).
     act(() => {
-      workers[1].emit({ type: "ready", backend: "wasm" });
+      workers[1].emit({ type: "ready" });
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
@@ -3162,7 +3038,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", backend: "webgpu" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3200,7 +3076,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", backend: "webgpu" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3237,7 +3113,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", backend: "webgpu" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3275,7 +3151,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", backend: "webgpu" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3312,7 +3188,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", backend: "webgpu" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3345,7 +3221,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", backend: "webgpu" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3386,7 +3262,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", backend: "webgpu" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3416,7 +3292,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", backend: "webgpu" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3447,7 +3323,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", backend: "webgpu" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3513,7 +3389,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", backend: "webgpu" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3596,7 +3472,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", backend: "webgpu" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3640,7 +3516,7 @@ describe("dev video mode", () => {
       devVideoMode: true,
     });
     act(() => {
-      worker.emit({ type: "ready", backend: "webgpu" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3672,7 +3548,7 @@ describe("dev video mode", () => {
       devVideoMode: true,
     });
     act(() => {
-      worker.emit({ type: "ready", backend: "webgpu" });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3764,7 +3640,7 @@ const renderSwapSession = () => {
     </SettingsProvider>,
   );
   act(() => {
-    worker.emit({ type: "ready", backend: "webgpu" });
+    worker.emit({ type: "ready" });
   });
   act(() => {
     screen.getByTestId("start").click();

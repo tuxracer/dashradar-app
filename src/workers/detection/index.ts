@@ -2,8 +2,7 @@
 // The /webgpu subpath is deliberate: it runs WebGPU through the native C++
 // WebGPU EP (asyncify runtime), not the root import's JSEP TypeScript kernels.
 // JSEP has no TopK kernel, which parks this graph's TopK on the CPU EP and
-// makes graph capture impossible; the native EP has one. Its WASM EP also runs
-// the int8 build, so this one import covers both backends.
+// makes graph capture impossible; the native EP has one.
 import { env, InferenceSession, Tensor } from "onnxruntime-web/webgpu";
 import { isWebKitUa } from "@/lib/browserEngine";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
@@ -12,7 +11,7 @@ import {
   DEV_MODEL_CACHE_NAME,
   FRAME_JPEG_QUALITY,
   INPUT_SIZE,
-  MODEL_URL_BY_BACKEND,
+  MODEL_URL,
   WASM_THREAD_CAP,
   WEBGPU_GRAPH_CAPTURE,
   ZOOM_OFF,
@@ -28,12 +27,7 @@ import {
   preprocess,
   topDetectionIndex,
 } from "./inference";
-import type {
-  BackendProbe,
-  DetectionBackend,
-  DetectionCrop,
-  WorkerResponse,
-} from "./types";
+import type { BackendProbe, DetectionCrop, WorkerResponse } from "./types";
 import { DetectionError, isWorkerRequest } from "./types";
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -43,7 +37,7 @@ declare const self: DedicatedWorkerGlobalScope;
 // isolation does not block it and there is no live CDN dependency.
 env.wasm.wasmPaths = `${import.meta.env.BASE_URL}ort/`;
 
-/** WASM thread count for this device, capped for big.LITTLE efficiency. */
+/** ORT wasm-runtime thread count for this device, capped for big.LITTLE. */
 const wasmThreads = Math.min(
   navigator.hardwareConcurrency || WASM_THREAD_CAP,
   WASM_THREAD_CAP,
@@ -92,75 +86,94 @@ const post = (message: WorkerResponse, transfer: Transferable[] = []) => {
   self.postMessage(message, transfer);
 };
 
-/** Backend choice plus the per-stage evidence gathered while deciding. */
-type BackendChoice = {
-  backend: DetectionBackend;
-  probe: Omit<
-    BackendProbe,
-    "chosen" | "sessionError" | "graphCapture" | "graphCaptureError"
-  >;
-};
+/** Per-stage evidence from the GPU probe, before any session exists. */
+type GpuProbe = Omit<
+  BackendProbe,
+  "sessionError" | "graphCapture" | "graphCaptureError"
+>;
+
+/** Whether the device can run the detector, plus the evidence for the answer. */
+type GpuProbeResult = { supported: boolean; probe: GpuProbe };
 
 /**
- * Pick the execution backend, probing for a usable WebGPU device rather than
- * only checking that the API exists. On some devices `navigator.gpu` is present
- * but no adapter or device can actually be acquired. If we trusted the API
- * check alone, we would download the much larger WebGPU build, fail at
- * session creation, then fall back to wasm and download the int8 build too. A
- * successful adapter + device probe here proves WebGPU works before we commit
- * to that larger download, so an unusable GPU goes straight to wasm and only
- * one set of weights is fetched.
+ * Decide whether this device can run the detector, by actually acquiring a
+ * WebGPU device rather than only checking that the API exists. On some devices
+ * `navigator.gpu` is present but no adapter or device can be obtained, so the
+ * API check alone would let us download 57 MB of weights only to fail at
+ * session creation.
  *
- * WebGPU is also gated on the adapter exposing `shader-f16`. Any fp16 tensor
- * in a model graph makes onnxruntime-web require that feature at session
- * creation, so gating here keeps the backend choice a clean two-way split:
- * the webgpu URL can point at an fp16 (or mixed-precision) build without a
- * third fp32-fallback branch, and an adapter without the feature goes straight
- * to wasm instead of failing the session and double-downloading. GPUs lacking
- * `shader-f16` are rare on the phones this app targets.
+ * The adapter must also expose `shader-f16`. Any fp16 tensor in a model graph
+ * makes onnxruntime-web require that feature at session creation, and the only
+ * build shipped is mixed-precision fp16, so an adapter without it cannot run
+ * this model at all. GPUs lacking `shader-f16` are rare on the phones this app
+ * targets.
+ *
+ * A failure at any stage is terminal: with the CPU (wasm) path gone there is
+ * nothing left to fall back to, so the caller reports WEBGPU_UNSUPPORTED and
+ * the app shows the unsupported-device screen instead of scanning at a rate
+ * too slow to catch anything.
  *
  * Runs in the worker scope, which is where onnxruntime-web needs WebGPU: some
  * browsers expose `navigator.gpu` on the main thread but not inside a worker.
- * The returned `probe` records how far each stage got so the debug overlay can
- * report why an apparently WebGPU-capable device fell back to wasm.
+ * The returned `probe` records how far each stage got, so the debug overlay
+ * can say where acquisition failed on a device whose main thread claims
+ * WebGPU support.
  */
-const resolveBackend = async (forceWasm: boolean): Promise<BackendChoice> => {
-  const probe = {
+const probeWebGpu = async (): Promise<GpuProbeResult> => {
+  const probe: GpuProbe = {
     workerGpu: false,
     adapter: false,
     device: false,
     shaderF16: false,
-    safeMode: forceWasm,
     crossOriginIsolated: self.crossOriginIsolated,
     threads: wasmThreads,
   };
-  // WASM safe mode: a previous session crashed on WebGPU (crash sentinel),
-  // so skip the GPU probe entirely rather than record misleading failures.
-  if (forceWasm) {
-    return { backend: "wasm", probe };
-  }
   if (!("gpu" in navigator) || !navigator.gpu) {
-    return { backend: "wasm", probe };
+    return { supported: false, probe };
   }
   probe.workerGpu = true;
   try {
     const adapter = await navigator.gpu.requestAdapter();
     if (!adapter) {
-      return { backend: "wasm", probe };
+      return { supported: false, probe };
     }
     probe.adapter = true;
     probe.shaderF16 = adapter.features.has("shader-f16");
     if (!probe.shaderF16) {
-      return { backend: "wasm", probe };
+      return { supported: false, probe };
     }
     const device = await adapter.requestDevice();
     probe.device = true;
     // Release the probe device; onnxruntime-web acquires its own.
     device.destroy();
-    return { backend: "webgpu", probe };
+    return { supported: true, probe };
   } catch {
-    return { backend: "wasm", probe };
+    return { supported: false, probe };
   }
+};
+
+/**
+ * The one probe this worker runs, shared by the `probe` and `load` handlers.
+ * Acquiring an adapter and device is not free, and `load` must see exactly the
+ * verdict `probe` already reported rather than re-deciding.
+ */
+let gpuProbeResult: Promise<GpuProbeResult> | undefined;
+const gpuProbe = (): Promise<GpuProbeResult> =>
+  (gpuProbeResult ??= probeWebGpu());
+
+/**
+ * Report that this device cannot run the detector. Idempotent, because both
+ * the `probe` and `load` handlers reach it on an unsupported device and the
+ * context must not see the terminal error twice.
+ */
+let unsupportedReported = false;
+const reportUnsupported = (probe: GpuProbe) => {
+  if (unsupportedReported) {
+    return;
+  }
+  unsupportedReported = true;
+  post({ type: "backend-probe", probe: { ...probe, graphCapture: false } });
+  post({ type: "worker-error", code: "WEBGPU_UNSUPPORTED" });
 };
 
 /** Best-effort human-readable message for an unknown thrown value. */
@@ -240,26 +253,22 @@ const fetchModel = async (url: string): Promise<Uint8Array<ArrayBuffer>> => {
  * model locally through matchCachedModel instead of re-downloading tens of
  * megabytes per reload. The entry is keyed on the revision-pinned URL, so a
  * MODEL_REVISION bump misses and re-downloads; entries for URLs no longer in
- * MODEL_URL_BY_BACKEND (old revisions) are evicted so stale weights don't
- * accumulate. No-op in production builds and best-effort in dev: any failure
- * just means a re-download on the next launch.
+ * MODEL_URL (old revisions) are evicted so stale weights don't accumulate.
+ * No-op in production builds and best-effort in dev: any failure just means a
+ * re-download on the next launch.
  */
-const cacheModelInDev = async (
-  url: string,
-  weights: Uint8Array<ArrayBuffer>,
-) => {
+const cacheModelInDev = async (weights: Uint8Array<ArrayBuffer>) => {
   if (!import.meta.env.DEV || !("caches" in self)) {
     return;
   }
   try {
     const cache = await caches.open(DEV_MODEL_CACHE_NAME);
-    const currentUrls = Object.values(MODEL_URL_BY_BACKEND);
     for (const request of await cache.keys()) {
-      if (!currentUrls.includes(request.url)) {
+      if (request.url !== MODEL_URL) {
         await cache.delete(request);
       }
     }
-    await cache.put(url, new Response(weights));
+    await cache.put(MODEL_URL, new Response(weights));
   } catch {
     // Dev convenience only; never let a cache failure affect the load.
   }
@@ -338,10 +347,9 @@ const createCaptureModel = async (weights: Uint8Array): Promise<ModelIo> => {
   }
 };
 
-/** Download and instantiate the session for one backend. */
-const loadForBackend = async (backend: DetectionBackend): Promise<ModelIo> => {
-  const url = MODEL_URL_BY_BACKEND[backend];
-  const cached = await matchCachedModel(url);
+/** Download and instantiate the WebGPU session. */
+const createModel = async (): Promise<ModelIo> => {
+  const cached = await matchCachedModel(MODEL_URL);
   // Tell the context whether this is a network download so it can show the
   // download-progress screen only when we are actually downloading, not when
   // reading already-cached weights (a cache read still takes a beat to compile
@@ -352,27 +360,22 @@ const loadForBackend = async (backend: DetectionBackend): Promise<ModelIo> => {
     weights = new Uint8Array(await cached.arrayBuffer());
   } else {
     const downloadStartedAt = performance.now();
-    weights = await fetchModel(url);
+    weights = await fetchModel(MODEL_URL);
     // Report the completed download before the session is built from it, so a
     // device that downloads the weights but then fails session creation still
     // counts as a successful download.
     post({
       type: "model-downloaded",
-      backend,
       durationMs: performance.now() - downloadStartedAt,
     });
-    await cacheModelInDev(url, weights);
+    await cacheModelInDev(weights);
   }
   let captureError: string | undefined;
   // Never attempt graph capture on WebKit: crash telemetry (DASHRADAR-2)
   // shows iOS Safari killing the page within seconds of scanning with
   // capture on, and capture was only ever verified on Chrome. The plain
   // WebGPU session below is the WebKit path until telemetry clears capture.
-  if (
-    backend === "webgpu" &&
-    WEBGPU_GRAPH_CAPTURE &&
-    !isWebKitUa(navigator.userAgent)
-  ) {
+  if (WEBGPU_GRAPH_CAPTURE && !isWebKitUa(navigator.userAgent)) {
     try {
       return await createCaptureModel(weights);
     } catch (error) {
@@ -382,54 +385,40 @@ const loadForBackend = async (backend: DetectionBackend): Promise<ModelIo> => {
     }
   }
   const session = await InferenceSession.create(weights, {
-    executionProviders: [backend === "webgpu" ? "webgpu" : "wasm"],
+    executionProviders: ["webgpu"],
   });
   return { session, ...resolveIoNames(session), captureError };
 };
 
-const loadModel = async (forceWasm: boolean) => {
-  const { backend: preferredBackend, probe } = await resolveBackend(forceWasm);
-  let sessionError: string | undefined;
+const loadModel = async () => {
+  const { supported, probe } = await gpuProbe();
+  if (!supported) {
+    reportUnsupported(probe);
+    return;
+  }
   try {
-    model = await loadForBackend(preferredBackend);
+    model = await createModel();
     post({
       type: "backend-probe",
       probe: {
         ...probe,
-        chosen: preferredBackend,
         graphCapture: model.capture !== undefined,
         graphCaptureError: model.captureError,
       },
     });
-    post({ type: "ready", backend: preferredBackend });
-    return;
+    post({ type: "ready" });
   } catch (error) {
-    // The WebGPU probe passed but the session still failed to build (e.g. a
-    // blocklisted adapter, or the fp16 build needing a `shader-f16` feature the
-    // GPU lacks). Record why so the debug overlay can show it.
-    sessionError = describeError(error);
-    if (preferredBackend !== "webgpu") {
-      post({
-        type: "backend-probe",
-        probe: { ...probe, chosen: "wasm", sessionError, graphCapture: false },
-      });
-      post({ type: "worker-error", code: "MODEL_LOAD_FAILED" });
-      return;
-    }
-  }
-
-  // Fall back to wasm once before giving up on a failed WebGPU session.
-  try {
-    model = await loadForBackend("wasm");
+    // The probe acquired a device but the session still failed to build (a
+    // blocklisted adapter, an OOM on the weights, a corrupt download). There
+    // is no second backend to try, so this is terminal; record why so the
+    // debug overlay can show it.
     post({
       type: "backend-probe",
-      probe: { ...probe, chosen: "wasm", sessionError, graphCapture: false },
-    });
-    post({ type: "ready", backend: "wasm" });
-  } catch {
-    post({
-      type: "backend-probe",
-      probe: { ...probe, chosen: "wasm", sessionError, graphCapture: false },
+      probe: {
+        ...probe,
+        sessionError: describeError(error),
+        graphCapture: false,
+      },
     });
     post({ type: "worker-error", code: "MODEL_LOAD_FAILED" });
   }
@@ -636,8 +625,19 @@ self.onmessage = (event: MessageEvent<unknown>) => {
   if (!isWorkerRequest(request)) {
     return;
   }
+  if (request.type === "probe") {
+    // Answer only when the device cannot run the detector. A pass stays silent
+    // and waits for `load`, which reports the probe alongside the session and
+    // graph-capture results rather than sending a half-filled one twice.
+    void gpuProbe().then(({ supported, probe }) => {
+      if (!supported) {
+        reportUnsupported(probe);
+      }
+    });
+    return;
+  }
   if (request.type === "load") {
-    void loadModel(request.forceWasm ?? false);
+    void loadModel();
     return;
   }
   void detect({

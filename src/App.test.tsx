@@ -70,7 +70,7 @@ class FakeWorker {
 const reachScanning = async () => {
   await waitFor(() => expect(workerOnMessage).not.toBeNull());
   await act(async () => {
-    workerOnMessage?.({ data: { type: "ready", backend: "wasm" } });
+    workerOnMessage?.({ data: { type: "ready" } });
   });
 };
 
@@ -133,6 +133,54 @@ describe("App", () => {
         screen.getByText(/browser can't access the camera/i),
       ).toBeInTheDocument(),
     );
+  });
+
+  it("still shows the intro to a device that cannot run inference", async () => {
+    stubBrowser(grantedCamera);
+    render(<App />);
+    await waitFor(() => expect(workerOnMessage).not.toBeNull());
+    await act(async () => {
+      workerOnMessage?.({
+        data: { type: "worker-error", code: "WEBGPU_UNSUPPORTED" },
+      });
+    });
+    expect(screen.getByRole("button", { name: "START" })).toBeInTheDocument();
+  });
+
+  it("turns an unsupported device away after the intro, without asking for the camera", async () => {
+    const getUserMedia = vi.fn(grantedCamera);
+    stubBrowser(getUserMedia);
+    render(<App />);
+    await waitFor(() => expect(workerOnMessage).not.toBeNull());
+    await act(async () => {
+      workerOnMessage?.({
+        data: { type: "worker-error", code: "WEBGPU_UNSUPPORTED" },
+      });
+    });
+    fireEvent.click(screen.getByRole("button", { name: "START" }));
+    expect(
+      screen.getByRole("heading", { name: /open it on another phone/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "ALLOW CAMERA" }),
+    ).not.toBeInTheDocument();
+    expect(getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it("offers no retry on the unsupported screen, which a reload cannot clear", async () => {
+    stubBrowser(grantedCamera);
+    render(<App />);
+    await waitFor(() => expect(workerOnMessage).not.toBeNull());
+    await act(async () => {
+      workerOnMessage?.({
+        data: { type: "worker-error", code: "WEBGPU_UNSUPPORTED" },
+      });
+    });
+    fireEvent.click(screen.getByRole("button", { name: "START" }));
+    expect(
+      screen.queryByRole("button", { name: "TRY AGAIN" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("dashradar.app")).toBeInTheDocument();
   });
 
   it("shows the camera access denied screen when the permission ask is declined", () => {

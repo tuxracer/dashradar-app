@@ -17,7 +17,6 @@ describe("writeHeartbeat / readPreviousSessionEnd", () => {
       startedAt: 1_000,
       lastBeatAt: 1_500,
       framesProcessed: 3,
-      backend: "webgpu",
       graphCapture: true,
       release: "dashradar@1.2.3+abc1234",
     });
@@ -27,7 +26,6 @@ describe("writeHeartbeat / readPreviousSessionEnd", () => {
       gapMs: CRASH_RELAUNCH_WINDOW_MS,
       uptimeMs: 500,
       framesProcessed: 3,
-      backend: "webgpu",
       graphCapture: true,
       release: "dashradar@1.2.3+abc1234",
     });
@@ -41,7 +39,6 @@ describe("writeHeartbeat / readPreviousSessionEnd", () => {
       gapMs: 0,
       uptimeMs: 100,
       framesProcessed: 0,
-      backend: undefined,
       graphCapture: undefined,
       release: undefined,
     });
@@ -95,7 +92,7 @@ describe("writeHeartbeat / readPreviousSessionEnd", () => {
         startedAt: 0,
         lastBeatAt: 0,
         framesProcessed: 0,
-        backend: "quantum",
+        graphCapture: "yes",
       }),
     );
     expect(readPreviousSessionEnd()).toBeUndefined();

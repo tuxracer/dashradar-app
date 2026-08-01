@@ -127,8 +127,10 @@ describe("isWorkerResponse", () => {
         progress: { file: "model.onnx", loaded: 10, total: 100 },
       }),
     ).toBe(true);
-    expect(isWorkerResponse({ type: "ready", backend: "webgpu" })).toBe(true);
-    expect(isWorkerResponse({ type: "ready", backend: "wasm" })).toBe(true);
+    expect(isWorkerResponse({ type: "ready" })).toBe(true);
+    expect(
+      isWorkerResponse({ type: "worker-error", code: "WEBGPU_UNSUPPORTED" }),
+    ).toBe(true);
     expect(
       isWorkerResponse({
         type: "detections",
@@ -143,7 +145,6 @@ describe("isWorkerResponse", () => {
 
   it("rejects malformed messages", () => {
     expect(isWorkerResponse(null)).toBe(false);
-    expect(isWorkerResponse({ type: "ready", backend: "cuda" })).toBe(false);
     expect(isWorkerResponse({ type: "detections" })).toBe(false);
     expect(isWorkerResponse({ type: "detections", detections: [] })).toBe(
       false,

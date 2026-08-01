@@ -1,5 +1,3 @@
-import type { DetectionBackend } from "./types";
-
 /**
  * RF-DETR small, fine-tuned to detect Las Vegas Metro police vehicles.
  *
@@ -19,15 +17,21 @@ import type { DetectionBackend } from "./types";
  * new weights once. When you publish a new model, push a new tag on the HF repo
  * and update `MODEL_REVISION` below to match.
  *
- * WebGPU streams the mixed-precision fp16 model (~57 MB: fp16 weights and
- * compute, the three GridSample nodes kept fp32 behind boundary Casts) and
- * WASM streams a smaller int8-quantized model (~31 MB). The fp16 build
- * requires the `shader-f16` GPU feature, which `resolveBackend` gates on, and
- * became usable when the worker moved to the native C++ WebGPU EP
- * ("onnxruntime-web/webgpu"): under the old JSEP path, a pure-fp16 GridSample
- * produced garbage from a broken WGSL shader, which is why the mixed-precision
- * export keeps those nodes fp32 (see the GridSample gotcha in CLAUDE.md).
- * All builds have fp32 inputs/outputs, so one pre/post-process fits each.
+ * One build is shipped: the mixed-precision fp16 model (~57 MB: fp16 weights
+ * and compute, the three GridSample nodes kept fp32 behind boundary Casts),
+ * run on WebGPU. It requires the `shader-f16` GPU feature, which `probeWebGpu`
+ * gates on, and became usable when the worker moved to the native C++ WebGPU
+ * EP ("onnxruntime-web/webgpu"): under the old JSEP path, a pure-fp16
+ * GridSample produced garbage from a broken WGSL shader, which is why the
+ * mixed-precision export keeps those nodes fp32 (see the GridSample gotcha in
+ * CLAUDE.md). Inputs and outputs are fp32, so preprocess/decode are unchanged.
+ *
+ * There is deliberately no CPU (wasm) build or fallback. The int8 model that
+ * used to serve it measured round trips over 10 s on an Android phone where
+ * WebGPU takes ~500 ms; scanning the road once every ten seconds misses most
+ * of what the car drives past, so a device without usable WebGPU is turned
+ * away with WEBGPU_UNSUPPORTED rather than handed a detector that looks like
+ * it works and does not.
  */
 /**
  * Hugging Face revision tag the model URLs pin to. Bump this (and push the
@@ -48,11 +52,8 @@ export const MODEL_SLUG = "las-vegas-metro-rfdetr-small-t1";
 /** Hugging Face model page the weights are downloaded from. */
 export const MODEL_REPO_URL = `https://huggingface.co/tuxracer/${MODEL_SLUG}`;
 
-export const MODEL_URL_BY_BACKEND: Readonly<Record<DetectionBackend, string>> =
-  {
-    webgpu: `${MODEL_REPO_URL}/resolve/${MODEL_REVISION}/onnx/model_fp16.onnx`,
-    wasm: `${MODEL_REPO_URL}/resolve/${MODEL_REVISION}/onnx/model_int8.onnx`,
-  };
+/** Revision-pinned URL of the weights every session downloads. */
+export const MODEL_URL = `${MODEL_REPO_URL}/resolve/${MODEL_REVISION}/onnx/model_fp16.onnx`;
 
 /**
  * CacheStorage cache the worker writes downloaded weights into on the dev
@@ -129,12 +130,15 @@ export const IMAGENET_STD: readonly [number, number, number] = [
 export const POLICE_LABEL = "police";
 
 /**
- * Ceiling on WASM inference threads. Mobile SoCs are big.LITTLE: past the few
- * performance cores, adding threads onto efficiency cores yields little and can
- * make the fast cores wait. Four is a safe default across phones; raise it if
- * on-device measurement shows headroom. Only takes effect when the page is
- * cross-origin isolated (SharedArrayBuffer available); otherwise onnxruntime-web
- * clamps to one thread on its own.
+ * Ceiling on onnxruntime-web's wasm runtime threads. Inference runs on the GPU,
+ * but the runtime hosting the WebGPU execution provider is itself a wasm module
+ * and runs any node the provider cannot take, so the thread count still
+ * matters. Mobile SoCs are big.LITTLE: past the few performance cores, adding
+ * threads onto efficiency cores yields little and can make the fast cores wait.
+ * Four is a safe default across phones; raise it if on-device measurement shows
+ * headroom. Only takes effect when the page is cross-origin isolated
+ * (SharedArrayBuffer available); otherwise onnxruntime-web clamps to one thread
+ * on its own.
  */
 export const WASM_THREAD_CAP = 4;
 
