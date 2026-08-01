@@ -19,6 +19,6 @@ export type PermissionPoint = {
 export const PERMISSION_POINTS: readonly PermissionPoint[] = [
   {
     label: "PRIVATE",
-    text: "Detection runs on your phone. No images ever leave it.",
+    text: "Detection runs on your phone.\nNo images ever leave it.",
   },
 ];

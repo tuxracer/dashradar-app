@@ -34,7 +34,7 @@ const PermissionPointRow = ({ label, text }: PermissionPoint) => (
     <span className="shrink-0 text-xs font-semibold tracking-[0.18em] text-hud-amber">
       {label}
     </span>
-    <span className="text-sm font-medium leading-snug text-white/70">
+    <span className="whitespace-pre-line text-sm font-medium leading-snug text-white/70">
       {text}
     </span>
   </div>
