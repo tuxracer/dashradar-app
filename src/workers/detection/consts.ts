@@ -84,25 +84,24 @@ export const DEV_MODEL_CACHE_NAME = "model-cache-dev";
  * worker falls back to a plain WebGPU session and the debug overlay's
  * "graph capture" row reads "failed" with the reason.
  *
- * This flag is engine-blind on purpose. WebKit was excluded from capture for a
- * while after Sentry DASHRADAR-2 opened, and that exclusion was a mistake worth
- * recording: it rested on one event, the first crash the sentinel ever wrote,
- * which happened to carry `graphCapture: true`. Reading the whole issue later
- * showed nine of the ten iOS crashes had capture off, several on builds that
- * shipped after the exclusion, so capture never separated a crashing session
- * from a healthy one. What those ten do share is uptime: none survived past
- * ~21 s of scanning and four died before the second heartbeat. That is a
- * startup signature (shader compilation, the first run's buffer allocation,
- * camera acquisition) rather than anything capture changes about steady-state
- * frames, which is why the exclusion never moved the crash rate.
+ * WebKit never attempts capture regardless of this flag (`isWebKitUa` in
+ * `src/lib/browserEngine`, checked in `createModel`); it runs a plain WebGPU
+ * session and the overlay row reads "disabled". The exclusion rests on
+ * measured cost/benefit, not crash attribution: on an iPhone 16e in Safari,
+ * round trips with capture on are about the same as without, so the
+ * dispatch-replay win that makes capture worthwhile on Chromium Android never
+ * materializes on WebKit's WebGPU implementation. A feature with no measured
+ * upside only has to be suspected of instability to lose its place, and iOS
+ * crash volume with capture enabled supplies the suspicion.
  *
- * So capture on WebKit is unverified, not implicated, and it fails safe: a
- * device that cannot initialize or run it falls back to a plain session on its
- * own. The sentinel's `graphCapture` tag is what settles it in the field. If
- * iOS crashes start arriving tagged `graphCapture: true` with uptimes off the
- * startup window, capture is implicated for real and this flag is the lever. If
- * they keep the same early uptimes whatever the tag says, capture was never the
- * variable.
+ * History, because this exclusion existed once before on different grounds
+ * and that reasoning was wrong: the first exclusion rested on a single crash
+ * event tagged `graphCapture: true`, and reading all of Sentry DASHRADAR-2
+ * later showed nine of the ten iOS crashes had capture *off*, all inside the
+ * first ~21 s of scanning, a startup signature capture does not touch. That
+ * finding still stands; crash telemetry never implicated capture and is not
+ * what justifies this exclusion. What would lift it is a demonstrated WebKit
+ * round-trip improvement worth the risk, verified on a real iPhone.
  */
 export const WEBGPU_GRAPH_CAPTURE = true;
 

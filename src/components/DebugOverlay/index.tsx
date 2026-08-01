@@ -16,10 +16,12 @@ type DebugOverlayProps = {
 
 /**
  * Whether the WebGPU session runs with graph capture (recorded kernel
- * dispatches replayed per frame). "disabled" means no attempt was made, which
- * today only happens with the `WEBGPU_GRAPH_CAPTURE` flag off; "failed" means
- * the attempt was made and the worker fell back to a plain session, with the
- * probe's `graphCaptureError` block below the rows saying why.
+ * dispatches replayed per frame). "disabled" means no attempt was made: the
+ * `WEBGPU_GRAPH_CAPTURE` flag is off, or the browser is WebKit, where capture
+ * measures no faster and is skipped (see the flag's doc in the worker's
+ * consts.ts); "failed" means the attempt was made and the worker fell back to
+ * a plain session, with the probe's `graphCaptureError` block below the rows
+ * saying why.
  */
 const captureSupport = (probe: BackendProbe | undefined): string => {
   if (!probe) {
