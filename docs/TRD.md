@@ -130,6 +130,7 @@ src/
     pwaInstall/                 # trackPwaInstall: one-time pwa_installed analytics event via appinstalled (Chromium) + first standalone launch (iOS), deduped by a localStorage flag
     radarSignal/                # React-free math for the radar-detector-style meter: hudSignal (max police score across the HUD, remapped from the [SIGNAL_FLOOR, 1] score band onto [0, 1]), decayPeak (peak-hold + decay step), litSegments, signalColor (green to amber to red ramp), signalFromScore (the shared score-to-[0,1]-signal remap hudSignal delegates to, also stored on the contact cutout as its signal), and contactDirection (which third of the frame a detection's box center falls in; image-left is the driver's left), plus tuning consts SEGMENT_COUNT, DECAY_PER_SEC, SIGNAL_FLOOR, DIRECTION_LEFT_MAX, DIRECTION_RIGHT_MIN
     radarAudio/                 # React-free Web Audio beeper for the radar-detector screen: createRadarBeeper (one persistent square-wave oscillator; short self-terminating beeps that pulse faster and higher-pitched as the signal climbs, silence when nothing is detected, disposed on unmount) plus pure beepIntervalMs/beepFrequencyHz helpers; the AudioContext is created lazily on the first audible signal and unlocked from the next user gesture when autoplay policy suspends it
+    resetAppData/               # React-free wipe of every client-side store behind the developer Reset app data row: localStorage + sessionStorage, every CacheStorage bucket (precache, ort-runtime, model-cache), every IndexedDB database, and the service worker registrations; steps are isolated so one failing store never strands the rest half-cleared, and the caller reloads once it resolves
     saveFrame/                  # React-free download helpers for debug-mode frame saving: frameFilename (local-time dashradar-frame-YYYY-MM-DD-HHMMSS.jpg naming) and downloadBlob (object-URL anchor download)
     serviceWorker/              # waitForServiceWorkerControl (defer model load until the SW controls the page) + requestPersistentStorage
     timingHistory/              # rolling sessionStorage window of the last 10 scans' round-trip and inference times, bucketed to the nearest half second
@@ -535,6 +536,21 @@ word, and beeper keep following the remapped, peak-held signal. The raw
 readout is live rather than peak-held, so it drops to zero the moment a
 detection clears while the dial decays behind it.
 
+**Reset app data** is the one row under the master switch that is not a
+setting: it stores nothing and reads nothing back. Behind a `window.confirm`
+it calls `resetAppData()` (`src/lib/resetAppData`), which empties
+localStorage and sessionStorage, deletes every CacheStorage bucket (the
+Workbox precache, `ort-runtime`, and the `model-cache` holding the ~57 MB
+weights), deletes every IndexedDB database, and unregisters the service
+workers, then reloads. The steps settle independently, so a store that is
+unavailable or rejects cannot leave the app on a half-cleared state neither it
+nor anyone else has seen; the reload fires either way, because a launch on
+partially cleared state is still closer to first run than staying on the
+current one. It exists to reproduce a genuine first visit (the intro, the
+camera ask, the model download through Workbox's runtime cache) without
+reaching for browser devtools on a phone, which is where the app actually
+runs.
+
 `SettingsProvider` wraps the app outside `DetectionProvider`;
 `SettingsButton` (a gear in `StatusBar`) opens the full-screen
 `SettingsScreen`, which is the only UI that writes any of these options.
@@ -731,6 +747,7 @@ Vitest + Testing Library, **behavior-focused** (verify behavior, not implementat
 - **`src/lib/autoZoom`**: `stepAutoZoom` alternating 1x/2x on empty scans, locking at 2x while detected there, zooming in on a 1x detection that fits the margin-inset 2x region, holding 1x when a box crosses the region or its margin (including on a non-square frame, where the inset region is asymmetric in normalized coordinates), requiring every detection to fit before zooming, and zooming out first after a lost 2x lock.
 - **`src/lib/camera`**: constraint building (rear camera requested) and every `DOMException` name mapped to its `CameraErrorCode`, plus the `UNSUPPORTED` path when `mediaDevices` is missing, via `vi.stubGlobal("navigator", …)`.
 - **`src/lib/wakeLock`**: acquire/release call the Wake Lock API correctly, re-acquires on a stubbed `visibilitychange` event, stops re-requesting after release, and is a safe no-op when the API is unsupported.
+- **`src/lib/resetAppData`**: both web storages emptied; every cache bucket deleted, every registration unregistered, and every named IndexedDB database deleted, against stubbed globals; the pass still clears the remaining stores when one rejects, and resolves on a browser implementing none of the optional APIs; an unnamed database is skipped rather than stalling the pass.
 - **`src/lib/serviceWorker`**: `waitForServiceWorkerControl` resolves immediately when the Service Worker API is absent or a controller already exists, resolves on a `controllerchange` event when initially uncontrolled, and resolves via the timeout when control never arrives (fake timers), via `vi.stubGlobal("navigator", …)`.
 - **`src/workers/detection`**: `isWorkerResponse` accepts every valid message variant and rejects malformed ones (missing fields, unknown error code); the pure `preprocess` (ImageNet normalization, NCHW layout) and `decodeDetections` (sigmoid thresholding, cxcywh-to-xyxy, class-index-1 selection) helpers in `inference.ts` are tested directly against known inputs.
 - **`src/context/DetectionContext`**: the full status machine against an injected fake worker (the `createWorker` test seam), including the one-frame-in-flight invariant across a fast `stop()`-then-`start()` (a regression test for a real race that was fixed), a detection reaching the HUD immediately on its first frame and its box coasting through a frame the model misses it, and retrying after a `createImageBitmap` failure. Auto save has its own block (mocking `src/lib/saveFrame`): a detecting scan downloads its frame, consecutive detecting scans download one file each, a detecting scan still downloads with the detection image off (with no card shown), and nothing downloads for a detection-free scan carrying a frame, for a crop whose detection fails the road filter, or while the setting is off. The detection image is covered on both sides of the worker protocol: `includeCrop` goes false with the setting off, stays true for auto save alone, takes `includeThumbnail` off with it, and a cutout that arrives anyway is closed rather than shown. The same block covers the toast publication: a save exposes `savedFrame` under the name it downloaded as, consecutive saves publish distinct entries (the filename can repeat inside one second, so the toast re-shows off `at`), and a scan that saves nothing publishes nothing. Because the `load` message is now deferred to a microtask (`import.meta.env.PROD` is false in tests, so it resolves immediately), the "starts loading on mount" test awaits it with `waitFor` rather than asserting synchronously.

@@ -4,12 +4,13 @@ import { ShareCard } from "@/components/ShareCard";
 import { useDetection } from "@/context/DetectionContext";
 import { useDevVideo } from "@/context/DevVideoContext";
 import { useSettings } from "@/context/SettingsContext";
+import { resetAppData } from "@/lib/resetAppData";
 import {
   MODEL_DISPLAY_NAME,
   MODEL_REPO_URL,
   MODEL_REVISION,
 } from "@/workers/detection/consts";
-import { REPO_URL, ZOOM_MODE_OPTIONS } from "./consts";
+import { REPO_URL, RESET_CONFIRM_MESSAGE, ZOOM_MODE_OPTIONS } from "./consts";
 
 export * from "./consts";
 
@@ -29,6 +30,19 @@ const Toggle = ({ on }: { on: boolean }) => (
 );
 
 /**
+ * Wipes every client-side store behind a confirm, then reloads whatever
+ * happened: resetAppData reports that the clearing pass ran, not that every
+ * store was writable, and a launch on partially cleared state is still closer
+ * to first run than staying on this one.
+ */
+const handleReset = () => {
+  if (!window.confirm(RESET_CONFIRM_MESSAGE)) {
+    return;
+  }
+  void resetAppData().finally(() => window.location.reload());
+};
+
+/**
  * Full-screen settings panel built for driver-first use on a dash mount, in
  * landscape. Renders nothing until the panel is opened. Large, full-width rows
  * with big tap targets: the Audio alerts, Detection image, and Developer
@@ -36,9 +50,9 @@ const Toggle = ({ on }: { on: boolean }) => (
  * development-only controls Developer options reveals (Debug overlay, Zoom
  * indicator, Round-trip, Raw confidence, Camera preview, Frame preview, Save
  * frames, Auto save, Throttle inference, the segmented Zoom mode picker, Min
- * confidence), the Video file row (also shown whenever a clip is overriding
- * the feed, so its CLEAR button survives the master switch going off),
- * plus read-only Model and About rows.
+ * confidence, Reset app data), the Video file row (also shown whenever a clip
+ * is overriding the feed, so its CLEAR button survives the master switch going
+ * off), plus read-only Model and About rows.
  * Closes on the large close button or Escape. While it is open the detection
  * pump is paused (DetectionContext watches `settingsOpen`) and resumes on
  * close.
@@ -359,6 +373,27 @@ export const SettingsScreen = () => {
                     Lowers the bar for what counts as a detection.
                   </span>
                 </span>
+              </div>
+
+              {/* Only the button fires, never the whole row: every other row
+                  here is a full-width tap target, and this one deletes the
+                  install. */}
+              <div className="flex min-h-16 items-center justify-between gap-6 py-4">
+                <span className="flex flex-col gap-1">
+                  <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                    Reset app data
+                  </span>
+                  <span className="text-sm font-medium text-white/45">
+                    Erases storage and caches, then reloads.
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  className="min-h-12 shrink-0 rounded-lg border border-white/25 px-4 text-sm font-semibold tracking-[0.06em] text-white/90"
+                >
+                  RESET
+                </button>
               </div>
             </>
           )}
