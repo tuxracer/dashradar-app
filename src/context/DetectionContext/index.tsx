@@ -499,11 +499,12 @@ export const DetectionProvider = ({
   /**
    * Re-prime the pump after a result, delaying so captures never start less
    * than MIN_FRAME_INTERVAL_MS apart and the pump always rests at least
-   * PACING_REST_RATIO of the last round trip. On fast devices the absolute
-   * floor dominates, idling the GPU between frames instead of running
-   * back-to-back; on devices slower than the floor the rest ratio takes over,
-   * guaranteeing idle time proportional to how long inference takes so the
-   * GPU never runs at a 100% duty cycle on a dash-mounted phone.
+   * PACING_REST_RATIO of the last round trip. The interval between captures is
+   * therefore max(MIN_FRAME_INTERVAL_MS, 2x round trip). On fast devices the
+   * absolute floor dominates, idling the GPU between frames instead of running
+   * back-to-back; on slower devices the rest takes over, so the idle time
+   * grows with how long inference takes and a phone that has started thermal
+   * throttling automatically gets a longer break.
    */
   const schedulePacedFrame = useCallback((elapsedSincePostMs: number) => {
     const floorDelay = Math.max(0, MIN_FRAME_INTERVAL_MS - elapsedSincePostMs);

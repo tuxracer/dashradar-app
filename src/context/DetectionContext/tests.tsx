@@ -610,10 +610,10 @@ describe("DetectionProvider", () => {
         timing: { preprocessMs: 5, inferenceMs: 2_990, decodeMs: 5 },
       });
     });
-    // The pump must not re-prime immediately: it rests PACING_REST_RATIO of
-    // the round trip (1500 ms here), so 1400 ms in nothing new is posted.
+    // The pump must not re-prime immediately: it rests a full round trip
+    // (3000 ms here), so 2900 ms in nothing new is posted.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1_400);
+      await vi.advanceTimersByTimeAsync(2_900);
     });
     expect(
       worker.posted.filter((message) => message.type === "detect"),

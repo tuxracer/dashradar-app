@@ -87,7 +87,7 @@ export type SavedFrame = {
  * Which pacing rule set the delay before the next capture: the absolute
  * MIN_FRAME_INTERVAL_MS floor ("floor", fast devices) or the proportional
  * PACING_REST_RATIO rest ("rest", devices whose round trip is long enough
- * that resting half of it exceeds the remainder of the floor).
+ * that resting all of it exceeds the remainder of the floor).
  */
 export type PacingRule = "floor" | "rest";
 

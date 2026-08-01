@@ -20,17 +20,17 @@ export const MIN_FRAME_INTERVAL_MS = 1_000;
 
 /**
  * Fraction of a result's round-trip time the pump idles before starting the
- * next capture. The absolute floor above only paces devices faster than it;
- * a device whose inference takes longer than the floor (over a second on some
- * phones) would otherwise run the GPU back-to-back with zero idle, the worst
- * case for heat and battery on a dash-mounted phone, and sustained thermal
- * throttling then makes inference slower still. Resting half of each round
- * trip caps the inference duty cycle at roughly two thirds, trading a lower
- * detection rate (which was already low on such devices) for guaranteed
- * cool-down time. On fast devices the absolute floor dominates and this ratio
- * has no effect.
+ * next capture. Resting a full round trip puts captures 2x the round trip
+ * apart, so the GPU is idle at least half the time. The absolute floor above
+ * only paces devices whose round trip is under half of it; a device slower
+ * than that would otherwise run the GPU back-to-back with little idle, the
+ * worst case for heat and battery on a dash-mounted phone, and sustained
+ * thermal throttling then makes inference slower still. A round trip that
+ * grows because the phone is already throttling therefore buys back more
+ * cool-down time on its own, trading a lower detection rate (which was
+ * already low on such devices) for the phone staying alive for the drive.
  */
-export const PACING_REST_RATIO = 0.5;
+export const PACING_REST_RATIO = 1;
 
 /**
  * Debounce window for the anonymous `police_detected` analytics event. The
@@ -110,9 +110,9 @@ export const RECOVERY_HEALTHY_FRAMES = 5;
  * before the camera is assumed fully stalled (requestVideoFrameCallback
  * stopped firing, so the pump is hung waiting for a new frame) and recovery
  * runs. Set well above the worst-case interval between two legitimate results
- * on a slow device: pacing rests PACING_REST_RATIO of each round trip and a
- * slow phone's inference round trip can be a few seconds, so real results can
- * legitimately be 6-8 seconds apart. It is also deliberately larger than the
+ * on a slow device: pacing rests a full round trip (PACING_REST_RATIO) before
+ * the next capture and a slow phone's inference round trip can be a few
+ * seconds, so real results can legitimately be 6-8 seconds apart. It is also deliberately larger than the
  * crash-sentinel HEARTBEAT_INTERVAL_MS so a heartbeat-length gap never trips
  * the watchdog. A truly stalled feed never recovers, so a longer detection
  * latency here is a safe trade for not false-firing on a slow-but-alive device.
