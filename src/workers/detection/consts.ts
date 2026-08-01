@@ -85,7 +85,7 @@ export const DEV_MODEL_CACHE_NAME = "model-cache-dev";
  * "graph capture" row reads "failed" with the reason.
  *
  * WebKit is excluded regardless of this flag (`isWebKitUa` in
- * `src/lib/browserEngine`, checked in `loadForBackend`): crash telemetry
+ * `src/lib/browserEngine`, checked in `createModel`): crash telemetry
  * (Sentry DASHRADAR-2) showed iOS Safari 26 killing the page within seconds
  * of scanning with capture on, and capture has only ever been verified on
  * Chrome. WebKit runs a plain WebGPU session and the overlay row reads

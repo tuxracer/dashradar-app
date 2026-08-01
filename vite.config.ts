@@ -8,14 +8,15 @@ import { readFileSync } from "node:fs";
 import type { Plugin } from "vite";
 
 // Headers that make the page cross-origin isolated. Without these,
-// SharedArrayBuffer is unavailable and onnxruntime-web runs its WASM backend
-// single-threaded, which is the difference between ~1 and several inference
-// threads on the many mobile devices that have no usable WebGPU. Applied to dev,
-// preview, and (via vercel.json) production. `require-corp` works on every
-// browser including Safari; the only cross-origin runtime fetch is the Hugging
-// Face model, which is a CORS request and so passes the check. The ONNX runtime
-// wasm is served same-origin from /ort/ (see ortRuntime below) rather than the
-// jsdelivr CDN precisely so it does not need cross-origin exemption.
+// SharedArrayBuffer is unavailable and onnxruntime-web clamps its wasm runtime
+// to one thread. Inference runs on the GPU, but that runtime is what hosts the
+// WebGPU execution provider and runs any node the provider cannot take, so the
+// thread count still matters. Applied to dev, preview, and (via vercel.json)
+// production. `require-corp` works on every browser including Safari; the only
+// cross-origin runtime fetch is the Hugging Face model, which is a CORS request
+// and so passes the check. The ONNX runtime wasm is served same-origin from
+// /ort/ (see ortRuntime below) rather than the jsdelivr CDN precisely so it does
+// not need cross-origin exemption.
 const CROSS_ORIGIN_ISOLATION_HEADERS = {
   "Cross-Origin-Opener-Policy": "same-origin",
   "Cross-Origin-Embedder-Policy": "require-corp",
