@@ -161,6 +161,7 @@ Anonymous, no camera, location, or detection geometry; dev builds emit nothing. 
 | `camera_stall` | A stall, tagged with which detector caught it |
 | `wake_lock_failed` | The screen sleeping mid-drive is the app's worst silent failure |
 | `pwa_installed` | Chromium's install event, or first standalone launch on iOS |
+| `app_updated` | The first launch on a new build, `from` and `to` commit SHA; counts updates that were actually run, not ones downloaded |
 | `error` | Every failure that reaches the user, by code |
 | `police_detected` | Leading edge only, then quiet until police have been absent for a debounce window; no payload |
 

@@ -6,6 +6,7 @@ import { reactErrorHandler } from "@sentry/react";
 import { registerSW } from "virtual:pwa-register";
 import { Analytics } from "@vercel/analytics/react";
 import { isTrackingOptedOut } from "privacy-signals";
+import { trackAppUpdate } from "@/lib/appUpdate";
 import { trackPwaInstall } from "@/lib/pwaInstall";
 import { requestPersistentStorage } from "@/lib/serviceWorker";
 // The unqualified entrypoints, never the per-subset ones. These carry a
@@ -25,6 +26,7 @@ import App from "./App";
 registerSW();
 requestPersistentStorage();
 trackPwaInstall();
+trackAppUpdate();
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {

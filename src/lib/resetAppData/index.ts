@@ -1,7 +1,8 @@
 /**
  * Empties localStorage and sessionStorage: the settings blob, the intro and
- * camera-prompt flags, the PWA-install analytics guard, the crash-sentinel
- * record, and the session's timing history. Each store is cleared on its own
+ * camera-prompt flags, the PWA-install analytics guard, the last-run build
+ * record, the crash-sentinel record, and the session's timing history. Each
+ * store is cleared on its own
  * so an unavailable one (private mode / quota) still lets the other go.
  */
 const clearWebStorage = (): void => {
