@@ -16,7 +16,7 @@ Primary use case: **landscape, on a dash mount**. The driver interacts by reachi
 - **Large touch targets.** Every control must be hittable on the first try, one-handed, without looking closely. When in doubt, make it bigger.
 - **Glanceable, low-effort interaction.** Few taps, obvious state, no fine motor precision.
 - **Landscape-first layout.** Portrait must not look broken. The one exception is the first-open intro (`IntroScreen`/`IntroScene`), composed portrait-first because a first-time user meets it holding the phone in the hand.
-- **The QR code complements a share action; it is never a fallback for one.** Wherever the app hands itself to another device, show `ShareQr` unconditionally and add the Web Share button on top where `canShareApp()` is true. Never gate the QR on the share sheet being missing. The two solve different problems: the QR moves the app to a *second screen* someone is holding (and needs nothing from the browser), while the share sheet moves it to a *second device* of your own, which is the only thing that helps when the failing device is the phone in your hand. Treating either as the other's last resort removes a route that was doing its own job. Same rule for any future handoff surface, not just `ErrorScreen` and `IntroScreen`.
+- **The QR code complements a share action; it is never a fallback for one.** Wherever the app hands itself to another device, show `ShareQr` unconditionally and add the Web Share button on top where `canShareApp()` is true. Never gate the QR on the share sheet being missing. The two solve different problems: the QR moves the app to a *second screen* someone is holding (and needs nothing from the browser), while the share sheet moves it to a *second device* of your own, which is the only thing that helps when the failing device is the phone in your hand. Treating either as the other's last resort removes a route that was doing its own job. Same rule for any future handoff surface, not just `IntroScreen` and `UnsupportedScreen`.
 
 **Thermal and battery budget is a first-class constraint.** Continuous neural inference on a phone clamped to a windshield in direct sun is close to the worst thermal environment a phone sees, and a detector that throttles or kills the phone mid-drive fails silently exactly when the driver relies on it. The current balance is the 1 s scan floor (`MIN_FRAME_INTERVAL_MS`) plus the adaptive rest ratio, with the coasting tracker and peak-hold meter covering the gaps between results. Gate any change that runs inference more often or more heavily on "does this heat the phone or drain the battery on a real dash-mounted device in the sun", verified on-device, and bias toward the conservative side.
 
@@ -58,12 +58,13 @@ pnpm dev         # Vite dev server, http://localhost:5173
 pnpm build       # Production build (vite build → dist/)
 pnpm start       # Serve the production build (vite preview)
 pnpm test        # Run tests once (vitest run)
+pnpm test <path> # Run one module's tests (e.g. pnpm test src/lib/detection)
 pnpm test:watch  # Run tests in watch mode
 pnpm check       # Verify formatting + lint + typecheck (run before commits)
 pnpm format      # Auto-fix formatting (prettier --write)
 ```
 
-**Important**: Always run `pnpm check` before commits. It only verifies formatting; run `pnpm format` to fix.
+**Important**: Always run `pnpm check` before commits. It verifies formatting, lint, and types but fixes nothing; run `pnpm format` for the formatting failures.
 
 **Documentation**: When making major changes (architecture, new modules, API changes), update [docs/TRD.md](docs/TRD.md).
 
