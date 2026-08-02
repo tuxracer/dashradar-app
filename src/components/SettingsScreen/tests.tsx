@@ -135,6 +135,12 @@ const TOGGLE_ROWS: ReadonlyArray<{
     developer: true,
   },
   {
+    label: "Detection view",
+    key: "detectionView",
+    afterTap: true,
+    developer: true,
+  },
+  {
     label: "Throttle inference",
     key: "throttleInference",
     afterTap: false,

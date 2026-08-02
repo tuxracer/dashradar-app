@@ -23,7 +23,7 @@ export type Settings = {
    * Master switch for the development-only settings (showDebug,
    * frameThumbnails, saveFrames, autoSaveFrames, throttleInference,
    * zoomMode, confidenceThreshold, zoomIndicator,
-   * roundTripIndicator, cameraPreview, rawConfidence). Off by
+   * roundTripIndicator, cameraPreview, detectionView, rawConfidence). Off by
    * default. While it is off, SettingsProvider
    * reports each of those at its DEVELOPER_OPTIONS_OFF value no matter what is
    * stored, so a development tweak left enabled cannot alter a normal drive.
@@ -137,6 +137,16 @@ export type Settings = {
    */
   cameraPreview: boolean;
   /**
+   * When true, the radar meter is replaced by the live feed at full screen
+   * with the model's detection boxes drawn over it, plus an outline of the
+   * region the model is actually shown. For checking aim, framing, and false
+   * positives against what the detector really sees. A developer option, so it
+   * only takes effect while developerOptions is on: the app deliberately never
+   * shows the feed, and the meter is what a driver reads. Replacing the meter
+   * also takes the beeper and the contact card off, since both live inside it.
+   */
+  detectionView: boolean;
+  /**
    * When true, the dial readout shows the model's raw detection score in
    * [0, 1] instead of the percentage. The percentage derives from a remapped
    * signal band (the [SIGNAL_FLOOR, 1] score band stretched over the full
@@ -174,14 +184,15 @@ export type DeveloperOptions = Pick<
   | "zoomIndicator"
   | "roundTripIndicator"
   | "cameraPreview"
+  | "detectionView"
   | "rawConfidence"
 >;
 
 /**
  * Value exposed by the settings context via useSettings(). The developer
  * options (showDebug, frameThumbnails, saveFrames, autoSaveFrames,
- * throttleInference, zoomMode, confidenceThreshold,
- * zoomIndicator, roundTripIndicator, cameraPreview, rawConfidence) are the
+ * throttleInference, zoomMode, confidenceThreshold, zoomIndicator,
+ * roundTripIndicator, cameraPreview, detectionView, rawConfidence) are the
  * *effective* values, already gated on developerOptions, so consumers never
  * have to repeat the gate. Each toggle (or setter) still writes the stored
  * value underneath.
@@ -215,6 +226,8 @@ export type SettingsContextValue = {
   toggleRoundTripIndicator: () => void;
   cameraPreview: boolean;
   toggleCameraPreview: () => void;
+  detectionView: boolean;
+  toggleDetectionView: () => void;
   rawConfidence: boolean;
   toggleRawConfidence: () => void;
   /** Whether the full-screen settings panel is open. Ephemeral, not persisted. */
@@ -255,6 +268,7 @@ export const isPersistedSettings = (
     (value.roundTripIndicator === undefined ||
       isBoolean(value.roundTripIndicator)) &&
     (value.cameraPreview === undefined || isBoolean(value.cameraPreview)) &&
+    (value.detectionView === undefined || isBoolean(value.detectionView)) &&
     (value.rawConfidence === undefined || isBoolean(value.rawConfidence))
   );
 };

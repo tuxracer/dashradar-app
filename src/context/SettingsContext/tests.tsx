@@ -168,6 +168,7 @@ describe("SettingsContext", () => {
         zoomIndicator: false,
         roundTripIndicator: false,
         cameraPreview: false,
+        detectionView: false,
         rawConfidence: false,
       }),
     );

@@ -140,6 +140,9 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const [storedCameraPreview, setCameraPreview] = useState(
     () => loadSettings().cameraPreview,
   );
+  const [storedDetectionView, setDetectionView] = useState(
+    () => loadSettings().detectionView,
+  );
   const [storedRawConfidence, setRawConfidence] = useState(
     () => loadSettings().rawConfidence,
   );
@@ -180,6 +183,9 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const cameraPreview = developerOptions
     ? storedCameraPreview
     : DEVELOPER_OPTIONS_OFF.cameraPreview;
+  const detectionView = developerOptions
+    ? storedDetectionView
+    : DEVELOPER_OPTIONS_OFF.detectionView;
   const rawConfidence = developerOptions
     ? storedRawConfidence
     : DEVELOPER_OPTIONS_OFF.rawConfidence;
@@ -200,6 +206,7 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       zoomIndicator: storedZoomIndicator,
       roundTripIndicator: storedRoundTripIndicator,
       cameraPreview: storedCameraPreview,
+      detectionView: storedDetectionView,
       rawConfidence: storedRawConfidence,
     };
     try {
@@ -221,6 +228,7 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     storedZoomIndicator,
     storedRoundTripIndicator,
     storedCameraPreview,
+    storedDetectionView,
     storedRawConfidence,
   ]);
 
@@ -276,6 +284,10 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     setCameraPreview((prev) => !prev);
   }, []);
 
+  const toggleDetectionView = useCallback(() => {
+    setDetectionView((prev) => !prev);
+  }, []);
+
   const toggleRawConfidence = useCallback(() => {
     setRawConfidence((prev) => !prev);
   }, []);
@@ -318,6 +330,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleRoundTripIndicator,
       cameraPreview,
       toggleCameraPreview,
+      detectionView,
+      toggleDetectionView,
       rawConfidence,
       toggleRawConfidence,
       settingsOpen,
@@ -351,6 +365,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleRoundTripIndicator,
       cameraPreview,
       toggleCameraPreview,
+      detectionView,
+      toggleDetectionView,
       rawConfidence,
       toggleRawConfidence,
       settingsOpen,
