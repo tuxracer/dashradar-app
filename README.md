@@ -8,7 +8,9 @@ No account, no recording, no images leave the phone.
 
 Crowd-sourced apps like Waze are only as good as the crowd nearby: no alert reaches you until another driver has flagged that patrol car over a live connection. This app looks at the road itself, so it works on the first drive, for the first user, anywhere the camera can see.
 
-Sending each frame to a cloud vision model like Claude or ChatGPT doesn't fit either. This isn't take a photo, get an answer: nobody taps anything, and the camera is scanned on its own about once a second for as long as the drive lasts. That's thousands of frames an hour someone would have to pay for, every round trip is a blind spot on a road that already moved, and everything the phone's camera sees while the app is open would land on someone else's servers. So one of the challenges this app takes on is doing the detection on-device: in the browser, on the phone's GPU, with frames that never leave the device. That means a model small and fast enough to keep up on that hardware, and accurate enough to be useful.
+Sending each frame to a cloud vision model like Claude or ChatGPT doesn't fit either. This isn't take a photo, get an answer: nobody taps anything, and the camera is scanned on its own about once a second for as long as the drive lasts. That's thousands of frames an hour someone would have to pay for, every round trip is a blind spot on a road that already moved, and everything the phone's camera sees while the app is open would land on someone else's servers.
+
+So one of the challenges this app takes on is doing the detection on-device: in the browser, on the phone's GPU, with frames that never leave the device.
 
 ## Features
 
