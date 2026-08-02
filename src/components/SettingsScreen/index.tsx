@@ -486,7 +486,7 @@ export const SettingsScreen = () => {
                 About
               </span>
               <span className="text-sm font-medium text-white/45">
-                No data leaves the device.
+                No images leave the device.
               </span>
             </span>
             <span className="text-base font-semibold tracking-[0.12em] text-white/60">

@@ -2,7 +2,7 @@
 
 Turn a dash-mounted phone into an on-device, computer-vision police detector. A custom model watches the road through the camera and drives a signal meter that climbs as a patrol vehicle comes into view, with an optional beep. You read it at a glance; your eyes stay on the road.
 
-No account, no recording, no data leaves the phone.
+No account, no recording, no images leave the phone.
 
 ## Why on-device
 

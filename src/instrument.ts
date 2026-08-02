@@ -23,8 +23,8 @@ const previousSessionEnd = readPreviousSessionEnd();
  * Initialize Sentry as a side effect at import time, so instrumentation is in
  * place before the rest of the app's modules load (main.tsx imports this file
  * first). Reporting is skipped entirely when the user has asked not to be
- * tracked: dashradar's principle is that no data leaves the device, so error
- * reporting honors Do Not Track / Global Privacy Control the same way
+ * tracked: no camera images ever leave the device, and the diagnostics that do
+ * honor Do Not Track / Global Privacy Control the same way
  * src/main.tsx already gates Vercel Analytics: only a definitive "not opted
  * out" (=== false) initializes the SDK, since null means the signals could
  * not be read, which is not consent. Dev builds are treated the same as an
