@@ -8,6 +8,16 @@ A custom model, fine-tuned to recognize patrol vehicles, drives a glanceable ins
 
 Crowd-sourced apps like Waze depend on a large, active userbase reporting sightings in real time. They are only as good as the crowd nearby, they need a live network connection, and a single user on a quiet road sees nothing. dashradar takes the opposite approach: it looks at the road itself. Detection runs entirely on the phone, so it needs no network, no crowd, and no other users. It works on the first drive, for the first user, anywhere the camera can see the road.
 
+## Why not send frames to a cloud model
+
+A hosted vision model would probably identify a patrol vehicle in any single photo more accurately than anything that fits on a phone. It still doesn't fit this problem.
+
+Detection here is not press a button and get an answer. The app scans continuously for the whole drive, a frame at least every second, which is thousands of images an hour for one driver. Someone has to pay for every one of them, so either the driver brings an API key or the app stops being free. Speed rules it out separately: a round trip to a hosted model rarely comes back in under a second, so each scan would be waiting on the previous answer, and the gaps between them are blind spots on a road that moved while the request was in flight.
+
+The privacy cost is the bigger one. Streaming the view out of the windshield to a third party turns a tool for noticing patrol cars into a running record of where someone drove and what they passed. An app meant to help a driver should not be the thing watching them, so frames stay on the device.
+
+What's left is the harder version of the problem: a model small enough to run in a browser on a phone GPU, accurate enough to be worth glancing at, and quick enough to finish before the next scan starts. That constraint shapes most of what is in this repo.
+
 ## Features
 
 - **Radar-detector view**: a signal meter that climbs as a patrol vehicle appears, with an optional beep. Glanceable, no scene to parse.
