@@ -99,7 +99,8 @@ The same voice applies to every other surface a person reads: code comments, com
 
 ## Model
 
-A custom **RF-DETR Small** checkpoint fine-tuned on Las Vegas Metro police vehicles, published at [`tuxracer/las-vegas-metro-rfdetr-small-t1`](https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1) and trained/exported from the sibling repo `~/Development/las-vegas-metro-rfdetr-small-t1`. Mobile WebGPU is the only target and the only execution path. `MODEL_URL` (`src/workers/detection/consts.ts`) streams `model_fp16.onnx` (~57 MB, mixed precision). Signature: input `[1,3,512,512]` fp32 NCHW; outputs `dets [1,300,4]` (cxcywh, normalized) and `labels [1,300,2]` (raw logits, per-query sigmoid, police at index 1). No NMS. See Gotchas before changing the model.
+A custom **RF-DETR Small** checkpoint fine-tuned on Las Vegas Metro police vehicles, published at [`tuxracer/las-vegas-metro-rfdetr-small`](https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small) and trained/exported from the sibling repo `~/Development/las-vegas-metro-rfdetr-small-t1`
+(local directory still carries the old `-t1` name; the Hugging Face repo does not). Mobile WebGPU is the only target and the only execution path. `MODEL_URL` (`src/workers/detection/consts.ts`) streams `model_fp16.onnx` (~57 MB, mixed precision). Signature: input `[1,3,512,512]` fp32 NCHW; outputs `dets [1,300,4]` (cxcywh, normalized) and `labels [1,300,2]` (raw logits, per-query sigmoid, police at index 1). No NMS. See Gotchas before changing the model.
 
 ## Gotchas
 

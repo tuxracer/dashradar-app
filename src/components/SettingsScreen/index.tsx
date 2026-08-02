@@ -7,9 +7,9 @@ import { useDevVideo } from "@/context/DevVideoContext";
 import { useSettings } from "@/context/SettingsContext";
 import { resetAppData } from "@/lib/resetAppData";
 import {
-  MODEL_DISPLAY_NAME,
   MODEL_REPO_URL,
   MODEL_REVISION,
+  MODEL_SLUG,
 } from "@/workers/detection/consts";
 import { REPO_URL, RESET_CONFIRM_MESSAGE, ZOOM_MODE_OPTIONS } from "./consts";
 
@@ -471,7 +471,7 @@ export const SettingsScreen = () => {
               Model
             </span>
             <span className="text-base font-semibold tracking-[0.04em] text-white/60">
-              {MODEL_DISPLAY_NAME} · {MODEL_REVISION} ↗
+              {MODEL_SLUG} · {MODEL_REVISION} ↗
             </span>
           </a>
 

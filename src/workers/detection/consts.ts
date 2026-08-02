@@ -41,22 +41,15 @@
  */
 export const MODEL_REVISION = "v3.3";
 
-/** Training-run suffix on the published repo name; see MODEL_DISPLAY_NAME. */
-const MODEL_RUN_SUFFIX = "-t1";
-
 /**
  * Hugging Face repo name the weights are published under. Paired with
  * MODEL_REVISION it names exactly which model a build runs, which is why both
- * are reported with the model-download analytics event.
+ * are reported with the model-download analytics event. Also the name shown in
+ * the settings Model row: the repo carried a "-t1" training-run suffix through
+ * v3.3, which the row used to strip because it meant nothing to a reader, but
+ * the repo was renamed to drop it and the slug now reads cleanly as-is.
  */
-export const MODEL_SLUG = `las-vegas-metro-rfdetr-small${MODEL_RUN_SUFFIX}`;
-
-/**
- * Model name for the settings Model row. The training-run suffix is a detail of
- * how the weights were published and means nothing to someone reading that row,
- * so the row drops it; the repo URL the row links to keeps the full slug.
- */
-export const MODEL_DISPLAY_NAME = MODEL_SLUG.slice(0, -MODEL_RUN_SUFFIX.length);
+export const MODEL_SLUG = "las-vegas-metro-rfdetr-small";
 
 /** Hugging Face model page the weights are downloaded from. */
 export const MODEL_REPO_URL = `https://huggingface.co/tuxracer/${MODEL_SLUG}`;
