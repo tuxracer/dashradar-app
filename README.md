@@ -8,7 +8,7 @@ No account, no recording, no data leaves the phone.
 
 Crowd-sourced apps like Waze are only as good as the crowd nearby: they need other users reporting and a live connection. dashradar looks at the road itself, so it works on the first drive, for the first user, anywhere the camera can see.
 
-Sending each frame to a cloud vision model like Claude or ChatGPT doesn't fit either. Scanning every second for a whole drive is thousands of frames an hour that someone would have to pay for, every round trip is a blind spot on a road that moved while the request was in flight, and streaming the view out of a windshield to a third party turns a driving aid into a record of where you drove. So detection runs in the browser, on the phone's GPU, and frames never leave the device. That leaves the harder problem, a model small and fast enough for a phone yet accurate enough to trust, and solving it is most of what's in this repo.
+Sending each frame to a cloud vision model like Claude or ChatGPT doesn't fit either. This isn't take a photo, get an answer: nobody taps anything, and the camera is scanned on its own about once a second for as long as the drive lasts. That's thousands of frames an hour that someone would have to pay for, every round trip is a blind spot on a road that moved while the request was in flight, and streaming the view out of a windshield to a third party turns a driving aid into a record of where you drove. So detection runs in the browser, on the phone's GPU, and frames never leave the device. That leaves the harder problem, a model small and fast enough for a phone yet accurate enough to trust, and solving it is most of what's in this repo.
 
 ## Features
 
