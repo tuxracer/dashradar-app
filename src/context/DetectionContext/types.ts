@@ -1,7 +1,7 @@
-import type { AutoZoomState } from "@/lib/autoZoom";
-import type { HudModel } from "@/lib/detection";
+import type { AutoZoomLevel, AutoZoomState } from "@/lib/autoZoom";
+import type { HudModel, Size } from "@/lib/detection";
 import type { ContactDirection } from "@/lib/radarSignal";
-import type { NormalizedBox } from "@/types";
+import type { Detection, NormalizedBox } from "@/types";
 import type {
   BackendProbe,
   DetectionErrorCode,
@@ -115,6 +115,25 @@ export type DebugSnapshot = {
   zoomLocked: boolean;
 };
 
+/**
+ * One completed scan as the detection view draws it: the frame's own
+ * detections after the road-class and confidence filter, before the coasting
+ * tracker, so a box on screen means the model saw it on that frame rather than
+ * that a track is being held through a miss. The frame geometry and crop
+ * factor travel with them, because the boxes must be mapped against the frame
+ * that produced them and not against whatever the video element measures a
+ * second later, after a rotation or an auto-zoom step.
+ */
+export type ScanResult = {
+  detections: Detection[];
+  /** Intrinsic size of the captured frame, in pixels. */
+  frame: Size;
+  /** Crop factor the frame was captured at. */
+  zoom: AutoZoomLevel;
+  /** performance.now() when the result arrived. */
+  at: number;
+};
+
 export type DetectionContextValue = {
   status: DetectionStatus;
   /**
@@ -130,6 +149,12 @@ export type DetectionContextValue = {
   downloadingModel: boolean;
   modelProgress: ModelProgress;
   hud: HudModel | undefined;
+  /**
+   * The most recent scan's raw per-frame detections, for the detection view's
+   * bounding boxes. Undefined until the first result. Never cleared: the view
+   * only renders while scanning, and the next scan replaces it a second later.
+   */
+  scan: ScanResult | undefined;
   /**
    * Latest per-frame diagnostics. Updated on every result but held in a ref
    * and read on demand, so results don't re-render the app while the debug

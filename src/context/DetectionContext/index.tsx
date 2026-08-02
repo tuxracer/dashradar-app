@@ -76,6 +76,7 @@ import type {
   DetectionWorkerLike,
   ModelProgress,
   SavedFrame,
+  ScanResult,
 } from "./types";
 
 export * from "./consts";
@@ -248,6 +249,7 @@ export const DetectionProvider = ({
     totalBytes: 0,
   });
   const [hud, setHud] = useState<HudModel>();
+  const [scan, setScan] = useState<ScanResult>();
   const [error, setError] = useState<DetectionErrorCode>();
   // The per-frame debug snapshot updates on every result, but nothing renders
   // it by default (the debug overlay is hidden), so it lives in a ref read via
@@ -677,6 +679,19 @@ export const DetectionProvider = ({
           // the object. In the fixed modes the machine is left at its reset
           // state; sendFrame ignores it there.
           const frameInfo = lastFrameInfoRef.current;
+          // Publish this scan's own detections for the detection view. Raw
+          // per-frame output, not the coasted `tracked` set: the view exists to
+          // show what the model saw on the frame it saw it. Skipped when no
+          // frame info was recorded, which only happens for a result that no
+          // capture preceded, since mapping boxes needs the frame's geometry.
+          if (frameInfo) {
+            setScan({
+              detections: roadDetections,
+              frame: { width: frameInfo.width, height: frameInfo.height },
+              zoom: frameInfo.zoom,
+              at: performance.now(),
+            });
+          }
           if (zoomModeRef.current === "auto" && frameInfo) {
             autoZoomRef.current = stepAutoZoom({
               zoom: frameInfo.zoom,
@@ -1346,6 +1361,7 @@ export const DetectionProvider = ({
       downloadingModel,
       modelProgress,
       hud,
+      scan,
       getDebugSnapshot,
       error,
       contact: shownContact,
@@ -1364,6 +1380,7 @@ export const DetectionProvider = ({
       downloadingModel,
       modelProgress,
       hud,
+      scan,
       getDebugSnapshot,
       error,
       shownContact,

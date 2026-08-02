@@ -86,6 +86,17 @@ const Probe = () => {
   );
 };
 
+const ScanProbe = () => {
+  const { scan } = useDetection();
+  return (
+    <div>
+      <span data-testid="scan-count">{scan?.detections.length ?? "none"}</span>
+      <span data-testid="scan-zoom">{scan?.zoom ?? "none"}</span>
+      <span data-testid="scan-width">{scan?.frame.width ?? "none"}</span>
+    </div>
+  );
+};
+
 // The debug snapshot lives in a ref read through getDebugSnapshot() (results
 // must not re-render the app), so this probe reads it on demand instead of
 // rendering live state.
@@ -537,6 +548,106 @@ describe("DetectionProvider", () => {
     expect(
       worker.posted.filter((message) => message.type === "detect"),
     ).toHaveLength(2);
+  });
+
+  it("publishes each scan's own detections with the frame they came from", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(
+      <>
+        <ScanProbe />
+        <StartOnReady />
+      </>,
+    );
+    act(() => {
+      worker.emit({ type: "ready" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByTestId("scan-count").textContent).toBe("none");
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [
+          {
+            label: "car",
+            score: 0.9,
+            box: { xmin: 0.4, ymin: 0.5, xmax: 0.6, ymax: 0.8 },
+          },
+          {
+            label: "chair",
+            score: 0.99,
+            box: { xmin: 0.1, ymin: 0.1, xmax: 0.2, ymax: 0.2 },
+          },
+        ],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+      });
+    });
+    // The road filter runs before publication, so the chair never reaches the
+    // overlay, and the frame geometry is the captured bitmap's own.
+    expect(screen.getByTestId("scan-count").textContent).toBe("1");
+    expect(screen.getByTestId("scan-width").textContent).toBe("1280");
+    expect(screen.getByTestId("scan-zoom").textContent).toBe(String(ZOOM_OFF));
+  });
+
+  it("drops a scan's boxes as soon as the model stops seeing them", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(
+      <>
+        <Probe />
+        <ScanProbe />
+        <StartOnReady />
+      </>,
+    );
+    act(() => {
+      worker.emit({ type: "ready" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [
+          {
+            label: "car",
+            score: 0.9,
+            box: { xmin: 0.4, ymin: 0.5, xmax: 0.6, ymax: 0.8 },
+          },
+        ],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+        fingerprint: 1,
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    });
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+        fingerprint: 2,
+      });
+    });
+    // The tracker coasts the lost car, so the HUD still shows it; the scan is
+    // raw per-frame output, so its box is gone the moment the model loses it.
+    expect(screen.getByTestId("objects").textContent).toBe("1");
+    expect(screen.getByTestId("scan-count").textContent).toBe("0");
   });
 
   it("retries frame capture after createImageBitmap fails once", async () => {
