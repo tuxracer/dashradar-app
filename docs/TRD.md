@@ -2,7 +2,7 @@
 
 ## 1. What it is
 
-A phone on a dash mount runs object detection on its rear camera and shows a full-screen signal meter styled like a radar detector. The camera feed is never drawn on screen; a detection adds a small card with a cutout of what was seen. Everything runs in the browser: a Vite React SPA with no backend, no accounts, and no network traffic beyond the app shell and the model weights. It is a computer-vision detector, not a radar detector.
+A phone on a dash mount runs object detection on its rear camera and shows a full-screen signal meter styled like a radar detector. The camera feed is never drawn on screen outside a developer-only detection view (§10); a detection adds a small card with a cutout of what was seen. Everything runs in the browser: a Vite React SPA with no backend, no accounts, and no network traffic beyond the app shell and the model weights. It is a computer-vision detector, not a radar detector.
 
 Inference runs in a Web Worker so it never blocks the video element. The app works offline once the model has downloaded, keeps the screen awake while scanning, and stays inside the thermal and battery budget of a phone clamped to a windshield in the sun. Deliberately absent: recording, history, sync, a backend picker (WebGPU or nothing, §2), and confidence numbers in the driver-facing UI. The only state surviving a reload is the cached weights and a small `localStorage` settings object.
 
@@ -42,7 +42,7 @@ flowchart TB
     H --> R[RadarDetectorScreen]
 ```
 
-Everything below the provider is pure: no React, no DOM. Components read `useDetection()` and never touch the worker. Modules are directories named after their primary export (`index.ts` plus optional `consts.ts`, `types.ts`, `tests.ts`); contexts own lifecycle and state (`DetectionContext`: worker and frame pump; `SettingsContext`: gated settings; `DevVideoContext`: the stand-in video file), `lib/*` holds the React-free domain logic (detection filter and HUD shaping, tracker, auto zoom, radar signal and audio, camera, crash sentinel, scan clock, and small single-purpose helpers), and `RadarDetectorScreen` is the driver-facing detection UI, with `DetectionView` its developer-only alternative that overlays the model's boxes on the live feed, and `CameraView` holding the hidden `<video>`. Never import `workers/detection/index.ts` from app code (it pulls in onnxruntime-web); import protocol types from `workers/detection/types`.
+Everything below the provider is pure: no React, no DOM. Components read `useDetection()` and never touch the worker. Modules are directories named after their primary export (`index.ts` plus optional `consts.ts`, `types.ts`, `tests.ts`); contexts own lifecycle and state (`DetectionContext`: worker and frame pump; `SettingsContext`: gated settings; `DevVideoContext`: the stand-in video file), `lib/*` holds the React-free domain logic (detection filter and HUD shaping, tracker, auto zoom, radar signal and audio, camera, crash sentinel, scan clock, and small single-purpose helpers), and `RadarDetectorScreen` is the driver-facing detection UI, with `DetectionView` its developer-only alternative that overlays the model's boxes on the live feed, and `CameraView` holding the hidden `<video>` (visible only through `DetectionView`). Never import `workers/detection/index.ts` from app code (it pulls in onnxruntime-web); import protocol types from `workers/detection/types`.
 
 `useDetection()` hands out status, download progress, the `HudModel`, `scan` (the frame's raw per-frame detections, before the coasting tracker smooths them, so the detection view can draw what the model actually saw rather than a track being held through a miss), the current `contact`, the last saved frame, an error code, a camera epoch (forces a `CameraView` remount), `start(video)` / `stop()`, and `getDebugSnapshot()`. The snapshot is a ref read on demand, not context state: per-frame timing through state would re-render every consumer for numbers nobody is showing.
 
@@ -109,7 +109,7 @@ The decode drops boxes whose shorter edge is under `MIN_BOX_EDGE_PX` of the inpu
 
 Zoom is a digital crop, never an upscale: `CAMERA_CONSTRAINTS` asks for ~1024 per axis so the 2x crop lands at 512 native pixels, and any new zoom level must be gated on the granted stream's real dimensions. Native camera zoom is not an option (iOS Safari does not expose it; Chrome Android reports device-defined units). The constraints also cap the frame rate (ideal 15), roughly halving steady capture power against the 30 fps default; not lower, because auto-exposure stretches shutter time toward the frame period and long shutters blur exactly the night frames the model needs sharp.
 
-**HUD shaping.** `buildHudModel` picks the nearest detection by normalized box area and keeps the rest in `others` so the meter can consider the highest score anywhere in frame. The NEAR flag is retained from the earlier bounding-box HUD and nothing reads it. `mapBoxToViewport`, from the same HUD, is no longer unused: the detection view maps both `scanRegionBox` (the model's centered square crop, narrowed by zoom) and each detection's box through it, so it still assumes the video is rendered `object-fit: cover`.
+**HUD shaping.** `buildHudModel` picks the nearest detection by normalized box area and keeps the rest in `others` so the meter can consider the highest score anywhere in frame. The NEAR flag is retained from the earlier bounding-box HUD and nothing reads it. `mapBoxToViewport`, from the same HUD, maps both `scanRegionBox` (the model's centered square crop, narrowed by zoom) and each detection's box for the detection view, so it still assumes the video is rendered `object-fit: cover`.
 
 ## 9. UI
 
@@ -187,7 +187,7 @@ A real browser (chrome-devtools against a built preview) verifies the model load
 
 ## 15. Acceptance
 
-1. On a phone, the app asks for the rear camera and shows the meter; the feed is never displayed.
+1. On a phone, the app asks for the rear camera and shows the meter; the feed is never displayed outside the developer-only detection view.
 2. A police detection lights the ladder and readout, flips the status to ALERT, and shows the contact card with cutout and direction.
 3. Without usable WebGPU, the intro still plays and START lands on the unsupported screen: no camera prompt, no download, no retry.
 4. Permission denial, no camera, camera in use, and an unsupported browser each get their own explanatory screen.
