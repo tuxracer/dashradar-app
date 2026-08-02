@@ -87,7 +87,7 @@ The `detections` extras: the **cutout** (top detection's box, padded, clamped, d
 
 ## 7. The model
 
-A custom **RF-DETR Small** checkpoint fine-tuned on Las Vegas Metro police vehicles, published at [`tuxracer/las-vegas-metro-rfdetr-small-t1`](https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small-t1) and exported from the sibling repo of the same name. The worker streams `model_fp16.onnx` (~57 MB) from Hugging Face. Signature: input `[1,3,512,512]` fp32 NCHW, ImageNet-normalized; outputs `dets [1,300,4]` (cxcywh, normalized) and `labels [1,300,2]` (raw logits). No NMS; RF-DETR is set-based.
+A custom **RF-DETR Small** checkpoint fine-tuned on Las Vegas Metro police vehicles, published at [`tuxracer/las-vegas-metro-rfdetr-small`](https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small) and exported from a sibling training repo. The worker streams `model_fp16.onnx` (~57 MB) from Hugging Face. Signature: input `[1,3,512,512]` fp32 NCHW, ImageNet-normalized; outputs `dets [1,300,4]` (cxcywh, normalized) and `labels [1,300,2]` (raw logits). No NMS; RF-DETR is set-based.
 
 **Raw onnxruntime-web, not the Transformers.js pipeline.** The head scores one real class with a per-query sigmoid, police at index 1; the pipeline's softmax-with-background decode drops every real detection, and the matching image processor is not a registered JS processor. Any replacement model must be verified end to end in a real browser; there is no second execution path to catch a bad export.
 

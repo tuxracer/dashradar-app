@@ -44,10 +44,9 @@ export const MODEL_REVISION = "v3.4";
 /**
  * Hugging Face repo name the weights are published under. Paired with
  * MODEL_REVISION it names exactly which model a build runs, which is why both
- * are reported with the model-download analytics event. Also the name shown in
- * the settings Model row: the repo carried a "-t1" training-run suffix through
- * v3.3, which the row used to strip because it meant nothing to a reader, but
- * the repo was renamed to drop it and the slug now reads cleanly as-is.
+ * are reported with the model-download analytics event. Also the name shown
+ * verbatim in the settings Model row, so keep it readable to someone who has
+ * never seen the training side: no run numbers or export suffixes.
  */
 export const MODEL_SLUG = "las-vegas-metro-rfdetr-small";
 
