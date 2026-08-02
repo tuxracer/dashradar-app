@@ -288,14 +288,17 @@ const RadarScreen = () => {
           />
         )
       )}
-      {/* The meter mounts immediately so the first paint past the permission
-          flow is the instrument reading INITIALIZING, not a blank backdrop;
-          the sweep starts once detection is running. A first-visit download
-          is still covered by the opaque ModelLoadScreen below. */}
+      {/* In the radar-meter branch below, the meter mounts immediately so the
+          first paint past the permission flow is the instrument reading
+          INITIALIZING, not a blank backdrop; the sweep starts once detection
+          is running. The detection-view branch has no such instrument, so its
+          pre-camera frames are a blank backdrop until the first scan lands. A
+          first-visit download is still covered by the opaque ModelLoadScreen
+          below. */}
       {detectionView ? (
         <DetectionView
           detections={scan?.detections ?? []}
-          frame={scan?.frame ?? viewportSize}
+          frame={scan?.frame ?? videoSize ?? viewportSize}
           viewport={viewportSize}
           zoom={scan?.zoom ?? ZOOM_OFF}
         />

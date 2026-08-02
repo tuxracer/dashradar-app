@@ -151,8 +151,10 @@ export type DetectionContextValue = {
   hud: HudModel | undefined;
   /**
    * The most recent scan's raw per-frame detections, for the detection view's
-   * bounding boxes. Undefined until the first result. Never cleared: the view
-   * only renders while scanning, and the next scan replaces it a second later.
+   * bounding boxes. Undefined until the first result. Never cleared, so after
+   * a feed swap or a camera remount the view can show one stale scan's boxes
+   * against the new feed's geometry for up to a scan interval; tolerable in a
+   * developer-only view.
    */
   scan: ScanResult | undefined;
   /**

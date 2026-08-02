@@ -1,9 +1,9 @@
 /**
- * Static radar-scope backdrop rendered as the bottom layer of the HUD. It sits
- * behind the camera feed and becomes the visible background when the video feed
- * is toggled off, so detections read like blips on a radar grid. Purely
- * decorative and ignores pointer events. Rendered always (not conditionally) so
- * it never flashes in or out as the toggle flips.
+ * Static radar-scope backdrop rendered as the bottom layer of the HUD, so
+ * detections read like blips on a radar grid. Purely decorative and ignores
+ * pointer events. Mounted whenever the driver-facing radar meter is showing;
+ * the developer-only detection view replaces it with the live camera feed
+ * instead of layering over it.
  *
  * The `-z-10` is load-bearing: this backdrop is `absolute` (positioned) and
  * opaque, while the camera `<video>` is a normal in-flow element. Without a

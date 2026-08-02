@@ -673,17 +673,13 @@ export const DetectionProvider = ({
           );
           const tracked = trackerRef.current?.update(roadDetections) ?? [];
           setHud(buildHudModel(tracked));
-          // Auto zoom: pick the next scan's crop factor from this scan's
-          // outcome. Fed the coasted set, not the raw detections, so a
-          // one-frame flicker cannot release a lock before the tracker drops
-          // the object. In the fixed modes the machine is left at its reset
-          // state; sendFrame ignores it there.
           const frameInfo = lastFrameInfoRef.current;
           // Publish this scan's own detections for the detection view. Raw
-          // per-frame output, not the coasted `tracked` set: the view exists to
-          // show what the model saw on the frame it saw it. Skipped when no
-          // frame info was recorded, which only happens for a result that no
-          // capture preceded, since mapping boxes needs the frame's geometry.
+          // per-frame output, not the coasted `tracked` set, since the view
+          // exists to show what the model saw on each frame, not a coasted
+          // track. Skipped when no frame info was recorded, which only
+          // happens for a result that no capture preceded, since mapping
+          // boxes needs the frame's geometry.
           if (frameInfo) {
             setScan({
               detections: roadDetections,
@@ -692,6 +688,11 @@ export const DetectionProvider = ({
               at: performance.now(),
             });
           }
+          // Auto zoom: pick the next scan's crop factor from this scan's
+          // outcome. Fed the coasted set, not the raw detections, so a
+          // one-frame flicker cannot release a lock before the tracker drops
+          // the object. In the fixed modes the machine is left at its reset
+          // state; sendFrame ignores it there.
           if (zoomModeRef.current === "auto" && frameInfo) {
             autoZoomRef.current = stepAutoZoom({
               zoom: frameInfo.zoom,

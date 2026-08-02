@@ -86,6 +86,12 @@ const TOGGLES: ReadonlyArray<{
     developer: true,
   },
   {
+    key: "detectionView",
+    toggle: "toggleDetectionView",
+    fresh: false,
+    developer: true,
+  },
+  {
     key: "rawConfidence",
     toggle: "toggleRawConfidence",
     fresh: false,
@@ -186,6 +192,7 @@ describe("SettingsContext", () => {
       zoomIndicator: true,
       roundTripIndicator: true,
       cameraPreview: true,
+      detectionView: true,
       rawConfidence: true,
       confidenceThreshold: 0.2,
     });
