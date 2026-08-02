@@ -8,6 +8,7 @@ import {
 import { CameraPreview } from "@/components/CameraPreview";
 import { CameraView } from "@/components/CameraView";
 import { DebugOverlay } from "@/components/DebugOverlay";
+import { DetectionView } from "@/components/DetectionView";
 import { DevVideoView } from "@/components/DevVideoView";
 import { ErrorScreen } from "@/components/ErrorScreen";
 import {
@@ -66,6 +67,7 @@ const RadarScreen = () => {
     autoZoom,
     getDebugSnapshot,
     error,
+    scan,
     start,
     cameraStalled,
     cameraEpoch,
@@ -81,6 +83,7 @@ const RadarScreen = () => {
     roundTripIndicator,
     cameraPreview,
     rawConfidence,
+    detectionView,
   } = useSettings();
   const { source } = useDevVideo();
   // No check on `source` in either initializer: a session always starts on the
@@ -256,12 +259,13 @@ const RadarScreen = () => {
 
   return (
     <main className="fixed inset-0 bg-surface">
-      <RadarBackdrop />
+      {!detectionView && <RadarBackdrop />}
       {source ? (
         <DevVideoView
           key={source.url}
           src={source.url}
           scanning={status === "running"}
+          fullScreen={detectionView}
           onStream={handleStream}
           onVideoResize={updateVideoSize}
           onError={handleDevVideoError}
@@ -277,6 +281,7 @@ const RadarScreen = () => {
         updateSettled && (
           <CameraView
             key={cameraEpoch}
+            visible={detectionView}
             onStream={handleStream}
             onError={setCameraError}
             onVideoResize={updateVideoSize}
@@ -287,21 +292,33 @@ const RadarScreen = () => {
           flow is the instrument reading INITIALIZING, not a blank backdrop;
           the sweep starts once detection is running. A first-visit download
           is still covered by the opaque ModelLoadScreen below. */}
-      <RadarDetectorScreen
-        confidence={hudSignal(hud)}
-        audioEnabled={radarAudio}
-        contact={contact}
-        frameThumbnails={frameThumbnails}
-        saveFrames={saveFrames}
-        initializing={status !== "running"}
-        rawConfidence={rawConfidence ? hudScore(hud) : undefined}
-      />
+      {detectionView ? (
+        <DetectionView
+          detections={scan?.detections ?? []}
+          frame={scan?.frame ?? viewportSize}
+          viewport={viewportSize}
+          zoom={scan?.zoom ?? ZOOM_OFF}
+        />
+      ) : (
+        <RadarDetectorScreen
+          confidence={hudSignal(hud)}
+          audioEnabled={radarAudio}
+          contact={contact}
+          frameThumbnails={frameThumbnails}
+          saveFrames={saveFrames}
+          initializing={status !== "running"}
+          rawConfidence={rawConfidence ? hudScore(hud) : undefined}
+        />
+      )}
 
       {/* The zoom mirrors sendFrame's mapping, so the preview always narrows
           to the region the next capture actually scans. Mounted in dev video
           mode too: the corner player shows the whole clip, the preview the
           crop. */}
-      {!modelLoading && cameraPreview && cameraVideo && (
+      {/* Not in the detection view: the full feed is already on screen behind
+          it, so the inset would be a second live video surface cropping from
+          the one underneath it. */}
+      {!modelLoading && cameraPreview && !detectionView && cameraVideo && (
         <CameraPreview
           source={cameraVideo}
           zoom={

@@ -24,6 +24,13 @@ type DevVideoViewProps = {
    * user's to control by then.
    */
   scanning: boolean;
+  /**
+   * Fills the viewport instead of playing in the corner, so the detection
+   * view's boxes map onto the clip the same way they map onto the camera.
+   * object-cover crops the clip's edges, which is the price of one mapping
+   * that fits both feeds. Native controls stay, so scrubbing still works.
+   */
+  fullScreen?: boolean;
 };
 
 /**
@@ -63,6 +70,7 @@ export const DevVideoView = ({
   onVideoResize,
   onError,
   scanning,
+  fullScreen = false,
 }: DevVideoViewProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const startedRef = useRef(false);
@@ -166,9 +174,11 @@ export const DevVideoView = ({
       muted
       preload="auto"
       playsInline
-      className={`fixed bottom-4 left-4 z-20 w-[480px] max-w-[40vw] rounded-lg border border-white/20 shadow-lg ${
-        started ? "" : "invisible"
-      }`}
+      className={`${
+        fullScreen
+          ? "fixed inset-0 h-full w-full object-cover"
+          : "fixed bottom-4 left-4 z-20 w-[480px] max-w-[40vw] rounded-lg border border-white/20 shadow-lg"
+      } ${started ? "" : "invisible"}`}
     />
   );
 };

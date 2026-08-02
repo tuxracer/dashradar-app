@@ -16,12 +16,19 @@ type CameraViewProps = {
    * without a reload.
    */
   onVideoResize?: (video: HTMLVideoElement) => void;
+  /**
+   * Shows the feed instead of keeping the element transparent. Only the
+   * detection view developer option sets it: the app otherwise never puts the
+   * camera on screen.
+   */
+  visible?: boolean;
 };
 
 export const CameraView = ({
   onStream,
   onError,
   onVideoResize,
+  visible = false,
 }: CameraViewProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -79,7 +86,7 @@ export const CameraView = ({
       autoPlay
       muted
       playsInline
-      className="h-full w-full object-cover opacity-0"
+      className={`h-full w-full object-cover ${visible ? "" : "opacity-0"}`}
     />
   );
 };

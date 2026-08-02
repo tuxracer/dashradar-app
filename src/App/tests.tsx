@@ -8,6 +8,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
 import type { DetectionContextValue } from "@/context/DetectionContext";
+import { STORAGE_KEY } from "@/context/SettingsContext";
 
 /**
  * The live DetectionContext value, published by the passthrough hook below so
@@ -361,5 +362,32 @@ describe("App", () => {
     act(() => detection.swapVideoSource(null));
     expect(await screen.findByTestId("camera-view")).toBeInTheDocument();
     expect(getUserMedia).toHaveBeenCalledTimes(2);
+  });
+
+  it("swaps the meter for the detection view when the setting is on", async () => {
+    // Seeded rather than tapped through the panel: the row's own wiring is
+    // covered in the settings tests, and what matters here is the swap.
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true, detectionView: true }),
+    );
+    stubBrowser(grantedCamera);
+    render(<App />);
+    acceptFirstRunScreens();
+    await reachModelReady();
+    await screen.findByTestId("detection-view");
+    // The meter, and with it the beeper and the contact card, is gone.
+    expect(screen.queryByTestId("signal-status")).toBeNull();
+  });
+
+  it("keeps the meter and hides the feed with the setting off", async () => {
+    stubBrowser(grantedCamera);
+    render(<App />);
+    acceptFirstRunScreens();
+    await reachModelReady();
+    await screen.findByTestId("signal-status");
+    expect(screen.queryByTestId("detection-view")).toBeNull();
+    // The feed is never shown outside the developer option.
+    expect(screen.getByTestId("camera-view").className).toContain("opacity-0");
   });
 });
