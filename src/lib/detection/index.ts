@@ -1,5 +1,8 @@
 import type { Detection, NormalizedBox } from "@/types";
 import { isRawDetection } from "@/types";
+import type { AutoZoomLevel } from "@/lib/autoZoom";
+import { ZOOM_OFF } from "@/workers/detection/consts";
+import { centerCropRegion } from "@/workers/detection/inference";
 import {
   CONFIDENCE_THRESHOLD,
   NEAR_AREA_FRACTION,
@@ -90,5 +93,26 @@ export const mapBoxToViewport = (
     top: offsetY + box.ymin * displayedHeight,
     width: (box.xmax - box.xmin) * displayedWidth,
     height: (box.ymax - box.ymin) * displayedHeight,
+  };
+};
+
+/**
+ * The region of a frame the model is actually shown, as a full-frame
+ * normalized box: the centered square crop the worker takes, narrowed by the
+ * capture zoom. The detection view outlines it so a vehicle outside the crop
+ * reads as never having been scanned rather than as a miss. Built on the
+ * worker's own centerCropRegion, so the outline cannot drift from the crop it
+ * describes.
+ */
+export const scanRegionBox = (
+  frame: Size,
+  zoom: AutoZoomLevel = ZOOM_OFF,
+): NormalizedBox => {
+  const { sx, sy, side } = centerCropRegion(frame.width, frame.height, zoom);
+  return {
+    xmin: sx / frame.width,
+    ymin: sy / frame.height,
+    xmax: (sx + side) / frame.width,
+    ymax: (sy + side) / frame.height,
   };
 };

@@ -4,9 +4,12 @@ import {
   buildHudModel,
   coverScale,
   mapBoxToViewport,
+  scanRegionBox,
   toRoadDetections,
   NEAR_AREA_FRACTION,
 } from "@/lib/detection";
+import { ZOOM_2X } from "@/workers/detection/consts";
+import { centerCropRegion } from "@/workers/detection/inference";
 
 const box = (
   xmin: number,
@@ -182,5 +185,49 @@ describe("NEAR_AREA_FRACTION", () => {
     const side = Math.sqrt(NEAR_AREA_FRACTION);
     const boundary = detection({ box: box(0, 0, side, side) });
     expect(buildHudModel([boundary]).near).toBe(true);
+  });
+});
+
+describe("scanRegionBox", () => {
+  it("covers the whole frame for a square frame at 1x", () => {
+    const result = scanRegionBox({ width: 512, height: 512 });
+    expect(result).toEqual(box(0, 0, 1, 1));
+  });
+
+  it("insets horizontally for a landscape frame at 1x", () => {
+    // 1280x720: the centered square is 720 wide, leaving 280 either side.
+    const result = scanRegionBox({ width: 1280, height: 720 });
+    expect(result.xmin).toBeCloseTo(280 / 1280);
+    expect(result.xmax).toBeCloseTo(1000 / 1280);
+    expect(result.ymin).toBeCloseTo(0);
+    expect(result.ymax).toBeCloseTo(1);
+  });
+
+  it("halves the region's side at 2x", () => {
+    // 1024x1024 at 2x: a 512 square centered, so a quarter inset all round.
+    const result = scanRegionBox({ width: 1024, height: 1024 }, ZOOM_2X);
+    expect(result.xmin).toBeCloseTo(0.25);
+    expect(result.ymin).toBeCloseTo(0.25);
+    expect(result.xmax).toBeCloseTo(0.75);
+    expect(result.ymax).toBeCloseTo(0.75);
+  });
+
+  it("stays centered on both axes for a portrait frame at 2x", () => {
+    // 720x1280 at 2x: side 360, so 180 either side horizontally and 460
+    // above and below.
+    const result = scanRegionBox({ width: 720, height: 1280 }, ZOOM_2X);
+    expect(result.xmin).toBeCloseTo(180 / 720);
+    expect(result.xmax).toBeCloseTo(540 / 720);
+    expect(result.ymin).toBeCloseTo(460 / 1280);
+    expect(result.ymax).toBeCloseTo(820 / 1280);
+  });
+
+  it("matches what the worker crops, so the outline cannot drift", () => {
+    const frame = { width: 1600, height: 900 };
+    const region = centerCropRegion(frame.width, frame.height, ZOOM_2X);
+    const result = scanRegionBox(frame, ZOOM_2X);
+    expect(result.xmin * frame.width).toBeCloseTo(region.sx);
+    expect(result.ymin * frame.height).toBeCloseTo(region.sy);
+    expect((result.xmax - result.xmin) * frame.width).toBeCloseTo(region.side);
   });
 });
