@@ -1,7 +1,15 @@
 import type { RoadCategory } from "@/types";
 
-/** Detections below this score are discarded. */
-export const CONFIDENCE_THRESHOLD = 0.5;
+/**
+ * Detections below this score are discarded. Set near the shipping
+ * checkpoint's own operating point, the score its release reports precision
+ * and recall at, so what reaches the HUD sits in the band the model was
+ * actually measured in. A false alert costs more than a missed one here: the
+ * driver who is shown a patrol car that is not there stops trusting the meter.
+ * SIGNAL_FLOOR in src/lib/radarSignal is the same value and moves with it, or
+ * the meter spends range on scores that can never arrive.
+ */
+export const CONFIDENCE_THRESHOLD = 0.7;
 
 /**
  * Box and label color per category in the detection view. Keyed on category

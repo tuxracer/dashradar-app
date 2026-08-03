@@ -29,6 +29,9 @@ const det = (score: number): Detection => ({
  */
 const hudOf = (detections: Detection[]): HudModel => buildHudModel(detections);
 
+/** The score halfway up the [SIGNAL_FLOOR, 1] band the ladder stretches over. */
+const bandMidpoint = SIGNAL_FLOOR + (1 - SIGNAL_FLOOR) / 2;
+
 const rgbChannels = (color: string): [number, number, number] => {
   const match = color.match(/rgb\((\d+), (\d+), (\d+)\)/);
   if (!match) {
@@ -47,7 +50,7 @@ describe("hudSignal", () => {
   });
 
   it("returns 0 for a score at the floor", () => {
-    expect(hudSignal(hudOf([det(0.5)]))).toBe(0);
+    expect(hudSignal(hudOf([det(SIGNAL_FLOOR)]))).toBe(0);
   });
 
   it("maps a full-confidence score to 1", () => {
@@ -55,14 +58,17 @@ describe("hudSignal", () => {
   });
 
   it("remaps the midpoint of the [floor, 1] band to 0.5", () => {
-    expect(hudSignal(hudOf([det(0.75)]))).toBeCloseTo(0.5, 5);
+    expect(hudSignal(hudOf([det(bandMidpoint)]))).toBeCloseTo(0.5, 5);
   });
 
   it("takes the max score across the frame's detections", () => {
-    expect(hudSignal(hudOf([det(0.6), det(0.9), det(0.55)]))).toBeCloseTo(
-      0.8,
-      5,
-    );
+    // The strongest detection sits between two weaker ones, so a meter reading
+    // the first or the last would land somewhere other than the midpoint.
+    expect(
+      hudSignal(
+        hudOf([det(SIGNAL_FLOOR), det(bandMidpoint), det(SIGNAL_FLOOR)]),
+      ),
+    ).toBeCloseTo(0.5, 5);
   });
 });
 
@@ -76,9 +82,9 @@ describe("hudScore", () => {
   });
 
   it("passes a score through without the floor remap", () => {
-    // The whole point of the raw readout: 0.75 reads as 0.75, not the 0.5 the
-    // meter's [floor, 1] stretch turns it into.
-    expect(hudScore(hudOf([det(0.75)]))).toBe(0.75);
+    // The whole point of the raw readout: the band's midpoint reads as its own
+    // score, not the 0.5 the meter's [floor, 1] stretch turns it into.
+    expect(hudScore(hudOf([det(bandMidpoint)]))).toBe(bandMidpoint);
     expect(hudScore(hudOf([det(SIGNAL_FLOOR)]))).toBe(SIGNAL_FLOOR);
   });
 

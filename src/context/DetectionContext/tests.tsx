@@ -18,12 +18,14 @@ import {
 } from "@/context/DetectionContext";
 import { DevVideoProvider, useDevVideo } from "@/context/DevVideoContext";
 import {
+  DEVELOPER_OPTIONS_OFF,
   SETTINGS_VERSION,
   SettingsProvider,
   STORAGE_KEY,
   useSettings,
 } from "@/context/SettingsContext";
 import { APP_RELEASE } from "@/lib/appRelease";
+import { SIGNAL_FLOOR } from "@/lib/radarSignal";
 import {
   HEARTBEAT_INTERVAL_MS,
   SENTINEL_STORAGE_KEY,
@@ -1918,7 +1920,7 @@ describe("DetectionProvider", () => {
     expect(locked()).toBe("true");
   });
 
-  it("posts confidenceThreshold 0.5 by default", async () => {
+  it("posts the production confidence floor by default", async () => {
     vi.stubGlobal(
       "createImageBitmap",
       vi.fn(() => Promise.resolve(fakeBitmap())),
@@ -1937,7 +1939,9 @@ describe("DetectionProvider", () => {
     });
     expect(
       worker.posted.find((message) => message.type === "detect"),
-    ).toMatchObject({ confidenceThreshold: 0.5 });
+    ).toMatchObject({
+      confidenceThreshold: DEVELOPER_OPTIONS_OFF.confidenceThreshold,
+    });
   });
 
   it("posts the stored confidenceThreshold when developer options are on", async () => {
@@ -1966,10 +1970,10 @@ describe("DetectionProvider", () => {
     ).toMatchObject({ confidenceThreshold: 0.2 });
   });
 
-  it("posts confidenceThreshold 0.5 when a stored override exists but developer options are off", async () => {
+  it("posts the production confidence floor when a stored override exists but developer options are off", async () => {
     // Gated on the Developer options master switch: a stored override must NOT
     // take effect while developerOptions is off, so normal use always filters
-    // at the 0.5 production floor.
+    // at the production floor.
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({ developerOptions: false, confidenceThreshold: 0.2 }),
@@ -1992,7 +1996,9 @@ describe("DetectionProvider", () => {
     });
     expect(
       worker.posted.find((message) => message.type === "detect"),
-    ).toMatchObject({ confidenceThreshold: 0.5 });
+    ).toMatchObject({
+      confidenceThreshold: DEVELOPER_OPTIONS_OFF.confidenceThreshold,
+    });
   });
 });
 
@@ -2861,18 +2867,22 @@ describe("DetectionProvider contact", () => {
         </DetectionProvider>
       </SettingsProvider>,
     );
-    // score 0.75 with SIGNAL_FLOOR 0.5 remaps to 0.5; center-x 0.2 is left.
+    // A score halfway up the [SIGNAL_FLOOR, 1] band remaps to 0.5 signal;
+    // center-x 0.2 is left.
+    const midBand = SIGNAL_FLOOR + (1 - SIGNAL_FLOOR) / 2;
     act(() => {
       worker.emit({
         type: "detections",
-        detections: [policeDetection(0.75, 0.15, 0.25)],
+        detections: [policeDetection(midBand, 0.15, 0.25)],
         timing,
         crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
       });
     });
     expect(screen.getByTestId("contact-direction")).toHaveTextContent("left");
     expect(screen.getByTestId("contact-signal")).toHaveTextContent("0.5");
-    expect(screen.getByTestId("contact-score")).toHaveTextContent("0.75");
+    expect(screen.getByTestId("contact-score")).toHaveTextContent(
+      String(midBand),
+    );
   });
 
   it("closes the previous contact's bitmap when a new crop arrives", () => {

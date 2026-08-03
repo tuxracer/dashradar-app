@@ -1,3 +1,5 @@
+import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
+
 /** Number of segments in the radar-detector ladder. Tune visually on-device. */
 export const SEGMENT_COUNT = 14;
 
@@ -16,12 +18,15 @@ export const SEGMENT_COUNT = 14;
 export const DECAY_PER_SEC = 0.15;
 
 /**
- * Scores at or below this fraction map to zero signal. Matches the detection
- * confidence threshold: anything the confidence filter keeps is already above
- * it, so the ladder maps its full range onto the meaningful [floor, 1] score
- * band.
+ * Scores at or below this fraction map to zero signal. It is the detection
+ * confidence threshold rather than a copy of its number: anything the
+ * confidence filter keeps is already above it, so the ladder maps its full
+ * range onto the meaningful [floor, 1] score band. Held to that value by
+ * import because the two failure modes are silent. A floor left below the
+ * threshold wastes the bottom of the ladder on scores that never arrive, and a
+ * floor left above it reads real detections as no signal at all.
  */
-export const SIGNAL_FLOOR = 0.5;
+export const SIGNAL_FLOOR = CONFIDENCE_THRESHOLD;
 
 /** Ladder color at low signal (green), as an [r, g, b] triple. */
 export const SIGNAL_LOW_COLOR: readonly [number, number, number] = [

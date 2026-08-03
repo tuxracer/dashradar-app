@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Detection, NormalizedBox } from "@/types";
 import {
   buildHudModel,
+  CONFIDENCE_THRESHOLD,
   coverScale,
   mapBoxToViewport,
   scanRegionBox,
@@ -57,16 +58,28 @@ describe("enrichDetections", () => {
 
   it("drops low-confidence detections", () => {
     const result = enrichDetections(
-      [{ label: "police", score: 0.4, box: box(0.1, 0.1, 0.3, 0.3) }],
+      [
+        {
+          label: "police",
+          score: CONFIDENCE_THRESHOLD - 0.1,
+          box: box(0.1, 0.1, 0.3, 0.3),
+        },
+      ],
       undefined,
       CLASSES,
     );
     expect(result).toHaveLength(0);
   });
 
-  it("keeps a mid-confidence detection above the threshold", () => {
+  it("keeps a detection just above the threshold", () => {
     const result = enrichDetections(
-      [{ label: "police", score: 0.6, box: box(0.1, 0.1, 0.3, 0.3) }],
+      [
+        {
+          label: "police",
+          score: CONFIDENCE_THRESHOLD + 0.1,
+          box: box(0.1, 0.1, 0.3, 0.3),
+        },
+      ],
       undefined,
       CLASSES,
     );
@@ -100,7 +113,13 @@ describe("enrichDetections", () => {
 
   it("filters at the default threshold with no threshold argument", () => {
     const result = enrichDetections(
-      [{ label: "police", score: 0.4, box: box(0.1, 0.1, 0.3, 0.3) }],
+      [
+        {
+          label: "police",
+          score: CONFIDENCE_THRESHOLD - 0.1,
+          box: box(0.1, 0.1, 0.3, 0.3),
+        },
+      ],
       undefined,
       CLASSES,
     );

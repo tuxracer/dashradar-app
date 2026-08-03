@@ -6,7 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsButton } from "@/components/SettingsButton";
 import { SettingsScreen } from "@/components/SettingsScreen";
 import { DevVideoProvider, useDevVideo } from "@/context/DevVideoContext";
-import { SettingsProvider, STORAGE_KEY } from "@/context/SettingsContext";
+import {
+  DEVELOPER_OPTIONS_OFF,
+  SettingsProvider,
+  STORAGE_KEY,
+} from "@/context/SettingsContext";
 import type { PersistedSettings } from "@/context/SettingsContext";
 import { DEFAULT_MODEL } from "@/lib/detectionModels";
 
@@ -247,7 +251,9 @@ describe("SettingsScreen", () => {
   it("persists a confidence picked from the Min confidence slider", async () => {
     await renderOpenSettingsWithDeveloperOptions();
     const slider = screen.getByRole("slider", { name: /min confidence/i });
-    expect(slider).toHaveValue("0.5");
+    expect(slider).toHaveValue(
+      String(DEVELOPER_OPTIONS_OFF.confidenceThreshold),
+    );
     fireEvent.change(slider, { target: { value: "0.3" } });
     expect(stored("confidenceThreshold")).toBe(0.3);
   });

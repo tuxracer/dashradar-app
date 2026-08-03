@@ -1,4 +1,5 @@
 import { isArray, isBoolean, isNumber, isPlainObject, isString } from "remeda";
+import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 import { CONFIDENCE_LEVELS } from "./consts";
 
 /**
@@ -115,7 +116,7 @@ export type Settings = {
   /**
    * Minimum detection confidence. Detections scoring below this are discarded.
    * A developer option, so it only takes effect while developerOptions is on and
-   * reports the 0.5 production floor (DEVELOPER_OPTIONS_OFF.confidenceThreshold)
+   * reports the production floor (DEVELOPER_OPTIONS_OFF.confidenceThreshold)
    * otherwise, so a lowered value cannot loosen a normal drive. Constrained to
    * CONFIDENCE_LEVELS (0.1 to 0.9).
    */
@@ -300,12 +301,13 @@ export const isPersistedSettings = (
 
 /**
  * Normalizes any number to the nearest allowed confidence step. A non-finite
- * input (NaN, Infinity) resolves to the 0.5 default rather than an arbitrary
- * end of the range.
+ * input (NaN, Infinity) resolves to the production floor rather than an
+ * arbitrary end of the range, so a corrupt stored value lands on the setting a
+ * normal drive runs at instead of the loosest or strictest step there is.
  */
 export const snapConfidence = (value: number): number => {
   if (!Number.isFinite(value)) {
-    return 0.5;
+    return CONFIDENCE_THRESHOLD;
   }
   return CONFIDENCE_LEVELS.reduce((best, level) =>
     Math.abs(level - value) < Math.abs(best - value) ? level : best,

@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CONFIDENCE_LEVELS,
+  DEVELOPER_OPTIONS_OFF,
   SETTINGS_VERSION,
   SettingsProvider,
   snapConfidence,
@@ -129,7 +130,9 @@ describe("SettingsContext", () => {
       expect(result.current[key], key).toBe(fresh);
     }
     expect(result.current.zoomMode).toBe("auto");
-    expect(result.current.confidenceThreshold).toBe(0.5);
+    expect(result.current.confidenceThreshold).toBe(
+      DEVELOPER_OPTIONS_OFF.confidenceThreshold,
+    );
   });
 
   // Turning the master switch on reveals the developer rows and does nothing
@@ -142,7 +145,9 @@ describe("SettingsContext", () => {
       expect(result.current[key], key).toBe(fresh);
     }
     expect(result.current.zoomMode).toBe("auto");
-    expect(result.current.confidenceThreshold).toBe(0.5);
+    expect(result.current.confidenceThreshold).toBe(
+      DEVELOPER_OPTIONS_OFF.confidenceThreshold,
+    );
   });
 
   it.each(TOGGLES)("$toggle flips and persists $key alone", (entry) => {
@@ -174,7 +179,7 @@ describe("SettingsContext", () => {
         detectionImage: false,
         throttleInference: true,
         zoomMode: "auto",
-        confidenceThreshold: 0.5,
+        confidenceThreshold: DEVELOPER_OPTIONS_OFF.confidenceThreshold,
         modelIds: [DEFAULT_MODEL.id],
         zoomIndicator: false,
         roundTripIndicator: false,
@@ -207,7 +212,9 @@ describe("SettingsContext", () => {
     // A fixed-zoom override and a lowered threshold are developer tweaks; a
     // normal drive always runs the defaults.
     expect(result.current.zoomMode).toBe("auto");
-    expect(result.current.confidenceThreshold).toBe(0.5);
+    expect(result.current.confidenceThreshold).toBe(
+      DEVELOPER_OPTIONS_OFF.confidenceThreshold,
+    );
   });
 
   // A normal-drive setting, not a developer one: it stays exactly as the driver
@@ -233,7 +240,9 @@ describe("SettingsContext", () => {
     expect(result.current.throttleInference).toBe(true);
     expect(result.current.showDebug).toBe(false);
     expect(result.current.zoomMode).toBe("auto");
-    expect(result.current.confidenceThreshold).toBe(0.5);
+    expect(result.current.confidenceThreshold).toBe(
+      DEVELOPER_OPTIONS_OFF.confidenceThreshold,
+    );
     expect(stored("showDebug")).toBe(true);
 
     // Back on: the tweaks come back rather than having been reset.
@@ -437,10 +446,11 @@ describe("model selection", () => {
 });
 
 describe("snapConfidence", () => {
-  it("resolves a non-finite value to the 0.5 default", () => {
-    expect(snapConfidence(NaN)).toBe(0.5);
-    expect(snapConfidence(Infinity)).toBe(0.5);
-    expect(snapConfidence(-Infinity)).toBe(0.5);
+  it("resolves a non-finite value to the production floor", () => {
+    const floor = DEVELOPER_OPTIONS_OFF.confidenceThreshold;
+    expect(snapConfidence(NaN)).toBe(floor);
+    expect(snapConfidence(Infinity)).toBe(floor);
+    expect(snapConfidence(-Infinity)).toBe(floor);
   });
 
   it("snaps an off-step value to the nearest allowed level", () => {
