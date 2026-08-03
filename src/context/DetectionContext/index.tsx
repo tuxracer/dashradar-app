@@ -22,6 +22,7 @@ import { initialAutoZoomState, stepAutoZoom } from "@/lib/autoZoom";
 import type { AutoZoomLevel, AutoZoomState } from "@/lib/autoZoom";
 import type { HudModel } from "@/lib/detection";
 import { buildHudModel, enrichDetections } from "@/lib/detection";
+import { resolveModels } from "@/lib/detectionModels";
 import { createDetectionTracker } from "@/lib/detectionTracker";
 import { isStandalone } from "@/lib/pwaInstall";
 import { contactDirection, signalFromScore } from "@/lib/radarSignal";
@@ -38,12 +39,7 @@ import {
   takeTimingReport,
   toBucketedSeconds,
 } from "@/lib/timingHistory";
-import {
-  MODEL_REVISION,
-  MODEL_SLUG,
-  ZOOM_2X,
-  ZOOM_OFF,
-} from "@/workers/detection/consts";
+import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 import type {
   BackendProbe,
   DetectionErrorCode,
@@ -127,8 +123,15 @@ export const DetectionProvider = ({
     throttleInference,
     zoomMode,
     confidenceThreshold,
+    modelIds,
     settingsOpen,
   } = useSettings();
+  // Pinned at mount, not tracked. Changing the model applies by reloading the
+  // page (the model screen reloads on save), so a selection changed underneath
+  // a live session must not reach it. The pin is what makes that true for the
+  // periodic worker recycle too, which builds a new session 15 minutes in and
+  // would otherwise pick up whatever is stored by then.
+  const [activeModel] = useState(() => resolveModels(modelIds)[0]);
   const {
     source: devVideoSource,
     setVideoFile,
@@ -547,7 +550,7 @@ export const DetectionProvider = ({
         if (cancelled) {
           return;
         }
-        worker.postMessage({ type: "load" });
+        worker.postMessage({ type: "load", modelId: activeModel.id });
       });
     };
 
@@ -604,8 +607,8 @@ export const DetectionProvider = ({
           if (!modelDownloadTrackedRef.current) {
             modelDownloadTrackedRef.current = true;
             track("model_downloaded", {
-              model: MODEL_SLUG,
-              revision: MODEL_REVISION,
+              model: activeModel.slug,
+              revision: activeModel.revision,
               seconds: Math.round(message.durationMs / 1_000),
             });
           }
@@ -662,6 +665,7 @@ export const DetectionProvider = ({
           const detections = enrichDetections(
             message.detections,
             confidenceThresholdRef.current,
+            activeModel.classes,
           );
           const tracked = trackerRef.current?.update(detections) ?? [];
           setHud(buildHudModel(tracked));
@@ -702,6 +706,7 @@ export const DetectionProvider = ({
             const [cropDetection] = enrichDetections(
               [message.detections[message.crop.detectionIndex]],
               confidenceThresholdRef.current,
+              activeModel.classes,
             );
             if (cropDetection) {
               // With the detection image off the cutout is only here because
@@ -1005,7 +1010,13 @@ export const DetectionProvider = ({
       // recycle has happened, not the one spawned at mount.
       workerRef.current?.terminate();
     };
-  }, [createWorker, replaceContact, schedulePacedFrame, sendFrame]);
+  }, [
+    activeModel,
+    createWorker,
+    replaceContact,
+    schedulePacedFrame,
+    sendFrame,
+  ]);
 
   const start = useCallback(
     (video: HTMLVideoElement) => {
@@ -1346,6 +1357,7 @@ export const DetectionProvider = ({
       autoZoom,
       cameraStalled,
       cameraEpoch,
+      activeModel,
       start,
       stop,
       swapVideoSource,
@@ -1365,6 +1377,7 @@ export const DetectionProvider = ({
       autoZoom,
       cameraStalled,
       cameraEpoch,
+      activeModel,
       start,
       stop,
       swapVideoSource,

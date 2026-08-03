@@ -8,12 +8,13 @@ import { SettingsScreen } from "@/components/SettingsScreen";
 import { DevVideoProvider, useDevVideo } from "@/context/DevVideoContext";
 import { SettingsProvider, STORAGE_KEY } from "@/context/SettingsContext";
 import type { PersistedSettings } from "@/context/SettingsContext";
+import { DEFAULT_MODEL } from "@/lib/detectionModels";
 
 /** Stands in for DetectionContext's feed swap, which needs no worker here. */
 const swapVideoSource = vi.fn();
 
 vi.mock("@/context/DetectionContext", () => ({
-  useDetection: () => ({ swapVideoSource }),
+  useDetection: () => ({ swapVideoSource, activeModel: DEFAULT_MODEL }),
 }));
 
 afterEach(() => {

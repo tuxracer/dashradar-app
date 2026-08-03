@@ -28,6 +28,7 @@ import {
   HEARTBEAT_INTERVAL_MS,
   SENTINEL_STORAGE_KEY,
 } from "@/lib/crashSentinel";
+import { DEFAULT_MODEL } from "@/lib/detectionModels";
 import { downloadBlob } from "@/lib/saveFrame";
 import {
   LATE_TIMING_AFTER_MS,
@@ -35,18 +36,34 @@ import {
   TIMING_HISTORY_LIMIT,
 } from "@/lib/timingHistory";
 import type { RawDetection } from "@/types";
-import {
-  MODEL_REVISION,
-  MODEL_SLUG,
-  ZOOM_2X,
-  ZOOM_OFF,
-} from "@/workers/detection/consts";
+import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
+
+/** Id of the extra registry entry the mock below appends. */
+const { SECOND_MODEL_ID } = vi.hoisted(() => ({
+  SECOND_MODEL_ID: "second-model",
+}));
 
 vi.mock("@vercel/analytics", () => ({ track: vi.fn() }));
 vi.mock("@/lib/saveFrame", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/saveFrame")>()),
   downloadBlob: vi.fn(),
 }));
+// One model ships today, so "which model is this session running" has a single
+// possible answer and nothing about pinning it would be observable. This
+// appends a second entry (a copy of the shipping one under another id) so a
+// selection can actually differ from the default. The first entry is left
+// untouched, so DEFAULT_MODEL still means the shipping model everywhere below.
+vi.mock("@/lib/detectionModels/consts", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/detectionModels/consts")>();
+  return {
+    ...actual,
+    DETECTION_MODELS: [
+      ...actual.DETECTION_MODELS,
+      { ...actual.DETECTION_MODELS[0], id: SECOND_MODEL_ID },
+    ],
+  };
+});
 import type {
   DebugSnapshot,
   DetectionWorkerLike,
@@ -190,6 +207,17 @@ const SettingsToggle = () => {
   );
 };
 
+/** Flips the Developer options master switch, which changes the effective
+ * value of every developer option, the model selection among them. */
+const DeveloperOptionsToggle = () => {
+  const { toggleDeveloperOptions } = useSettings();
+  return (
+    <button data-testid="toggle-developer" onClick={toggleDeveloperOptions}>
+      developer options
+    </button>
+  );
+};
+
 const renderWithProvider = (
   ui: ReactNode,
   options?: { devVideoMode?: boolean },
@@ -329,7 +357,10 @@ describe("DetectionProvider", () => {
     // The load message is deferred to a microtask (Promise.resolve in tests),
     // so wait for it rather than asserting synchronously.
     await waitFor(() => {
-      expect(worker.posted).toContainEqual({ type: "load" });
+      expect(worker.posted).toContainEqual({
+        type: "load",
+        modelId: DEFAULT_MODEL.id,
+      });
     });
   });
 
@@ -428,8 +459,8 @@ describe("DetectionProvider", () => {
       worker.emit({ type: "model-downloaded", durationMs: 8_400 });
     });
     expect(track).toHaveBeenCalledWith("model_downloaded", {
-      model: MODEL_SLUG,
-      revision: MODEL_REVISION,
+      model: DEFAULT_MODEL.slug,
+      revision: DEFAULT_MODEL.revision,
       seconds: 8,
     });
   });
@@ -2569,7 +2600,10 @@ describe("worker recycle", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(workers[1].posted).toEqual([{ type: "probe" }, { type: "load" }]);
+    expect(workers[1].posted).toEqual([
+      { type: "probe" },
+      { type: "load", modelId: DEFAULT_MODEL.id },
+    ]);
     // The old worker was mid-run at recycle, so no paced frame was scheduled on
     // it: the pump only resumes once the new worker reports ready.
     expect(detectCount(workers[1])).toBe(0);
@@ -2584,6 +2618,57 @@ describe("worker recycle", () => {
       "running",
     );
     expect(detectCount(workers[1])).toBe(1);
+  });
+
+  it("keeps a recycled worker on the model the session started with", async () => {
+    vi.useFakeTimers();
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        settingsVersion: SETTINGS_VERSION,
+        developerOptions: true,
+        modelIds: [SECOND_MODEL_ID],
+      }),
+    );
+    const workers = renderWithWorkerFactory(
+      <>
+        <StartOnReady />
+        <DeveloperOptionsToggle />
+      </>,
+    );
+    act(() => {
+      workers[0].emit({ type: "ready" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    // The selection changes underneath the running session: turning Developer
+    // options off takes the effective value back to the shipping model. A model
+    // change applies on the reload the model screen performs, and a recycle is
+    // not one, so the fresh worker has to load what the session started on.
+    act(() => {
+      screen.getByTestId("toggle-developer").click();
+    });
+    now = WORKER_RECYCLE_AFTER_MS;
+    act(() => {
+      workers[0].emit(emptyResult);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(workers[1].posted).toContainEqual({
+      type: "load",
+      modelId: SECOND_MODEL_ID,
+    });
   });
 
   it("does not re-fire ready analytics on a recycled worker's ready", async () => {

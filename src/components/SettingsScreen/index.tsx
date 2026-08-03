@@ -5,12 +5,8 @@ import { ShareCard } from "@/components/ShareCard";
 import { useDetection } from "@/context/DetectionContext";
 import { useDevVideo } from "@/context/DevVideoContext";
 import { useSettings } from "@/context/SettingsContext";
+import { modelRepoUrl } from "@/lib/detectionModels";
 import { resetAppData } from "@/lib/resetAppData";
-import {
-  MODEL_REPO_URL,
-  MODEL_REVISION,
-  MODEL_SLUG,
-} from "@/workers/detection/consts";
 import { REPO_URL, RESET_CONFIRM_MESSAGE, ZOOM_MODE_OPTIONS } from "./consts";
 
 export * from "./consts";
@@ -100,7 +96,7 @@ export const SettingsScreen = () => {
     toggleRawConfidence,
   } = useSettings();
   const { source } = useDevVideo();
-  const { swapVideoSource } = useDetection();
+  const { swapVideoSource, activeModel } = useDetection();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -480,7 +476,7 @@ export const SettingsScreen = () => {
           )}
 
           <a
-            href={MODEL_REPO_URL}
+            href={modelRepoUrl(activeModel)}
             target="_blank"
             rel="noreferrer"
             className="flex min-h-16 items-center justify-between gap-6 py-4"
@@ -489,7 +485,7 @@ export const SettingsScreen = () => {
               Model
             </span>
             <span className="text-base font-semibold tracking-[0.04em] text-white/60">
-              {MODEL_SLUG} · {MODEL_REVISION} ↗
+              {activeModel.slug} · {activeModel.revision} ↗
             </span>
           </a>
 

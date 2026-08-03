@@ -11,8 +11,8 @@
  * sigmoid + cxcywh decode.
  *
  * The model itself is described in src/lib/detectionModels, one entry per
- * selectable checkpoint. The constants below name the shipping entry, which is
- * what a build runs unless a developer picked another one on the model screen.
+ * selectable checkpoint: its repo, revision, weights file, and classes. The
+ * constants here cover the parts of running one that every checkpoint shares.
  *
  * One build is shipped: the mixed-precision fp16 model (~57 MB: fp16 weights
  * and compute, the three GridSample nodes kept fp32 behind boundary Casts),
@@ -30,21 +30,6 @@
  * away with WEBGPU_UNSUPPORTED rather than handed a detector that looks like
  * it works and does not.
  */
-import { DEFAULT_MODEL, modelRepoUrl } from "@/lib/detectionModels";
-
-/**
- * Hugging Face revision tag the shipping model's URLs pin to. Read from the
- * registry rather than declared here, so the registry entry stays the single
- * place a model is described.
- */
-export const MODEL_REVISION = DEFAULT_MODEL.revision;
-
-/** Hugging Face repo name the shipping model's weights are published under. */
-export const MODEL_SLUG = DEFAULT_MODEL.slug;
-
-/** Hugging Face model page the shipping model's weights come from. */
-export const MODEL_REPO_URL = modelRepoUrl(DEFAULT_MODEL);
-
 /**
  * CacheStorage cache the worker writes downloaded weights into on the dev
  * server, where no service worker (and so no Workbox "model-cache" route)

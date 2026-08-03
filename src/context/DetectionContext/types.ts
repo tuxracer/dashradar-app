@@ -1,5 +1,6 @@
 import type { AutoZoomLevel, AutoZoomState } from "@/lib/autoZoom";
 import type { HudModel, Size } from "@/lib/detection";
+import type { DetectionModel } from "@/lib/detectionModels";
 import type { ContactDirection } from "@/lib/radarSignal";
 import type { Detection, NormalizedBox } from "@/types";
 import type {
@@ -201,6 +202,12 @@ export type DetectionContextValue = {
    * it, so a bump remounts the camera and re-runs getUserMedia.
    */
   cameraEpoch: number;
+  /**
+   * The model this session is running. Pinned at mount, so it answers "what is
+   * detecting right now", which is not necessarily what is selected: a change
+   * made on the model screen applies on the reload that screen performs.
+   */
+  activeModel: DetectionModel;
   start: (video: HTMLVideoElement) => void;
   stop: () => void;
   /**
