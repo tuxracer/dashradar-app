@@ -30,7 +30,7 @@ import {
   HEARTBEAT_INTERVAL_MS,
   SENTINEL_STORAGE_KEY,
 } from "@/lib/crashSentinel";
-import { DEFAULT_MODEL } from "@/lib/detectionModels";
+import { DEFAULT_MODEL, STORED_MODELS_KEY } from "@/lib/detectionModels";
 import { downloadBlob } from "@/lib/saveFrame";
 import {
   LATE_TIMING_AFTER_MS,
@@ -40,37 +40,15 @@ import {
 import type { RawDetection } from "@/types";
 import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 
-/** Id of the extra registry entry the mock below appends. */
-const { SECOND_MODEL_ID } = vi.hoisted(() => ({
-  SECOND_MODEL_ID: "second-model",
-}));
+/** Id of the extra stored model seeded for the tests that need a second
+ * selectable model to exist. */
+const SECOND_MODEL_ID = "second-model";
 
 vi.mock("@vercel/analytics", () => ({ track: vi.fn() }));
 vi.mock("@/lib/saveFrame", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/saveFrame")>()),
   downloadBlob: vi.fn(),
 }));
-// One model ships today, so "which model is this session running" has a single
-// possible answer and nothing about pinning it would be observable. This
-// appends a second entry (a copy of the shipping one under another id) so a
-// selection can actually differ from the default. The first entry is left
-// untouched, so DEFAULT_MODEL still means the shipping model everywhere below.
-// The mock has to target the internal consts file rather than the module index,
-// even though imports normally go through the index: resolveModels closes over
-// the DETECTION_MODELS binding it imported from ./consts, so mocking the index
-// would leave the resolver reading the real one-entry registry and these tests
-// would pass against a list where their assertions could not fail.
-vi.mock("@/lib/detectionModels/consts", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@/lib/detectionModels/consts")>();
-  return {
-    ...actual,
-    DETECTION_MODELS: [
-      ...actual.DETECTION_MODELS,
-      { ...actual.DETECTION_MODELS[0], id: SECOND_MODEL_ID },
-    ],
-  };
-});
 import type {
   DebugSnapshot,
   DetectionWorkerLike,
@@ -2646,6 +2624,13 @@ describe("worker recycle", () => {
         developerOptions: true,
         modelIds: [SECOND_MODEL_ID],
       }),
+    );
+    // Seed the real stored-model mechanism with a second selectable entry (a
+    // copy of the shipping model under another id), so the selection above
+    // resolves to something other than DEFAULT_MODEL.
+    window.localStorage.setItem(
+      STORED_MODELS_KEY,
+      JSON.stringify([{ ...DEFAULT_MODEL, id: SECOND_MODEL_ID }]),
     );
     const workers = renderWithWorkerFactory(
       <>

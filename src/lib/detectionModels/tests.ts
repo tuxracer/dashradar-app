@@ -1,12 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
+  addStoredModel,
   classesFromMetadata,
   DEFAULT_MODEL,
   DETECTION_MODELS,
   isDetectionModel,
+  knownModels,
+  loadStoredModels,
   modelRepoUrl,
   modelWeightsUrl,
+  removeStoredModel,
   resolveModels,
+  STORED_MODELS_KEY,
 } from "@/lib/detectionModels";
 import type { DetectionModel } from "@/lib/detectionModels";
 import type { OnnxMetadata } from "@/lib/onnxMetadata";
@@ -213,5 +218,84 @@ describe("classesFromMetadata", () => {
         { index: 1, label: "class 1" },
       ]);
     }
+  });
+});
+
+describe("stored models", () => {
+  const stored: DetectionModel = {
+    id: "https://huggingface.co/someone/some-repo/resolve/abc123/model.onnx",
+    owner: "someone",
+    slug: "some-repo",
+    revision: "abc123",
+    file: "model.onnx",
+  };
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("round-trips an added model", () => {
+    expect(addStoredModel(stored)).toBe(true);
+    expect(loadStoredModels()).toEqual([stored]);
+  });
+
+  it("re-adding the same id replaces rather than duplicates", () => {
+    addStoredModel(stored);
+    addStoredModel({ ...stored, slug: "renamed" });
+    expect(loadStoredModels()).toHaveLength(1);
+    expect(loadStoredModels()[0].slug).toBe("renamed");
+  });
+
+  it("removes by id", () => {
+    addStoredModel(stored);
+    expect(removeStoredModel(stored.id)).toBe(true);
+    expect(loadStoredModels()).toEqual([]);
+  });
+
+  it("degrades a corrupt blob to an empty list", () => {
+    localStorage.setItem(STORED_MODELS_KEY, "{not json");
+    expect(loadStoredModels()).toEqual([]);
+  });
+
+  it("drops entries that fail the shape guard", () => {
+    localStorage.setItem(
+      STORED_MODELS_KEY,
+      JSON.stringify([stored, { id: "junk" }]),
+    );
+    expect(loadStoredModels()).toEqual([stored]);
+  });
+});
+
+describe("knownModels", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("is the default alone with empty storage", () => {
+    expect(knownModels()).toEqual([DEFAULT_MODEL]);
+  });
+
+  it("lists the default first, then stored additions", () => {
+    const stored: DetectionModel = {
+      id: "url-id",
+      owner: "someone",
+      slug: "some-repo",
+      revision: "abc123",
+      file: "model.onnx",
+    };
+    addStoredModel(stored);
+    expect(knownModels()).toEqual([DEFAULT_MODEL, stored]);
+  });
+
+  it("resolveModels resolves a stored id without an explicit registry", () => {
+    const stored: DetectionModel = {
+      id: "url-id",
+      owner: "someone",
+      slug: "some-repo",
+      revision: "abc123",
+      file: "model.onnx",
+    };
+    addStoredModel(stored);
+    expect(resolveModels(["url-id"])).toEqual([stored]);
   });
 });

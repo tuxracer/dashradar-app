@@ -1,5 +1,6 @@
 import type { OnnxMetadata } from "@/lib/onnxMetadata";
-import { DETECTION_MODELS } from "./consts";
+import { DEFAULT_MODEL, STORED_MODELS_KEY } from "./consts";
+import { isDetectionModel } from "./types";
 import type { DetectionClass, DetectionModel } from "./types";
 
 export * from "./consts";
@@ -149,18 +150,74 @@ const parseNames = (
 };
 
 /**
+ * The models added from Hugging Face URLs, from localStorage. Anything that is
+ * not a valid entry is dropped rather than thrown on: a corrupt blob costs the
+ * added models, never the app. Safe to call where localStorage does not exist
+ * (a worker); it reports no stored models there.
+ */
+export const loadStoredModels = (): readonly DetectionModel[] => {
+  try {
+    const raw = localStorage.getItem(STORED_MODELS_KEY);
+    if (!raw) {
+      return [];
+    }
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter(isDetectionModel) : [];
+  } catch {
+    return [];
+  }
+};
+
+/** Persist the stored-model list, reporting whether the write landed. */
+const writeStoredModels = (models: readonly DetectionModel[]): boolean => {
+  try {
+    localStorage.setItem(STORED_MODELS_KEY, JSON.stringify(models));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Register a model, replacing any existing entry with the same id, and report
+ * whether the write landed. The caller surfaces a failed write, since it is
+ * about to offer the model as selectable.
+ */
+export const addStoredModel = (model: DetectionModel): boolean => {
+  const rest = loadStoredModels().filter((entry) => entry.id !== model.id);
+  return writeStoredModels([...rest, model]);
+};
+
+/** Unregister a stored model by id. The weights cache entry is left alone. */
+export const removeStoredModel = (id: string): boolean =>
+  writeStoredModels(loadStoredModels().filter((entry) => entry.id !== id));
+
+/**
+ * Every model the app knows: the build's default plus the stored additions.
+ * There is no built-in versus custom distinction beyond where an entry lives;
+ * the default comes from the build so the app runs with empty storage and so
+ * a model release (a revision bump under the same id) reaches every device.
+ */
+export const knownModels = (): readonly DetectionModel[] => [
+  DEFAULT_MODEL,
+  ...loadStoredModels().filter((entry) => entry.id !== DEFAULT_MODEL.id),
+];
+
+/**
  * The registry entries a stored selection names, in registry order, dropping
  * ids this build does not know. Never empty: a selection that resolves to
  * nothing falls back to the first registered model, so a stale id left by an
  * older build degrades to the shipping checkpoint instead of asking the worker
  * for weights that do not exist.
  *
- * The registry parameter defaults to what ships and exists so tests and the
- * picker can drive a multi-model list without one being published.
+ * The registry parameter defaults to knownModels() (the default plus stored
+ * additions), evaluated fresh per call so a change to storage between calls is
+ * seen. Tests and the picker can still pass an explicit list to drive a
+ * multi-model scenario without touching storage.
  */
 export const resolveModels = (
   ids: readonly string[],
-  models: readonly DetectionModel[] = DETECTION_MODELS,
+  models: readonly DetectionModel[] = knownModels(),
 ): readonly DetectionModel[] => {
   const selected = models.filter((model) => ids.includes(model.id));
   return selected.length > 0 ? selected : [models[0]];
