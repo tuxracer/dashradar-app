@@ -17,8 +17,18 @@ export type PixelBox = {
   height: number;
 };
 
+/**
+ * One frame's detections shaped for the HUD. `nearest` and `top` answer
+ * different questions and are often different detections: `nearest` is the
+ * physically closest object, which is what the contact card crops, what the
+ * direction readout points at, and what auto zoom steps on; `top` is the one
+ * the model is most sure of, which is what the dial's percentage and the class
+ * it names both come from, so the two always describe the same detection.
+ * `others` is everything except `nearest`, so `top` usually appears there too.
+ */
 export type HudModel = {
   nearest: Detection | undefined;
+  top: Detection | undefined;
   near: boolean;
   others: Detection[];
 };
@@ -73,10 +83,15 @@ export const buildHudModel = (detections: Detection[]): HudModel => {
         : best,
     undefined,
   );
+  const top = detections.reduce<Detection | undefined>(
+    (best, candidate) =>
+      best === undefined || candidate.score > best.score ? candidate : best,
+    undefined,
+  );
   const near =
     nearest !== undefined && boxArea(nearest.box) >= NEAR_AREA_FRACTION;
   const others = detections.filter((candidate) => candidate !== nearest);
-  return { nearest, near, others };
+  return { nearest, top, near, others };
 };
 
 /** Scale factor for a video rendered `object-fit: cover` in the viewport. */

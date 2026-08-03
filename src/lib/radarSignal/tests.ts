@@ -22,10 +22,27 @@ const det = (score: number): Detection => ({
   box: { xmin: 0.4, ymin: 0.4, xmax: 0.6, ymax: 0.6 },
 });
 
+/**
+ * A HudModel with `top` derived the way buildHudModel derives it, so these
+ * tests exercise the real relationship between the fields rather than a
+ * hand-set one.
+ */
 const hudOf = (
   nearest: Detection | undefined,
   others: Detection[] = [],
-): HudModel => ({ nearest, near: false, others });
+): HudModel => {
+  const all = nearest ? [nearest, ...others] : others;
+  return {
+    nearest,
+    top: all.reduce<Detection | undefined>(
+      (best, candidate) =>
+        best === undefined || candidate.score > best.score ? candidate : best,
+      undefined,
+    ),
+    near: false,
+    others,
+  };
+};
 
 const rgbChannels = (color: string): [number, number, number] => {
   const match = color.match(/rgb\((\d+), (\d+), (\d+)\)/);
@@ -82,6 +99,12 @@ describe("hudScore", () => {
 
   it("takes the max score across nearest and others", () => {
     expect(hudScore(hudOf(det(0.6), [det(0.9), det(0.55)]))).toBe(0.9);
+  });
+
+  it("reports the most confident detection, not the nearest one", () => {
+    // The nearest object (first argument) is the one the contact card crops;
+    // the readout must still report the model's best score in the frame.
+    expect(hudScore(hudOf(det(0.55), [det(0.95)]))).toBe(0.95);
   });
 });
 

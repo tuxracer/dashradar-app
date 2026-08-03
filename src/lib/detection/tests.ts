@@ -134,6 +134,31 @@ describe("buildHudModel", () => {
     expect(hud.near).toBe(false);
     expect(hud.others).toEqual([]);
   });
+
+  it("picks the highest-scoring detection as top, independent of size", () => {
+    const bigButUnsure = detection({
+      box: box(0.3, 0.3, 0.9, 0.9),
+      score: 0.55,
+    });
+    const smallButSure = detection({
+      box: box(0.1, 0.1, 0.2, 0.2),
+      score: 0.95,
+    });
+    const hud = buildHudModel([bigButUnsure, smallButSure]);
+    expect(hud.top).toBe(smallButSure);
+    expect(hud.nearest).toBe(bigButUnsure);
+  });
+
+  it("uses the same detection for top and nearest when there is only one", () => {
+    const only = detection();
+    const hud = buildHudModel([only]);
+    expect(hud.top).toBe(only);
+    expect(hud.nearest).toBe(only);
+  });
+
+  it("has no top on an empty frame", () => {
+    expect(buildHudModel([]).top).toBeUndefined();
+  });
 });
 
 describe("mapBoxToViewport", () => {
