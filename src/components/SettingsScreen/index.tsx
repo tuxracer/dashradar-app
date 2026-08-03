@@ -1,11 +1,12 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { track } from "@vercel/analytics";
-import { X } from "lucide-react";
+import { ChevronRight, X } from "lucide-react";
+import { ModelScreen } from "@/components/ModelScreen";
 import { ShareCard } from "@/components/ShareCard";
 import { useDetection } from "@/context/DetectionContext";
 import { useDevVideo } from "@/context/DevVideoContext";
 import { useSettings } from "@/context/SettingsContext";
-import { modelRepoUrl } from "@/lib/detectionModels";
+import { modelRepoUrl, resolveModels } from "@/lib/detectionModels";
 import { resetAppData } from "@/lib/resetAppData";
 import { REPO_URL, RESET_CONFIRM_MESSAGE, ZOOM_MODE_OPTIONS } from "./consts";
 
@@ -52,11 +53,14 @@ const handleReset = () => {
  * options toggles, the development-only controls Developer options reveals
  * (Debug overlay, Zoom indicator, Round-trip, Raw confidence, Camera preview,
  * Detection view, Frame preview, Save frames, Auto save, Throttle inference,
- * the segmented Zoom mode picker, Min confidence, Reset app data), the Video
- * file row (also shown whenever a clip is overriding the feed, so its CLEAR
- * button survives the master switch going off), plus read-only Model and
- * About rows.
- * Closes on the large close button or Escape. While it is open the detection
+ * Detection model, the segmented Zoom mode picker, Min confidence, Reset app
+ * data), the Video file row (also shown whenever a clip is overriding the feed,
+ * so its CLEAR button survives the master switch going off), plus read-only
+ * Model and About rows.
+ * Detection model is the one row that leads somewhere: it opens ModelScreen in
+ * place of this panel, which owns picking the model and applying the choice.
+ * Closes on the large close button or Escape, and Escape backs out of the model
+ * screen first rather than dismissing both. While it is open the detection
  * pump is paused (DetectionContext watches `settingsOpen`) and resumes on
  * close.
  */
@@ -82,6 +86,7 @@ export const SettingsScreen = () => {
     toggleThrottleInference,
     zoomMode,
     setZoomMode,
+    modelIds,
     confidenceThreshold,
     setConfidenceThreshold,
     zoomIndicator,
@@ -98,22 +103,41 @@ export const SettingsScreen = () => {
   const { source } = useDevVideo();
   const { swapVideoSource, activeModel } = useDetection();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [modelScreenOpen, setModelScreenOpen] = useState(false);
 
   useEffect(() => {
     if (!settingsOpen) {
       return;
     }
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        closeSettings();
+      if (event.key !== "Escape") {
+        return;
       }
+      // Backs out one screen at a time rather than dismissing both at once,
+      // which is what a sub-screen makes someone expect and is also what keeps
+      // modelScreenOpen from outliving the panel. This component is rendered
+      // unconditionally and only returns null while the panel is closed, so it
+      // never unmounts: closing settings straight from the sub-screen would
+      // leave modelScreenOpen true and reopen settings onto the picker.
+      if (modelScreenOpen) {
+        setModelScreenOpen(false);
+        return;
+      }
+      closeSettings();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [settingsOpen, closeSettings]);
+  }, [settingsOpen, closeSettings, modelScreenOpen]);
 
   if (!settingsOpen) {
     return null;
+  }
+
+  // Rendered instead of the panel rather than over it, so there is one screen
+  // on the glass at a time. settingsOpen stays true throughout, which is what
+  // keeps the detection pump paused while a model is being picked.
+  if (modelScreenOpen) {
+    return <ModelScreen onClose={() => setModelScreenOpen(false)} />;
   }
 
   const versionLabel = __COMMIT_SHA__;
@@ -339,6 +363,28 @@ export const SettingsScreen = () => {
                   </span>
                 </span>
                 <Toggle on={throttleInference} />
+              </button>
+
+              <button
+                type="button"
+                data-testid="open-model-screen"
+                onClick={() => setModelScreenOpen(true)}
+                className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
+              >
+                <span className="flex flex-col gap-1">
+                  <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                    Detection model
+                  </span>
+                  <span className="text-sm font-medium text-white/45">
+                    Chooses the checkpoint the detector runs.
+                  </span>
+                </span>
+                <span className="flex items-center gap-2 text-base font-semibold tracking-[0.04em] text-white/60">
+                  {resolveModels(modelIds)
+                    .map((model) => model.slug)
+                    .join(", ")}
+                  <ChevronRight className="h-5 w-5 shrink-0" strokeWidth={2} />
+                </span>
               </button>
 
               <div className="flex min-h-16 flex-col gap-3 py-4">

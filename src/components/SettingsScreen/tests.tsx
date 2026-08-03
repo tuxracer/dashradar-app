@@ -191,6 +191,7 @@ describe("SettingsScreen", () => {
     }
     expect(screen.queryByText("Zoom")).not.toBeInTheDocument();
     expect(screen.queryByText("Min confidence")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("open-model-screen")).toBeNull();
     expect(screen.queryByTestId("video-file-value")).toBeNull();
     // The two driver-facing rows are not developer rows and stay put.
     expect(screen.getByText("Audio alerts")).toBeInTheDocument();
@@ -219,6 +220,20 @@ describe("SettingsScreen", () => {
     expect(screen.queryByText("Audio alerts")).not.toBeInTheDocument();
   });
 
+  // Escape used to close the panel outright from the model screen. This
+  // component is rendered unconditionally and only returns null, so it never
+  // unmounts: the sub-screen flag survived, and reopening settings landed on
+  // the picker instead of the panel.
+  it("backs out of the model screen on Escape before closing the panel", async () => {
+    const user = await renderOpenSettingsWithDeveloperOptions();
+    await user.click(screen.getByTestId("open-model-screen"));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("model-back")).toBeNull();
+    expect(screen.getByText("Audio alerts")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByText("Audio alerts")).not.toBeInTheDocument();
+  });
+
   it("persists the mode picked from the segmented Zoom row", async () => {
     const user = await renderOpenSettingsWithDeveloperOptions();
     await user.click(screen.getByRole("button", { name: "2X" }));
@@ -235,6 +250,12 @@ describe("SettingsScreen", () => {
     expect(slider).toHaveValue("0.5");
     fireEvent.change(slider, { target: { value: "0.3" } });
     expect(stored("confidenceThreshold")).toBe(0.3);
+  });
+
+  it("opens the model screen from the developer row", async () => {
+    const user = await renderOpenSettingsWithDeveloperOptions();
+    await user.click(screen.getByTestId("open-model-screen"));
+    expect(screen.getByTestId("model-back")).toBeInTheDocument();
   });
 
   it("shows the camera as the feed until a file is chosen", async () => {
