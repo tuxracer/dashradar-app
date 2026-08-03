@@ -11,9 +11,9 @@ export const MODEL_OWNER = "tuxracer";
  * Adding an entry is not free. `hudSignal` takes the max score across every
  * detection regardless of class, so a class a new model adds immediately drives
  * the dial, the alert ring, and the beeper, with no per-class alert concept to
- * opt it out. MIN_BOX_EDGE_PX is a single global threshold tuned for vehicles,
- * and INPUT_SIZE is fixed at 512 across the whole capture path, so a checkpoint
- * that disagrees with either needs more than an entry here.
+ * opt it out. INPUT_SIZE is also fixed at 512 across the whole capture path, so
+ * a checkpoint that expects a different input size needs more than an entry
+ * here.
  */
 export const DETECTION_MODELS: readonly DetectionModel[] = [
   {

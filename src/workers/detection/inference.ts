@@ -10,7 +10,6 @@ import {
   IMAGENET_MEAN,
   IMAGENET_STD,
   INPUT_SIZE,
-  MIN_BOX_EDGE_PX,
 } from "./consts";
 import { DetectionError } from "./types";
 
@@ -146,8 +145,7 @@ const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
  * `[1,N,1+C]` raw class logits, where C is the number of entries in `classes`
  * and slot 0 is an unused background slot. Each query takes the highest-scoring
  * real class, and is emitted when that class's `sigmoid(logit)` clears
- * `threshold` and the box's shorter edge spans at least MIN_BOX_EDGE_PX of the
- * input. One box gets one class: the head is multi-label in principle, but a
+ * `threshold`. One box gets one class: the head is multi-label in principle, but a
  * HUD box carrying two names is no use to a driver glancing at it. RF-DETR is
  * set-based, so no NMS is applied.
  *
@@ -196,11 +194,6 @@ export const decodeDetections = (
       xmax: clamp01(cx + w / 2),
       ymax: clamp01(cy + h / 2),
     };
-    const minEdgePx =
-      Math.min(box.xmax - box.xmin, box.ymax - box.ymin) * INPUT_SIZE;
-    if (minEdgePx < MIN_BOX_EDGE_PX) {
-      continue;
-    }
     detections.push({ label: classes[bestIndex].label, score: bestScore, box });
   }
   return detections;
