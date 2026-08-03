@@ -3,6 +3,8 @@ import {
   combineLatest,
   distinctUntilChanged,
   map,
+  pairwise,
+  skip,
 } from "rxjs";
 import { APP_RELEASE } from "@/lib/appRelease";
 import { waitForNextVideoFrame } from "@/lib/camera";
@@ -74,16 +76,9 @@ export const createDetectionEngine = ({
   telemetry: DetectionTelemetry;
 }): DetectionEngine => {
   // ---- published state ----
-  let snapshot: DetectionSnapshot = INITIAL_SNAPSHOT;
-  const listeners = new Set<() => void>();
-  const notify = () => {
-    for (const listener of [...listeners]) {
-      listener();
-    }
-  };
+  const snapshot$ = new BehaviorSubject<DetectionSnapshot>(INITIAL_SNAPSHOT);
   const publish = (patch: Partial<DetectionSnapshot>) => {
-    snapshot = { ...snapshot, ...patch };
-    notify();
+    snapshot$.next({ ...snapshot$.value, ...patch });
   };
 
   // ---- world state pushed in by the owner ----
@@ -173,7 +168,7 @@ export const createDetectionEngine = ({
 
   /** Swap in the next contact (or none), closing the previous crop bitmap. */
   const replaceContact = (next: Contact | undefined) => {
-    snapshot.contact?.image.close();
+    snapshot$.value.contact?.image.close();
     publish({ contact: next });
   };
 
@@ -192,7 +187,7 @@ export const createDetectionEngine = ({
         startedAt,
         lastBeatAt: Date.now(),
         framesProcessed: framesTotal - baseline,
-        graphCapture: snapshot.backendProbe?.graphCapture,
+        graphCapture: snapshot$.value.backendProbe?.graphCapture,
         // Stamp the writing build, so a crash report names the deploy that
         // produced it rather than the one that happens to read the record.
         release: APP_RELEASE,
@@ -232,26 +227,35 @@ export const createDetectionEngine = ({
     clearSentinel();
   };
 
-  /**
-   * The one place status changes, so the scanning-window side effects (the
-   * telemetry clock and the crash sentinel) can never miss a transition.
-   */
+  /** Publish a status change; the effect stream below reacts to its edges. */
   const setStatus = (next: DetectionStatus) => {
-    const previous = snapshot.status;
-    if (next === previous) {
-      return;
-    }
-    publish({ status: next });
-    if (next === "running") {
-      telemetry.scanningStarted();
-      sentinelStart();
-      void wakeLock.acquire();
-    } else if (previous === "running") {
-      telemetry.scanningStopped();
-      sentinelStop();
-      void wakeLock.release();
+    if (next !== snapshot$.value.status) {
+      publish({ status: next });
     }
   };
+
+  // The scanning-window side effects (telemetry clock, crash sentinel, wake
+  // lock) attach to status edges on the published stream, so they can never
+  // miss a transition no matter which code path publishes it. pairwise on a
+  // BehaviorSubject pairs the initial value with the first change, so the
+  // first entry into "running" is seen.
+  snapshot$
+    .pipe(
+      map((s) => s.status),
+      distinctUntilChanged(),
+      pairwise(),
+    )
+    .subscribe(([previous, next]) => {
+      if (next === "running") {
+        telemetry.scanningStarted();
+        sentinelStart();
+        void wakeLock.acquire();
+      } else if (previous === "running") {
+        telemetry.scanningStopped();
+        sentinelStop();
+        void wakeLock.release();
+      }
+    });
 
   const sendFrame = async () => {
     const video = inputs$.value.video;
@@ -442,7 +446,7 @@ export const createDetectionEngine = ({
           };
         }
         if (result.contact) {
-          snapshot.contact?.image.close();
+          snapshot$.value.contact?.image.close();
           patch.contact = result.contact;
         }
         publish(patch);
@@ -539,7 +543,7 @@ export const createDetectionEngine = ({
   running$.subscribe((isRunning) => {
     running = isRunning;
     if (isRunning) {
-      if (snapshot.status === "ready") {
+      if (snapshot$.value.status === "ready") {
         setStatus("running");
         void sendFrame();
       }
@@ -548,17 +552,20 @@ export const createDetectionEngine = ({
     generation += 1;
     clearTimers();
     tracker = createDetectionTracker();
-    if (snapshot.status === "running") {
+    if (snapshot$.value.status === "running") {
       setStatus("ready");
     }
   });
 
   return {
-    getSnapshot: () => snapshot,
+    getSnapshot: () => snapshot$.value,
     subscribe: (onChange) => {
-      listeners.add(onChange);
+      // Skip the BehaviorSubject's replay: the seam's contract is
+      // notify-on-change, and useSyncExternalStore reads the current value
+      // itself via getSnapshot.
+      const subscription = snapshot$.pipe(skip(1)).subscribe(onChange);
       return () => {
-        listeners.delete(onChange);
+        subscription.unsubscribe();
       };
     },
     setInputs: (next) => {
@@ -575,9 +582,8 @@ export const createDetectionEngine = ({
       activation += 1;
       // A fresh activation behaves like a fresh mount: published state and
       // per-load counters reset before the new worker reports anything.
-      snapshot.contact?.image.close();
-      snapshot = INITIAL_SNAPSHOT;
-      notify();
+      snapshot$.value.contact?.image.close();
+      snapshot$.next(INITIAL_SNAPSHOT);
       fileProgress.clear();
       debug = INITIAL_DEBUG;
       inFlight = 0;
