@@ -165,10 +165,20 @@ export const createDetectionEngine = ({
   let framesTotal = 0;
   let debug: DebugSnapshot = INITIAL_DEBUG;
 
-  /** Swap in the next contact (or none), closing the previous crop bitmap. */
-  const replaceContact = (next: Contact | undefined) => {
+  /**
+   * Close the published contact's crop bitmap and hand back its replacement.
+   * Every path that swaps the contact goes through this one close: callers
+   * publish the returned value themselves, so the detections handler can
+   * batch the swap into a larger patch.
+   */
+  const swapContact = (next: Contact | undefined): Contact | undefined => {
     snapshot$.value.contact?.image.close();
-    publish({ contact: next });
+    return next;
+  };
+
+  /** Swap in the next contact (or none) as its own publication. */
+  const replaceContact = (next: Contact | undefined) => {
+    publish({ contact: swapContact(next) });
   };
 
   /** Publish a status change; the scanning window below reacts to its edges. */
@@ -444,8 +454,7 @@ export const createDetectionEngine = ({
           };
         }
         if (result.contact) {
-          snapshot$.value.contact?.image.close();
-          patch.contact = result.contact;
+          patch.contact = swapContact(result.contact);
         }
         publish(patch);
         result.discardedCrop?.close();
