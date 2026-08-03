@@ -81,12 +81,20 @@ export const stepTracker = (
     const track = tracks[i];
     const detection = matchedDetByTrack.get(i);
     if (detection) {
-      // Ease the score toward the new raw value instead of adopting it
-      // outright, so per-frame model jitter does not whipsaw downstream
-      // readouts (the radar detector percentage in particular).
+      // Same-class match: ease the score toward the new raw value instead of
+      // adopting it outright, so per-frame model jitter does not whipsaw
+      // downstream readouts (the radar detector percentage in particular). A
+      // label change means IoU matched this track to a different class than
+      // the one its eased score describes (stepTracker matches purely by
+      // box overlap, with no label check), so track.score is meaningless for
+      // the new class and blending it in would leak the old class's
+      // confidence into the new one's readout. Adopt the new detection's own
+      // score outright instead.
       const score =
-        track.score +
-        (detection.score - track.score) * config.scoreSmoothingAlpha;
+        detection.label === track.label
+          ? track.score +
+            (detection.score - track.score) * config.scoreSmoothingAlpha
+          : detection.score;
       nextTracks.push({
         ...track,
         label: detection.label,

@@ -131,6 +131,36 @@ describe("stepTracker", () => {
     expect(updated.visible[0].score).toBe(0.95);
   });
 
+  it("adopts the new detection's raw score outright when the matched label changes, instead of easing from the old class's score", () => {
+    // A POLICE track eases up to a high score.
+    let state = initialTrackerState();
+    state = stepTracker(
+      state,
+      [detection({ label: "police", displayLabel: "POLICE", score: 0.95 })],
+      config,
+    ).state;
+    // Next frame the model reports a PERSON, not a POLICE, in an overlapping
+    // box. They match by IoU (stepTracker never checks label), but the score
+    // that was eased for POLICE describes nothing about this PERSON.
+    const stepped = stepTracker(
+      state,
+      [
+        detection({
+          label: "person",
+          displayLabel: "PERSON",
+          category: "person",
+          score: 0.55,
+        }),
+      ],
+      config,
+    );
+    // The visible score must be the new detection's own value, not a blend
+    // of the stale POLICE confidence (0.95) and the new PERSON score (which
+    // alpha 0.5 would put at 0.75).
+    expect(stepped.visible[0].label).toBe("person");
+    expect(stepped.visible[0].score).toBe(0.55);
+  });
+
   it("shows a brand-new track's first score unsmoothed", () => {
     const { visible } = stepTracker(
       initialTrackerState(),
