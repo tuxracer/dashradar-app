@@ -12,7 +12,6 @@ import {
   map,
   merge,
   Observable,
-  of,
   repeat,
   skip,
   Subject,
@@ -491,17 +490,63 @@ export const createDetectionEngine = ({
       ignoreElements(),
     );
 
+    /** The next detections result this session delivers. */
+    const nextResult$ = session.messages$.pipe(
+      filter((message) => message.type === "detections"),
+      take(1),
+    );
+
     /**
-     * One pump iteration: capture and post (unless a frame from before an
-     * interruption is still outstanding, in which case just await its
-     * reply), then either pace the next capture or complete the session for
-     * recycle. A capture failure (video not delivering frames yet, typically
-     * mid-attach) retries after FRAME_RETRY_MS.
+     * Capture a frame, then post it with the reply listener already in
+     * place: merge subscribes nextResult$ before the deferred post runs, so
+     * the reply cannot race the listener. The pump would otherwise depend on
+     * worker replies arriving on a later macrotask, a scheduling guarantee
+     * rather than a structural one, and a responder that answered
+     * synchronously (a test fake, a same-thread worker shim) would emit into
+     * nothing and stall the pump forever.
+     */
+    const postFrame = (video: HTMLVideoElement) =>
+      captureFrame(video).pipe(
+        switchMap((frame) =>
+          merge(
+            nextResult$,
+            defer(() => {
+              const { zoom, includeContact, confidenceThreshold } =
+                settings$.value;
+              lastFrameInfo = {
+                zoom,
+                width: frame.width,
+                height: frame.height,
+              };
+              postTime = performance.now();
+              awaitingResult = true;
+              session.post(
+                {
+                  type: "detect",
+                  frame,
+                  includeCrop: includeContact,
+                  zoom,
+                  confidenceThreshold,
+                },
+                [frame],
+              );
+              return EMPTY;
+            }),
+          ),
+        ),
+      );
+
+    /**
+     * One pump iteration: capture and post, then await the reply (a frame
+     * from before an interruption still outstanding skips straight to the
+     * awaiting), then either pace the next capture or complete the session
+     * for recycle. A capture failure (video not delivering frames yet,
+     * typically mid-attach) retries after FRAME_RETRY_MS.
      */
     const scanOnce = () =>
       defer(() => {
         if (awaitingResult) {
-          return of(undefined);
+          return nextResult$;
         }
         const video = inputs$.value.video;
         // running$ implies a video is attached, so this branch is believed
@@ -509,37 +554,9 @@ export const createDetectionEngine = ({
         // coupling ever breaks, it stops repeat() from spinning
         // synchronously on a missing video instead of retrying quietly.
         return video
-          ? captureFrame(video).pipe(
-              tap((frame) => {
-                const { zoom, includeContact, confidenceThreshold } =
-                  settings$.value;
-                lastFrameInfo = {
-                  zoom,
-                  width: frame.width,
-                  height: frame.height,
-                };
-                postTime = performance.now();
-                awaitingResult = true;
-                session.post(
-                  {
-                    type: "detect",
-                    frame,
-                    includeCrop: includeContact,
-                    zoom,
-                    confidenceThreshold,
-                  },
-                  [frame],
-                );
-              }),
-            )
+          ? postFrame(video)
           : timer(FRAME_RETRY_MS).pipe(ignoreElements());
       }).pipe(
-        switchMap(() =>
-          session.messages$.pipe(
-            filter((message) => message.type === "detections"),
-            take(1),
-          ),
-        ),
         switchMap(() => {
           // Recycle at this result boundary, where nothing is in flight, once
           // the worker has run long enough; terminating and recreating it

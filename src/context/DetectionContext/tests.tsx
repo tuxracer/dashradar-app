@@ -508,6 +508,57 @@ describe("DetectionProvider", () => {
     ).toHaveLength(2);
   });
 
+  it("hears a result that arrives synchronously with the post", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    // A worker that answers before postMessage returns: legal for a worker
+    // shim, and the worst-case scheduling for the pump's reply listener. The
+    // pump must have that listener in place at post time, not attach it a
+    // tick later, or this reply lands on nothing and the pump stalls.
+    const worker = new FakeWorker();
+    const post = worker.postMessage.bind(worker);
+    worker.postMessage = (message: WorkerRequest) => {
+      post(message);
+      if (message.type === "detect") {
+        worker.emit({
+          type: "detections",
+          detections: [],
+          timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+        });
+      }
+    };
+    render(
+      <SettingsProvider>
+        <DetectionProvider createWorker={() => worker}>
+          <StartOnReady />
+        </DetectionProvider>
+      </SettingsProvider>,
+    );
+    act(() => {
+      worker.emit({ type: "ready" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(1);
+    // The synchronous reply was heard, so pacing is already scheduled and
+    // the next frame goes out on time instead of never.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(2);
+  });
+
   it("publishes each scan's own detections with the frame they came from", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(
