@@ -79,6 +79,7 @@ Task-scoped procedures live in `.agents/skills/`, one directory each. Read the m
 | `writing-docs`         | editing the README, the TRD, or anything under `docs/`                                 |
 | `shipping-a-model`     | changing the checkpoint, the ONNX export, the signature, or a model's `revision`       |
 | `verifying-in-browser` | claiming worker, inference, camera, service-worker, or offline work is done            |
+| `writing-rx-streams`   | writing or modifying any rxjs stream code (the detection engine, camera feed, wake lock, or new reactive code) |
 
 **Everything a person reads is plain English written for a working engineer who has never seen this codebase**: the TRD, the README, code comments, commit messages, PR descriptions, in-app copy. Explain the why rather than transcribing the code, cut something nearby before adding, and never point a human-facing document at an agent-facing path (this file, `.claude/`, `.agents/skills/`, plans under `docs/superpowers/`). The `writing-docs` skill has the full standards; read it before editing the README, the TRD, or anything under `docs/`.
 
@@ -123,18 +124,6 @@ There is no allowlist: every class a checkpoint names is decoded and shown. That
 - **`mapBoxToViewport` assumes `object-fit: cover`** on the video element. The detection view draws its boxes through it, so the mapping and the video's CSS have to change together: if the feed stops being rendered `cover`, every box lands in the wrong place.
 - **Worker module import exception**: never import `src/workers/detection/index.ts` (it pulls onnxruntime-web into the importer). Consumers import protocol types and guards from `@/workers/detection/types` directly. This is a deliberate exception to the import-from-module-index rule.
 - **vitest transpiles without typechecking, so run `pnpm check` before debugging a baffling test failure.** Importing a name a module doesn't export yields `undefined` at runtime, not an error, and the symptom lands far from the cause: `vi.advanceTimersByTimeAsync(undefined)` advances nothing and makes a correct implementation look broken, which once cost an hour of stream debugging that tsc would have flagged instantly. The usual source here is `src/context/DetectionContext/consts.ts`, an explicit named re-export list: a new `detectionEngine` constant must be added to it before tests can import it from `@/context/DetectionContext`.
-
-## RxJS Conventions
-
-The stream modules (`detectionEngine`, `camera`, `wakeLock`) follow these rules; hold any new reactive code to them.
-
-- **A resource is a stream whose teardown is the release.** Model anything with an acquire/release lifecycle (a lock, a camera, a worker, a clock) as an Observable that acquires on subscribe and releases on unsubscribe, then scope it under whatever should own it. Never expose paired start/stop calls a caller has to hold correctly; `screenWakeLock`, `cameraFeed`, and the engine's scanning-window resources are the pattern to copy.
-- **Subscribe to the reply before sending the request.** When a stream sends a message and awaits the response, the listener must be in place before the send goes out (merge the reply wait ahead of a deferred send, as the frame pump does). Correctness must never lean on the reply arriving on a later tick: a synchronous responder is legal, and a guarantee that holds only by scheduling is a race waiting for a refactor.
-- **Bound every wait on an external responder.** A worker or platform API can go silent without erroring, and an unbounded wait turns that into a permanent, invisible stall. Give the wait a `timeout` routed to a recovery path (the pump's reply watchdog recycles the worker), or a comment saying why unbounded is safe here.
-- **A retry must observe what it caught.** Never keep a loop alive with a bare `catchError` that discards the error: count it, write it to the debug snapshot, or report it, so a persistent failure looks different from health (the capture retry's `captureFailures` streak is the pattern).
-- **Prefer the operator that names the intent.** `startWith(x)`, not `merge(of(x), source$)`; `retry({ delay })`, not catchError-into-a-timer. Composing equivalent behavior out of general-purpose parts hides what the code means and turns a linear pipe into a tree the reader has to re-derive; a stream should read top to bottom as one pipeline, with `merge` and friends reserved for genuinely multiple sources.
-- **React consumes a resource stream once per mount.** Subscribe in a mount-scoped effect and read changing callbacks through refs (see `CameraView`); a subscription keyed on callback identity restarts the resource on any parent render that forgets to memoize.
-- **Teardown releases exactly what its own subscription acquired.** When a teardown touches state it shares with sibling subscriptions (a DOM element, a global), it must guard on having been the one that set it, or an unsubscribe racing a replacement wipes the replacement's work; `cameraFeed` clears `video.srcObject` only when its own stream attached.
 
 ## Coding Standards
 
