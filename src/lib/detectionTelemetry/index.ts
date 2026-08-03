@@ -36,6 +36,8 @@ export type DetectionTelemetry = {
   result: (timing: { inferenceMs: number; roundTripMs: number }) => void;
   /** A detection failure reached the user, with an optional platform cause. */
   error: (code: DetectionErrorCode | "WORKER_CRASHED", detail?: string) => void;
+  /** The worker went silent mid-scan and was recycled to recover. */
+  workerHung: () => void;
   /** The pump entered its running state; starts the scanning clock. */
   scanningStarted: () => void;
   /** The pump left its running state; stops the scanning clock. */
@@ -129,6 +131,13 @@ export const createDetectionTelemetry = (
         track("timing_round_trip_late", { seconds: lateReport.roundTrip });
         track("timing_inference_late", { seconds: lateReport.inference });
       }
+    },
+    workerHung: () => {
+      // Once per page load: a device whose GPU wedges again after the recycle
+      // would otherwise report every reply-timeout window for the whole drive.
+      once("worker_hung", () => {
+        track("worker_hung");
+      });
     },
     error: (code, detail) => {
       // The cause rides along only for codes that carry one (the GPUDevice

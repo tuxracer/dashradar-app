@@ -70,6 +70,18 @@ export const SW_CONTROL_TIMEOUT_MS = 3_000;
  */
 export const WORKER_RECYCLE_AFTER_MS = 900_000;
 
+/**
+ * How long the pump waits for a posted frame's result before treating the
+ * worker as hung and recycling it. A healthy WebGPU round trip measures around
+ * half a second and even a heavily throttled phone stays within a few seconds,
+ * so a reply this late means the worker is wedged (a stuck GPU queue, a
+ * runtime deadlock) in a way that fires neither a worker-error message nor
+ * onerror. Without the bound the pump would await the reply forever, and
+ * scanning would silently stop for the rest of the drive; recycling gives it
+ * a fresh worker within a bearable gap instead.
+ */
+export const WORKER_REPLY_TIMEOUT_MS = 30_000;
+
 /** Published state before the worker reports anything. */
 export const INITIAL_SNAPSHOT: DetectionSnapshot = {
   status: "loading-model",

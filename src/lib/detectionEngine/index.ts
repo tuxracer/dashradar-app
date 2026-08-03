@@ -19,6 +19,7 @@ import {
   take,
   takeUntil,
   tap,
+  timeout,
   timer,
 } from "rxjs";
 import { APP_RELEASE } from "@/lib/appRelease";
@@ -47,6 +48,7 @@ import {
   PACING_REST_RATIO,
   SW_CONTROL_TIMEOUT_MS,
   WORKER_RECYCLE_AFTER_MS,
+  WORKER_REPLY_TIMEOUT_MS,
 } from "./consts";
 import type {
   DebugSnapshot,
@@ -493,10 +495,27 @@ export const createDetectionEngine = ({
       ignoreElements(),
     );
 
-    /** The next detections result this session delivers. */
+    /**
+     * The next detections result this session delivers, bounded by the reply
+     * watchdog: a worker that answers with neither a result nor an error
+     * within WORKER_REPLY_TIMEOUT_MS is wedged in a way no other signal
+     * reports (onerror covers crashes, the crash sentinel covers OS kills),
+     * so the timeout recycles it instead of awaiting the reply forever. The
+     * outstanding frame dies with the terminated worker; the fresh session's
+     * ready re-primes the pump.
+     */
     const nextResult$ = session.messages$.pipe(
       filter((message) => message.type === "detections"),
       take(1),
+      timeout({
+        first: WORKER_REPLY_TIMEOUT_MS,
+        with: () =>
+          defer(() => {
+            telemetry.workerHung();
+            recycle$.next();
+            return EMPTY;
+          }),
+      }),
     );
 
     /**

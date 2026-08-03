@@ -9,4 +9,5 @@ export {
   PACING_REST_RATIO,
   SW_CONTROL_TIMEOUT_MS,
   WORKER_RECYCLE_AFTER_MS,
+  WORKER_REPLY_TIMEOUT_MS,
 } from "@/lib/detectionEngine";

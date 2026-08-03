@@ -9,6 +9,7 @@ import {
   MIN_FRAME_INTERVAL_MS,
   useDetection,
   WORKER_RECYCLE_AFTER_MS,
+  WORKER_REPLY_TIMEOUT_MS,
 } from "@/context/DetectionContext";
 
 import {
@@ -2303,6 +2304,50 @@ describe("worker recycle", () => {
       "running",
     );
     expect(detectCount(workers[1])).toBe(1);
+  });
+
+  it("recycles a worker whose reply never arrives", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const workers = renderWithWorkerFactory(<StartOnReady />);
+    act(() => {
+      workers[0].emit({ type: "ready" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(detectCount(workers[0])).toBe(1);
+    // The worker never answers: no result, no worker-error, no crash. The
+    // reply watchdog is the only signal left, and it recycles the worker.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WORKER_REPLY_TIMEOUT_MS);
+    });
+    expect(workers).toHaveLength(2);
+    expect(workers[0].terminate).toHaveBeenCalled();
+    expect(vi.mocked(track)).toHaveBeenCalledWith("worker_hung");
+    // The fresh worker's ready re-primes the pump and scanning resumes.
+    act(() => {
+      workers[1].emit({ type: "ready" });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(detectCount(workers[1])).toBe(1);
+    // A second hang recycles again but reports nothing: the event is
+    // once per page load.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WORKER_REPLY_TIMEOUT_MS);
+    });
+    expect(workers).toHaveLength(3);
+    expect(
+      vi.mocked(track).mock.calls.filter(([name]) => name === "worker_hung"),
+    ).toHaveLength(1);
   });
 
   it("keeps a recycled worker on the model the session started with", async () => {
