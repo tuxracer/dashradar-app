@@ -23,6 +23,7 @@ import type { AutoZoomLevel, AutoZoomState } from "@/lib/autoZoom";
 import type { HudModel } from "@/lib/detection";
 import { buildHudModel, enrichDetections } from "@/lib/detection";
 import { resolveModels } from "@/lib/detectionModels";
+import type { DetectionClass } from "@/lib/detectionModels";
 import { createDetectionTracker } from "@/lib/detectionTracker";
 import { isStandalone } from "@/lib/pwaInstall";
 import { contactDirection, signalFromScore } from "@/lib/radarSignal";
@@ -132,6 +133,11 @@ export const DetectionProvider = ({
   // periodic worker recycle too, which builds a new session 15 minutes in and
   // would otherwise pick up whatever is stored by then.
   const [activeModel] = useState(() => resolveModels(modelIds)[0]);
+  // The loaded checkpoint's classes, which arrive on `ready` because only the
+  // worker sees the weights they are read from. A ref rather than state: the
+  // detections handler is the only reader, and re-creating that handler per
+  // load would restart the worker lifecycle effect it belongs to.
+  const modelClassesRef = useRef<readonly DetectionClass[]>([]);
   const {
     source: devVideoSource,
     setVideoFile,
@@ -633,6 +639,7 @@ export const DetectionProvider = ({
           break;
         }
         case "ready": {
+          modelClassesRef.current = message.classes;
           // Mark the worker loaded before priming the pump below, so the
           // sendFrame() call in the running branch is not itself bailed.
           workerLoadedRef.current = true;
@@ -665,7 +672,7 @@ export const DetectionProvider = ({
           const detections = enrichDetections(
             message.detections,
             confidenceThresholdRef.current,
-            activeModel.classes,
+            modelClassesRef.current,
           );
           const tracked = trackerRef.current?.update(detections) ?? [];
           setHud(buildHudModel(tracked));
@@ -706,7 +713,7 @@ export const DetectionProvider = ({
             const [cropDetection] = enrichDetections(
               [message.detections[message.crop.detectionIndex]],
               confidenceThresholdRef.current,
-              activeModel.classes,
+              modelClassesRef.current,
             );
             if (cropDetection) {
               // With the detection image off the cutout is only here because

@@ -11,7 +11,7 @@ Mobile WebGPU is the only target and the only execution path. There is no CPU fa
 
 ## Signature the worker expects
 
-Every selectable checkpoint is one entry in `src/lib/detectionModels/consts.ts`, naming the repo, revision, weights file, head width, and classes. The shipping entry streams `model_fp16.onnx`, about 57 MB, mixed precision. The shapes below are that entry's.
+Every selectable checkpoint is one entry in `src/lib/detectionModels/consts.ts`, naming the repo, revision, and weights file, and nothing about what the weights hold. The shipping entry streams `model_fp16.onnx`, about 57 MB, mixed precision. The shapes below are that entry's.
 
 | Tensor   | Shape           | Notes                                            |
 | -------- | --------------- | ------------------------------------------------ |
@@ -19,7 +19,7 @@ Every selectable checkpoint is one entry in `src/lib/detectionModels/consts.ts`,
 | `dets`   | `[1,300,4]`     | cxcywh, normalized                               |
 | `labels` | `[1,300,2]`     | raw logits, per-query sigmoid; police at index 1 |
 
-No NMS. The `labels` width and each class's index are the checkpoint's, declared by its entry rather than baked into the decode, so a wider head with its classes elsewhere is just a different entry. Changes to the input shape, the box encoding, or the unused background slot are a different matter: those need matching changes in `preprocess`/`decodeDetections` in `src/workers/detection/inference.ts`.
+No NMS. The `labels` width is measured off the session and each class's index comes from the `names` map stamped into the file, so a wider head with its classes elsewhere needs no app change at all. Changes to the input shape, the box encoding, or the unused background slot are a different matter: those need matching changes in `preprocess`/`decodeDetections` in `src/workers/detection/inference.ts`.
 
 ## Export requirements
 
@@ -33,7 +33,8 @@ The `"model-cache"` Workbox route is `CacheFirst` keyed on URL, so the URL is th
 
 1. Push a new tag on the Hugging Face repo.
 2. Verify the new weights URL returns 200: `curl -sIL -o /dev/null -w '%{http_code}' <url>`
-3. Bump the entry's `revision` in `src/lib/detectionModels/consts.ts`. A genuinely different checkpoint is a new entry with a new `id` rather than an edit to an existing one, so a stored selection is never silently repointed at a different detector. Read the entry's `headWidth` off the export's actual `labels` width rather than guessing. The worker measures the real width off the session either way, so a declared one is an assertion about which checkpoint the class indices were written against: a wrong value fails the load, which is loud, while omitting it accepts whatever head loaded and points the table's indices at another checkpoint's classes, silently. Registered entries declare it. `classes` picks which of those logits this build surfaces, by index; an unnamed logit is never read.
+3. Bump the entry's `revision` in `src/lib/detectionModels/consts.ts`. That is the whole edit: the head width and the class labels are read off the loaded session and the file's `names` map, so nothing app-side describes the checkpoint. A genuinely different checkpoint is a new entry with a new `id` rather than an edit to an existing one, so a stored selection is never silently repointed at a different detector.
+   Stamp `names` into the export or the classes come back as `CLASS 1`, `CLASS 2`. Every class it names is live: there is no allowlist, and `hudSignal` takes the max score across every detection, so a named `person` class beeps at every pedestrian.
 4. Verify end-to-end on WebGPU in a real browser (see the `verifying-in-browser` skill): zero GridSample or WGSL errors in the console, and a reference-image score match against the previous model.
 5. Verify on a real device before calling it done. Round-trip time and thermals are the numbers that matter, and neither shows up in a desktop browser.
 

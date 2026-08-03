@@ -7,7 +7,6 @@ import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 const detection = (overrides: Partial<Detection> = {}): Detection => ({
   label: "police",
   displayLabel: "POLICE",
-  category: "vehicle",
   score: 0.87,
   box: { xmin: 0.4, ymin: 0.5, xmax: 0.6, ymax: 0.8 },
   ...overrides,
@@ -89,13 +88,12 @@ describe("DetectionView", () => {
     expect(screen.getByTestId("scan-region")).toBeInTheDocument();
   });
 
-  it("draws two categories in different colors", () => {
+  it("draws every box in one color", () => {
     render(
       <DetectionView
         detections={[
-          detection({ category: "vehicle" }),
+          detection({}),
           detection({
-            category: "person",
             box: { xmin: 0.1, ymin: 0.1, xmax: 0.2, ymax: 0.2 },
           }),
         ]}
@@ -106,7 +104,7 @@ describe("DetectionView", () => {
     );
     const [first, second] = screen.getAllByTestId("detection-box");
     expect(first.style.borderColor).not.toBe("");
-    expect(first.style.borderColor).not.toBe(second.style.borderColor);
+    expect(second.style.borderColor).toBe(first.style.borderColor);
   });
 
   it("gives two boxes clamped to the same corner distinct keys", () => {

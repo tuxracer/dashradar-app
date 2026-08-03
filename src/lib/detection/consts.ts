@@ -1,5 +1,3 @@
-import type { RoadCategory } from "@/types";
-
 /**
  * Detections below this score are discarded. Set near the shipping
  * checkpoint's own operating point, the score its release reports precision
@@ -12,21 +10,12 @@ import type { RoadCategory } from "@/types";
 export const CONFIDENCE_THRESHOLD = 0.7;
 
 /**
- * Box and label color per category in the detection view. Keyed on category
- * rather than on the class name so a new class inherits a color with no edit
- * here, which is the point of categories existing at all. These are CSS color
- * strings applied as inline styles rather than Tailwind classes, because
- * Tailwind cannot build a class name from a runtime value. Amber matches the
- * rest of the HUD and stays on vehicles, the case the app is built around; the
- * others are picked to stay apart from it and from each other on a bright
- * daytime feed. This is a developer-only view, so it can carry more color than
- * the driver-facing meter does.
+ * Box and label color in the detection view, the same for every class. A
+ * checkpoint names its classes but says nothing about how to draw them, and
+ * inventing a color per class means a table here that a new checkpoint's labels
+ * would immediately fall through. The label on the box already says which class
+ * it is. A CSS color string applied as an inline style rather than a Tailwind
+ * class, because Tailwind cannot build a class name from a runtime value; amber
+ * matches the rest of the HUD.
  */
-export const CATEGORY_COLORS: Readonly<Record<RoadCategory, string>> = {
-  vehicle: "rgb(255, 179, 64)",
-  person: "rgb(80, 220, 255)",
-  bike: "rgb(140, 240, 140)",
-  signal: "rgb(255, 120, 200)",
-  animal: "rgb(200, 160, 255)",
-  unknown: "rgb(170, 170, 170)",
-};
+export const DETECTION_COLOR = "rgb(255, 179, 64)";

@@ -1,22 +1,29 @@
-import type { RoadCategory } from "@/types";
+import { isNumber, isPlainObject, isString } from "remeda";
 
 /**
- * One class a checkpoint's head can emit, with how the HUD names and colors
- * it. The decode reads it to name a box and the HUD reads it for the display
- * label and the box color, so the two can never disagree about what the model
- * detects.
+ * One class the loaded checkpoint names, with how the HUD shows it. Derived at
+ * load from the `names` map the export stamps into the weights, never typed
+ * into this repo, so the labels a box can carry always come from the file the
+ * boxes came from.
  */
 export type DetectionClass = {
   /**
    * This class's logit index in the model's head. Never 0, which every RF-DETR
    * head reserves as an unused background slot. Explicit rather than implied by
-   * position, so a table can name two classes of a 91-wide COCO head without
-   * enumerating the 88 it does not want.
+   * position, because a checkpoint may name only some of its head's slots.
    */
   index: number;
   label: string;
   displayLabel: string;
-  category: RoadCategory;
+};
+
+export const isDetectionClass = (value: unknown): value is DetectionClass => {
+  return (
+    isPlainObject(value) &&
+    isNumber(value.index) &&
+    isString(value.label) &&
+    isString(value.displayLabel)
+  );
 };
 
 /**
@@ -42,31 +49,17 @@ export type DetectionModel = {
   revision: string;
   /** ONNX file within the repo's onnx/ directory. */
   file: string;
-  /**
-   * Width of this checkpoint's classification head, background slot included,
-   * when the entry wants to assert one. The worker measures the real width off
-   * the session's own `labels` output either way, so this is a check rather
-   * than the source: declaring it says which checkpoint the class indices were
-   * written against, and a session that reports a different width fails to
-   * load. That assertion is worth making for anything registered here, because
-   * a police table naming logit 1, read against an accidentally loaded 91-wide
-   * COCO head, would otherwise find `person` there and report it as POLICE on
-   * every frame. Omit it only where there is nothing to assert, as for a
-   * checkpoint this build does not ship a class table for.
-   */
-  headWidth?: number;
-  /**
-   * The classes this build surfaces, each naming its own logit index. Need not
-   * cover the head: a checkpoint trained on 80 classes can expose the six that
-   * matter. A logit no entry names is never read.
-   */
-  classes: readonly DetectionClass[];
 };
 
 /**
- * A registry entry paired with the head width the session built from it
- * actually reported. The decode reads its stride from here, so carrying the two
- * as one value is what keeps a width from being handed to a table it was never
- * measured against.
+ * A registry entry paired with what the session built from it turned out to
+ * hold: the head width read off its `labels` output and the classes read off
+ * its stamped `names` map. Nothing here is declared anywhere, so nothing here
+ * can disagree with the weights it describes. The decode reads its stride and
+ * its labels from this one value, which is what keeps a width from being
+ * handed to a table it was never measured against.
  */
-export type LoadedModel = DetectionModel & { headWidth: number };
+export type LoadedModel = DetectionModel & {
+  headWidth: number;
+  classes: readonly DetectionClass[];
+};

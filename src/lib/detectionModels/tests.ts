@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  classesFromMetadata,
   DEFAULT_MODEL,
   DETECTION_MODELS,
   modelRepoUrl,
@@ -7,26 +8,18 @@ import {
   resolveModels,
 } from "@/lib/detectionModels";
 import type { DetectionModel } from "@/lib/detectionModels";
+import type { OnnxMetadata } from "@/lib/onnxMetadata";
 
 /** A registry that does not ship, so multi-model behavior is testable. */
 const FAKE_MODELS: readonly DetectionModel[] = [
-  {
-    id: "alpha",
-    slug: "alpha-repo",
-    revision: "v1",
-    file: "alpha.onnx",
-    headWidth: 2,
-    classes: [{ index: 1, label: "a", displayLabel: "A", category: "vehicle" }],
-  },
-  {
-    id: "beta",
-    slug: "beta-repo",
-    revision: "v2",
-    file: "beta.onnx",
-    headWidth: 2,
-    classes: [{ index: 1, label: "b", displayLabel: "B", category: "person" }],
-  },
+  { id: "alpha", slug: "alpha-repo", revision: "v1", file: "alpha.onnx" },
+  { id: "beta", slug: "beta-repo", revision: "v2", file: "beta.onnx" },
 ];
+
+/** Metadata carrying whatever `names` map a case needs. */
+const named = (names: unknown): OnnxMetadata => ({
+  props: { names: JSON.stringify(names) },
+});
 
 describe("resolveModels", () => {
   it("falls back to the first model when no id is known", () => {
@@ -86,42 +79,51 @@ describe("the shipping registry", () => {
     const ids = DETECTION_MODELS.map((model) => model.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
+});
 
-  it("never repeats a class index within a model", () => {
-    for (const model of DETECTION_MODELS) {
-      const indices = model.classes.map((entry) => entry.index);
-      expect(new Set(indices).size).toBe(indices.length);
-    }
+describe("classesFromMetadata", () => {
+  it("reads the label and the logit index off the stamped names map", () => {
+    expect(classesFromMetadata(named({ 1: "police" }), 2)).toEqual([
+      { index: 1, label: "police", displayLabel: "POLICE" },
+    ]);
   });
 
-  it("gives every model at least one class to detect", () => {
-    for (const model of DETECTION_MODELS) {
-      expect(model.classes.length).toBeGreaterThan(0);
-    }
+  it("opens separators up for the display label", () => {
+    const [entry] = classesFromMetadata(named({ 1: "fire_truck" }), 2);
+
+    expect(entry.displayLabel).toBe("FIRE TRUCK");
+    expect(entry.label).toBe("fire_truck");
   });
 
-  it("points every class at a real logit in its model's head", () => {
-    for (const model of DETECTION_MODELS) {
-      for (const entry of model.classes) {
-        expect(Number.isInteger(entry.index)).toBe(true);
-        expect(entry.index).toBeGreaterThanOrEqual(1);
-        // Only an entry that declares a width can be checked against one here.
-        // The worker checks every entry against the width its session actually
-        // reported, declared or not (resolveLoadedModel).
-        if (model.headWidth !== undefined) {
-          expect(entry.index).toBeLessThan(model.headWidth);
-        }
-      }
-    }
+  it("drops slots the loaded head cannot hold", () => {
+    const classes = classesFromMetadata(
+      named({ 0: "background", 1: "police", 5: "beyond the head" }),
+      2,
+    );
+
+    expect(classes.map((entry) => entry.label)).toEqual(["police"]);
   });
 
-  it("never repeats a class label within a model", () => {
-    // enrichDetections joins a raw detection back to its class on the label, so
-    // a repeated label hands every box of that class the first entry's display
-    // label and category.
-    for (const model of DETECTION_MODELS) {
-      const labels = model.classes.map((entry) => entry.label);
-      expect(new Set(labels).size).toBe(labels.length);
+  it("names every slot generically when the file names nothing", () => {
+    expect(classesFromMetadata(undefined, 3)).toEqual([
+      { index: 1, label: "class-1", displayLabel: "CLASS 1" },
+      { index: 2, label: "class-2", displayLabel: "CLASS 2" },
+    ]);
+  });
+
+  it("falls back the same way for a names map it cannot read", () => {
+    const cases: (OnnxMetadata | undefined)[] = [
+      { props: {} },
+      { props: { names: "not json" } },
+      { props: { names: "[1, 2]" } },
+      named({ 1: 7 }),
+      named({ 1: "" }),
+    ];
+
+    for (const metadata of cases) {
+      expect(classesFromMetadata(metadata, 2)).toEqual([
+        { index: 1, label: "class-1", displayLabel: "CLASS 1" },
+      ]);
     }
   });
 });

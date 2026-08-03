@@ -18,7 +18,6 @@ const box = (
 const detection = (overrides: Partial<Detection> = {}): Detection => ({
   label: "police",
   displayLabel: "POLICE",
-  category: "vehicle",
   score: 0.9,
   box: box(0.4, 0.5, 0.6, 0.8),
   ...overrides,
@@ -148,7 +147,6 @@ describe("stepTracker", () => {
         detection({
           label: "person",
           displayLabel: "PERSON",
-          category: "person",
           score: 0.55,
         }),
       ],

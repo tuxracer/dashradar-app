@@ -510,7 +510,11 @@ const createModel = async (
   return {
     ...rest,
     fileMetadata,
-    detectionModel: resolveLoadedModel(labelsDims, detectionModel),
+    detectionModel: resolveLoadedModel(
+      labelsDims,
+      detectionModel,
+      fileMetadata,
+    ),
   };
 };
 
@@ -574,7 +578,7 @@ const loadModel = async (modelId: string | undefined) => {
         modelFile: model.fileMetadata,
       },
     });
-    post({ type: "ready" });
+    post({ type: "ready", classes: model.detectionModel.classes });
   } catch (error) {
     // The probe acquired a device but the session still failed to build (a
     // blocklisted adapter, an OOM on the weights, a corrupt download). There

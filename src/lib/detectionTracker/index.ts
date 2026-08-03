@@ -32,7 +32,6 @@ export const initialTrackerState = (): TrackerState => ({
 const toDetection = (track: Track): Detection => ({
   label: track.label,
   displayLabel: track.displayLabel,
-  category: track.category,
   score: track.score,
   box: track.box,
 });
@@ -99,7 +98,6 @@ export const stepTracker = (
         ...track,
         label: detection.label,
         displayLabel: detection.displayLabel,
-        category: detection.category,
         score,
         box: detection.box,
         misses: 0,
@@ -122,7 +120,6 @@ export const stepTracker = (
       id: nextId,
       label: detection.label,
       displayLabel: detection.displayLabel,
-      category: detection.category,
       score: detection.score,
       box: detection.box,
       misses: 0,

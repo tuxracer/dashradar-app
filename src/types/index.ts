@@ -34,26 +34,10 @@ export const isRawDetection = (value: unknown): value is RawDetection => {
   );
 };
 
-/**
- * Coarse grouping a detected class belongs to, which is what the detection
- * view colors its boxes by, so a new class inherits a color without a new
- * entry anywhere. `unknown` covers a label the class table does not name,
- * which should not happen while the worker and the HUD read one table but is
- * kept rather than dropped so a detection never vanishes silently.
- */
-export type RoadCategory =
-  | "vehicle"
-  | "person"
-  | "bike"
-  | "signal"
-  | "animal"
-  | "unknown";
-
-/** A detection enriched with its class's display label and category for HUD display. */
+/** A detection enriched with the display label the HUD shows for its class. */
 export type Detection = {
   label: string;
   displayLabel: string;
-  category: RoadCategory;
   score: number;
   box: NormalizedBox;
 };

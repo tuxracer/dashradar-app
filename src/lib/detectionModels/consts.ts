@@ -8,11 +8,16 @@ export const MODEL_OWNER = "tuxracer";
  * them. The first entry is what a build ships with and what an unrecognized
  * stored selection falls back to.
  *
- * Adding an entry is not free. `hudSignal` takes the max score across every
- * detection regardless of class, so a class a new model adds immediately drives
+ * An entry says which weights to fetch and nothing about what they contain.
+ * The head width and the class labels are read off the loaded session and the
+ * file's own stamped `names` map, so a checkpoint describes itself and no
+ * table here can drift from the bytes it claims to describe.
+ *
+ * Adding an entry is still not free. `hudSignal` takes the max score across
+ * every detection regardless of class, so every class a checkpoint names drives
  * the dial, the alert ring, and the beeper, with no per-class alert concept to
- * opt it out. INPUT_SIZE is also fixed at 512 across the whole capture path, so
- * a checkpoint that expects a different input size needs more than an entry
+ * opt one out. INPUT_SIZE is also fixed at 512 across the whole capture path,
+ * so a checkpoint that expects a different input size needs more than an entry
  * here.
  */
 export const DETECTION_MODELS: readonly DetectionModel[] = [
@@ -21,15 +26,6 @@ export const DETECTION_MODELS: readonly DetectionModel[] = [
     slug: "las-vegas-metro-rfdetr-small",
     revision: "v3.7",
     file: "model_fp16.onnx",
-    headWidth: 2,
-    classes: [
-      {
-        index: 1,
-        label: "police",
-        displayLabel: "POLICE",
-        category: "vehicle",
-      },
-    ],
   },
 ];
 

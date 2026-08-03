@@ -1,7 +1,6 @@
 import type { Detection, NormalizedBox } from "@/types";
 import { isRawDetection } from "@/types";
 import type { AutoZoomLevel } from "@/lib/autoZoom";
-import { DEFAULT_MODEL } from "@/lib/detectionModels";
 import type { DetectionClass } from "@/lib/detectionModels";
 import { ZOOM_OFF } from "@/workers/detection/consts";
 import { centerCropRegion } from "@/workers/detection/inference";
@@ -37,21 +36,22 @@ export type HudModel = {
 };
 
 /**
- * Validate raw worker output and enrich each confident detection with its
- * class's display label and category.
+ * Validate raw worker output and enrich each confident detection with the
+ * display label its class reads as on the HUD.
  *
  * There is no allowlist. That made sense against a generic 80-class COCO model,
  * where filtering to road-relevant classes was the point, but against a
  * checkpoint trained in-house, discarding a class we deliberately trained is a
- * bug. A label the table does not name is still kept, under the `unknown`
- * category and its own name uppercased, so a detection can never disappear
- * without a trace. That case needs the worker and the HUD to have diverged on a
- * table they both read, so it should be unreachable.
+ * bug. A label the table does not name is still kept, under its own name
+ * uppercased, so a detection can never disappear without a trace. The classes
+ * default to none for the same reason: they arrive from the worker on `ready`,
+ * and a detection decoded before they land should read plainly rather than not
+ * at all.
  */
 export const enrichDetections = (
   raw: unknown,
   threshold: number = CONFIDENCE_THRESHOLD,
-  classes: readonly DetectionClass[] = DEFAULT_MODEL.classes,
+  classes: readonly DetectionClass[] = [],
 ): Detection[] => {
   if (!Array.isArray(raw)) {
     return [];
@@ -65,7 +65,6 @@ export const enrichDetections = (
       {
         label: candidate.label,
         displayLabel: known?.displayLabel ?? candidate.label.toUpperCase(),
-        category: known?.category ?? "unknown",
         score: candidate.score,
         box: candidate.box,
       },

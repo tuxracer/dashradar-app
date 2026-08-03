@@ -24,7 +24,7 @@ import {
   isWorkerResponse,
 } from "@/workers/detection/types";
 import { DEFAULT_MODEL } from "@/lib/detectionModels";
-import type { DetectionModel, LoadedModel } from "@/lib/detectionModels";
+import type { LoadedModel } from "@/lib/detectionModels";
 import type { RawDetection } from "@/types";
 
 /** Build a `[1,queries,C]` logits buffer from per-query score rows. */
@@ -147,7 +147,12 @@ describe("isWorkerResponse", () => {
         progress: { file: "model.onnx", loaded: 10, total: 100 },
       }),
     ).toBe(true);
-    expect(isWorkerResponse({ type: "ready" })).toBe(true);
+    expect(
+      isWorkerResponse({
+        type: "ready",
+        classes: [{ index: 1, label: "police", displayLabel: "POLICE" }],
+      }),
+    ).toBe(true);
     expect(
       isWorkerResponse({ type: "worker-error", code: "WEBGPU_UNSUPPORTED" }),
     ).toBe(true);
@@ -375,7 +380,11 @@ describe("frameBrightFraction", () => {
 });
 
 /** The shipping entry as a loaded 2-wide session reports it. */
-const POLICE_MODEL: LoadedModel = { ...DEFAULT_MODEL, headWidth: 2 };
+const POLICE_MODEL: LoadedModel = {
+  ...DEFAULT_MODEL,
+  headWidth: 2,
+  classes: [{ index: 1, label: "police", displayLabel: "POLICE" }],
+};
 
 /** A two-class model, for driving decode past the single class that ships. */
 const TWO_CLASS_MODEL: LoadedModel = {
@@ -389,9 +398,8 @@ const TWO_CLASS_MODEL: LoadedModel = {
       index: 1,
       label: "police",
       displayLabel: "POLICE",
-      category: "vehicle",
     },
-    { index: 2, label: "person", displayLabel: "PERSON", category: "person" },
+    { index: 2, label: "person", displayLabel: "PERSON" },
   ],
 };
 
@@ -404,135 +412,60 @@ describe("resolveLoadedModel", () => {
    * undefined when it returned instead. The undefined is what makes these
    * assertions fail if the guard they cover is ever removed.
    */
-  const resolveError = (
-    dims: readonly number[],
-    model: DetectionModel,
-  ): unknown => {
+  const resolveError = (dims: readonly number[]): unknown => {
     try {
-      resolveLoadedModel(dims, model);
+      resolveLoadedModel(dims, DEFAULT_MODEL);
       return undefined;
     } catch (error) {
       return error;
     }
   };
 
-  it("takes the width the session reported when the entry declares none", () => {
-    // The pairing an unregistered checkpoint arrives as: a class table with
-    // nothing to assert about the head it will be read through.
-    const undeclared: DetectionModel = {
-      ...TWO_CLASS_MODEL,
-      headWidth: undefined,
-    };
-
-    expect(resolveLoadedModel(labelsDims(7), undeclared).headWidth).toBe(7);
+  it("takes the width off the session rather than from anywhere declared", () => {
+    expect(resolveLoadedModel(labelsDims(7), DEFAULT_MODEL).headWidth).toBe(7);
   });
 
-  it("carries the class table through onto the loaded model", () => {
-    const loaded = resolveLoadedModel(labelsDims(3), TWO_CLASS_MODEL);
+  it("names the classes from the map stamped into the weights", () => {
+    const loaded = resolveLoadedModel(labelsDims(2), DEFAULT_MODEL, {
+      props: { names: JSON.stringify({ 1: "police" }) },
+    });
 
-    expect(loaded.classes).toEqual(TWO_CLASS_MODEL.classes);
-    expect(loaded.id).toBe(TWO_CLASS_MODEL.id);
+    expect(loaded.classes).toEqual([
+      { index: 1, label: "police", displayLabel: "POLICE" },
+    ]);
+    expect(loaded.id).toBe(DEFAULT_MODEL.id);
   });
 
-  it("rejects a session whose head is wider than the entry declares", () => {
-    // The dangerous direction: a 2-slot table read against a 91-wide COCO head
-    // would find `person` at logit 1 and report POLICE at every pedestrian, so
-    // a declared width has to outrank the measured one here.
-    const thrown = resolveError(labelsDims(91), POLICE_MODEL);
+  it("still names every slot when the weights name nothing", () => {
+    // An unstamped export has to keep detecting: the meter reads scores, not
+    // labels, so the cost is the words on the card and nothing else.
+    const loaded = resolveLoadedModel(labelsDims(3), DEFAULT_MODEL);
 
-    expect(isDetectionError(thrown)).toBe(true);
-    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
+    expect(loaded.classes.map((entry) => entry.index)).toEqual([1, 2]);
   });
 
-  it("rejects a session whose head is narrower than the entry declares", () => {
-    const thrown = resolveError(labelsDims(2), TWO_CLASS_MODEL);
+  it("drops a stamped class the loaded head cannot hold", () => {
+    // The one way a names map and its own graph can disagree. Reading logit 5
+    // of a 2-wide head lands outside the tensor and scores NaN, so the class
+    // never wins and its absence is silent; dropping it at load is not.
+    const loaded = resolveLoadedModel(labelsDims(2), DEFAULT_MODEL, {
+      props: { names: JSON.stringify({ 1: "police", 5: "ghost" }) },
+    });
 
-    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
+    expect(loaded.classes.map((entry) => entry.label)).toEqual(["police"]);
   });
 
   it("rejects a labels output that is not shaped like a classification head", () => {
     // Two dimensions cannot carry a per-query stride, so there is no width to
     // read and every later offset would be invented.
-    const thrown = resolveError([1, 300], TWO_CLASS_MODEL);
+    const thrown = resolveError([1, 300]);
 
+    expect(isDetectionError(thrown)).toBe(true);
     expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
   });
 
   it("rejects a head with no room for a class beside the background slot", () => {
-    const undeclared: DetectionModel = {
-      ...TWO_CLASS_MODEL,
-      headWidth: undefined,
-    };
-
-    const thrown = resolveError(labelsDims(1), undeclared);
-
-    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
-  });
-
-  it("rejects a class pointed at the background slot", () => {
-    // Slot 0 is never a real class, so a table naming it is misconfigured
-    // rather than merely unlucky.
-    const background: LoadedModel = {
-      ...TWO_CLASS_MODEL,
-      classes: [
-        {
-          index: 0,
-          label: "police",
-          displayLabel: "POLICE",
-          category: "vehicle",
-        },
-      ],
-    };
-
-    const thrown = resolveError(labelsDims(3), background);
-
-    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
-  });
-
-  it("rejects a class pointed past the end of the head", () => {
-    const past: LoadedModel = {
-      ...TWO_CLASS_MODEL,
-      classes: [
-        {
-          index: 3,
-          label: "police",
-          displayLabel: "POLICE",
-          category: "vehicle",
-        },
-      ],
-    };
-
-    const thrown = resolveError(labelsDims(3), past);
-
-    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
-  });
-
-  it("rejects a table that names no class at all", () => {
-    // An empty table skips every query and reports nothing forever, which on
-    // the road is indistinguishable from an empty road.
-    const empty: LoadedModel = { ...TWO_CLASS_MODEL, classes: [] };
-
-    const thrown = resolveError(labelsDims(3), empty);
-
-    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
-  });
-
-  it("rejects a class index that is not a whole logit", () => {
-    // A fractional index lands between logits, reads as undefined, and scores
-    // NaN, so that class loses every comparison and never surfaces.
-    const fractional: LoadedModel = {
-      ...TWO_CLASS_MODEL,
-      classes: [
-        {
-          index: 1.5,
-          label: "police",
-          displayLabel: "POLICE",
-          category: "vehicle",
-        },
-      ],
-    };
-
-    const thrown = resolveError(labelsDims(3), fractional);
+    const thrown = resolveError(labelsDims(1));
 
     expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
   });
@@ -693,13 +626,11 @@ describe("decodeDetections", () => {
           index: 1,
           label: "police",
           displayLabel: "POLICE",
-          category: "vehicle",
         },
         {
           index: 4,
           label: "person",
           displayLabel: "PERSON",
-          category: "person",
         },
       ],
     };

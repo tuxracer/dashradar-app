@@ -1,9 +1,11 @@
 import type { NormalizedBox, RawDetection } from "@/types";
+import { classesFromMetadata } from "@/lib/detectionModels";
 import type {
   DetectionClass,
   DetectionModel,
   LoadedModel,
 } from "@/lib/detectionModels";
+import type { OnnxMetadata } from "@/lib/onnxMetadata";
 import {
   BRIGHT_FRACTION_STRIDE,
   BRIGHT_LUMA_THRESHOLD,
@@ -142,31 +144,26 @@ const sigmoid = (x: number): number => 1 / (1 + Math.exp(-x));
 const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
 
 /**
- * Pair a registry entry with the head width the session built from it actually
- * reported, from the `dims` of the `labels` tensor its first run produced.
- * Measuring beats declaring for the width itself: it is a fact about the
- * checkpoint, and reading it off the session means a checkpoint nobody
- * hand-measured can still be decoded.
+ * Pair a registry entry with what the session built from it turned out to hold:
+ * the head width from the `dims` of the `labels` tensor its first run produced,
+ * and the classes from the `names` map stamped into the weights.
  *
- * The two are not interchangeable, though, which is why a declared width is
- * still honored as a check. An entry that declares one is asserting which
- * checkpoint its class indices were written against, and dropping that would
- * let a police table naming logit 1, read against an accidentally loaded
- * 91-wide COCO head, find `person` there and report POLICE at every pedestrian.
- * The measured width cannot catch that on its own, because it agrees with
- * whatever loaded.
+ * Both are measured rather than declared, and the pairing is what makes that
+ * safe. A hand-written class table can be paired with the wrong checkpoint and
+ * report POLICE at every pedestrian off a 91-wide COCO head; labels read from
+ * the same file as the logits they index cannot disagree with them, so the
+ * failure mode a declared head width used to catch no longer exists to catch.
+ * Indices the head cannot hold are dropped during derivation, which is where a
+ * `names` map that disagrees with its own graph loses.
  *
- * So this throws MODEL_LOAD_FAILED when the `labels` output is not shaped like
- * a classification head at all, when a declared width disagrees with the one
- * measured, when the table names no class (which would report an empty road
- * forever), or when an index is not a whole number inside `[1, headWidth)` (a
- * fractional one reads between logits as undefined and scores NaN, so that
- * class silently never wins). Failing here means failing at load, before the
- * camera is asked for, rather than on the first decoded frame.
+ * What is left to fail on is a `labels` output that is not shaped like a
+ * classification head at all, which throws MODEL_LOAD_FAILED at load, before
+ * the camera is asked for, rather than on the first decoded frame.
  */
 export const resolveLoadedModel = (
   labelsDims: readonly number[],
   model: DetectionModel,
+  metadata?: OnnxMetadata,
 ): LoadedModel => {
   // [batch, queries, classes]. Anything else is not a head this decode can read
   // its per-query stride out of.
@@ -177,22 +174,11 @@ export const resolveLoadedModel = (
   if (!Number.isInteger(headWidth) || headWidth < 2) {
     throw new DetectionError("MODEL_LOAD_FAILED");
   }
-  if (model.headWidth !== undefined && model.headWidth !== headWidth) {
-    throw new DetectionError("MODEL_LOAD_FAILED");
-  }
-  if (model.classes.length === 0) {
-    throw new DetectionError("MODEL_LOAD_FAILED");
-  }
-  for (const entry of model.classes) {
-    if (
-      !Number.isInteger(entry.index) ||
-      entry.index < 1 ||
-      entry.index >= headWidth
-    ) {
-      throw new DetectionError("MODEL_LOAD_FAILED");
-    }
-  }
-  return { ...model, headWidth };
+  return {
+    ...model,
+    headWidth,
+    classes: classesFromMetadata(metadata, headWidth),
+  };
 };
 
 /**

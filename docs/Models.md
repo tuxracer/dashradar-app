@@ -90,46 +90,47 @@ route matches on.
 
 A model is one entry in `DETECTION_MODELS` in `src/lib/detectionModels/consts.ts`.
 
-| Field       | What it is                                                              |
-| ----------- | ----------------------------------------------------------------------- |
-| `id`        | Stable key the stored selection uses. Keep it free of the revision, so a routine re-export does not reset anyone's choice. Never reuse an id for a different checkpoint. |
-| `slug`      | Hugging Face repo name.                                                  |
-| `revision`  | The pinned tag.                                                          |
-| `file`      | ONNX filename inside the repo's `onnx/` directory.                        |
-| `headWidth` | Optional. Width of the classification head, background slot included, asserted against what the session reports. |
-| `classes`   | The classes this build surfaces, each naming its own logit index.        |
+| Field      | What it is                                                               |
+| ---------- | ------------------------------------------------------------------------ |
+| `id`       | Stable key the stored selection uses. Keep it free of the revision, so a routine re-export does not reset anyone's choice. Never reuse an id for a different checkpoint. |
+| `slug`     | Hugging Face repo name.                                                   |
+| `revision` | The pinned tag.                                                           |
+| `file`     | ONNX filename inside the repo's `onnx/` directory.                        |
 
-`classes` does not have to cover the head. A checkpoint trained on 80 classes
-can expose the six that matter, and a logit no entry names is never read. Each
-class carries a `label` (what the model outputs), a `displayLabel` (what the HUD
-shows), a `category` that picks its box color in the developer detection view,
-and an `index`.
+That is the whole entry. It says which bytes to fetch and nothing about what
+they contain, because everything else is read from the bytes themselves at load.
 
-Categories are `vehicle`, `person`, `bike`, `signal`, `animal`, and `unknown`.
+### Name your classes in the file
+
+Stamp a `names` entry into the ONNX `metadata_props`: a JSON object of logit
+index to label, such as `{"1": "police"}`. It is the only machine-readable
+record of what a slot means, and the app reads its class table from it. A label
+becomes the HUD's display text uppercased, with `_` and `-` opened up to spaces,
+so `fire_truck` reads as FIRE TRUCK.
+
+Every class the map names is live. There is no allowlist and no per-class alert
+setting, and `hudSignal` takes the max score across every detection regardless
+of class, so a class you name drives the dial, the alert ring, and the beeper.
+Name a `person` class and the meter pins at every pedestrian.
+
+A file that names nothing still loads and still detects. Every slot in its head
+gets a generic `CLASS 1`, `CLASS 2` label instead, which costs the words on the
+contact card and nothing else, since the meter reads scores rather than labels.
 
 ### What gets checked, and when
 
-The head width itself is measured, not declared. Both load paths run the model
-once before reporting ready, so the `labels` output's own shape says how wide the
-head is, and a checkpoint nobody hand-measured still decodes correctly.
-
-Declaring `headWidth` anyway is how an entry pins its class table to a specific
-checkpoint. The measured width cannot do that job, because it agrees with
-whatever loaded: a police table naming logit 1, read against an accidentally
-loaded 91-wide head, would find `person` there and report it as `POLICE` on every
-frame, silently. Declare it for anything registered here. Omit it only where
-there is nothing to assert.
+The head width is measured, never declared: both load paths run the model once
+before reporting ready, so the `labels` output's own shape says how wide the head
+is. The class labels come from the same file as the logits they index, so the two
+cannot disagree, which is why nothing here is declared for a mismatch to be
+caught against. A named index the head cannot hold is dropped at load rather than
+read past the end of the tensor.
 
 The load fails with `MODEL_LOAD_FAILED`, before the camera is asked for, when
-`labels` is not shaped `[batch, queries, classes]`, when a declared `headWidth`
-disagrees with the measured one, when the class table is empty, or when any index
-is not a whole number inside `[1, headWidth)`. The decode then rejects a frame
-whose two output tensors disagree about the query count. Failing loudly is
-deliberate: the alternative is plausible-looking garbage.
-
-The test suite catches the same errors in committed registry data, along with
-duplicate class indices and duplicate labels, so a bad entry does not have to
-reach a browser to be noticed.
+`labels` is not shaped `[batch, queries, classes]` or the head has no room for a
+class beside the background slot. The decode then rejects a frame whose two
+output tensors disagree about the query count. Failing loudly is deliberate: the
+alternative is plausible-looking garbage.
 
 ## Budget
 

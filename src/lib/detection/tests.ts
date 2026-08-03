@@ -21,7 +21,6 @@ const box = (
 const detection = (overrides: Partial<Detection> = {}): Detection => ({
   label: "police",
   displayLabel: "POLICE",
-  category: "vehicle",
   score: 0.9,
   box: box(0.4, 0.5, 0.6, 0.8),
   ...overrides,
@@ -29,8 +28,8 @@ const detection = (overrides: Partial<Detection> = {}): Detection => ({
 
 /** A two-class table, so these tests do not depend on what ships today. */
 const CLASSES = [
-  { index: 1, label: "police", displayLabel: "POLICE", category: "vehicle" },
-  { index: 2, label: "person", displayLabel: "PERSON", category: "person" },
+  { index: 1, label: "police", displayLabel: "POLICE" },
+  { index: 2, label: "person", displayLabel: "PERSON" },
 ] as const;
 
 describe("enrichDetections", () => {
@@ -42,7 +41,6 @@ describe("enrichDetections", () => {
     );
     expect(result).toHaveLength(1);
     expect(result[0].displayLabel).toBe("PERSON");
-    expect(result[0].category).toBe("person");
   });
 
   it("keeps a label the table does not name instead of dropping it", () => {
@@ -52,7 +50,6 @@ describe("enrichDetections", () => {
       CLASSES,
     );
     expect(result).toHaveLength(1);
-    expect(result[0].category).toBe("unknown");
     expect(result[0].displayLabel).toBe("BICYCLE");
   });
 

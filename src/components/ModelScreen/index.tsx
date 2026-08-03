@@ -142,8 +142,7 @@ export const ModelScreen = ({
                     selected ? "text-surface/70" : "text-white/45"
                   }`}
                 >
-                  {model.revision} ·{" "}
-                  {model.classes.map((entry) => entry.displayLabel).join(", ")}
+                  {model.revision}
                 </span>
               </button>
             );

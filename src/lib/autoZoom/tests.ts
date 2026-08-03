@@ -14,7 +14,6 @@ const box = (
 const detection = (b: NormalizedBox): Detection => ({
   label: "police",
   displayLabel: "POLICE",
-  category: "vehicle",
   score: 0.8,
   box: b,
 });
