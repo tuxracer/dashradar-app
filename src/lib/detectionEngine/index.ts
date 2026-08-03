@@ -1,17 +1,25 @@
 import {
   BehaviorSubject,
+  catchError,
   combineLatest,
+  defer,
   distinctUntilChanged,
   EMPTY,
+  filter,
+  ignoreElements,
   map,
+  merge,
   Observable,
+  of,
   pairwise,
   repeat,
   skip,
   Subject,
   switchMap,
+  take,
   takeUntil,
   tap,
+  timer,
 } from "rxjs";
 import { APP_RELEASE } from "@/lib/appRelease";
 import { waitForNextVideoFrame } from "@/lib/camera";
@@ -55,23 +63,22 @@ export * from "./consts";
 export * from "./types";
 
 /**
- * Build the detection engine: the worker lifecycle and frame-pump state
- * machine, with no React anywhere in it. One engine spans one page load of
- * scanning; `activate` spawns the worker and `deactivate` releases it, so the
- * owner can treat the pair like mount and unmount.
+ * Build the detection engine: the worker lifecycle and frame-pump stream
+ * graph, with no React anywhere in it. One engine spans one page load of
+ * scanning; `activate` spawns the worker and `deactivate` releases it, so
+ * the owner can treat the pair like mount and unmount.
  *
- * Whether the pump runs is derived, never commanded: it runs exactly while
- * the inputs say a video is attached, the page is visible, and settings are
- * closed. Every transition of that derivation (and only those transitions)
- * starts or stops the pump, so there is no pause/resume protocol to hold
- * correctly at call sites.
+ * Whether the pump runs is derived, never commanded: running$ is true
+ * exactly while the inputs say a video is attached, the page is visible,
+ * and settings are closed, and everything scoped to a running span is
+ * subscribed under it, so a falling edge tears the span down and there is
+ * no pause/resume protocol to hold correctly at call sites.
  *
- * The race invariants inside are hard-won fixes ported verbatim from the
- * React provider this was extracted from: one frame in flight (`inFlight`), a
- * generation counter invalidating captures from before a stop, and a
- * `workerLoaded` gate so a recycle's still-loading worker is never handed a
- * frame it would silently drop. Understand what each protects before touching
- * them.
+ * The race invariants the old imperative pump guarded with counters are
+ * structural here: one frame in flight because the loop is sequential
+ * (capture, post, await result, pace, repeat), no stale capture after a
+ * stop because teardown is unsubscription, and no frame posted to a still
+ * loading worker because each session's pump starts behind its ready.
  */
 export const createDetectionEngine = ({
   model,
@@ -118,31 +125,6 @@ export const createDetectionEngine = ({
   );
 
   // ---- pump state ----
-  // The derived running state's current value; compared against the fresh
-  // derivation on every input change to find the edges.
-  let running = false;
-  // The session the pump currently posts frames through. Set by
-  // sessionLoop$ below on every (re)spawn and recycle; undefined between
-  // deactivation and the next session.
-  let currentSession: WorkerSession | undefined;
-  // False from spawn until the worker reports `ready`, then false again on
-  // error. The pump bails while it is false so a detect frame is never posted
-  // to a worker whose model has not loaded (the worker silently drops it,
-  // which would strand the in-flight count and deadlock the pump). A recycle
-  // leaves status "running" with a fresh, still-loading worker, so the load
-  // state is explicit rather than inferred from status.
-  let workerLoaded = false;
-  // Count of detect frames posted whose results have not come back. The pump
-  // bails while it is nonzero, so a stale result from before a stop/start
-  // re-primes the pipeline at depth 1 instead of stacking a second frame.
-  let inFlight = 0;
-  // Bumped whenever the pump stops so an in-flight capture from a previous
-  // run discards its frame instead of posting it. A bare `running` re-check
-  // after the await is not enough: a fast stop-then-start flips it back to
-  // true while the stale capture is still pending.
-  let generation = 0;
-  let retryTimer: number | undefined;
-  let paceTimer: number | undefined;
   // Crop factor and dimensions of the most recently posted frame. Only one
   // frame is ever in flight, so when a result arrives this always describes
   // the frame it came from.
@@ -163,11 +145,6 @@ export const createDetectionEngine = ({
   // Keeps the screen awake while scanning; a dash-mounted phone that sleeps
   // mid-drive stops seeing the road with no sign anything changed.
   const wakeLock = createWakeLockManager();
-
-  const clearTimers = () => {
-    window.clearTimeout(retryTimer);
-    window.clearTimeout(paceTimer);
-  };
 
   /** Swap in the next contact (or none), closing the previous crop bitmap. */
   const replaceContact = (next: Contact | undefined) => {
@@ -260,91 +237,62 @@ export const createDetectionEngine = ({
       }
     });
 
-  const sendFrame = async () => {
-    const video = inputs$.value.video;
-    if (!running || !video || !currentSession) {
-      return;
-    }
-    if (!workerLoaded) {
-      // A recycle (or the initial load) left a worker that has not reported
-      // `ready` yet; it would silently drop this frame and strand the
-      // in-flight count, deadlocking the pump. Its `ready` re-primes.
-      return;
-    }
-    if (inFlight > 0) {
-      // A frame is already at the worker; its result will re-prime the pump.
-      return;
-    }
-    const capturedGeneration = generation;
-    try {
-      // Hold the capture until the camera presents a new frame, so inference
-      // never runs twice on the same frame when detection outpaces the
-      // camera. The wait can outlive the pump (rVFC does not fire while
-      // hidden), so re-check the guards before committing to a capture.
-      await waitForNextVideoFrame(video);
-      if (capturedGeneration !== generation || !running || inFlight > 0) {
-        return;
-      }
-      const captureStart = performance.now();
-      const frame = await createImageBitmap(video);
-      if (capturedGeneration !== generation || !running || inFlight > 0) {
-        // The pump was stopped (and possibly restarted) while this capture
-        // was pending; the restarted pump owns the in-flight slot now.
-        frame.close();
-        return;
-      }
-      lastCaptureMs = performance.now() - captureStart;
-      postTime = performance.now();
-      inFlight += 1;
-      const zoom = settings$.value.zoom;
-      // Recorded before the transfer detaches the bitmap.
-      lastFrameInfo = { zoom, width: frame.width, height: frame.height };
-      currentSession.post(
-        {
-          type: "detect",
-          frame,
-          includeCrop: settings$.value.includeContact,
-          zoom,
-          confidenceThreshold: settings$.value.confidenceThreshold,
-        },
-        [frame],
-      );
-    } catch {
-      if (capturedGeneration !== generation || !running) {
-        return;
-      }
-      // Video has no frame data yet (still attaching): retry shortly.
-      retryTimer = window.setTimeout(() => {
-        void sendFrame();
-      }, FRAME_RETRY_MS);
-    }
-  };
+  /**
+   * Capture one frame as an ImageBitmap. Waits for the camera to present a
+   * new frame first, so inference never runs twice on the same frame when
+   * detection outpaces the camera. Cancellation-aware: teardown mid-wait
+   * abandons the capture, and a bitmap that resolves after teardown is closed
+   * instead of leaked (the one resource the old generation counter guarded).
+   */
+  const captureFrame = (video: HTMLVideoElement) =>
+    new Observable<ImageBitmap>((subscriber) => {
+      let cancelled = false;
+      void (async () => {
+        try {
+          await waitForNextVideoFrame(video);
+          if (cancelled) {
+            return;
+          }
+          const captureStart = performance.now();
+          const frame = await createImageBitmap(video);
+          if (cancelled) {
+            frame.close();
+            return;
+          }
+          lastCaptureMs = performance.now() - captureStart;
+          subscriber.next(frame);
+          subscriber.complete();
+        } catch (error) {
+          if (!cancelled) {
+            subscriber.error(error);
+          }
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    });
 
   /**
-   * Re-prime the pump after a result, delaying so captures never start less
-   * than MIN_FRAME_INTERVAL_MS apart and the pump always rests at least
-   * PACING_REST_RATIO of the last round trip: the interval between captures
-   * is max(MIN_FRAME_INTERVAL_MS, 2x round trip). On fast devices the floor
-   * dominates; on slower ones the rest takes over, so a phone that has
-   * started thermal throttling automatically gets a longer break.
+   * Idle delay before the next capture: max(floor, rest) so captures never
+   * start less than MIN_FRAME_INTERVAL_MS apart and the pump always rests at
+   * least PACING_REST_RATIO of the last round trip. On fast devices the floor
+   * dominates; a thermally throttling phone's longer round trips earn it a
+   * longer break. Unthrottled (debug-only) collapses to 0. Records the
+   * decision for the debug overlay.
    */
-  const schedulePacedFrame = (elapsedSincePostMs: number) => {
+  const paceDelay = (elapsedSincePostMs: number): number => {
     const floorDelay = Math.max(0, MIN_FRAME_INTERVAL_MS - elapsedSincePostMs);
     const restDelay = PACING_REST_RATIO * elapsedSincePostMs;
-    // Unthrottled (debug-only escape hatch): re-prime immediately, no floor.
     const delay = settings$.value.throttled
       ? Math.max(floorDelay, restDelay)
       : 0;
-    // Record the decision for the debug overlay's pacing row. The result
-    // handler has already written this frame's snapshot, so merge onto it.
     debug = {
       ...debug,
       pacingDelayMs: delay,
       pacingRule: floorDelay >= restDelay ? "floor" : "rest",
     };
-    paceTimer = window.setTimeout(() => {
-      void sendFrame();
-    }, delay);
+    return delay;
   };
 
   /** One spawned worker: its post channel, parsed messages, and load state. */
@@ -364,11 +312,6 @@ export const createDetectionEngine = ({
   const recycle$ = new Subject<void>();
 
   const haltForError = () => {
-    running = false;
-    workerLoaded = false;
-    generation += 1;
-    inFlight = 0;
-    clearTimers();
     replaceContact(undefined);
     halt$.next();
   };
@@ -451,21 +394,14 @@ export const createDetectionEngine = ({
         break;
       }
       case "ready": {
-        // Mark the worker loaded before priming the pump below, so the
-        // sendFrame() call in the running branch is not itself bailed.
-        workerLoaded = true;
         session.loaded$.next(true);
         telemetry.modelReady();
-        if (running) {
-          setStatus("running");
-          void sendFrame();
-        } else {
-          setStatus("ready");
-        }
+        setStatus(
+          wantsToRun(active$.value, inputs$.value) ? "running" : "ready",
+        );
         break;
       }
       case "detections": {
-        inFlight = Math.max(0, inFlight - 1);
         framesTotal += 1;
         const result = processDetectionResult({
           detections: message.detections,
@@ -515,32 +451,12 @@ export const createDetectionEngine = ({
           filteredCount: result.detections.length,
           shownCount: result.tracked.length,
           zoom: frameInfo?.zoom ?? ZOOM_OFF,
-          // Carried forward for one line; schedulePacedFrame below writes
-          // this frame's actual pacing decision.
+          // Carried forward for one line; the pump's paceDelay writes this
+          // frame's actual pacing decision.
           pacingDelayMs: debug.pacingDelayMs,
           pacingRule: debug.pacingRule,
         };
         telemetry.result({ inferenceMs, roundTripMs });
-        // Recycle the worker once it has been running long enough, at this
-        // result boundary where nothing is in flight, so no frame is lost.
-        // Terminating and recreating the worker resets the native memory ORT
-        // and the GPU stack leak across thousands of runs. Status stays
-        // "running" throughout, so the new worker's `ready` re-primes the
-        // pump; the recycle replaces schedulePacedFrame for this result.
-        if (
-          running &&
-          performance.now() - session.createdAt >= WORKER_RECYCLE_AFTER_MS
-        ) {
-          // Invalidate any capture from the old pump so it can't post onto
-          // the new worker, and drop the in-flight count for the restart.
-          generation += 1;
-          inFlight = 0;
-          clearTimers();
-          workerLoaded = false;
-          recycle$.next();
-        } else {
-          schedulePacedFrame(roundTripMs);
-        }
         break;
       }
       case "worker-error": {
@@ -553,16 +469,125 @@ export const createDetectionEngine = ({
     }
   };
 
+  /**
+   * The frame pump for one worker session: runs exactly while running$ is
+   * true, starts only after this session's model reports ready (a still
+   * loading worker silently drops frames), and loops a scan forever. A
+   * falling running edge unsubscribes mid-anything: a pending capture closes
+   * its bitmap and a pending pace timer dies. The one exception is a frame
+   * already posted and awaiting a reply: `awaitingResult` tracks that across
+   * the edge (cleared by `resultLanded$` below, which stays subscribed
+   * through a pause) so a stop/start that outraces the worker's reply
+   * re-primes at depth one instead of posting a second frame while the first
+   * is still out, the rxjs shape of the old inFlight guard.
+   */
+  const pumpFor = (session: WorkerSession) => {
+    let awaitingResult = false;
+
+    // Not gated by running: a stale result landing during a pause must still
+    // clear the flag, or a resumed pump would wait forever for a message
+    // its own (torn-down) subscription already missed.
+    const resultLanded$ = session.messages$.pipe(
+      filter((message) => message.type === "detections"),
+      tap(() => {
+        awaitingResult = false;
+      }),
+      ignoreElements(),
+    );
+
+    /**
+     * One pump iteration: capture and post (unless a frame from before an
+     * interruption is still outstanding, in which case just await its
+     * reply), then either pace the next capture or complete the session for
+     * recycle. A capture failure (video not delivering frames yet, typically
+     * mid-attach) retries after FRAME_RETRY_MS.
+     */
+    const scanOnce = () =>
+      defer(() => {
+        if (awaitingResult) {
+          return of(undefined);
+        }
+        const video = inputs$.value.video;
+        return video
+          ? captureFrame(video).pipe(
+              tap((frame) => {
+                const { zoom, includeContact, confidenceThreshold } =
+                  settings$.value;
+                lastFrameInfo = {
+                  zoom,
+                  width: frame.width,
+                  height: frame.height,
+                };
+                postTime = performance.now();
+                awaitingResult = true;
+                session.post(
+                  {
+                    type: "detect",
+                    frame,
+                    includeCrop: includeContact,
+                    zoom,
+                    confidenceThreshold,
+                  },
+                  [frame],
+                );
+              }),
+            )
+          : EMPTY;
+      }).pipe(
+        switchMap(() =>
+          session.messages$.pipe(
+            filter((message) => message.type === "detections"),
+            take(1),
+          ),
+        ),
+        switchMap(() => {
+          // Recycle at this result boundary, where nothing is in flight, once
+          // the worker has run long enough; terminating and recreating it
+          // resets the native memory ORT and the GPU stack leak across
+          // thousands of runs. Status stays "running" so one-shot analytics
+          // gates never re-fire; the new session's ready re-primes the pump.
+          if (
+            performance.now() - session.createdAt >=
+            WORKER_RECYCLE_AFTER_MS
+          ) {
+            recycle$.next();
+            return EMPTY;
+          }
+          return timer(paceDelay(performance.now() - postTime));
+        }),
+        catchError(() => timer(FRAME_RETRY_MS)),
+      );
+
+    const captureLoop$ = running$.pipe(
+      switchMap((isRunning) =>
+        isRunning
+          ? session.loaded$.pipe(
+              filter(Boolean),
+              take(1),
+              switchMap(() => scanOnce().pipe(repeat())),
+            )
+          : EMPTY,
+      ),
+    );
+
+    return merge(resultLanded$, captureLoop$);
+  };
+
   // One activation's worker chain: sessions repeat on recycle and end on
   // halt; flipping active$ off unsubscribes the current session, which is
-  // what terminates its worker.
+  // what terminates its worker. The merge order is load-bearing: the message
+  // handler subscribes to messages$ before the pump, so it processes a
+  // result (publishing hud/scan/contact and writing the debug timings)
+  // before the pump's take(1) computes pacing.
   const sessionLoop$ = workerSession$.pipe(
-    tap((session) => {
-      currentSession = session;
-      workerLoaded = false;
-    }),
     switchMap((session) =>
-      session.messages$.pipe(tap((message) => handleMessage(session, message))),
+      merge(
+        session.messages$.pipe(
+          tap((message) => handleMessage(session, message)),
+          ignoreElements(),
+        ),
+        pumpFor(session),
+      ),
     ),
     takeUntil(recycle$),
     repeat(),
@@ -576,20 +601,17 @@ export const createDetectionEngine = ({
     )
     .subscribe();
 
-  // The old evaluate(): act on the edges of the derived running state. The
-  // BehaviorSubject replays the initial false at subscribe; its "falling edge"
-  // actions are all no-ops against fresh state, so no skip is needed.
+  // Act on the edges of the derived running state. The BehaviorSubject
+  // replays the initial false at subscribe; its "falling edge" actions are
+  // all no-ops against fresh state, so no skip is needed.
   running$.subscribe((isRunning) => {
-    running = isRunning;
     if (isRunning) {
       if (snapshot$.value.status === "ready") {
         setStatus("running");
-        void sendFrame();
       }
       return;
     }
-    generation += 1;
-    clearTimers();
+    // A resumed session must re-earn track confirmation from scratch.
     tracker = createDetectionTracker();
     if (snapshot$.value.status === "running") {
       setStatus("ready");
@@ -619,13 +641,11 @@ export const createDetectionEngine = ({
         return;
       }
       // A fresh activation behaves like a fresh mount: published state and
-      // per-load counters reset before the new worker reports anything.
+      // per-load state reset before the new worker reports anything.
       snapshot$.value.contact?.image.close();
       snapshot$.next(INITIAL_SNAPSHOT);
       fileProgress.clear();
       debug = INITIAL_DEBUG;
-      inFlight = 0;
-      generation += 1;
       tracker = createDetectionTracker();
       active$.next(true);
     },
@@ -634,11 +654,7 @@ export const createDetectionEngine = ({
         return;
       }
       active$.next(false);
-      clearTimers();
       replaceContact(undefined);
-      workerLoaded = false;
-      inFlight = 0;
-      generation += 1;
     },
   };
 };
