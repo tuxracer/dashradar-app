@@ -23,8 +23,11 @@ export type PixelBox = {
  *
  * The contact card and its direction readout are not drawn from this model at
  * all; they come from the worker's own score-based pick (`topDetectionIndex`
- * in `src/workers/detection/index.ts`), which is why the card, the
- * percentage, and the class name always describe the same detection. Auto
+ * in `src/workers/detection/inference.ts`). Both pick by score, but from
+ * different data: the card from the raw detections of the frame just decoded,
+ * this model from the coasted tracker set. So they name the same detection on
+ * a live frame and can drift apart while a track coasts, which is the same
+ * lag that lets the class name outlive the detection that produced it. Auto
  * zoom reads the whole tracked set (`stepAutoZoom({ detections: tracked,
  * ... })`), not any single detection here.
  *

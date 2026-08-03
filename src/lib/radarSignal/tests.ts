@@ -92,8 +92,8 @@ describe("hudScore", () => {
   });
 
   it("reports the most confident detection, not the nearest one", () => {
-    // The nearest object (first argument) is the one the contact card crops;
-    // the readout must still report the model's best score in the frame.
+    // The largest box (first argument) is not what the readout reports: it
+    // must report the model's best score in the frame regardless of size.
     expect(hudScore(hudOf(det(0.55), [det(0.95)]))).toBe(0.95);
   });
 });
