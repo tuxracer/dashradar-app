@@ -6,12 +6,13 @@ import {
   distinctUntilChanged,
   EMPTY,
   filter,
+  finalize,
+  fromEvent,
   ignoreElements,
   map,
   merge,
   Observable,
   of,
-  pairwise,
   repeat,
   skip,
   Subject,
@@ -35,7 +36,7 @@ import { createDetectionTracker } from "@/lib/detectionTracker";
 import type { Contact } from "@/lib/processDetectionResult";
 import { processDetectionResult } from "@/lib/processDetectionResult";
 import { waitForServiceWorkerControl } from "@/lib/serviceWorker";
-import { createWakeLockManager } from "@/lib/wakeLock";
+import { screenWakeLock } from "@/lib/wakeLock";
 import { ZOOM_OFF } from "@/workers/detection/consts";
 import type { WorkerResponse, ZoomLevel } from "@/workers/detection/types";
 import { isWorkerResponse } from "@/workers/detection/types";
@@ -144,9 +145,6 @@ export const createDetectionEngine = ({
   // sentinel reads it against a baseline captured when scanning starts.
   let framesTotal = 0;
   let debug: DebugSnapshot = INITIAL_DEBUG;
-  // Keeps the screen awake while scanning; a dash-mounted phone that sleeps
-  // mid-drive stops seeing the road with no sign anything changed.
-  const wakeLock = createWakeLockManager();
 
   /** Swap in the next contact (or none), closing the previous crop bitmap. */
   const replaceContact = (next: Contact | undefined) => {
@@ -154,14 +152,35 @@ export const createDetectionEngine = ({
     publish({ contact: next });
   };
 
-  // ---- crash sentinel ----
-  // While scanning, write a timestamped record to localStorage on a cadence
-  // so the NEXT launch can tell whether this session ended cleanly. Every
-  // clean exit clears it; only an OS-level kill mid-scan (no JS runs) leaves
-  // the last heartbeat behind for the next launch to report.
-  let sentinelTimer = 0;
-  let sentinelPageHide: (() => void) | undefined;
-  const sentinelStart = () => {
+  /** Publish a status change; the scanning window below reacts to its edges. */
+  const setStatus = (next: DetectionStatus) => {
+    if (next !== snapshot$.value.status) {
+      publish({ status: next });
+    }
+  };
+
+  // ---- the scanning window ----
+  // Three resources live exactly as long as the engine is scanning: the
+  // telemetry clock, the crash sentinel, and the screen wake lock. Each is a
+  // stream whose teardown is its own release, so the window is a subscribe
+  // and an unsubscribe rather than paired start/stop calls with timers,
+  // listeners, and flags kept alongside them.
+
+  /** The telemetry scanning clock, running while subscribed. */
+  const scanClock$ = new Observable<never>(() => {
+    telemetry.scanningStarted();
+    return () => {
+      telemetry.scanningStopped();
+    };
+  });
+
+  /**
+   * The crash sentinel: while subscribed, write a timestamped record to
+   * localStorage on a cadence so the NEXT launch can tell whether this session
+   * ended cleanly. Unsubscribing clears the record, so only an OS-level kill
+   * mid-scan (no JS runs) leaves the last heartbeat behind to be reported.
+   */
+  const crashSentinel$ = defer(() => {
     const startedAt = Date.now();
     const baseline = framesTotal;
     const beat = () => {
@@ -175,69 +194,43 @@ export const createDetectionEngine = ({
         release: APP_RELEASE,
       });
     };
-    // A reload or navigation away mid-scan can outrun any teardown path, so
-    // pagehide is the last synchronous chance to clear the record; a real
-    // crash never fires pagehide, so genuine kills still leave it behind. A
-    // bfcache return leaves the still-running timer to rewrite the record on
-    // its next tick, restoring coverage.
-    sentinelPageHide = () => {
-      clearSentinel();
-    };
-    window.addEventListener("pagehide", sentinelPageHide);
     beat();
-    // Self-rescheduling rather than a fixed interval, because the cadence is
-    // not fixed: heartbeatDelayMs beats every second through the startup
-    // window and every five after it, buying one-second resolution on where
-    // in startup a crash landed without extra writes to hours of scanning.
-    const scheduleBeat = () => {
-      sentinelTimer = window.setTimeout(
-        () => {
-          beat();
-          scheduleBeat();
-        },
-        heartbeatDelayMs(Date.now() - startedAt),
-      );
-    };
-    scheduleBeat();
-  };
-  const sentinelStop = () => {
-    if (sentinelPageHide) {
-      window.removeEventListener("pagehide", sentinelPageHide);
-      sentinelPageHide = undefined;
-    }
-    window.clearTimeout(sentinelTimer);
-    clearSentinel();
-  };
+    return merge(
+      // Each repeat re-defers, so the delay is recomputed against the current
+      // uptime rather than fixed at subscribe: heartbeatDelayMs beats every
+      // second through the startup window and every five after it, buying
+      // one-second resolution on where in startup a crash landed without
+      // extra writes to hours of scanning.
+      defer(() => timer(heartbeatDelayMs(Date.now() - startedAt))).pipe(
+        repeat(),
+        tap(beat),
+      ),
+      // A reload or navigation away mid-scan can outrun any teardown path, so
+      // pagehide is the last synchronous chance to clear the record; a real
+      // crash never fires pagehide, so genuine kills still leave it behind.
+      // The heartbeat above deliberately keeps running, so a bfcache return
+      // rewrites the record on its next beat and restores coverage.
+      fromEvent(window, "pagehide").pipe(tap(clearSentinel)),
+    );
+  }).pipe(ignoreElements(), finalize(clearSentinel));
 
-  /** Publish a status change; the effect stream below reacts to its edges. */
-  const setStatus = (next: DetectionStatus) => {
-    if (next !== snapshot$.value.status) {
-      publish({ status: next });
-    }
-  };
+  // Keeps the screen awake while scanning; a dash-mounted phone that sleeps
+  // mid-drive stops seeing the road with no sign anything changed. Built once
+  // per engine rather than per window, so a platform that refuses the lock is
+  // reported once for the page load.
+  const wakeLock$ = screenWakeLock();
 
-  // The scanning-window side effects (telemetry clock, crash sentinel, wake
-  // lock) attach to status edges on the published stream, so they can never
-  // miss a transition no matter which code path publishes it. pairwise on a
-  // BehaviorSubject pairs the initial value with the first change, so the
-  // first entry into "running" is seen.
+  // The window opens and closes on the published status, so it cannot miss a
+  // transition no matter which code path publishes it.
   snapshot$
     .pipe(
-      map((s) => s.status),
+      map((s) => s.status === "running"),
       distinctUntilChanged(),
-      pairwise(),
+      switchMap((isScanning) =>
+        isScanning ? merge(scanClock$, crashSentinel$, wakeLock$) : EMPTY,
+      ),
     )
-    .subscribe(([previous, next]) => {
-      if (next === "running") {
-        telemetry.scanningStarted();
-        sentinelStart();
-        void wakeLock.acquire();
-      } else if (previous === "running") {
-        telemetry.scanningStopped();
-        sentinelStop();
-        void wakeLock.release();
-      }
-    });
+    .subscribe();
 
   /**
    * Capture one frame as an ImageBitmap. Waits for the camera to present a

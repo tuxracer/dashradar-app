@@ -267,6 +267,9 @@ afterEach(() => {
   // Restore the prototype visibilityState getter shadowed by
   // setDocumentVisibility, so later tests see jsdom's real value.
   Reflect.deleteProperty(document, "visibilityState");
+  // jsdom implements no Wake Lock API; drop any stub so the tests that don't
+  // install one see the unsupported platform they expect.
+  Reflect.deleteProperty(navigator, "wakeLock");
   // A seeded showDebug (or any other persisted setting) must not leak between
   // tests: SettingsProvider persists its state to localStorage on mount.
   window.localStorage.clear();
@@ -2054,6 +2057,40 @@ describe("crash sentinel heartbeat", () => {
       await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
     });
     expect(readSentinel()).toMatchObject({ startedAt, framesProcessed: 1 });
+  });
+});
+
+describe("screen wake lock", () => {
+  const stubWakeLock = () => {
+    const sentinel = { release: vi.fn(() => Promise.resolve()) };
+    const request = vi.fn(() => Promise.resolve(sentinel));
+    Object.defineProperty(navigator, "wakeLock", {
+      value: { request },
+      configurable: true,
+    });
+    return { request, sentinel };
+  };
+
+  it("holds a wake lock only while scanning", async () => {
+    const { request, sentinel } = stubWakeLock();
+    const worker = renderWithProvider(<StartStop />);
+    act(() => {
+      worker.emit({ type: "ready" });
+    });
+    // Loaded but parked at "ready": nothing is scanning, so the screen is
+    // free to sleep.
+    expect(request).not.toHaveBeenCalled();
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    expect(request).toHaveBeenCalledWith("screen");
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      screen.getByTestId("stop").click();
+    });
+    expect(sentinel.release).toHaveBeenCalled();
   });
 });
 

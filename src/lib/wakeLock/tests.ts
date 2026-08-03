@@ -1,6 +1,6 @@
 import { track } from "@vercel/analytics";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createWakeLockManager } from "@/lib/wakeLock";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { screenWakeLock } from "@/lib/wakeLock";
 
 vi.mock("@vercel/analytics", () => ({ track: vi.fn() }));
 
@@ -20,82 +20,55 @@ const stubRefusedWakeLock = (name: string) => {
   return { request };
 };
 
-const listeners: Array<[string, EventListener]> = [];
-const originalAddEventListener = document.addEventListener;
-const originalRemoveEventListener = document.removeEventListener;
-
-beforeEach(() => {
-  listeners.length = 0;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (document.addEventListener as any) = ((
-    event: string,
-    listener: EventListener,
-  ) => {
-    listeners.push([event, listener]);
-    return originalAddEventListener.call(document, event, listener);
-  }) as unknown;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (document.removeEventListener as any) = ((
-    event: string,
-    listener: EventListener,
-  ) => {
-    const index = listeners.findIndex(
-      ([e, l]) => e === event && l === listener,
-    );
-    if (index >= 0) {
-      listeners.splice(index, 1);
-    }
-    return originalRemoveEventListener.call(document, event, listener);
-  }) as unknown;
-});
+/** Let a settled request's continuation run. */
+const flush = () => Promise.resolve();
 
 afterEach(() => {
-  // Clean up all tracked listeners
-  for (const [event, listener] of listeners) {
-    originalRemoveEventListener.call(document, event, listener);
-  }
-  listeners.length = 0;
-  document.addEventListener = originalAddEventListener;
-  document.removeEventListener = originalRemoveEventListener;
   vi.unstubAllGlobals();
   vi.mocked(track).mockClear();
 });
 
-describe("createWakeLockManager", () => {
-  it("requests a screen wake lock on acquire", async () => {
+describe("screenWakeLock", () => {
+  it("requests a screen wake lock on subscribe", () => {
     const { request } = stubWakeLock();
-    await createWakeLockManager().acquire();
+    const subscription = screenWakeLock().subscribe();
     expect(request).toHaveBeenCalledWith("screen");
+    subscription.unsubscribe();
   });
 
-  it("releases the sentinel on release", async () => {
+  it("requests nothing until subscribed", () => {
+    const { request } = stubWakeLock();
+    screenWakeLock();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("releases the sentinel on unsubscribe", async () => {
     const { sentinel } = stubWakeLock();
-    const manager = createWakeLockManager();
-    await manager.acquire();
-    await manager.release();
+    const subscription = screenWakeLock().subscribe();
+    await flush();
+    subscription.unsubscribe();
     expect(sentinel.release).toHaveBeenCalled();
   });
 
   it("re-requests the lock when the page becomes visible again", async () => {
     const { request } = stubWakeLock();
-    const manager = createWakeLockManager();
-    await manager.acquire();
+    const subscription = screenWakeLock().subscribe();
+    await flush();
     document.dispatchEvent(new Event("visibilitychange"));
-    await Promise.resolve();
     expect(request).toHaveBeenCalledTimes(2);
+    subscription.unsubscribe();
   });
 
-  it("stops re-requesting after release", async () => {
+  it("stops re-requesting after unsubscribe", async () => {
     const { request } = stubWakeLock();
-    const manager = createWakeLockManager();
-    await manager.acquire();
-    await manager.release();
+    const subscription = screenWakeLock().subscribe();
+    await flush();
+    subscription.unsubscribe();
     document.dispatchEvent(new Event("visibilitychange"));
-    await Promise.resolve();
     expect(request).toHaveBeenCalledTimes(1);
   });
 
-  it("releases a lock granted after release was already called", async () => {
+  it("releases a lock granted after unsubscribe", async () => {
     const sentinel: FakeSentinel = { release: vi.fn(() => Promise.resolve()) };
     let grant: (granted: FakeSentinel) => void = () => {};
     const request = vi.fn(
@@ -105,26 +78,37 @@ describe("createWakeLockManager", () => {
         }),
     );
     vi.stubGlobal("navigator", { wakeLock: { request } });
-    const manager = createWakeLockManager();
-    const acquiring = manager.acquire();
-    await manager.release();
+    const subscription = screenWakeLock().subscribe();
+    subscription.unsubscribe();
     grant(sentinel);
-    await acquiring;
+    await flush();
     expect(sentinel.release).toHaveBeenCalled();
   });
 
-  it("is a no-op without wake lock support", async () => {
+  it("is a no-op without wake lock support", () => {
     vi.stubGlobal("navigator", {});
-    const manager = createWakeLockManager();
-    await expect(manager.acquire()).resolves.toBeUndefined();
-    await expect(manager.release()).resolves.toBeUndefined();
+    const subscription = screenWakeLock().subscribe();
+    expect(() => {
+      subscription.unsubscribe();
+    }).not.toThrow();
+  });
+
+  it("holds one lock at a time across a re-request", async () => {
+    const { sentinel } = stubWakeLock();
+    const subscription = screenWakeLock().subscribe();
+    await flush();
+    document.dispatchEvent(new Event("visibilitychange"));
+    // The lock the platform auto-released when the page went hidden is
+    // dropped as the fresh request goes out, so nothing outlives the window.
+    expect(sentinel.release).toHaveBeenCalledTimes(1);
+    subscription.unsubscribe();
   });
 });
 
 describe("wake lock failure reporting", () => {
-  it("reports a platform that has no Wake Lock API", async () => {
+  it("reports a platform that has no Wake Lock API", () => {
     vi.stubGlobal("navigator", {});
-    await createWakeLockManager().acquire();
+    screenWakeLock().subscribe().unsubscribe();
     expect(track).toHaveBeenCalledWith("wake_lock_failed", {
       reason: "unsupported",
     });
@@ -132,28 +116,36 @@ describe("wake lock failure reporting", () => {
 
   it("reports a refused lock under the rejection's name", async () => {
     stubRefusedWakeLock("NotAllowedError");
-    await createWakeLockManager().acquire();
+    const subscription = screenWakeLock().subscribe();
+    await flush();
     expect(track).toHaveBeenCalledWith("wake_lock_failed", {
       reason: "NotAllowedError",
     });
+    subscription.unsubscribe();
   });
 
   it("stays quiet when the lock is granted", async () => {
     stubWakeLock();
-    await createWakeLockManager().acquire();
+    const subscription = screenWakeLock().subscribe();
+    await flush();
     expect(track).not.toHaveBeenCalled();
+    subscription.unsubscribe();
   });
 
-  // The visibility handler re-requests for the length of a drive, so without
-  // the guard a platform that refuses emits an event per app switch.
-  it("reports only the first failure of a manager's life", async () => {
+  // A lock is re-requested for the length of a drive, and a scanning window
+  // opens and closes many times over one, so without the gate a platform that
+  // refuses emits an event per app switch.
+  it("reports only the first failure of a stream's life", async () => {
     stubRefusedWakeLock("NotAllowedError");
-    const manager = createWakeLockManager();
-    await manager.acquire();
+    const wakeLock$ = screenWakeLock();
+    const first = wakeLock$.subscribe();
+    await flush();
     document.dispatchEvent(new Event("visibilitychange"));
-    await Promise.resolve();
-    await manager.release();
-    await manager.acquire();
+    await flush();
+    first.unsubscribe();
+    const second = wakeLock$.subscribe();
+    await flush();
+    second.unsubscribe();
     expect(track).toHaveBeenCalledTimes(1);
   });
 });
