@@ -86,18 +86,6 @@ export type WorkerRequest =
       type: "detect";
       frame: ImageBitmap;
       /**
-       * When true, the worker returns the model's square input as a JPEG blob
-       * on the detections response, so the UI can offer to save it. Set from
-       * the developer frame-saving setting.
-       */
-      includeFrame?: boolean;
-      /**
-       * When true, a frame with no detection to crop comes back with a
-       * downscaled thumbnail of the model's input instead, so the UI can show
-       * what every scan saw. Set from the developer frame-preview setting.
-       */
-      includeThumbnail?: boolean;
-      /**
        * When false, the worker skips cutting the top detection out of the
        * frame, so a detection comes back without its image. Set from the
        * detection-image setting, which turns the contact card off. Omitting it
@@ -135,9 +123,6 @@ export const isWorkerRequest = (value: unknown): value is WorkerRequest => {
     value.type === "detect" &&
     typeof ImageBitmap !== "undefined" &&
     value.frame instanceof ImageBitmap &&
-    (value.includeFrame === undefined || isBoolean(value.includeFrame)) &&
-    (value.includeThumbnail === undefined ||
-      isBoolean(value.includeThumbnail)) &&
     (value.includeCrop === undefined || isBoolean(value.includeCrop)) &&
     (value.zoom === undefined || isNumber(value.zoom)) &&
     (value.confidenceThreshold === undefined ||
@@ -284,21 +269,6 @@ export type WorkerResponse =
       detections: RawDetection[];
       timing: FrameTiming;
       crop?: DetectionCrop;
-      /**
-       * Downscaled full-frame thumbnail, present only when the request asked
-       * for it (includeThumbnail) and the frame had no top detection to crop.
-       * Lets the UI show what every scan saw even when nothing was detected.
-       * Mutually exclusive with `crop`: a frame with a top detection sends
-       * `crop` instead.
-       */
-      frameThumbnail?: ImageBitmap;
-      /**
-       * The model's square input (INPUT_SIZE on a side) encoded as JPEG,
-       * present whenever the request asked for it (includeFrame). Pairs with
-       * the crop or the frame thumbnail from the same message as the image the
-       * contact card's SAVE button downloads for training data.
-       */
-      frame?: Blob;
     }
   | {
       type: "worker-error";
@@ -339,11 +309,7 @@ export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
         Array.isArray(value.detections) &&
         value.detections.every(isRawDetection) &&
         isFrameTiming(value.timing) &&
-        (value.crop === undefined || isDetectionCrop(value.crop)) &&
-        (value.frameThumbnail === undefined ||
-          (typeof ImageBitmap !== "undefined" &&
-            value.frameThumbnail instanceof ImageBitmap)) &&
-        (value.frame === undefined || value.frame instanceof Blob)
+        (value.crop === undefined || isDetectionCrop(value.crop))
       );
     case "worker-error":
       return (

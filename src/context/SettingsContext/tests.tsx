@@ -60,24 +60,6 @@ const TOGGLES: ReadonlyArray<{
     developer: true,
   },
   {
-    key: "frameThumbnails",
-    toggle: "toggleFrameThumbnails",
-    fresh: false,
-    developer: true,
-  },
-  {
-    key: "saveFrames",
-    toggle: "toggleSaveFrames",
-    fresh: false,
-    developer: true,
-  },
-  {
-    key: "autoSaveFrames",
-    toggle: "toggleAutoSaveFrames",
-    fresh: false,
-    developer: true,
-  },
-  {
     key: "zoomIndicator",
     toggle: "toggleZoomIndicator",
     fresh: false,
@@ -177,9 +159,6 @@ describe("SettingsContext", () => {
         settingsVersion: SETTINGS_VERSION,
         developerOptions: false,
         showDebug: false,
-        frameThumbnails: false,
-        saveFrames: false,
-        autoSaveFrames: false,
         radarAudio: true,
         detectionImage: false,
         throttleInference: true,
@@ -199,11 +178,8 @@ describe("SettingsContext", () => {
     const { result } = mount({
       developerOptions: false,
       showDebug: true,
-      frameThumbnails: true,
-      saveFrames: true,
-      autoSaveFrames: true,
       throttleInference: false,
-      zoomMode: "1x",
+      zoomMode: "2x",
       zoomIndicator: true,
       roundTripIndicator: true,
       cameraPreview: true,
@@ -350,21 +326,17 @@ describe("SettingsContext migrations", () => {
   });
 
   // A blob from before the developer options stopped defaulting on stores the
-  // five display options as true whether or not anyone chose them, so it is
+  // display options as true whether or not anyone chose them, so it is
   // migrated to off on load.
   it("turns off the developer options a pre-version blob defaulted on", () => {
     const { result } = mount({
       developerOptions: true,
       showDebug: true,
-      frameThumbnails: true,
-      saveFrames: true,
       zoomIndicator: true,
       roundTripIndicator: true,
     });
     expect(result.current.developerOptions).toBe(true);
     expect(result.current.showDebug).toBe(false);
-    expect(result.current.frameThumbnails).toBe(false);
-    expect(result.current.saveFrames).toBe(false);
     expect(result.current.zoomIndicator).toBe(false);
     expect(result.current.roundTripIndicator).toBe(false);
   });
@@ -374,18 +346,16 @@ describe("SettingsContext migrations", () => {
     // made and the migration leaves it alone.
     const { result } = mount({
       developerOptions: true,
-      autoSaveFrames: true,
       cameraPreview: true,
       throttleInference: false,
-      zoomMode: "1x",
+      zoomMode: "2x",
       confidenceThreshold: 0.2,
       radarAudio: false,
       detectionImage: true,
     });
-    expect(result.current.autoSaveFrames).toBe(true);
     expect(result.current.cameraPreview).toBe(true);
     expect(result.current.throttleInference).toBe(false);
-    expect(result.current.zoomMode).toBe("1x");
+    expect(result.current.zoomMode).toBe("2x");
     expect(result.current.confidenceThreshold).toBe(0.2);
     expect(result.current.radarAudio).toBe(false);
     expect(result.current.detectionImage).toBe(true);
@@ -408,9 +378,8 @@ describe("SettingsContext migrations", () => {
       showDebug: true,
     });
     expect(result.current.showDebug).toBe(true);
-    expect(result.current.frameThumbnails).toBe(false);
-    expect(result.current.saveFrames).toBe(false);
-    expect(result.current.autoSaveFrames).toBe(false);
+    expect(result.current.cameraPreview).toBe(false);
+    expect(result.current.detectionView).toBe(false);
   });
 });
 

@@ -51,7 +51,7 @@ const handleReset = () => {
  * with big tap targets: the Audio alerts, Detection image, and Developer
  * options toggles, the development-only controls Developer options reveals
  * (Debug overlay, Zoom indicator, Round-trip, Raw confidence, Camera preview,
- * Detection view, Frame preview, Save frames, Auto save, Throttle inference,
+ * Detection view, Throttle inference,
  * Detection model, the segmented Zoom mode picker, Min confidence, Reset app
  * data), plus read-only Model and About rows.
  * Detection model is the one row that leads somewhere: it opens ModelScreen in
@@ -69,12 +69,6 @@ export const SettingsScreen = () => {
     toggleDeveloperOptions,
     showDebug,
     toggleShowDebug,
-    frameThumbnails,
-    toggleFrameThumbnails,
-    saveFrames,
-    toggleSaveFrames,
-    autoSaveFrames,
-    toggleAutoSaveFrames,
     radarAudio,
     toggleRadarAudio,
     detectionImage,
@@ -294,54 +288,6 @@ export const SettingsScreen = () => {
                   </span>
                 </span>
                 <Toggle on={detectionView} />
-              </button>
-
-              <button
-                type="button"
-                onClick={toggleFrameThumbnails}
-                className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
-              >
-                <span className="flex flex-col gap-1">
-                  <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-                    Frame preview
-                  </span>
-                  <span className="text-sm font-medium text-white/45">
-                    Shows what the model saw each scan.
-                  </span>
-                </span>
-                <Toggle on={frameThumbnails} />
-              </button>
-
-              <button
-                type="button"
-                onClick={toggleSaveFrames}
-                className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
-              >
-                <span className="flex flex-col gap-1">
-                  <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-                    Save frames
-                  </span>
-                  <span className="text-sm font-medium text-white/45">
-                    Adds a save button to the preview.
-                  </span>
-                </span>
-                <Toggle on={saveFrames} />
-              </button>
-
-              <button
-                type="button"
-                onClick={toggleAutoSaveFrames}
-                className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
-              >
-                <span className="flex flex-col gap-1">
-                  <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-                    Auto save
-                  </span>
-                  <span className="text-sm font-medium text-white/45">
-                    Downloads every detection as it happens.
-                  </span>
-                </span>
-                <Toggle on={autoSaveFrames} />
               </button>
 
               <button

@@ -68,7 +68,7 @@ Both directions are validated by type guards; a malformed message is ignored rat
 | --- | --- | --- |
 | → worker | `probe` | Can this device run the detector? Downloads nothing; posted ahead of `load` |
 | → worker | `load` | Download the given model's weights and create the session (an omitted model loads the default); deferred until service-worker control in production |
-| → worker | `detect` | Run one transferred frame, with per-frame flags (full frame, thumbnail, cutout) and the effective threshold |
+| → worker | `detect` | Run one transferred frame, with the cutout flag, zoom, and the effective threshold |
 | → main | `model-load-start` | Whether weights came from cache; drives whether the download screen shows |
 | → main | `model-progress` | Byte counts while streaming; not sent on a cache hit |
 | → main | `model-downloaded` | Weights done, before session build, so download success is counted apart from session failure |
@@ -77,7 +77,7 @@ Both directions are validated by type guards; a malformed message is ignored rat
 | → main | `detections` | Decoded boxes, per-stage timing, optional extras |
 | → main | `worker-error` | A typed `DetectionErrorCode` plus optional detail |
 
-The `detections` extras: the **cutout** (top detection's box, padded, clamped, downscaled, never upscaled) is the evidence the contact card shows; the **thumbnail** covers scans that detected nothing; the **frame** is the model's square input as JPEG, directly usable as training data.
+The `detections` extra: the **cutout** (top detection's box, padded, clamped, downscaled, never upscaled) is the evidence the contact card shows, requested only while the detection-image setting is on.
 
 `WORKER_CRASHED` is set by `DetectionContext` from `worker.onerror` for exceptions the worker's try/catch missed. WebKit runs WebGPU in a separate process that can die under a healthy page; the worker awaits `device.lost` once per session and turns it into `GPU_DEVICE_LOST`, ignoring the `"destroyed"` reason (deliberate teardown, not a loss).
 
@@ -127,11 +127,11 @@ Other surfaces: the status bar (wordmark, settings gear, optional slot for the z
 
 `localStorage`, validated on read: a corrupt blob falls back to defaults entirely, a partial one fills missing fields from defaults, so a build that adds a field cannot wipe stored values.
 
-`developerOptions` is the master switch. While off, `SettingsProvider` reports every developer option at its off value, so consumers read an already-gated value and never repeat the gate; stored values are untouched, so re-enabling restores prior tweaks. **Turning the switch on reveals rows and nothing else**: every developer option defaults off (a settings-version migration turned off the five that used to default on). Do not add one that defaults on.
+`developerOptions` is the master switch. While off, `SettingsProvider` reports every developer option at its off value, so consumers read an already-gated value and never repeat the gate; stored values are untouched, so re-enabling restores prior tweaks. **Turning the switch on reveals rows and nothing else**: every developer option defaults off (a settings-version migration turned off the ones that used to default on). Do not add one that defaults on.
 
 Two driver-facing rows are visible with the switch off: **Audio alerts** gates the beeper (beeping while the dial shows nothing is impossible by construction; the audio floor sits at or above the dial's contact threshold), and **Detection image** (default off) turns the contact card off end to end when disabled: the worker is told not to cut a crop, not just the UI hiding one.
 
-Developer rows with real behavior behind them: **Auto save** downloads a detection's model-input frame with no tap, for collecting training data on a drive; it fires only on scans that detected something, keeps the crop request alive even with the detection image off, and shows a toast per save, since a browser download is otherwise invisible on a phone. **Camera preview** plays a second video element cropped to exactly the scanned region, for checking aim; it defaults off because a second live surface costs compositing on a thermally constrained device. **Detection view** swaps the meter for the live feed with the model's boxes drawn over it, for checking aim and false positives against what the detector actually sees; replacing `RadarDetectorScreen` takes its beeper and contact card off with it too. **Reset app data**, behind a confirm, empties both web storages, deletes every cache and IndexedDB database, unregisters service workers, and reloads, each step settling independently so one failure cannot strand the app half-cleared; it reproduces a genuine first visit on a phone, where devtools are not an option.
+Developer rows with real behavior behind them: **Camera preview** plays a second video element cropped to exactly the scanned region, for checking aim; it defaults off because a second live surface costs compositing on a thermally constrained device. **Detection view** swaps the meter for the live feed with the model's boxes drawn over it, for checking aim and false positives against what the detector actually sees; replacing `RadarDetectorScreen` takes its beeper and contact card off with it too. **Reset app data**, behind a confirm, empties both web storages, deletes every cache and IndexedDB database, unregisters service workers, and reloads, each step settling independently so one failure cannot strand the app half-cleared; it reproduces a genuine first visit on a phone, where devtools are not an option.
 
 ## 11. Offline and PWA
 

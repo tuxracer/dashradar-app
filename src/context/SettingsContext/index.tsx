@@ -40,19 +40,17 @@ export const useSettings = (): SettingsContextValue => {
 };
 
 /**
- * Turns off the developer options that used to default on: the debug overlay,
- * the per-scan frame preview, frame saving, and the two status pills. A blob
- * written before SETTINGS_VERSION 1 stores those as true whether or not anyone
- * asked for them, because they were the defaults, so turning Developer options
- * on would light all five up on a device that never chose any of them. The
- * other developer options are left alone: they already defaulted to their off
- * value, so a stored value there could only have come from someone setting it.
+ * Turns off the developer options that used to default on: the debug overlay
+ * and the two status pills. A blob written before SETTINGS_VERSION 1 stores
+ * those as true whether or not anyone asked for them, because they were the
+ * defaults, so turning Developer options on would light them up on a device
+ * that never chose any of them. The other developer options are left alone:
+ * they already defaulted to their off value, so a stored value there could
+ * only have come from someone setting it.
  */
 const clearLegacyDefaultOnOptions = (settings: Settings): Settings => ({
   ...settings,
   showDebug: DEVELOPER_OPTIONS_OFF.showDebug,
-  frameThumbnails: DEVELOPER_OPTIONS_OFF.frameThumbnails,
-  saveFrames: DEVELOPER_OPTIONS_OFF.saveFrames,
   zoomIndicator: DEVELOPER_OPTIONS_OFF.zoomIndicator,
   roundTripIndicator: DEVELOPER_OPTIONS_OFF.roundTripIndicator,
 });
@@ -131,15 +129,6 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const [storedShowDebug, setShowDebug] = useState(
     () => loadSettings().showDebug,
   );
-  const [storedFrameThumbnails, setFrameThumbnails] = useState(
-    () => loadSettings().frameThumbnails,
-  );
-  const [storedSaveFrames, setSaveFrames] = useState(
-    () => loadSettings().saveFrames,
-  );
-  const [storedAutoSaveFrames, setAutoSaveFrames] = useState(
-    () => loadSettings().autoSaveFrames,
-  );
   const [radarAudio, setRadarAudio] = useState(() => loadSettings().radarAudio);
   const [detectionImage, setDetectionImage] = useState(
     () => loadSettings().detectionImage,
@@ -174,22 +163,13 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
 
   // The developer options report their DEVELOPER_OPTIONS_OFF value whenever
   // developerOptions is off, so a tweak left enabled (the debug overlay, the
-  // per-scan frame preview, the live camera preview, frame saving, unthrottled
-  // inference, a zoomed-in crop, a lowered confidence floor) stops taking effect
-  // the moment the master switch goes off. The stored value is untouched, so
-  // turning it back on restores the tweak.
+  // live camera preview, unthrottled inference, a zoomed-in crop, a lowered
+  // confidence floor) stops taking effect the moment the master switch goes
+  // off. The stored value is untouched, so turning it back on restores the
+  // tweak.
   const showDebug = developerOptions
     ? storedShowDebug
     : DEVELOPER_OPTIONS_OFF.showDebug;
-  const frameThumbnails = developerOptions
-    ? storedFrameThumbnails
-    : DEVELOPER_OPTIONS_OFF.frameThumbnails;
-  const saveFrames = developerOptions
-    ? storedSaveFrames
-    : DEVELOPER_OPTIONS_OFF.saveFrames;
-  const autoSaveFrames = developerOptions
-    ? storedAutoSaveFrames
-    : DEVELOPER_OPTIONS_OFF.autoSaveFrames;
   const throttleInference = developerOptions
     ? storedThrottleInference
     : DEVELOPER_OPTIONS_OFF.throttleInference;
@@ -223,9 +203,6 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       settingsVersion: SETTINGS_VERSION,
       developerOptions,
       showDebug: storedShowDebug,
-      frameThumbnails: storedFrameThumbnails,
-      saveFrames: storedSaveFrames,
-      autoSaveFrames: storedAutoSaveFrames,
       radarAudio,
       detectionImage,
       throttleInference: storedThrottleInference,
@@ -241,9 +218,6 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     [
       developerOptions,
       storedShowDebug,
-      storedFrameThumbnails,
-      storedSaveFrames,
-      storedAutoSaveFrames,
       radarAudio,
       detectionImage,
       storedThrottleInference,
@@ -282,18 +256,6 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
 
   const toggleShowDebug = useCallback(() => {
     setShowDebug((prev) => !prev);
-  }, []);
-
-  const toggleFrameThumbnails = useCallback(() => {
-    setFrameThumbnails((prev) => !prev);
-  }, []);
-
-  const toggleSaveFrames = useCallback(() => {
-    setSaveFrames((prev) => !prev);
-  }, []);
-
-  const toggleAutoSaveFrames = useCallback(() => {
-    setAutoSaveFrames((prev) => !prev);
   }, []);
 
   const toggleRadarAudio = useCallback(() => {
@@ -352,12 +314,6 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleDeveloperOptions,
       showDebug,
       toggleShowDebug,
-      frameThumbnails,
-      toggleFrameThumbnails,
-      saveFrames,
-      toggleSaveFrames,
-      autoSaveFrames,
-      toggleAutoSaveFrames,
       radarAudio,
       toggleRadarAudio,
       detectionImage,
@@ -389,12 +345,6 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleDeveloperOptions,
       showDebug,
       toggleShowDebug,
-      frameThumbnails,
-      toggleFrameThumbnails,
-      saveFrames,
-      toggleSaveFrames,
-      autoSaveFrames,
-      toggleAutoSaveFrames,
       radarAudio,
       toggleRadarAudio,
       detectionImage,

@@ -19,10 +19,9 @@ export const isZoomMode = (value: unknown): value is ZoomMode => {
 export type Settings = {
   /**
    * Master switch for the development-only settings (showDebug,
-   * frameThumbnails, saveFrames, autoSaveFrames, throttleInference,
-   * zoomMode, confidenceThreshold, modelIds, zoomIndicator,
-   * roundTripIndicator, cameraPreview, detectionView, rawConfidence). Off by
-   * default. While it is off, SettingsProvider
+   * throttleInference, zoomMode, confidenceThreshold, modelIds,
+   * zoomIndicator, roundTripIndicator, cameraPreview, detectionView,
+   * rawConfidence). Off by default. While it is off, SettingsProvider
    * reports each of those at its DEVELOPER_OPTIONS_OFF value no matter what is
    * stored, so a development tweak left enabled cannot alter a normal drive.
    * Their stored values survive, so turning this back on restores the tweaks
@@ -39,30 +38,6 @@ export type Settings = {
    */
   showDebug: boolean;
   /**
-   * When true, the contact card shows a thumbnail of what the model saw on
-   * every scan, including scans with no detection, and stays lit rather than
-   * fading out with the meter. A developer option, so it only takes effect
-   * while developerOptions is on, and off until asked for there.
-   */
-  frameThumbnails: boolean;
-  /**
-   * When true, the contact card carries a SAVE button that downloads the
-   * model's square input frame as a JPEG, for collecting training data. Costs
-   * a JPEG encode inside every detect round trip, so it is a developer option
-   * and only takes effect while developerOptions is on, off until asked for
-   * there.
-   */
-  saveFrames: boolean;
-  /**
-   * When true, every scan that detects something downloads its model-input
-   * frame automatically, with no tap on SAVE. For collecting training data on
-   * a drive, where reaching for the button on each detection is not practical
-   * and the false positives are exactly what needs reviewing later. Implies
-   * the frame encode saveFrames asks for, and downloads a file per detection,
-   * so it is worth turning on deliberately.
-   */
-  autoSaveFrames: boolean;
-  /**
    * When true, radar detector mode beeps as a police vehicle is detected:
    * the beeps pulse faster (and higher-pitched) the stronger the signal, and
    * stop entirely when nothing is detected. On by default.
@@ -73,9 +48,7 @@ export type Settings = {
    * detector cut out of the frame. Off by default: the meter alone is what a
    * driver reads at a glance, and the card costs a crop on every detection.
    * Off turns the card off outright rather than hiding it, so no image of what
-   * was detected is ever produced. The two card-related developer options ride
-   * on top of it and do nothing while it is off, since there is no card for the
-   * per-scan preview to extend or the SAVE button to sit in.
+   * was detected is ever produced.
    */
   detectionImage: boolean;
   /**
@@ -180,9 +153,6 @@ export type PersistedSettings = Settings & {
 export type DeveloperOptions = Pick<
   Settings,
   | "showDebug"
-  | "frameThumbnails"
-  | "saveFrames"
-  | "autoSaveFrames"
   | "throttleInference"
   | "zoomMode"
   | "confidenceThreshold"
@@ -196,8 +166,8 @@ export type DeveloperOptions = Pick<
 
 /**
  * Value exposed by the settings context via useSettings(). The developer
- * options (showDebug, frameThumbnails, saveFrames, autoSaveFrames,
- * throttleInference, zoomMode, confidenceThreshold, modelIds, zoomIndicator,
+ * options (showDebug, throttleInference, zoomMode, confidenceThreshold,
+ * modelIds, zoomIndicator,
  * roundTripIndicator, cameraPreview, detectionView, rawConfidence) are the
  * *effective* values, already gated on developerOptions, so consumers never
  * have to repeat the gate. Each toggle (or setter) still writes the stored
@@ -208,12 +178,6 @@ export type SettingsContextValue = {
   toggleDeveloperOptions: () => void;
   showDebug: boolean;
   toggleShowDebug: () => void;
-  frameThumbnails: boolean;
-  toggleFrameThumbnails: () => void;
-  saveFrames: boolean;
-  toggleSaveFrames: () => void;
-  autoSaveFrames: boolean;
-  toggleAutoSaveFrames: () => void;
   radarAudio: boolean;
   toggleRadarAudio: () => void;
   detectionImage: boolean;
@@ -271,9 +235,6 @@ export const isPersistedSettings = (
     (value.developerOptions === undefined ||
       isBoolean(value.developerOptions)) &&
     (value.showDebug === undefined || isBoolean(value.showDebug)) &&
-    (value.frameThumbnails === undefined || isBoolean(value.frameThumbnails)) &&
-    (value.saveFrames === undefined || isBoolean(value.saveFrames)) &&
-    (value.autoSaveFrames === undefined || isBoolean(value.autoSaveFrames)) &&
     (value.radarAudio === undefined || isBoolean(value.radarAudio)) &&
     (value.detectionImage === undefined || isBoolean(value.detectionImage)) &&
     (value.throttleInference === undefined ||

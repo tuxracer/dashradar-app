@@ -116,19 +116,6 @@ const TOGGLE_ROWS: ReadonlyArray<{
     afterTap: false,
     developer: true,
   },
-  {
-    label: "Frame preview",
-    key: "frameThumbnails",
-    afterTap: true,
-    developer: true,
-  },
-  { label: "Save frames", key: "saveFrames", afterTap: true, developer: true },
-  {
-    label: "Auto save",
-    key: "autoSaveFrames",
-    afterTap: true,
-    developer: true,
-  },
 ];
 
 describe("SettingsScreen", () => {

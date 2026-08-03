@@ -9,7 +9,6 @@ import {
   SEGMENT_COUNT,
   SIGNAL_HIGH_COLOR,
 } from "@/lib/radarSignal";
-import { downloadBlob, frameFilename } from "@/lib/saveFrame";
 import {
   ALERT_THRESHOLD,
   ARC_SWEEP_DEG,
@@ -28,17 +27,6 @@ type RadarDetectorScreenProps = {
   audioEnabled: boolean;
   /** Latest cutout to render as the contact card, if any. */
   contact?: Contact;
-  /**
-   * Whether the frame-preview setting is on. Keeps the card lit for every scan
-   * (including detection-free frames, which arrive as a bare frame preview)
-   * instead of fading it with the meter.
-   */
-  frameThumbnails?: boolean;
-  /**
-   * Whether the frame-saving setting is on. Reveals the contact card's SAVE
-   * button, which downloads the model's square input frame as a JPEG.
-   */
-  saveFrames?: boolean;
   /**
    * Whether detection has not started yet (model loading, session warm-up).
    * The status word reads INITIALIZING instead of SCANNING and the sweep
@@ -106,21 +94,14 @@ const ALERT_RING_COLOR = `rgb(${SIGNAL_HIGH_COLOR.join(", ")})`;
  * silence instead. The contact card's direction row follows the same rule as
  * the audio: it renders only while the raw signal is nonzero (a live
  * detection), so a stale heading is never shown while the card lingers
- * through the dial's decay tail. The two card developer options each add one
- * thing to the card: with frameThumbnails on it stays lit on every scan,
- * since a detection-free scan arrives as a bare frame preview (a thumbnail
- * of the whole frame) that should always reflect what the last scan saw;
- * with saveFrames on it shows a SAVE button that downloads the model's
- * square input frame as a JPEG for collecting training data. A third
- * developer option swaps the dial's percentage for the raw model score (the
- * rawConfidence prop) while the ladder keeps tracking the peak-held signal.
+ * through the dial's decay tail. A developer option swaps the dial's
+ * percentage for the raw model score (the rawConfidence prop) while the
+ * ladder keeps tracking the peak-held signal.
  */
 export const RadarDetectorScreen = ({
   confidence,
   audioEnabled,
   contact,
-  frameThumbnails,
-  saveFrames,
   initializing,
   rawConfidence,
   detectedLabel,
@@ -128,7 +109,6 @@ export const RadarDetectorScreen = ({
   const confidenceRef = useRef(confidence);
   const audioEnabledRef = useRef(audioEnabled);
   const contactRef = useRef(contact);
-  const frameThumbnailsRef = useRef(frameThumbnails);
   const initializingRef = useRef(initializing);
   const rawConfidenceRef = useRef(rawConfidence);
   const detectedLabelRef = useRef(detectedLabel);
@@ -164,11 +144,6 @@ export const RadarDetectorScreen = ({
     contactRef.current = contact;
     wakeRef.current();
   }, [contact]);
-
-  useEffect(() => {
-    frameThumbnailsRef.current = frameThumbnails;
-    wakeRef.current();
-  }, [frameThumbnails]);
 
   useEffect(() => {
     initializingRef.current = initializing;
@@ -255,13 +230,9 @@ export const RadarDetectorScreen = ({
         now,
       );
 
-      // Normally the card tracks the meter, fading in with a detection and
-      // out with the decay tail. With the frame preview on it stays lit for
-      // as long as a contact exists so the per-scan preview is always
-      // visible, even at a zero meter.
-      const contactShown =
-        contactRef.current !== undefined &&
-        (frameThumbnailsRef.current === true || level > 0);
+      // The card tracks the meter, fading in with a detection and out with
+      // the decay tail.
+      const contactShown = contactRef.current !== undefined && level > 0;
 
       // The status word flips between INITIALIZING and SCANNING at a zero
       // meter, so the initializing flag gates the flush alongside the level.
@@ -380,8 +351,6 @@ export const RadarDetectorScreen = ({
     };
   }, []);
 
-  const frameBlob = contact?.frame;
-
   return (
     <div
       ref={screenRef}
@@ -471,15 +440,6 @@ export const RadarDetectorScreen = ({
                 {DIRECTION_DISPLAY[contact.direction]}
               </span>
             </div>
-          )}
-          {saveFrames && frameBlob && (
-            <button
-              data-testid="contact-save"
-              onClick={() => downloadBlob(frameBlob, frameFilename(new Date()))}
-              className="mx-3 mb-3 rounded-md border border-hud-amber/40 bg-hud-amber/10 py-4 text-sm font-semibold tracking-[0.3em] text-hud-amber transition-colors active:border-hud-amber active:bg-hud-amber active:text-surface"
-            >
-              SAVE
-            </button>
           )}
         </div>
       )}

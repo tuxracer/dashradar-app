@@ -14,47 +14,22 @@ export type DetectionStatus = "loading-model" | "ready" | "running" | "error";
 export type ModelProgress = { loadedBytes: number; totalBytes: number };
 
 /**
- * Latest cutout the radar detector mode renders on its contact card. Usually a
- * detection crop with its score, signal, box, and direction. With the frame
- * preview setting on, a scan with no detection instead produces a bare frame
- * preview (image and frame only): the detection-only fields below are absent
- * for it.
+ * Latest detection cutout the radar detector mode renders on its contact
+ * card.
  */
 export type Contact = {
-  /**
-   * The card image: a cutout of the detection, or, for a frame preview, a
-   * downscaled thumbnail of the whole inference frame.
-   */
+  /** The card image: a cutout of the detection. */
   image: ImageBitmap;
-  /**
-   * The model's square input for this scan, JPEG-encoded by the worker.
-   * Present only when the frame was captured with the frame-saving setting on;
-   * the contact card's SAVE button downloads it for training data.
-   */
-  frame?: Blob;
-  /** Raw model score of the cropped detection. Absent on a frame preview. */
-  score?: number;
+  /** Raw model score of the cropped detection. */
+  score: number;
   /** Score remapped onto the meter's signal band (signalFromScore); the same
-   * semantic as the dial readout so the two can never disagree. Absent on a
-   * frame preview. */
-  signal?: number;
-  /** Cropped detection's box. Absent on a frame preview. */
-  box?: NormalizedBox;
-  /** Cropped detection's heading. Absent on a frame preview. */
-  direction?: ContactDirection;
+   * semantic as the dial readout so the two can never disagree. */
+  signal: number;
+  /** Cropped detection's box. */
+  box: NormalizedBox;
+  /** Cropped detection's heading. */
+  direction: ContactDirection;
   /** performance.now() when the result carrying this image arrived. */
-  at: number;
-};
-
-/**
- * Most recent frame the auto-save developer option downloaded. Replaced on
- * every save (`at` is fresh each time, so a repeat save is a distinct value),
- * which is what lets the save toast re-show for a run of saved detections.
- */
-export type SavedFrame = {
-  /** Name the frame was downloaded under. */
-  filename: string;
-  /** performance.now() when the download fired. */
   at: number;
 };
 
@@ -144,20 +119,10 @@ export type DetectionContextValue = {
   /**
    * Latest cutout with its score, remapped signal, and direction. Replaced
    * when a new crop arrives; left untouched by detection-free frames so radar
-   * detector mode's contact card lingers through the meter's decay tail. With
-   * the frame preview setting on, a detection-free scan instead replaces it
-   * with a bare frame preview, so the card shows what every scan saw. Cleared
-   * on worker errors and teardown.
+   * detector mode's contact card lingers through the meter's decay tail.
+   * Cleared on worker errors and teardown.
    */
   contact: Contact | undefined;
-  /**
-   * Latest frame the auto-save developer option wrote to disk, for the save
-   * toast. A download is otherwise invisible on a phone, so this is the only
-   * confirmation a collection drive gets that saving is actually working.
-   * Undefined until the first save of the session; never cleared, since the
-   * toast times itself out.
-   */
-  savedFrame: SavedFrame | undefined;
   /**
    * The model this session is running. Pinned at mount, so it answers "what is
    * detecting right now", which is not necessarily what is selected: a change

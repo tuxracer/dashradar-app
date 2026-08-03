@@ -19,7 +19,6 @@ import { ModelLoadScreen } from "@/components/ModelLoadScreen";
 import { RadarBackdrop } from "@/components/RadarBackdrop";
 import { RadarDetectorScreen } from "@/components/RadarDetectorScreen";
 import { RoundTripIndicator } from "@/components/RoundTripIndicator";
-import { SaveToast } from "@/components/SaveToast";
 import { SettingsScreen } from "@/components/SettingsScreen";
 import { StatusBar } from "@/components/StatusBar";
 import { UnsupportedScreen } from "@/components/UnsupportedScreen";
@@ -61,7 +60,6 @@ const RadarScreen = () => {
     modelProgress,
     hud,
     contact,
-    savedFrame,
     getDebugSnapshot,
     error,
     scan,
@@ -70,8 +68,6 @@ const RadarScreen = () => {
   } = useDetection();
   const {
     radarAudio,
-    frameThumbnails,
-    saveFrames,
     zoomMode,
     zoomIndicator,
     roundTripIndicator,
@@ -263,8 +259,6 @@ const RadarScreen = () => {
           confidence={hudSignal(hud)}
           audioEnabled={radarAudio}
           contact={contact}
-          frameThumbnails={frameThumbnails}
-          saveFrames={saveFrames}
           initializing={status !== "running"}
           rawConfidence={rawConfidence ? hudScore(hud) : undefined}
           detectedLabel={hud?.top?.label}
@@ -282,7 +276,6 @@ const RadarScreen = () => {
           zoom={zoomMode === "2x" ? ZOOM_2X : ZOOM_OFF}
         />
       )}
-      <SaveToast saved={savedFrame} />
       <StatusBar
         center={
           zoomIndicator || roundTripIndicator ? (

@@ -11,9 +11,7 @@ import type { DetectionModel, LoadedModel } from "@/lib/detectionModels";
 import { readOnnxMetadata } from "@/lib/onnxMetadata";
 import type { OnnxMetadata } from "@/lib/onnxMetadata";
 import {
-  CROP_MAX_EDGE,
   DEV_MODEL_CACHE_NAME,
-  FRAME_JPEG_QUALITY,
   INPUT_SIZE,
   WASM_THREAD_CAP,
   WEBGPU_GRAPH_CAPTURE,
@@ -594,57 +592,13 @@ const loadModel = async (requested: DetectionModel | undefined) => {
   }
 };
 
-/**
- * Downscale the model's square input canvas to a thumbnail bitmap for the
- * contact card, shown on scans that had no detection to crop. Sourced from the
- * input canvas rather than the original frame so the card shows exactly what
- * the model saw: the centered square crop at the scan's zoom; the SAVE path
- * (encodeFrame) saves that same input at full size. The edge is capped at
- * CROP_MAX_EDGE (never upscaled), matching the detection crop's sizing.
- * Best-effort like the crop: any failure returns undefined and never blocks
- * the detection result.
- */
-const createFrameThumbnail = async (): Promise<ImageBitmap | undefined> => {
-  const edge = Math.min(CROP_MAX_EDGE, INPUT_SIZE);
-  try {
-    return await createImageBitmap(inputCanvas, {
-      resizeWidth: edge,
-      resizeHeight: edge,
-    });
-  } catch {
-    return undefined;
-  }
-};
-
-/**
- * Encode the model's square input canvas as a JPEG blob for the frame-saving
- * option. Saving the input rather than the original camera frame means a saved
- * file is exactly the INPUT_SIZE image the model scored: the centered square
- * crop at the scan's zoom. Best-effort like the crop: any failure returns
- * undefined and never blocks the detection result.
- */
-const encodeFrame = async (): Promise<Blob | undefined> => {
-  try {
-    return await inputCanvas.convertToBlob({
-      type: "image/jpeg",
-      quality: FRAME_JPEG_QUALITY,
-    });
-  } catch {
-    return undefined;
-  }
-};
-
 const detect = async ({
   frame,
-  includeFrame,
-  includeThumbnail,
   includeCrop,
   zoom,
   confidenceThreshold,
 }: {
   frame: ImageBitmap;
-  includeFrame: boolean;
-  includeThumbnail: boolean;
   includeCrop: boolean;
   zoom: number;
   confidenceThreshold: number;
@@ -748,30 +702,9 @@ const detect = async ({
       }
     }
 
-    // When the frame preview is on and there is no detection to crop, send a
-    // downscaled model-input thumbnail so the contact card still shows what
-    // the scan saw. A frame with a top detection sends the crop instead, so
-    // the two are mutually exclusive.
-    let frameThumbnail: ImageBitmap | undefined;
-    if (includeThumbnail && topIndex === undefined) {
-      frameThumbnail = await createFrameThumbnail();
-    }
-
-    // Model-input JPEG for frame saving, sent whenever it was asked for so the
-    // card's SAVE button works beside both a crop and a frame thumbnail (a
-    // missed-detection frame is exactly the kind worth saving as training
-    // data).
-    let savedFrame: Blob | undefined;
-    if (includeFrame) {
-      savedFrame = await encodeFrame();
-    }
-
     const transfer: Transferable[] = [];
     if (crop) {
       transfer.push(crop.image);
-    }
-    if (frameThumbnail) {
-      transfer.push(frameThumbnail);
     }
     post(
       {
@@ -779,8 +712,6 @@ const detect = async ({
         detections,
         timing: { preprocessMs, inferenceMs, decodeMs },
         crop,
-        frameThumbnail,
-        frame: savedFrame,
       },
       transfer,
     );
@@ -820,8 +751,6 @@ self.onmessage = (event: MessageEvent<unknown>) => {
   }
   void detect({
     frame: request.frame,
-    includeFrame: request.includeFrame ?? false,
-    includeThumbnail: request.includeThumbnail ?? false,
     includeCrop: request.includeCrop ?? true,
     zoom: request.zoom ?? ZOOM_OFF,
     confidenceThreshold: request.confidenceThreshold ?? CONFIDENCE_THRESHOLD,

@@ -23,7 +23,6 @@ import { resolveModels } from "@/lib/detectionModels";
 import { createDetectionTracker } from "@/lib/detectionTracker";
 import { isStandalone } from "@/lib/pwaInstall";
 import { contactDirection, signalFromScore } from "@/lib/radarSignal";
-import { downloadBlob, frameFilename } from "@/lib/saveFrame";
 import {
   createScanClock,
   SCAN_REPORT_MIN_MS,
@@ -59,7 +58,6 @@ import type {
   DetectionStatus,
   DetectionWorkerLike,
   ModelProgress,
-  SavedFrame,
   ScanResult,
 } from "./types";
 
@@ -96,9 +94,6 @@ export const DetectionProvider = ({
   createWorker = createDetectionWorker,
 }: DetectionProviderProps) => {
   const {
-    frameThumbnails,
-    saveFrames,
-    autoSaveFrames,
     detectionImage,
     throttleInference,
     zoomMode,
@@ -112,45 +107,14 @@ export const DetectionProvider = ({
   // periodic worker recycle too, which builds a new session 15 minutes in and
   // would otherwise pick up whatever is stored by then.
   const [activeModel] = useState(() => resolveModels(modelIds)[0]);
-  // Mirrors the frame-saving flags for sendFrame, which is a stable callback:
-  // the pump reads the current value per capture instead of re-subscribing on
-  // toggles. It asks the worker for the model-input JPEG the contact card's
-  // SAVE button downloads. Auto save needs the same JPEG, so it implies the
-  // request rather than making the two settings order-dependent.
-  const includeFrameRef = useRef(saveFrames || autoSaveFrames);
-  useEffect(() => {
-    includeFrameRef.current = saveFrames || autoSaveFrames;
-  }, [saveFrames, autoSaveFrames]);
-  // Mirrors auto save for the detections handler, which downloads a detection's
-  // frame the moment it arrives.
-  const autoSaveRef = useRef(autoSaveFrames);
-  useEffect(() => {
-    autoSaveRef.current = autoSaveFrames;
-  }, [autoSaveFrames]);
-  // Mirrors the frame-preview flag the same way. It asks the worker for a
-  // thumbnail of what the model saw on scans with no detection to crop. The
-  // preview extends the contact card to every scan, so it rides on the card
-  // being shown at all: with the detection image off there is nothing to
-  // extend, and asking for the thumbnail would only burn a bitmap per scan.
-  const includeThumbnailRef = useRef(frameThumbnails && detectionImage);
-  useEffect(() => {
-    includeThumbnailRef.current = frameThumbnails && detectionImage;
-  }, [frameThumbnails, detectionImage]);
-  // Mirrors the detection-image setting for the detections handler, which shows
-  // the contact card only while it is on.
+  // Mirrors the detection-image setting for sendFrame (which asks the worker
+  // for the top detection's cutout only while the contact card exists to show
+  // it) and the detections handler. A ref rather than a dependency so the
+  // stable pump callbacks read the current value per capture.
   const detectionImageRef = useRef(detectionImage);
   useEffect(() => {
     detectionImageRef.current = detectionImage;
   }, [detectionImage]);
-  // Asks the worker for the cutout of the top detection. The card needs it, and
-  // so does auto save, which uses the cutout's validated detection as the
-  // signal that a scan is worth downloading; requesting it for either keeps the
-  // two settings independent, the same way includeFrame serves both frame
-  // saving and auto save.
-  const includeCropRef = useRef(detectionImage || autoSaveFrames);
-  useEffect(() => {
-    includeCropRef.current = detectionImage || autoSaveFrames;
-  }, [detectionImage, autoSaveFrames]);
   // Mirrors the throttle flag for schedulePacedFrame, a stable callback that
   // reads it per result instead of re-subscribing. useSettings() already
   // reports the effective value: throttleInference can only be false while the
@@ -206,10 +170,6 @@ export const DetectionProvider = ({
   // frame.
   const debugRef = useRef<DebugSnapshot>(INITIAL_DEBUG);
   const [contact, setContact] = useState<Contact>();
-  // Latest auto-saved frame, published for the save toast. Only auto save
-  // writes it: the contact card's SAVE button is a deliberate tap, so it needs
-  // no confirmation the way a download firing on its own does.
-  const [savedFrame, setSavedFrame] = useState<SavedFrame>();
   // Mirrors `contact` so the previous bitmap can be closed from event
   // handlers without a side effect inside a setState updater (StrictMode
   // double-invokes updaters; see statusRef above).
@@ -381,9 +341,7 @@ export const DetectionProvider = ({
         {
           type: "detect",
           frame,
-          includeFrame: includeFrameRef.current,
-          includeThumbnail: includeThumbnailRef.current,
-          includeCrop: includeCropRef.current,
+          includeCrop: detectionImageRef.current,
           zoom,
           confidenceThreshold: confidenceThresholdRef.current,
         },
@@ -554,57 +512,19 @@ export const DetectionProvider = ({
               [message.detections[message.crop.detectionIndex]],
               confidenceThresholdRef.current,
             );
-            if (cropDetection) {
-              // With the detection image off the cutout is only here because
-              // auto save asked for it, so close the bitmap and leave the card
-              // alone; the download below still runs.
-              if (detectionImageRef.current) {
-                replaceContact({
-                  image: message.crop.image,
-                  frame: message.frame,
-                  score: cropDetection.score,
-                  signal: signalFromScore(cropDetection.score),
-                  box: cropDetection.box,
-                  direction: contactDirection(cropDetection.box),
-                  at: performance.now(),
-                });
-              } else {
-                message.crop.image.close();
-              }
-              // Auto save (developer option) downloads the frame the instant a
-              // detection lands, so training data can be collected on a drive
-              // without reaching for the card's SAVE button. Deliberately
-              // inside this branch: only scans that actually detected
-              // something download, never the detection-free scans (which is
-              // most of them), and never a crop whose detection was dropped by
-              // the filter above. Sits in the handler body rather than a
-              // setState updater, which StrictMode double-invokes.
-              if (autoSaveRef.current && message.frame) {
-                const filename = frameFilename(new Date());
-                downloadBlob(message.frame, filename);
-                // A download on a phone gives no visible sign it happened, so
-                // publish the save for the toast. A fresh `at` each time is
-                // what makes a run of saves re-show it rather than sitting
-                // still after the first one.
-                setSavedFrame({ filename, at: performance.now() });
-              }
-            } else {
-              message.crop.image.close();
-            }
-          } else if (message.frameThumbnail) {
-            // Frame preview on, no detection to crop: show a bare preview so the
-            // card reflects every scan. No detection metadata, so the meter
-            // stays at zero and the card's direction row stays hidden. The
-            // gate covers a frame that was already in flight when the detection
-            // image was turned off.
-            if (detectionImageRef.current) {
+            // The gate covers a crop that was already in flight when the
+            // detection image was turned off.
+            if (cropDetection && detectionImageRef.current) {
               replaceContact({
-                image: message.frameThumbnail,
-                frame: message.frame,
+                image: message.crop.image,
+                score: cropDetection.score,
+                signal: signalFromScore(cropDetection.score),
+                box: cropDetection.box,
+                direction: contactDirection(cropDetection.box),
                 at: performance.now(),
               });
             } else {
-              message.frameThumbnail.close();
+              message.crop.image.close();
             }
           }
           const { preprocessMs, inferenceMs, decodeMs } = message.timing;
@@ -1025,7 +945,6 @@ export const DetectionProvider = ({
       getDebugSnapshot,
       error,
       contact: shownContact,
-      savedFrame,
       activeModel,
       start,
       stop,
@@ -1040,7 +959,6 @@ export const DetectionProvider = ({
       getDebugSnapshot,
       error,
       shownContact,
-      savedFrame,
       activeModel,
       start,
       stop,

@@ -6,7 +6,6 @@ import {
 } from "@/components/RadarDetectorScreen";
 import type { Contact } from "@/context/DetectionContext";
 import { isAudible } from "@/lib/radarAudio";
-import { downloadBlob } from "@/lib/saveFrame";
 
 /** Spy on the beeper so tests can observe what level the rAF loop feeds it. */
 const beeperUpdate = vi.fn<(level: number, nowMs: number) => void>();
@@ -17,11 +16,6 @@ vi.mock("@/lib/radarAudio", async (importOriginal) => ({
     update: beeperUpdate,
     dispose: () => {},
   }),
-}));
-
-vi.mock("@/lib/saveFrame", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/saveFrame")>()),
-  downloadBlob: vi.fn(),
 }));
 
 describe("RadarDetectorScreen", () => {
@@ -206,23 +200,12 @@ describe("RadarDetectorScreen raw confidence readout", () => {
 /** Test contact; the bitmap is a cast fake because jsdom has no ImageBitmap
  * and the component only reads width/height and draws it (draw is skipped
  * when jsdom's canvas has no 2d context). */
-const testContact = (
-  direction: Contact["direction"],
-  frame?: Blob,
-): Contact => ({
+const testContact = (direction: Contact["direction"]): Contact => ({
   image: { width: 320, height: 240, close: () => {} } as unknown as ImageBitmap,
-  frame,
   score: 0.85,
   signal: 0.5,
   box: { xmin: 0.1, ymin: 0.4, xmax: 0.3, ymax: 0.6 },
   direction,
-  at: 0,
-});
-
-/** Debug frame preview: a bare thumbnail with no detection metadata. */
-const previewContact = (frame?: Blob): Contact => ({
-  image: { width: 320, height: 240, close: () => {} } as unknown as ImageBitmap,
-  frame,
   at: 0,
 });
 
@@ -283,106 +266,17 @@ describe("RadarDetectorScreen contact card", () => {
   });
 });
 
-describe("RadarDetectorScreen frame saving", () => {
-  const frameBlob = () => new Blob(["jpeg"], { type: "image/jpeg" });
-
-  it("shows SAVE only when frame saving is on and the contact carries a frame", () => {
-    const view = render(
+describe("RadarDetectorScreen rAF loop", () => {
+  it("hides a contact once the meter has fully decayed to zero", async () => {
+    render(
       <RadarDetectorScreen
-        confidence={0.5}
-        audioEnabled={false}
-        contact={testContact("left", frameBlob())}
-        saveFrames={true}
-      />,
-    );
-    expect(screen.getByTestId("contact-save")).toBeInTheDocument();
-
-    // Same contact with frame saving off: no button.
-    view.rerender(
-      <RadarDetectorScreen
-        confidence={0.5}
-        audioEnabled={false}
-        contact={testContact("left", frameBlob())}
-      />,
-    );
-    expect(screen.queryByTestId("contact-save")).not.toBeInTheDocument();
-
-    // Frame saving on but a contact captured without a frame: no button.
-    view.rerender(
-      <RadarDetectorScreen
-        confidence={0.5}
+        confidence={0}
         audioEnabled={false}
         contact={testContact("left")}
-        saveFrames={true}
       />,
     );
-    expect(screen.queryByTestId("contact-save")).not.toBeInTheDocument();
-  });
-
-  it("keeps SAVE off the card when only the frame preview is on", () => {
-    render(
-      <RadarDetectorScreen
-        confidence={0.5}
-        audioEnabled={false}
-        contact={testContact("left", frameBlob())}
-        frameThumbnails={true}
-      />,
-    );
-    expect(screen.queryByTestId("contact-save")).not.toBeInTheDocument();
-  });
-
-  it("downloads the frame as a timestamped JPEG on tap", () => {
-    vi.mocked(downloadBlob).mockClear();
-    const frame = frameBlob();
-    render(
-      <RadarDetectorScreen
-        confidence={0.5}
-        audioEnabled={false}
-        contact={testContact("left", frame)}
-        saveFrames={true}
-      />,
-    );
-    screen.getByTestId("contact-save").click();
-    expect(downloadBlob).toHaveBeenCalledWith(
-      frame,
-      expect.stringMatching(/^dashradar-frame-\d{4}-\d{2}-\d{2}-\d{6}\.jpg$/),
-    );
-  });
-});
-
-describe("RadarDetectorScreen frame preview", () => {
-  const frameBlob = () => new Blob(["jpeg"], { type: "image/jpeg" });
-
-  it("keeps the card lit every scan with the preview on, even at a zero meter", async () => {
-    render(
-      <RadarDetectorScreen
-        confidence={0}
-        audioEnabled={false}
-        contact={previewContact()}
-        frameThumbnails={true}
-      />,
-    );
-    // A detection-free scan holds the meter at zero, but the preview setting
-    // keeps the card visible so it shows on every scan.
-    await waitFor(() =>
-      expect(
-        screen.getByTestId("contact-card").closest("[data-contact]"),
-      ).toHaveAttribute("data-contact", "true"),
-    );
-  });
-
-  it("hides a zero-meter contact when the preview is off", async () => {
-    render(
-      <RadarDetectorScreen
-        confidence={0}
-        audioEnabled={false}
-        contact={previewContact()}
-        saveFrames={true}
-      />,
-    );
-    // Without the preview the card is meter-gated even with frame saving on: at
-    // zero it fades out. Let the rAF loop tick first so this is not just the
-    // pre-tick default.
+    // The card is meter-gated: at zero it fades out. Let the rAF loop tick
+    // first so this is not just the pre-tick default.
     await waitFor(() =>
       expect(screen.getByTestId("signal-status")).toHaveTextContent("SCANNING"),
     );
@@ -413,45 +307,6 @@ describe("RadarDetectorScreen frame preview", () => {
       expect(screen.getByTestId("signal-status")).toHaveTextContent("ALERT"),
     );
     expect(beeperUpdate).toHaveBeenLastCalledWith(0.9, expect.any(Number));
-  });
-
-  it("wakes the parked loop to light a preview contact at a zero meter", async () => {
-    beeperUpdate.mockClear();
-    const view = render(
-      <RadarDetectorScreen confidence={0} audioEnabled={false} />,
-    );
-    await waitFor(() => expect(beeperUpdate).toHaveBeenCalledTimes(1));
-
-    // A detection-free scan arrives while the meter is idle: the contact
-    // mirror must wake the loop so the card still lights.
-    view.rerender(
-      <RadarDetectorScreen
-        confidence={0}
-        audioEnabled={false}
-        contact={previewContact()}
-        frameThumbnails={true}
-      />,
-    );
-    await waitFor(() =>
-      expect(
-        screen.getByTestId("contact-card").closest("[data-contact]"),
-      ).toHaveAttribute("data-contact", "true"),
-    );
-  });
-
-  it("shows a preview's SAVE button but never a direction row", () => {
-    render(
-      <RadarDetectorScreen
-        confidence={0}
-        audioEnabled={false}
-        contact={previewContact(frameBlob())}
-        frameThumbnails={true}
-        saveFrames={true}
-      />,
-    );
-    expect(screen.getByTestId("contact-card")).toBeInTheDocument();
-    expect(screen.getByTestId("contact-save")).toBeInTheDocument();
-    expect(screen.queryByTestId("contact-direction")).not.toBeInTheDocument();
   });
 });
 

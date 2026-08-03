@@ -25,7 +25,6 @@ import {
   SENTINEL_STORAGE_KEY,
 } from "@/lib/crashSentinel";
 import { DEFAULT_MODEL, STORED_MODELS_KEY } from "@/lib/detectionModels";
-import { downloadBlob } from "@/lib/saveFrame";
 import {
   LATE_TIMING_AFTER_MS,
   readTimingHistory,
@@ -38,10 +37,6 @@ import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 const SECOND_MODEL_ID = "second-model";
 
 vi.mock("@vercel/analytics", () => ({ track: vi.fn() }));
-vi.mock("@/lib/saveFrame", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/saveFrame")>()),
-  downloadBlob: vi.fn(),
-}));
 import type {
   DebugSnapshot,
   DetectionWorkerLike,
@@ -269,7 +264,6 @@ afterEach(() => {
   vi.restoreAllMocks();
   // restoreAllMocks does not reset a vi.fn() created by a module mock factory.
   vi.mocked(track).mockClear();
-  vi.mocked(downloadBlob).mockClear();
   // Restore the prototype visibilityState getter shadowed by
   // setDocumentVisibility, so later tests see jsdom's real value.
   Reflect.deleteProperty(document, "visibilityState");
@@ -1340,28 +1334,6 @@ describe("DetectionProvider", () => {
     expect(screen.getByTestId("objects").textContent).toBe("1");
   });
 
-  it("asks for neither the frame nor a thumbnail while developer options are off", async () => {
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const worker = renderWithProvider(<StartOnReady />);
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    await waitFor(() => {
-      expect(
-        worker.posted.filter((message) => message.type === "detect"),
-      ).toHaveLength(1);
-    });
-    expect(
-      worker.posted.find((message) => message.type === "detect"),
-    ).toMatchObject({ includeFrame: false, includeThumbnail: false });
-  });
-
   // The contact card is the crop's only consumer in a normal drive, so turning
   // the detection image off stops the worker cutting one at all.
   it("stops asking for the crop while the detection image is off", async () => {
@@ -1414,170 +1386,6 @@ describe("DetectionProvider", () => {
     expect(
       worker.posted.find((message) => message.type === "detect"),
     ).toMatchObject({ includeCrop: true });
-  });
-
-  // Auto save reads the cutout's validated detection as its signal that a scan
-  // is worth downloading, so it has to keep the request alive on its own.
-  it("keeps asking for the crop for auto save with the detection image off", async () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        developerOptions: true,
-        autoSaveFrames: true,
-        detectionImage: false,
-      }),
-    );
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const worker = renderWithProvider(<StartOnReady />);
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    await waitFor(() => {
-      expect(
-        worker.posted.filter((message) => message.type === "detect"),
-      ).toHaveLength(1);
-    });
-    expect(
-      worker.posted.find((message) => message.type === "detect"),
-    ).toMatchObject({ includeCrop: true });
-  });
-
-  // The per-scan preview extends the contact card, so with no card there is
-  // nothing for it to extend and no reason to pay for the thumbnail.
-  it("stops asking for the thumbnail while the detection image is off", async () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        settingsVersion: SETTINGS_VERSION,
-        developerOptions: true,
-        frameThumbnails: true,
-        detectionImage: false,
-      }),
-    );
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const worker = renderWithProvider(<StartOnReady />);
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    await waitFor(() => {
-      expect(
-        worker.posted.filter((message) => message.type === "detect"),
-      ).toHaveLength(1);
-    });
-    expect(
-      worker.posted.find((message) => message.type === "detect"),
-    ).toMatchObject({ includeThumbnail: false });
-  });
-
-  // The two flags are separate settings, so each has to reach the worker on its
-  // own rather than riding along with the debug overlay.
-  it("posts includeFrame true while frame saving is on, and nothing else", async () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        settingsVersion: SETTINGS_VERSION,
-        developerOptions: true,
-        saveFrames: true,
-        frameThumbnails: false,
-      }),
-    );
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const worker = renderWithProvider(<StartOnReady />);
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    await waitFor(() => {
-      expect(
-        worker.posted.filter((message) => message.type === "detect"),
-      ).toHaveLength(1);
-    });
-    expect(
-      worker.posted.find((message) => message.type === "detect"),
-    ).toMatchObject({ includeFrame: true, includeThumbnail: false });
-  });
-
-  // Auto save needs the same frame JPEG the SAVE button uses, so it has to
-  // ask for it on its own rather than depending on Save frames being on too.
-  it("posts includeFrame true for auto save even with frame saving off", async () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        developerOptions: true,
-        saveFrames: false,
-        autoSaveFrames: true,
-      }),
-    );
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const worker = renderWithProvider(<StartOnReady />);
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    await waitFor(() => {
-      expect(
-        worker.posted.filter((message) => message.type === "detect"),
-      ).toHaveLength(1);
-    });
-    expect(
-      worker.posted.find((message) => message.type === "detect"),
-    ).toMatchObject({ includeFrame: true });
-  });
-
-  it("posts includeThumbnail true while the frame preview is on, and nothing else", async () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        settingsVersion: SETTINGS_VERSION,
-        developerOptions: true,
-        saveFrames: false,
-        frameThumbnails: true,
-        // The preview extends the contact card, so the card has to be on for
-        // the thumbnail request to be worth making.
-        detectionImage: true,
-      }),
-    );
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const worker = renderWithProvider(<StartOnReady />);
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    await waitFor(() => {
-      expect(
-        worker.posted.filter((message) => message.type === "detect"),
-      ).toHaveLength(1);
-    });
-    expect(
-      worker.posted.find((message) => message.type === "detect"),
-    ).toMatchObject({ includeFrame: false, includeThumbnail: true });
   });
 
   it("posts the unzoomed crop factor by default", async () => {
@@ -2573,7 +2381,6 @@ const ContactProbe = () => {
       </span>
       <span data-testid="contact-signal">{contact?.signal ?? "none"}</span>
       <span data-testid="contact-score">{contact?.score ?? "none"}</span>
-      <span data-testid="contact-frame">{contact?.frame ? "yes" : "none"}</span>
     </div>
   );
 };
@@ -2754,50 +2561,6 @@ describe("DetectionProvider contact", () => {
     expect(image.close).toHaveBeenCalled();
   });
 
-  it("carries the saved-frame blob into the contact", () => {
-    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
-    const worker = new FakeWorker();
-    render(
-      <SettingsProvider>
-        <DetectionProvider createWorker={() => worker}>
-          <ContactProbe />
-        </DetectionProvider>
-      </SettingsProvider>,
-    );
-    act(() => {
-      worker.emit({
-        type: "detections",
-        detections: [policeDetection(0.85, 0.15, 0.25)],
-        timing,
-        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
-        frame: new Blob(["jpeg"], { type: "image/jpeg" }),
-      });
-    });
-    expect(screen.getByTestId("contact-frame")).toHaveTextContent("yes");
-  });
-
-  it("exposes no frame when the response omits it", () => {
-    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
-    const worker = new FakeWorker();
-    render(
-      <SettingsProvider>
-        <DetectionProvider createWorker={() => worker}>
-          <ContactProbe />
-        </DetectionProvider>
-      </SettingsProvider>,
-    );
-    act(() => {
-      worker.emit({
-        type: "detections",
-        detections: [policeDetection(0.85, 0.15, 0.25)],
-        timing,
-        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
-      });
-    });
-    expect(screen.getByTestId("contact-direction")).toHaveTextContent("left");
-    expect(screen.getByTestId("contact-frame")).toHaveTextContent("none");
-  });
-
   it("shows no contact while the detection image is off", () => {
     window.localStorage.setItem(
       STORAGE_KEY,
@@ -2823,221 +2586,5 @@ describe("DetectionProvider contact", () => {
     });
     expect(screen.getByTestId("contact-direction")).toHaveTextContent("none");
     expect(image.close).toHaveBeenCalled();
-  });
-});
-
-/** Reads the auto-save publication the save toast renders. */
-const SavedFrameProbe = () => {
-  const { savedFrame } = useDetection();
-  return (
-    <div>
-      <span data-testid="saved-filename">{savedFrame?.filename ?? "none"}</span>
-      <span data-testid="saved-at">{savedFrame?.at ?? "none"}</span>
-    </div>
-  );
-};
-
-describe("DetectionProvider auto save", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  const timing = { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 };
-  const policeDetection = (score: number) => ({
-    label: "police",
-    score,
-    box: { xmin: 0.15, ymin: 0.4, xmax: 0.25, ymax: 0.6 },
-  });
-  const jpeg = () => new Blob(["jpeg"], { type: "image/jpeg" });
-
-  const renderWithAutoSave = (enabled: boolean) => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ developerOptions: true, autoSaveFrames: enabled }),
-    );
-    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
-    const worker = new FakeWorker();
-    render(
-      <SettingsProvider>
-        <DetectionProvider createWorker={() => worker}>
-          <ContactProbe />
-          <SavedFrameProbe />
-        </DetectionProvider>
-      </SettingsProvider>,
-    );
-    return worker;
-  };
-
-  it("downloads a detection's frame as it arrives", () => {
-    const worker = renderWithAutoSave(true);
-    const frame = jpeg();
-    act(() => {
-      worker.emit({
-        type: "detections",
-        detections: [policeDetection(0.85)],
-        timing,
-        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
-        frame,
-      });
-    });
-    expect(downloadBlob).toHaveBeenCalledWith(
-      frame,
-      expect.stringMatching(/^dashradar-frame-\d{4}-\d{2}-\d{2}-\d{6}\.jpg$/),
-    );
-  });
-
-  // The whole point of auto save is collecting detections, not every scan. A
-  // drive is mostly detection-free frames, so downloading those would bury the
-  // detections and fill the device.
-  it("never downloads a detection-free scan, even one carrying a frame", () => {
-    const worker = renderWithAutoSave(true);
-    act(() => {
-      worker.emit({
-        type: "detections",
-        detections: [],
-        timing,
-        frameThumbnail: new FakeImageBitmap(),
-        frame: jpeg(),
-      });
-    });
-    expect(downloadBlob).not.toHaveBeenCalled();
-  });
-
-  it("never downloads a crop whose detection fails the confidence filter", () => {
-    const worker = renderWithAutoSave(true);
-    act(() => {
-      worker.emit({
-        type: "detections",
-        // Below the 0.5 confidence floor, so enrichDetections drops it and the
-        // crop is discarded rather than shown or saved.
-        detections: [policeDetection(0.2)],
-        timing,
-        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
-        frame: jpeg(),
-      });
-    });
-    expect(downloadBlob).not.toHaveBeenCalled();
-  });
-
-  // Hiding the card is a display choice; a collection drive that turned it off
-  // to keep the glass clean must still get its files.
-  it("still downloads with the detection image turned off", () => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        developerOptions: true,
-        autoSaveFrames: true,
-        detectionImage: false,
-      }),
-    );
-    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
-    const worker = new FakeWorker();
-    render(
-      <SettingsProvider>
-        <DetectionProvider createWorker={() => worker}>
-          <ContactProbe />
-        </DetectionProvider>
-      </SettingsProvider>,
-    );
-    const frame = jpeg();
-    act(() => {
-      worker.emit({
-        type: "detections",
-        detections: [policeDetection(0.85)],
-        timing,
-        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
-        frame,
-      });
-    });
-    expect(downloadBlob).toHaveBeenCalledWith(frame, expect.any(String));
-    expect(screen.getByTestId("contact-direction")).toHaveTextContent("none");
-  });
-
-  it("downloads nothing while the setting is off", () => {
-    const worker = renderWithAutoSave(false);
-    act(() => {
-      worker.emit({
-        type: "detections",
-        detections: [policeDetection(0.85)],
-        timing,
-        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
-        frame: jpeg(),
-      });
-    });
-    expect(downloadBlob).not.toHaveBeenCalled();
-  });
-
-  it("downloads one file per detection across consecutive scans", () => {
-    const worker = renderWithAutoSave(true);
-    act(() => {
-      worker.emit({
-        type: "detections",
-        detections: [policeDetection(0.85)],
-        timing,
-        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
-        frame: jpeg(),
-      });
-    });
-    act(() => {
-      worker.emit({
-        type: "detections",
-        detections: [policeDetection(0.9)],
-        timing,
-        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
-        frame: jpeg(),
-      });
-    });
-    expect(vi.mocked(downloadBlob)).toHaveBeenCalledTimes(2);
-  });
-
-  // A download is invisible on a phone, so the save is published for the toast
-  // that tells a collection drive it is actually writing files.
-  it("publishes the saved frame under the name it was downloaded as", () => {
-    const worker = renderWithAutoSave(true);
-    act(() => {
-      worker.emit({
-        type: "detections",
-        detections: [policeDetection(0.85)],
-        timing,
-        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
-        frame: jpeg(),
-      });
-    });
-    const [, filename] = vi.mocked(downloadBlob).mock.calls[0];
-    expect(screen.getByTestId("saved-filename")).toHaveTextContent(filename);
-  });
-
-  // Consecutive saves land inside the same second, so the filename alone can
-  // repeat; the toast re-shows off the fresh timestamp instead.
-  it("publishes a distinct entry per save", () => {
-    const worker = renderWithAutoSave(true);
-    const scan = (score: number) => {
-      act(() => {
-        worker.emit({
-          type: "detections",
-          detections: [policeDetection(score)],
-          timing,
-          crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
-          frame: jpeg(),
-        });
-      });
-      return screen.getByTestId("saved-at").textContent;
-    };
-    const first = scan(0.85);
-    expect(scan(0.9)).not.toBe(first);
-  });
-
-  it("publishes nothing when a scan saves nothing", () => {
-    const worker = renderWithAutoSave(false);
-    act(() => {
-      worker.emit({
-        type: "detections",
-        detections: [policeDetection(0.85)],
-        timing,
-        crop: { image: new FakeImageBitmap(), detectionIndex: 0 },
-        frame: jpeg(),
-      });
-    });
-    expect(screen.getByTestId("saved-filename")).toHaveTextContent("none");
   });
 });
