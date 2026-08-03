@@ -6,6 +6,7 @@ import {
   AUDIO_FLOOR,
   BEEP_DURATION_MS,
   BEEP_FREQ_HZ,
+  IDLE_SUSPEND_MS,
   INTERVAL_MAX_MS,
   INTERVAL_MIN_MS,
   MASTER_GAIN,
@@ -46,6 +47,9 @@ class FakeAudioContext {
       this.state = "running";
     }
   });
+  suspend = vi.fn(async () => {
+    this.state = "suspended";
+  });
   close = vi.fn(async () => {});
   constructor() {
     FakeAudioContext.instances.push(this);
@@ -66,6 +70,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -199,6 +204,67 @@ describe("createRadarBeeper", () => {
     beeper.update(0.5, 2_000);
     expect(context.gainNode.gain.linearRampToValueAtTime).toHaveBeenCalled();
     beeper.dispose();
+  });
+
+  it("suspends the context once the signal has been silent a while", () => {
+    vi.useFakeTimers();
+    const beeper = createRadarBeeper();
+    beeper.update(0.5, 1_000);
+    const context = audioContext();
+    beeper.update(0, 1_016);
+    expect(context.suspend).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(IDLE_SUSPEND_MS);
+    expect(context.suspend).toHaveBeenCalledOnce();
+    beeper.dispose();
+  });
+
+  it("keeps the context running while contacts keep arriving", () => {
+    vi.useFakeTimers();
+    const beeper = createRadarBeeper();
+    const context = (() => {
+      beeper.update(0.5, 1_000);
+      return audioContext();
+    })();
+    // Silence and signal alternate, never resting long enough to suspend.
+    for (let i = 1; i <= 10; i += 1) {
+      beeper.update(0, 1_000 + i * IDLE_SUSPEND_MS);
+      vi.advanceTimersByTime(IDLE_SUSPEND_MS - 1);
+      beeper.update(0.5, 1_000 + i * IDLE_SUSPEND_MS + 1);
+      vi.advanceTimersByTime(1);
+    }
+    expect(context.suspend).not.toHaveBeenCalled();
+    beeper.dispose();
+  });
+
+  it("beeps again after a contact follows an idle suspend", () => {
+    vi.useFakeTimers();
+    const beeper = createRadarBeeper();
+    beeper.update(0.5, 1_000);
+    const context = audioContext();
+    const beepCalls = () =>
+      context.gainNode.gain.linearRampToValueAtTime.mock.calls.length;
+    beeper.update(0, 1_016);
+    vi.advanceTimersByTime(IDLE_SUSPEND_MS);
+    const afterSuspend = beepCalls();
+    // The frame that finds a suspended context resumes it and stays silent;
+    // the next one beeps, with no interval left over from before the silence.
+    beeper.update(0.5, 60_000);
+    expect(context.resume).toHaveBeenCalled();
+    expect(beepCalls()).toBe(afterSuspend);
+    beeper.update(0.5, 60_016);
+    expect(beepCalls()).toBeGreaterThan(afterSuspend);
+    beeper.dispose();
+  });
+
+  it("does not suspend a context it has already torn down", () => {
+    vi.useFakeTimers();
+    const beeper = createRadarBeeper();
+    beeper.update(0.5, 1_000);
+    const context = audioContext();
+    beeper.update(0, 1_016);
+    beeper.dispose();
+    vi.advanceTimersByTime(IDLE_SUSPEND_MS);
+    expect(context.suspend).not.toHaveBeenCalled();
   });
 
   it("stops the oscillator and closes the context on dispose", () => {

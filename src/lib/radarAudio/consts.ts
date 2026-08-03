@@ -32,6 +32,21 @@ export const INTERVAL_MAX_MS = 900;
 export const INTERVAL_MIN_MS = 130;
 
 /**
+ * How long the beeper stays silent before its AudioContext is suspended, in ms.
+ *
+ * A running context keeps the audio render thread and the device's audio
+ * hardware out of their idle states for as long as it exists, and the beeper's
+ * context is created on the first alert of a drive and would otherwise stay
+ * running for every quiet hour after it. Suspending gives that power back and
+ * costs only that the first beep after a long silence waits for the resume,
+ * which is a few milliseconds and lands well inside one beep interval.
+ *
+ * Generous on purpose. Scanning alternates between contacts often enough that a
+ * short timeout would cycle the context constantly for no further saving.
+ */
+export const IDLE_SUSPEND_MS = 10_000;
+
+/**
  * Beep pitch, in Hz. Fixed across all signal levels: only the cadence
  * (beepIntervalMs) speeds up with the signal, never the tone. A sweeping pitch
  * reads as an annoying whine, so the tone stays constant and the rate carries

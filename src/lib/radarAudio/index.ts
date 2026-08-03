@@ -4,6 +4,7 @@ import {
   BEEP_DURATION_MS,
   BEEP_FREQ_HZ,
   BEEP_WAVEFORM,
+  IDLE_SUSPEND_MS,
   INTERVAL_MAX_MS,
   INTERVAL_MIN_MS,
   MASTER_GAIN,
@@ -62,6 +63,11 @@ const UNLOCK_EVENTS = ["pointerdown", "touchend", "keydown"] as const;
  * a one-shot gesture listener resumes it, so at worst the first beeps of a
  * session are dropped until the user has touched the page once. Graceful no-op
  * when Web Audio is unavailable.
+ *
+ * Once built, the context is suspended again after IDLE_SUSPEND_MS of silence
+ * and resumed on the next contact. Without that, one alert early in a drive
+ * would leave the audio thread running for every quiet hour after it, which on
+ * a dash-mounted phone is hours of power spent on nothing.
  */
 export const createRadarBeeper = (): RadarBeeper => {
   let nodes: BeeperNodes | undefined;
@@ -69,6 +75,14 @@ export const createRadarBeeper = (): RadarBeeper => {
   // Monotonic-clock time the next beep may start. 0 means "beep immediately",
   // so the first contact after silence sounds without waiting out an interval.
   let nextBeepAtMs = 0;
+  // Pending idle-suspend timer, armed while the signal is inaudible.
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  // Whether the suspension in effect is ours rather than the browser's. Only a
+  // context we suspended may be resumed without a user gesture: resuming one
+  // the autoplay policy is holding down is rejected, and the beeper is fed
+  // every animation frame, so guessing wrong means a rejected promise per
+  // frame. The gesture listeners in ensureNodes own that other case.
+  let idleSuspended = false;
 
   const handleUnlock = () => {
     // Called from a user gesture, where resume() is permitted to succeed.
@@ -108,16 +122,57 @@ export const createRadarBeeper = (): RadarBeeper => {
     return nodes;
   };
 
+  /** Suspend an idle context, releasing the audio thread until the next beep. */
+  const suspendWhenIdle = () => {
+    idleTimer = undefined;
+    if (disposed || !nodes || nodes.context.state !== "running") {
+      return;
+    }
+    idleSuspended = true;
+    void nodes.context.suspend();
+  };
+
+  const armIdleSuspend = () => {
+    // Nothing to suspend until the first audible signal builds the graph, and
+    // an already-armed timer must keep its original deadline rather than being
+    // pushed out by every frame of continuing silence.
+    if (idleTimer !== undefined || !nodes) {
+      return;
+    }
+    idleTimer = setTimeout(suspendWhenIdle, IDLE_SUSPEND_MS);
+  };
+
+  const cancelIdleSuspend = () => {
+    if (idleTimer !== undefined) {
+      clearTimeout(idleTimer);
+      idleTimer = undefined;
+    }
+  };
+
   const update = (level: number, nowMs: number) => {
     if (disposed) {
       return;
     }
     if (!isAudible(level)) {
       nextBeepAtMs = 0;
+      armIdleSuspend();
       return;
     }
+    cancelIdleSuspend();
     const active = ensureNodes();
-    if (!active || active.context.state !== "running") {
+    if (!active) {
+      return;
+    }
+    if (idleSuspended) {
+      // Resuming is asynchronous, so this frame stays silent and the next one
+      // finds a running context. nextBeepAtMs is already 0 from the silence
+      // that led here, so the beep lands on that frame rather than waiting out
+      // an interval.
+      idleSuspended = false;
+      void active.context.resume();
+      return;
+    }
+    if (active.context.state !== "running") {
       return;
     }
     if (nowMs < nextBeepAtMs) {
@@ -140,6 +195,7 @@ export const createRadarBeeper = (): RadarBeeper => {
       return;
     }
     disposed = true;
+    cancelIdleSuspend();
     removeUnlockListeners();
     if (nodes) {
       try {
