@@ -1,4 +1,3 @@
-import type { FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, X } from "lucide-react";
 import { isDeepEqual } from "remeda";
@@ -27,13 +26,16 @@ export * from "./consts";
 
 /**
  * The add-flow's state, one discriminated union so the row renders from a
- * single value.
+ * single value. The pasted url lives here too (on the phases that can show
+ * an input), so it is the only source of truth for what the field holds; the
+ * "failed" phase keeps it so a rejected paste can be corrected instead of
+ * retyped.
  */
 type AddPhase =
   | { phase: "closed" }
   | { phase: "editing"; url: string }
   | { phase: "busy"; percent: number | undefined }
-  | { phase: "failed"; message: string }
+  | { phase: "failed"; url: string; message: string }
   | { phase: "added"; summary: string };
 
 /** Props for ModelScreen. */
@@ -95,12 +97,12 @@ export const ModelScreen = ({
   const changed = !isDeepEqual([...draft], [activeModel.id]);
 
   const [add, setAdd] = useState<AddPhase>({ phase: "closed" });
-  // The input's live text, tracked apart from `add` so it survives the
-  // "failed" phase (the URL stays there to be corrected) without the
-  // discriminated union carrying a field every phase but "editing" ignores.
-  const [url, setUrl] = useState("");
   // Aborts a trial in flight when the screen unmounts, so BACK does not leave
-  // a worker downloading tens of megabytes for a screen nobody is on.
+  // a worker downloading tens of megabytes for a screen nobody is on. Created
+  // at the very top of handleAdd, before the URL is even resolved, so an
+  // unmount during the Hugging Face lookup is caught too: resolveModelFromUrl
+  // has no signal of its own to cancel, but every continuation after an
+  // await checks this controller before touching state or starting a trial.
   const abortRef = useRef<AbortController | undefined>(undefined);
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -109,38 +111,52 @@ export const ModelScreen = ({
     setModels(modelsProp ?? knownModels());
   };
 
-  const openAdd = () => {
-    setUrl("");
-    setAdd({ phase: "editing", url: "" });
-  };
+  const openAdd = () => setAdd({ phase: "editing", url: "" });
 
   const handleAdd = async (candidateUrl: string) => {
+    const controller = new AbortController();
+    abortRef.current = controller;
     setAdd({ phase: "busy", percent: undefined });
     let entry: DetectionModel;
     try {
       entry = await resolveModelFromUrl(candidateUrl);
     } catch (error) {
+      if (controller.signal.aborted) {
+        return;
+      }
       setAdd({
         phase: "failed",
+        url: candidateUrl,
         message: isAddModelError(error)
           ? [ADD_ERROR_COPY[error.code], error.detail].filter(Boolean).join(" ")
           : ADD_ERROR_COPY.REPO_LOOKUP_FAILED,
       });
       return;
     }
-    const controller = new AbortController();
-    abortRef.current = controller;
+    if (controller.signal.aborted) {
+      return;
+    }
     const result = await trialLoad(entry, {
       signal: controller.signal,
-      onProgress: (fraction) =>
-        setAdd({ phase: "busy", percent: Math.round(fraction * 100) }),
+      onProgress: (fraction) => {
+        if (!controller.signal.aborted) {
+          setAdd({ phase: "busy", percent: Math.round(fraction * 100) });
+        }
+      },
     });
+    if (controller.signal.aborted) {
+      return;
+    }
     if (!result.ok) {
-      setAdd({ phase: "failed", message: result.reason });
+      setAdd({ phase: "failed", url: candidateUrl, message: result.reason });
       return;
     }
     if (!addStoredModel(entry)) {
-      setAdd({ phase: "failed", message: ADD_FAILED_MESSAGE });
+      setAdd({
+        phase: "failed",
+        url: candidateUrl,
+        message: ADD_FAILED_MESSAGE,
+      });
       return;
     }
     refreshModels();
@@ -153,11 +169,6 @@ export const ModelScreen = ({
           ? `Detects: ${labels.join(", ")}`
           : GENERIC_CLASSES_MESSAGE,
     });
-  };
-
-  const handleAddSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    void handleAdd(url);
   };
 
   const handleRemove = (id: string) => {
@@ -288,22 +299,30 @@ export const ModelScreen = ({
           )}
 
           {(add.phase === "editing" || add.phase === "failed") && (
-            <form onSubmit={handleAddSubmit} className="flex flex-col gap-2">
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleAdd(add.url);
+              }}
+              className="flex flex-col gap-2"
+            >
               <input
                 type="url"
                 inputMode="url"
                 data-testid="model-add-url"
-                value={url}
-                onChange={(event) => setUrl(event.target.value)}
+                value={add.url}
+                onChange={(event) =>
+                  setAdd({ phase: "editing", url: event.target.value })
+                }
                 placeholder="https://huggingface.co/owner/repo"
                 className="min-h-14 w-full rounded-xl bg-white/10 px-4 text-base font-medium tracking-[0.04em] text-white/90 placeholder:text-white/35"
               />
               <button
                 type="submit"
                 data-testid="model-add-submit"
-                disabled={url.trim().length === 0}
+                disabled={add.url.trim().length === 0}
                 className={`min-h-14 rounded-xl px-6 text-base font-semibold tracking-[0.12em] transition-colors ${
-                  url.trim().length > 0
+                  add.url.trim().length > 0
                     ? "bg-hud-amber text-surface"
                     : "bg-white/10 text-white/35"
                 }`}

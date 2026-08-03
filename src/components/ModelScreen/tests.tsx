@@ -25,6 +25,7 @@ vi.mock("@/context/DetectionContext", () => ({
 afterEach(() => {
   window.localStorage.clear();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 /** A registry that does not ship, so a selection can actually be changed. */
@@ -294,5 +295,45 @@ describe("adding a model from a URL", () => {
     });
     expect(trialLoad).not.toHaveBeenCalled();
     expect(loadStoredModels()).toEqual([]);
+  });
+
+  it("starts no trial when the screen unmounts during URL resolution", async () => {
+    const trialLoad = vi.fn();
+    // A bare repo page (no pinned revision/file) forces resolveModelFromUrl
+    // through the Hugging Face lookup instead of resolving locally, so the
+    // fetch can be held open past the unmount.
+    let settleFetch: ((response: Response) => void) | undefined;
+    const fetchStub = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          settleFetch = resolve;
+        }),
+    );
+    vi.stubGlobal("fetch", fetchStub);
+    const { unmount } = renderModelScreen({ trialLoad });
+    await userEvent.click(screen.getByTestId("model-add-open"));
+    await userEvent.type(
+      screen.getByTestId("model-add-url"),
+      "https://huggingface.co/someone/some-repo",
+    );
+    await userEvent.click(screen.getByTestId("model-add-submit"));
+    await waitFor(() => {
+      expect(fetchStub).toHaveBeenCalled();
+    });
+
+    unmount();
+    // The lookup settles only after the screen is gone, naming a single onnx
+    // file so resolveModelFromUrl would otherwise succeed and hand a trial
+    // load a real candidate.
+    settleFetch?.({
+      ok: true,
+      json: async () => ({
+        sha: "deadbeef",
+        siblings: [{ rfilename: "model.onnx" }],
+      }),
+    } as Response);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(trialLoad).not.toHaveBeenCalled();
   });
 });
