@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Detection, NormalizedBox } from "@/types";
 import {
-  displayLabelOf,
   buildHudModel,
   CONFIDENCE_THRESHOLD,
   coverScale,
@@ -24,17 +23,6 @@ const detection = (overrides: Partial<Detection> = {}): Detection => ({
   score: 0.9,
   box: box(0.4, 0.5, 0.6, 0.8),
   ...overrides,
-});
-
-describe("displayLabelOf", () => {
-  it("reads a label in the register the rest of the HUD is in", () => {
-    expect(displayLabelOf("police")).toBe("POLICE");
-  });
-
-  it("opens separators up rather than showing them", () => {
-    expect(displayLabelOf("fire_truck")).toBe("FIRE TRUCK");
-    expect(displayLabelOf("stop-sign")).toBe("STOP SIGN");
-  });
 });
 
 describe("enrichDetections", () => {

@@ -35,16 +35,6 @@ export type HudModel = {
 };
 
 /**
- * How a class label reads on the HUD: uppercased, because that is the register
- * the rest of the display is in, with separators opened up so `fire_truck`
- * reads as FIRE TRUCK rather than FIRE_TRUCK. Derived where it is shown rather
- * than carried on a detection, since it is a function of the label and a stored
- * copy could only ever disagree with it.
- */
-export const displayLabelOf = (label: string): string =>
-  label.replace(/[_-]+/g, " ").trim().toUpperCase();
-
-/**
  * Validate raw worker output and keep the detections that clear the threshold.
  *
  * There is no allowlist. That made sense against a generic 80-class COCO model,

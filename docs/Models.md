@@ -102,11 +102,13 @@ they contain, because everything else is read from the bytes themselves at load.
 
 ### Name your classes in the file
 
-Stamp a `names` entry into the ONNX `metadata_props`: a JSON object of logit
-index to label, such as `{"1": "police"}`. It is the only machine-readable
+Stamp a `names` entry into the ONNX `metadata_props`: a map of logit index to
+label, such as `{1: 'police'}`. Ultralytics writes these with Python's `str()`,
+and the app reads that dialect and JSON alike. It is the only machine-readable
 record of what a slot means, and the app reads its class table from it. A label
-becomes the HUD's display text uppercased, with `_` and `-` opened up to spaces,
-so `fire_truck` reads as FIRE TRUCK.
+is drawn on the HUD exactly as the file spells it, in an uppercase register, so
+keep them short and readable: `fire_truck` reads as FIRE_TRUCK, `fire truck` as
+FIRE TRUCK.
 
 Every class the map names is live. There is no allowlist and no per-class alert
 setting, and `hudSignal` takes the max score across every detection regardless
@@ -114,7 +116,7 @@ of class, so a class you name drives the dial, the alert ring, and the beeper.
 Name a `person` class and the meter pins at every pedestrian.
 
 A file that names nothing still loads and still detects. Every slot in its head
-gets a generic `CLASS 1`, `CLASS 2` label instead, which costs the words on the
+gets a generic `class 1`, `class 2` label instead, which costs the words on the
 contact card and nothing else, since the meter reads scores rather than labels.
 
 ### What gets checked, and when

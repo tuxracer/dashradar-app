@@ -48,7 +48,7 @@ export const classesFromMetadata = (
   }
   return Array.from({ length: headWidth - 1 }, (_, slot) => ({
     index: slot + 1,
-    label: `class-${slot + 1}`,
+    label: `class ${slot + 1}`,
   }));
 };
 

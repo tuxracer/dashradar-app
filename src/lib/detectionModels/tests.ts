@@ -125,8 +125,8 @@ describe("classesFromMetadata", () => {
 
   it("names every slot generically when the file names nothing", () => {
     expect(classesFromMetadata(undefined, 3)).toEqual([
-      { index: 1, label: "class-1" },
-      { index: 2, label: "class-2" },
+      { index: 1, label: "class 1" },
+      { index: 2, label: "class 2" },
     ]);
   });
 
@@ -145,7 +145,7 @@ describe("classesFromMetadata", () => {
 
     for (const metadata of cases) {
       expect(classesFromMetadata(metadata, 2)).toEqual([
-        { index: 1, label: "class-1" },
+        { index: 1, label: "class 1" },
       ]);
     }
   });

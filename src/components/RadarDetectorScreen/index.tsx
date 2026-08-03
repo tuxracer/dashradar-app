@@ -447,7 +447,7 @@ export const RadarDetectorScreen = ({
           <span
             ref={statusRef}
             data-testid="signal-status"
-            className="whitespace-nowrap text-[13px] font-semibold tracking-[0.24em] text-white/40"
+            className="whitespace-nowrap text-[13px] font-semibold uppercase tracking-[0.24em] text-white/40"
           >
             {initializing ? "INITIALIZING" : "SCANNING"}
           </span>
