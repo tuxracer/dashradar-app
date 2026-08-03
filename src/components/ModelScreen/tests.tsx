@@ -236,8 +236,10 @@ describe("removing a stored model", () => {
 });
 
 describe("adding a model from a URL", () => {
-  const pastedUrl =
-    "https://huggingface.co/someone/some-repo/resolve/abc/model.onnx";
+  // A full commit sha, so resolveModelFromUrl resolves it locally without a
+  // network call; these tests are about the trial load, not the pinning
+  // lookup, which src/lib/detectionModels/tests.ts covers directly.
+  const pastedUrl = `https://huggingface.co/someone/some-repo/resolve/${"a".repeat(40)}/model.onnx`;
 
   const openAndSubmit = async (trialLoad: typeof trialLoadModel) => {
     renderModelScreen({ trialLoad });

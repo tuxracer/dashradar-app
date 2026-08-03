@@ -301,15 +301,20 @@ const fetchRevisionInfo = async (
   return { sha: body.sha, onnxFiles };
 };
 
+/** Whether a revision is already a full, lowercase commit sha. */
+const isCommitSha = (revision: string): boolean =>
+  /^[0-9a-f]{40}$/.test(revision);
+
 /**
  * Turn a pasted URL into a registrable entry: parsed, revision-pinned, and
- * with exactly one .onnx file named. A `main` or missing revision is pinned to
- * the commit sha because the weights cache is CacheFirst keyed on URL, so a
- * mutable ref stored behind it would never update while looking like it might;
- * an explicit tag is kept as pasted, the same way the default entry treats
- * tags as immutable release names. The entry's id is its pinned weights URL.
- * Throws AddModelError; performs no network request for a fully pinned file
- * URL. `fetcher` is a seam for tests.
+ * with exactly one .onnx file named. Every pasted revision is pinned to the
+ * commit sha it names at add time, through the Hugging Face API, because the
+ * weights cache is CacheFirst keyed on URL: a tag and a branch are both
+ * mutable refs that can move without the URL changing, and the two cannot be
+ * told apart syntactically, so only a commit sha is trusted as already
+ * immutable. The entry's id is its pinned weights URL. Throws AddModelError;
+ * performs no network request for a URL that already names a commit sha.
+ * `fetcher` is a seam for tests.
  */
 export const resolveModelFromUrl = async (
   input: string,
@@ -319,17 +324,16 @@ export const resolveModelFromUrl = async (
   if (!parsed) {
     throw new AddModelError("INVALID_URL");
   }
-  const pinnedRevision =
-    parsed.revision !== undefined && parsed.revision !== "main"
-      ? parsed.revision
-      : undefined;
-  if (pinnedRevision !== undefined && parsed.file !== undefined) {
-    return withUrlId(parsed.owner, parsed.slug, pinnedRevision, parsed.file);
+  if (
+    parsed.file !== undefined &&
+    parsed.revision !== undefined &&
+    isCommitSha(parsed.revision)
+  ) {
+    return withUrlId(parsed.owner, parsed.slug, parsed.revision, parsed.file);
   }
   const info = await fetchRevisionInfo(parsed, fetcher);
-  const revision = pinnedRevision ?? info.sha;
   if (parsed.file !== undefined) {
-    return withUrlId(parsed.owner, parsed.slug, revision, parsed.file);
+    return withUrlId(parsed.owner, parsed.slug, info.sha, parsed.file);
   }
   if (info.onnxFiles.length === 0) {
     throw new AddModelError("NO_ONNX_FILE");
@@ -337,7 +341,7 @@ export const resolveModelFromUrl = async (
   if (info.onnxFiles.length > 1) {
     throw new AddModelError("AMBIGUOUS_ONNX_FILE", info.onnxFiles.join(", "));
   }
-  return withUrlId(parsed.owner, parsed.slug, revision, info.onnxFiles[0]);
+  return withUrlId(parsed.owner, parsed.slug, info.sha, info.onnxFiles[0]);
 };
 
 /** Assemble an entry whose id is its own pinned weights URL. */

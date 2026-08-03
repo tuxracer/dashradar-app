@@ -91,9 +91,11 @@ device is the developer model picker (Settings > Detection model > ADD MODEL):
 paste a Hugging Face URL. A bare repo page
 (`https://huggingface.co/<owner>/<repo>`) works if the repo has exactly one
 `.onnx` file; a link to a specific file (a `blob` or `resolve` URL) works
-regardless. `main` or an unpinned revision is resolved to that revision's
-commit SHA before anything is stored, so what gets registered is pinned the
-same way a shipped entry is.
+regardless. Whatever revision the URL names, whether that is `main`, a tag,
+or a branch, is resolved to that revision's commit SHA before anything is
+stored, so what gets registered is pinned the same way a shipped entry is.
+Only a URL that already names a commit SHA skips that lookup, since a commit
+SHA is the one revision form that cannot move.
 
 The paste does not just register a URL. The app spins up a real detection
 worker, downloads the weights, builds a WebGPU session, and runs it once, on

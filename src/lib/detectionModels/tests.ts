@@ -383,18 +383,19 @@ describe("resolveModelFromUrl", () => {
       json: async () => body,
     })) as unknown as typeof fetch;
 
-  it("passes a fully pinned file URL through without any API call", async () => {
+  it("passes a fully pinned commit-sha file URL through without any API call", async () => {
     const fetcher = fakeApi({});
+    const sha = "a".repeat(40);
     const model = await resolveModelFromUrl(
-      "https://huggingface.co/someone/some-repo/resolve/v2/onnx/model.onnx",
+      `https://huggingface.co/someone/some-repo/resolve/${sha}/onnx/model.onnx`,
       fetcher,
     );
     expect(fetcher).not.toHaveBeenCalled();
     expect(model).toEqual({
-      id: "https://huggingface.co/someone/some-repo/resolve/v2/onnx/model.onnx",
+      id: `https://huggingface.co/someone/some-repo/resolve/${sha}/onnx/model.onnx`,
       owner: "someone",
       slug: "some-repo",
-      revision: "v2",
+      revision: sha,
       file: "onnx/model.onnx",
     });
   });
@@ -405,9 +406,39 @@ describe("resolveModelFromUrl", () => {
       "https://huggingface.co/someone/some-repo/blob/main/model.onnx",
       fetcher,
     );
+    expect(fetcher).toHaveBeenCalledTimes(1);
     expect(model.revision).toBe("abc123");
     expect(model.id).toBe(
       "https://huggingface.co/someone/some-repo/resolve/abc123/model.onnx",
+    );
+  });
+
+  it("pins a tag revision to the API's commit sha instead of keeping the tag", async () => {
+    // A tag is human-readable but still mutable: it can be moved to point at a
+    // different commit without the URL changing, which is exactly the
+    // staleness the cache pin exists to prevent.
+    const fetcher = fakeApi({ sha: "abc123", siblings: [] });
+    const model = await resolveModelFromUrl(
+      "https://huggingface.co/someone/some-repo/blob/v2/model.onnx",
+      fetcher,
+    );
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(model.revision).toBe("abc123");
+    expect(model.id).toBe(
+      "https://huggingface.co/someone/some-repo/resolve/abc123/model.onnx",
+    );
+  });
+
+  it("pins a branch revision to the API's commit sha, since a branch cannot be told apart from a tag", async () => {
+    const fetcher = fakeApi({ sha: "def456", siblings: [] });
+    const model = await resolveModelFromUrl(
+      "https://huggingface.co/someone/some-repo/blob/dev/model.onnx",
+      fetcher,
+    );
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(model.revision).toBe("def456");
+    expect(model.id).toBe(
+      "https://huggingface.co/someone/some-repo/resolve/def456/model.onnx",
     );
   });
 
