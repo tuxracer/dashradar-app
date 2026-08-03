@@ -1,11 +1,8 @@
-import { useEffect } from "react";
-import type { ReactNode } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsButton } from "@/components/SettingsButton";
 import { SettingsScreen } from "@/components/SettingsScreen";
-import { DevVideoProvider, useDevVideo } from "@/context/DevVideoContext";
 import {
   DEVELOPER_OPTIONS_OFF,
   SettingsProvider,
@@ -14,52 +11,24 @@ import {
 import type { PersistedSettings } from "@/context/SettingsContext";
 import { DEFAULT_MODEL } from "@/lib/detectionModels";
 
-/** Stands in for DetectionContext's feed swap, which needs no worker here. */
-const swapVideoSource = vi.fn();
-
 vi.mock("@/context/DetectionContext", () => ({
-  useDetection: () => ({ swapVideoSource, activeModel: DEFAULT_MODEL }),
+  useDetection: () => ({ activeModel: DEFAULT_MODEL }),
 }));
 
 afterEach(() => {
   window.localStorage.clear();
 });
 
-beforeEach(() => {
-  swapVideoSource.mockClear();
-  let created = 0;
-  // jsdom implements neither, and DevVideoProvider's whole job is their
-  // lifecycle.
-  URL.createObjectURL = vi.fn(() => `blob:mock/${(created += 1)}`);
-  URL.revokeObjectURL = vi.fn();
-});
-
 /** The settings field currently persisted to localStorage. */
 const stored = <K extends keyof PersistedSettings>(key: K) =>
   JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}")[key];
 
-/**
- * Calls the real DevVideoProvider's `setVideoFile` once on mount, so a test
- * needing a "clip already playing" row exercises actual context state
- * instead of a mocked context value.
- */
-const DevVideoSeed = ({ file }: { file: File }) => {
-  const { setVideoFile } = useDevVideo();
-  useEffect(() => {
-    setVideoFile(file);
-  }, [file, setVideoFile]);
-  return null;
-};
-
-/** Renders the settings panel under the providers it consumes, `extra` mounted alongside for tests that need to seed real context state before the panel opens. */
-const renderScreen = (extra?: ReactNode) =>
+/** Renders the settings panel under the providers it consumes. */
+const renderScreen = () =>
   render(
     <SettingsProvider>
-      <DevVideoProvider>
-        {extra}
-        <SettingsButton />
-        <SettingsScreen />
-      </DevVideoProvider>
+      <SettingsButton />
+      <SettingsScreen />
     </SettingsProvider>,
   );
 
@@ -67,18 +36,14 @@ const open = async (user: ReturnType<typeof userEvent.setup>) => {
   await user.click(screen.getByRole("button", { name: /open settings/i }));
 };
 
-/**
- * Opens the settings panel with developer options already on. Pass a file to
- * seed a real clip through DevVideoProvider before the panel opens, so the
- * "clip already playing" row state comes from actual context.
- */
-const renderOpenSettingsWithDeveloperOptions = async (file?: File) => {
+/** Opens the settings panel with developer options already on. */
+const renderOpenSettingsWithDeveloperOptions = async () => {
   window.localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({ developerOptions: true }),
   );
   const user = userEvent.setup();
-  renderScreen(file ? <DevVideoSeed file={file} /> : undefined);
+  renderScreen();
   await open(user);
   return user;
 };
@@ -196,7 +161,6 @@ describe("SettingsScreen", () => {
     expect(screen.queryByText("Zoom")).not.toBeInTheDocument();
     expect(screen.queryByText("Min confidence")).not.toBeInTheDocument();
     expect(screen.queryByTestId("open-model-screen")).toBeNull();
-    expect(screen.queryByTestId("video-file-value")).toBeNull();
     // The two driver-facing rows are not developer rows and stay put.
     expect(screen.getByText("Audio alerts")).toBeInTheDocument();
     expect(screen.getByText("Detection image")).toBeInTheDocument();
@@ -209,7 +173,6 @@ describe("SettingsScreen", () => {
     }
     expect(screen.getByText("Zoom")).toBeInTheDocument();
     expect(screen.getByText("Min confidence")).toBeInTheDocument();
-    expect(screen.getByTestId("video-file-value")).toBeInTheDocument();
   });
 
   it("closes on the close button", async () => {
@@ -260,44 +223,5 @@ describe("SettingsScreen", () => {
     const user = await renderOpenSettingsWithDeveloperOptions();
     await user.click(screen.getByTestId("open-model-screen"));
     expect(screen.getByTestId("model-back")).toBeInTheDocument();
-  });
-
-  it("shows the camera as the feed until a file is chosen", async () => {
-    await renderOpenSettingsWithDeveloperOptions();
-    expect(screen.getByTestId("video-file-value")).toHaveTextContent("Camera");
-    expect(screen.queryByRole("button", { name: "CLEAR" })).toBeNull();
-  });
-
-  it("swaps the feed to a picked file and offers to clear it", async () => {
-    await renderOpenSettingsWithDeveloperOptions();
-    const file = new File(["x"], "clip.mp4", { type: "video/mp4" });
-    await userEvent.upload(screen.getByTestId("video-file-input"), file);
-    expect(swapVideoSource).toHaveBeenCalledWith(file);
-  });
-
-  it("clears back to the camera", async () => {
-    const file = new File(["x"], "clip.mp4", { type: "video/mp4" });
-    await renderOpenSettingsWithDeveloperOptions(file);
-    expect(screen.getByTestId("video-file-value")).toHaveTextContent(
-      "clip.mp4",
-    );
-    await userEvent.click(screen.getByRole("button", { name: "CLEAR" }));
-    expect(swapVideoSource).toHaveBeenCalledWith(null);
-  });
-
-  // Turning the master switch off used to take the row (and with it the only
-  // CLEAR button) away while the override survived, stranding the session on a
-  // canned clip with no way back to the camera short of a reload.
-  it("keeps the row reachable when developer options go off with a clip playing", async () => {
-    const file = new File(["x"], "clip.mp4", { type: "video/mp4" });
-    const user = await renderOpenSettingsWithDeveloperOptions(file);
-    await user.click(screen.getByText("Developer options"));
-
-    expect(screen.queryByText("Debug overlay")).not.toBeInTheDocument();
-    expect(screen.getByTestId("video-file-value")).toHaveTextContent(
-      "clip.mp4",
-    );
-    await user.click(screen.getByRole("button", { name: "CLEAR" }));
-    expect(swapVideoSource).toHaveBeenCalledWith(null);
   });
 });

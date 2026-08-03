@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { track } from "@vercel/analytics";
 import {
   CameraPermissionScreen,
@@ -9,7 +9,6 @@ import { CameraPreview } from "@/components/CameraPreview";
 import { CameraView } from "@/components/CameraView";
 import { DebugOverlay } from "@/components/DebugOverlay";
 import { DetectionView } from "@/components/DetectionView";
-import { DevVideoView } from "@/components/DevVideoView";
 import { ErrorScreen } from "@/components/ErrorScreen";
 import {
   IntroScreen,
@@ -24,10 +23,8 @@ import { SaveToast } from "@/components/SaveToast";
 import { SettingsScreen } from "@/components/SettingsScreen";
 import { StatusBar } from "@/components/StatusBar";
 import { UnsupportedScreen } from "@/components/UnsupportedScreen";
-import { VideoDropTarget } from "@/components/VideoDropTarget";
 import { ZoomIndicator } from "@/components/ZoomIndicator";
 import { DetectionProvider, useDetection } from "@/context/DetectionContext";
-import { DevVideoProvider, useDevVideo } from "@/context/DevVideoContext";
 import { SettingsProvider, useSettings } from "@/context/SettingsContext";
 import type { CameraError } from "@/lib/camera";
 import type { Size } from "@/lib/detection";
@@ -69,7 +66,6 @@ const RadarScreen = () => {
     error,
     scan,
     start,
-    swapVideoSource,
     activeModel,
   } = useDetection();
   const {
@@ -84,11 +80,6 @@ const RadarScreen = () => {
     detectionView,
     commitModelIds,
   } = useSettings();
-  const { source } = useDevVideo();
-  // No check on `source` in either initializer: a session always starts on the
-  // camera, since the only ways to reach a file feed are a drop or the
-  // settings picker, both of which need the app running first. A file chosen
-  // later outranks these screens through the `!source` guards below.
   const [showIntro, setShowIntro] = useState(shouldShowIntro);
   // The in-app permission ask sits between the intro and the first
   // getUserMedia call, so the browser's own prompt never lands unexplained.
@@ -160,35 +151,7 @@ const RadarScreen = () => {
     [start, updateVideoSize],
   );
 
-  // A file the browser cannot decode presents no frames at all, so the feed
-  // goes back to the camera. Leaving it in place would park the pump on a
-  // frame callback that never fires, and the meter would read SCANNING for
-  // the rest of the drive.
-  const handleDevVideoError = useCallback(() => {
-    swapVideoSource(null);
-  }, [swapVideoSource]);
-
-  // Returning to the camera gives it a clean slate: a permission error
-  // recorded before the clip was loaded must not pre-empt the fresh
-  // getUserMedia call the remounting CameraView is about to make. It is the
-  // only screen a clip must not restore, which is why it resets here while
-  // every other camera screen is merely outranked by a source. The ref
-  // narrows this to the clip-to-camera edge, so a session that never played a
-  // clip is untouched.
-  const clipPlayedRef = useRef(false);
-  useEffect(() => {
-    if (source) {
-      clipPlayedRef.current = true;
-      return;
-    }
-    if (!clipPlayedRef.current) {
-      return;
-    }
-    clipPlayedRef.current = false;
-    setCameraError(undefined);
-  }, [source]);
-
-  if (showIntro && !source) {
+  if (showIntro) {
     return (
       <IntroScreen
         onStart={() => {
@@ -200,7 +163,7 @@ const RadarScreen = () => {
     );
   }
   // This device cannot run inference at all, so nothing past here has anything
-  // to show, video file included. Sits directly after the intro and ahead of
+  // to show. Sits directly after the intro and ahead of
   // every camera screen: everyone still gets told what the app is for, but
   // nobody is asked for camera access their phone can't make use of. The
   // worker's GPU probe answers within milliseconds of mount, well inside the
@@ -214,10 +177,10 @@ const RadarScreen = () => {
   }
   // Declining the in-app permission ask lands on the same screen as a real
   // browser-level denial; its reload button restarts the flow at the ask.
-  if (cameraPromptDeclined && !source) {
+  if (cameraPromptDeclined) {
     return <ErrorScreen code="PERMISSION_DENIED" />;
   }
-  if (showCameraPrompt && !source) {
+  if (showCameraPrompt) {
     return (
       <CameraPermissionScreen
         onAllow={() => {
@@ -232,7 +195,7 @@ const RadarScreen = () => {
       />
     );
   }
-  if (cameraError && !source) {
+  if (cameraError) {
     return <ErrorScreen code={cameraError.code} />;
   }
   if (status === "error" && error) {
@@ -267,32 +230,19 @@ const RadarScreen = () => {
   return (
     <main className="fixed inset-0 bg-surface">
       {!detectionView && <RadarBackdrop />}
-      {source ? (
-        <DevVideoView
-          key={source.url}
-          src={source.url}
-          scanning={status === "running"}
-          fullScreen={detectionView}
+      {/* Held back until the model is ready (see modelLoading above) and the
+          launch update check settles (see updateSettled above). The "ready"
+          handler parks at status "ready" when no camera has started, and this
+          mount's start() is what advances it to "running", so the ordering
+          has no deadlock. A worker recycle never returns status to
+          "loading-model", so it cannot tear the camera back down mid-drive. */}
+      {!modelLoading && updateSettled && (
+        <CameraView
+          visible={detectionView}
           onStream={handleStream}
+          onError={setCameraError}
           onVideoResize={updateVideoSize}
-          onError={handleDevVideoError}
         />
-      ) : (
-        // Held back until the model is ready (see modelLoading above) and the
-        // launch update check settles (see updateSettled above). The "ready"
-        // handler parks at status "ready" when no camera has started, and this
-        // mount's start() is what advances it to "running", so the ordering
-        // has no deadlock. A worker recycle never returns status to
-        // "loading-model", so it cannot tear the camera back down mid-drive.
-        !modelLoading &&
-        updateSettled && (
-          <CameraView
-            visible={detectionView}
-            onStream={handleStream}
-            onError={setCameraError}
-            onVideoResize={updateVideoSize}
-          />
-        )
       )}
       {/* In the radar-meter branch below, the meter mounts immediately so the
           first paint past the permission flow is the instrument reading
@@ -322,9 +272,7 @@ const RadarScreen = () => {
       )}
 
       {/* The zoom mirrors sendFrame's mapping, so the preview always narrows
-          to the region the next capture actually scans. Mounted in dev video
-          mode too: the corner player shows the whole clip, the preview the
-          crop. */}
+          to the region the next capture actually scans. */}
       {/* Not in the detection view: the full feed is already on screen behind
           it, so the inset would be a second live video surface cropping from
           the one underneath it. */}
@@ -365,15 +313,9 @@ const RadarScreen = () => {
 const App = () => {
   return (
     <SettingsProvider>
-      {/* DevVideoProvider wraps DetectionProvider, which consumes it: outside
-          the provider the hook falls back to a value whose setters are no-ops,
-          so the wrong nesting would make every feed swap silently do nothing. */}
-      <DevVideoProvider>
-        <DetectionProvider>
-          <VideoDropTarget />
-          <RadarScreen />
-        </DetectionProvider>
-      </DevVideoProvider>
+      <DetectionProvider>
+        <RadarScreen />
+      </DetectionProvider>
     </SettingsProvider>
   );
 };

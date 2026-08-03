@@ -131,10 +131,7 @@ export type DetectionContextValue = {
   hud: HudModel | undefined;
   /**
    * The most recent scan's raw per-frame detections, for the detection view's
-   * bounding boxes. Undefined until the first result. Never cleared, so after
-   * a feed swap the view can show one stale scan's boxes against the new
-   * feed's geometry for up to a scan interval; tolerable in a developer-only
-   * view.
+   * bounding boxes. Undefined until the first result; never cleared.
    */
   scan: ScanResult | undefined;
   /**
@@ -169,12 +166,6 @@ export type DetectionContextValue = {
   activeModel: DetectionModel;
   start: (video: HTMLVideoElement) => void;
   stop: () => void;
-  /**
-   * Swaps the detection feed to `file`, or back to the startup source with
-   * null. Stops the pump first, so the view mounted for the new feed is the
-   * one that starts it again.
-   */
-  swapVideoSource: (file: File | null) => void;
 };
 
 /**

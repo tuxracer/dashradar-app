@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { track } from "@vercel/analytics";
 import { ChevronRight, X } from "lucide-react";
 import { ModelScreen } from "@/components/ModelScreen";
 import { ShareCard } from "@/components/ShareCard";
 import { useDetection } from "@/context/DetectionContext";
-import { useDevVideo } from "@/context/DevVideoContext";
 import { useSettings } from "@/context/SettingsContext";
 import { modelRepoUrl, resolveModels } from "@/lib/detectionModels";
 import { resetAppData } from "@/lib/resetAppData";
@@ -54,9 +53,7 @@ const handleReset = () => {
  * (Debug overlay, Zoom indicator, Round-trip, Raw confidence, Camera preview,
  * Detection view, Frame preview, Save frames, Auto save, Throttle inference,
  * Detection model, the segmented Zoom mode picker, Min confidence, Reset app
- * data), the Video file row (also shown whenever a clip is overriding the feed,
- * so its CLEAR button survives the master switch going off), plus read-only
- * Model and About rows.
+ * data), plus read-only Model and About rows.
  * Detection model is the one row that leads somewhere: it opens ModelScreen in
  * place of this panel, which owns picking the model and applying the choice.
  * Closes on the large close button or Escape, and Escape backs out of the model
@@ -100,9 +97,7 @@ export const SettingsScreen = () => {
     rawConfidence,
     toggleRawConfidence,
   } = useSettings();
-  const { source } = useDevVideo();
-  const { swapVideoSource, activeModel } = useDetection();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { activeModel } = useDetection();
   const [modelScreenOpen, setModelScreenOpen] = useState(false);
 
   useEffect(() => {
@@ -463,62 +458,6 @@ export const SettingsScreen = () => {
                 </button>
               </div>
             </>
-          )}
-
-          {/* Outside the developer block on purpose: a clip can arrive by
-              drop with the master switch off, and this row holds the only
-              CLEAR button, so gating it on that switch would strand the
-              session on canned footage with a reload as the only exit. It
-              reveals no capability by itself, so showing it changes nothing
-              about what is turned on. */}
-          {(developerOptions || source !== null) && (
-            <div className="flex min-h-16 items-center justify-between gap-6 py-4">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex flex-1 flex-col gap-1 text-left"
-              >
-                <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-                  Video file
-                </span>
-                <span className="text-sm font-medium text-white/45">
-                  Play a local video file instead of the camera.
-                </span>
-              </button>
-              <span className="flex items-center gap-4">
-                <span
-                  data-testid="video-file-value"
-                  className="max-w-40 truncate text-sm font-medium text-white/70"
-                >
-                  {source ? source.name : "Camera"}
-                </span>
-                {source && (
-                  <button
-                    type="button"
-                    onClick={() => swapVideoSource(null)}
-                    className="min-h-12 rounded-lg border border-white/25 px-4 text-sm font-semibold tracking-[0.06em] text-white/90"
-                  >
-                    CLEAR
-                  </button>
-                )}
-              </span>
-              <input
-                ref={fileInputRef}
-                data-testid="video-file-input"
-                type="file"
-                accept="video/*"
-                className="hidden"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) {
-                    swapVideoSource(file);
-                  }
-                  // Clear the input so picking the same file twice still
-                  // fires change.
-                  event.target.value = "";
-                }}
-              />
-            </div>
           )}
 
           <a

@@ -10,7 +10,7 @@ import {
   useDetection,
   WORKER_RECYCLE_AFTER_MS,
 } from "@/context/DetectionContext";
-import { DevVideoProvider, useDevVideo } from "@/context/DevVideoContext";
+
 import {
   DEVELOPER_OPTIONS_OFF,
   SETTINGS_VERSION,
@@ -3039,117 +3039,5 @@ describe("DetectionProvider auto save", () => {
       });
     });
     expect(screen.getByTestId("saved-filename")).toHaveTextContent("none");
-  });
-});
-
-/** A dropped clip, the file a swap hands to the feed. */
-const clip = () => new File(["x"], "clip.mp4", { type: "video/mp4" });
-
-/**
- * Probe for the feed-swap tests: starts the pump, swaps the feed to a clip or
- * back to the startup source, and renders everything those touch. The feed
- * name comes from DevVideoContext, so it shows whether the swap actually
- * reached the provider that owns the source.
- */
-const SwapProbe = ({ video }: { video: HTMLVideoElement }) => {
-  const { status, start, swapVideoSource } = useDetection();
-  const { source } = useDevVideo();
-  return (
-    <>
-      <button onClick={() => start(video)} data-testid="start">
-        start
-      </button>
-      <button onClick={() => swapVideoSource(clip())} data-testid="swap">
-        swap
-      </button>
-      <button onClick={() => swapVideoSource(null)} data-testid="unswap">
-        unswap
-      </button>
-      <span data-testid="status">{status}</span>
-      <span data-testid="feed">{source ? source.name : "camera"}</span>
-    </>
-  );
-};
-
-/**
- * Render the swap probe inside DevVideoProvider (which owns the source a swap
- * writes to) and drive the worker to ready with the pump running. Returns the
- * fake worker, the spy that created it, and the controlled video's frame pump,
- * so a test can step the pump exactly as the recovery tests do.
- */
-const renderSwapSession = () => {
-  const worker = new FakeWorker();
-  const createWorker = vi.fn(() => worker);
-  const { video, presentFrame } = videoWithControlledFrames();
-  render(
-    <SettingsProvider>
-      <DevVideoProvider>
-        <DetectionProvider createWorker={createWorker}>
-          <SwapProbe video={video} />
-        </DetectionProvider>
-      </DevVideoProvider>
-    </SettingsProvider>,
-  );
-  act(() => {
-    worker.emit({ type: "ready" });
-  });
-  act(() => {
-    screen.getByTestId("start").click();
-  });
-  return { worker, createWorker, presentFrame };
-};
-
-describe("dev video source swaps", () => {
-  beforeEach(() => {
-    let created = 0;
-    // jsdom implements neither, and minting a URL for the file is how a swap
-    // reaches the video element.
-    URL.createObjectURL = vi.fn(() => `blob:mock/${(created += 1)}`);
-    URL.revokeObjectURL = vi.fn();
-  });
-
-  afterEach(() => {
-    // Assigned above rather than spied, so put jsdom's absence back.
-    Reflect.deleteProperty(URL, "createObjectURL");
-    Reflect.deleteProperty(URL, "revokeObjectURL");
-  });
-
-  it("keeps the same worker when the feed swaps mid-session", () => {
-    const { createWorker } = renderSwapSession();
-    expect(createWorker).toHaveBeenCalledTimes(1);
-
-    act(() => {
-      screen.getByTestId("swap").click();
-    });
-
-    expect(screen.getByTestId("feed").textContent).toBe("clip.mp4");
-    // Respawning would terminate the worker and recompile the model on every
-    // swap.
-    expect(createWorker).toHaveBeenCalledTimes(1);
-  });
-
-  it("stops the pump before the swap so the new feed starts it", () => {
-    renderSwapSession();
-    expect(screen.getByTestId("status").textContent).toBe("running");
-
-    act(() => {
-      screen.getByTestId("swap").click();
-    });
-
-    expect(screen.getByTestId("status").textContent).toBe("ready");
-  });
-
-  it("returns the feed to the startup source when the swap clears it", () => {
-    renderSwapSession();
-    act(() => {
-      screen.getByTestId("swap").click();
-    });
-    expect(screen.getByTestId("feed").textContent).toBe("clip.mp4");
-
-    act(() => {
-      screen.getByTestId("unswap").click();
-    });
-
-    expect(screen.getByTestId("feed").textContent).toBe("camera");
   });
 });

@@ -9,7 +9,6 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { track } from "@vercel/analytics";
-import { useDevVideo } from "@/context/DevVideoContext";
 import { useSettings } from "@/context/SettingsContext";
 import { APP_RELEASE } from "@/lib/appRelease";
 import { waitForNextVideoFrame } from "@/lib/camera";
@@ -113,7 +112,6 @@ export const DetectionProvider = ({
   // periodic worker recycle too, which builds a new session 15 minutes in and
   // would otherwise pick up whatever is stored by then.
   const [activeModel] = useState(() => resolveModels(modelIds)[0]);
-  const { setVideoFile, clearVideoFile } = useDevVideo();
   // Mirrors the frame-saving flags for sendFrame, which is a stable callback:
   // the pump reads the current value per capture instead of re-subscribing on
   // toggles. It asks the worker for the model-input JPEG the contact card's
@@ -832,26 +830,6 @@ export const DetectionProvider = ({
     }
   }, []);
 
-  /**
-   * Swaps the detection feed to `file`, or back to the startup source with
-   * null. Stops the pump first, synchronously: child effects run before parent
-   * effects, so a stop() scheduled after the state change would land after the
-   * newly mounted view had already called start() and would kill the pump it
-   * just started. stop() also resets the tracker, which is what you want when
-   * frames start arriving from a different world.
-   */
-  const swapVideoSource = useCallback(
-    (file: File | null) => {
-      stop();
-      if (file) {
-        setVideoFile(file);
-      } else {
-        clearVideoFile();
-      }
-    },
-    [stop, setVideoFile, clearVideoFile],
-  );
-
   // Bracket the pump's running window on the scan clock. Keyed on [status]
   // alone, which is exactly the window: stop() takes "running" back to "ready"
   // for every pause the app has (settings open, page hidden, feed swap), so
@@ -1051,7 +1029,6 @@ export const DetectionProvider = ({
       activeModel,
       start,
       stop,
-      swapVideoSource,
     }),
     [
       status,
@@ -1067,7 +1044,6 @@ export const DetectionProvider = ({
       activeModel,
       start,
       stop,
-      swapVideoSource,
     ],
   );
 
