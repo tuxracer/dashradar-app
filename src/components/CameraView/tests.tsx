@@ -101,6 +101,49 @@ describe("CameraView", () => {
     expect(onEvent).not.toHaveBeenCalled();
   });
 
+  it("does not restart the camera when handlers change identity", async () => {
+    const stop = vi.fn();
+    const fakeStream = {
+      getTracks: () => [{ stop }],
+    } as unknown as MediaStream;
+    const getUserMedia = vi.fn(() => Promise.resolve(fakeStream));
+    vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+
+    const first: CameraFeedEvent[] = [];
+    const second: CameraFeedEvent[] = [];
+    const { container, rerender } = render(
+      <CameraView
+        onEvent={(event) => {
+          first.push(event);
+        }}
+        onError={() => {}}
+      />,
+    );
+    await waitFor(() => expect(first).toHaveLength(1));
+    // A fresh callback identity must not tear the feed down and reacquire
+    // the camera: that is a user-visible stutter no re-render should cause.
+    rerender(
+      <CameraView
+        onEvent={(event) => {
+          second.push(event);
+        }}
+        onError={() => {}}
+      />,
+    );
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    expect(stop).not.toHaveBeenCalled();
+    // Later events still reach the newest handler, not the one captured at
+    // subscribe time.
+    const video = container.querySelector("video");
+    if (!video) {
+      throw new Error("video element not found");
+    }
+    video.dispatchEvent(new Event("resize"));
+    expect(second).toEqual([{ type: "resize", video }]);
+    expect(first).toHaveLength(1);
+  });
+
   it("reports a typed camera error", async () => {
     vi.stubGlobal("navigator", {
       mediaDevices: {

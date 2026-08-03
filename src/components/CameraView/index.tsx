@@ -35,15 +35,29 @@ export const CameraView = ({
 }: CameraViewProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  // The feed is subscribed once per mount, and the handlers are read through
+  // refs so a parent passing a fresh callback identity on a render cannot
+  // restart it: resubscribing stops the camera and reacquires it, a
+  // user-visible stutter (and on some platforms a fresh permission hit) that
+  // no mere re-render should cause.
+  const onEventRef = useRef(onEvent);
+  const onErrorRef = useRef(onError);
+  useEffect(() => {
+    onEventRef.current = onEvent;
+    onErrorRef.current = onError;
+  });
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video) {
       return;
     }
     const subscription = cameraFeed(video).subscribe({
-      next: onEvent,
+      next: (event) => {
+        onEventRef.current(event);
+      },
       error: (error: unknown) => {
-        onError(
+        onErrorRef.current(
           isCameraError(error) ? error : new CameraErrorClass("NO_CAMERA"),
         );
       },
@@ -51,7 +65,7 @@ export const CameraView = ({
     return () => {
       subscription.unsubscribe();
     };
-  }, [onEvent, onError]);
+  }, []);
 
   return (
     <video
