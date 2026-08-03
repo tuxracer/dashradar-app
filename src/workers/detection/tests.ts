@@ -150,7 +150,7 @@ describe("isWorkerResponse", () => {
     expect(
       isWorkerResponse({
         type: "ready",
-        classes: [{ index: 1, label: "police", displayLabel: "POLICE" }],
+        classes: [{ index: 1, label: "police" }],
       }),
     ).toBe(true);
     expect(
@@ -383,7 +383,7 @@ describe("frameBrightFraction", () => {
 const POLICE_MODEL: LoadedModel = {
   ...DEFAULT_MODEL,
   headWidth: 2,
-  classes: [{ index: 1, label: "police", displayLabel: "POLICE" }],
+  classes: [{ index: 1, label: "police" }],
 };
 
 /** A two-class model, for driving decode past the single class that ships. */
@@ -397,9 +397,8 @@ const TWO_CLASS_MODEL: LoadedModel = {
     {
       index: 1,
       label: "police",
-      displayLabel: "POLICE",
     },
-    { index: 2, label: "person", displayLabel: "PERSON" },
+    { index: 2, label: "person" },
   ],
 };
 
@@ -430,9 +429,7 @@ describe("resolveLoadedModel", () => {
       props: { names: JSON.stringify({ 1: "police" }) },
     });
 
-    expect(loaded.classes).toEqual([
-      { index: 1, label: "police", displayLabel: "POLICE" },
-    ]);
+    expect(loaded.classes).toEqual([{ index: 1, label: "police" }]);
     expect(loaded.id).toBe(DEFAULT_MODEL.id);
   });
 
@@ -625,12 +622,10 @@ describe("decodeDetections", () => {
         {
           index: 1,
           label: "police",
-          displayLabel: "POLICE",
         },
         {
           index: 4,
           label: "person",
-          displayLabel: "PERSON",
         },
       ],
     };

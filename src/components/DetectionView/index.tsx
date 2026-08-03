@@ -1,6 +1,7 @@
 import type { AutoZoomLevel } from "@/lib/autoZoom";
 import type { Size } from "@/lib/detection";
 import {
+  displayLabelOf,
   mapBoxToViewport,
   scanRegionBox,
   DETECTION_COLOR,
@@ -82,7 +83,8 @@ export const DetectionView = ({
               className="absolute left-0 top-full whitespace-nowrap bg-surface/80 px-1 text-sm font-semibold tracking-[0.08em]"
               style={{ color: DETECTION_COLOR }}
             >
-              {detection.displayLabel} {Math.round(detection.score * 100)}%
+              {displayLabelOf(detection.label)}{" "}
+              {Math.round(detection.score * 100)}%
             </span>
           </div>
         );

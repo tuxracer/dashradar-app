@@ -31,7 +31,6 @@ export const initialTrackerState = (): TrackerState => ({
 /** Strip a track's bookkeeping fields back to a plain Detection. */
 const toDetection = (track: Track): Detection => ({
   label: track.label,
-  displayLabel: track.displayLabel,
   score: track.score,
   box: track.box,
 });
@@ -97,7 +96,6 @@ export const stepTracker = (
       nextTracks.push({
         ...track,
         label: detection.label,
-        displayLabel: detection.displayLabel,
         score,
         box: detection.box,
         misses: 0,
@@ -119,7 +117,6 @@ export const stepTracker = (
     nextTracks.push({
       id: nextId,
       label: detection.label,
-      displayLabel: detection.displayLabel,
       score: detection.score,
       box: detection.box,
       misses: 0,

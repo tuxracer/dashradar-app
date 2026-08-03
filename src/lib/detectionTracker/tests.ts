@@ -17,7 +17,6 @@ const box = (
 
 const detection = (overrides: Partial<Detection> = {}): Detection => ({
   label: "police",
-  displayLabel: "POLICE",
   score: 0.9,
   box: box(0.4, 0.5, 0.6, 0.8),
   ...overrides,
@@ -135,7 +134,7 @@ describe("stepTracker", () => {
     let state = initialTrackerState();
     state = stepTracker(
       state,
-      [detection({ label: "police", displayLabel: "POLICE", score: 0.95 })],
+      [detection({ label: "police", score: 0.95 })],
       config,
     ).state;
     // Next frame the model reports a PERSON, not a POLICE, in an overlapping
@@ -146,7 +145,6 @@ describe("stepTracker", () => {
       [
         detection({
           label: "person",
-          displayLabel: "PERSON",
           score: 0.55,
         }),
       ],

@@ -34,10 +34,9 @@ export const isRawDetection = (value: unknown): value is RawDetection => {
   );
 };
 
-/** A detection enriched with the display label the HUD shows for its class. */
+/** One detection that cleared the confidence floor, as the HUD reads it. */
 export type Detection = {
   label: string;
-  displayLabel: string;
   score: number;
   box: NormalizedBox;
 };

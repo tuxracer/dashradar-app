@@ -31,6 +31,7 @@ import { DevVideoProvider, useDevVideo } from "@/context/DevVideoContext";
 import { SettingsProvider, useSettings } from "@/context/SettingsContext";
 import type { CameraError } from "@/lib/camera";
 import type { Size } from "@/lib/detection";
+import { displayLabelOf } from "@/lib/detection";
 import { hudScore, hudSignal } from "@/lib/radarSignal";
 import {
   UPDATE_CHECK_TIMEOUT_MS,
@@ -311,7 +312,7 @@ const RadarScreen = () => {
           saveFrames={saveFrames}
           initializing={status !== "running"}
           rawConfidence={rawConfidence ? hudScore(hud) : undefined}
-          detectedLabel={hud?.top?.displayLabel}
+          detectedLabel={hud?.top && displayLabelOf(hud.top.label)}
         />
       )}
 

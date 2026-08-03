@@ -6,7 +6,6 @@ import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 
 const detection = (overrides: Partial<Detection> = {}): Detection => ({
   label: "police",
-  displayLabel: "POLICE",
   score: 0.87,
   box: { xmin: 0.4, ymin: 0.5, xmax: 0.6, ymax: 0.8 },
   ...overrides,

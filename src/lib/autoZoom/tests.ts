@@ -13,7 +13,6 @@ const box = (
 
 const detection = (b: NormalizedBox): Detection => ({
   label: "police",
-  displayLabel: "POLICE",
   score: 0.8,
   box: b,
 });

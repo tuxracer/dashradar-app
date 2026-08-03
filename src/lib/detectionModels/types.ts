@@ -1,10 +1,8 @@
-import { isNumber, isPlainObject, isString } from "remeda";
-
 /**
- * One class the loaded checkpoint names, with how the HUD shows it. Derived at
- * load from the `names` map the export stamps into the weights, never typed
- * into this repo, so the labels a box can carry always come from the file the
- * boxes came from.
+ * One class the loaded checkpoint names. Derived at load from the `names` map
+ * the export stamps into the weights, never typed into this repo, so the label
+ * a box carries always comes from the file the box came from. It stays inside
+ * the worker, which is the only place a logit index means anything.
  */
 export type DetectionClass = {
   /**
@@ -14,16 +12,6 @@ export type DetectionClass = {
    */
   index: number;
   label: string;
-  displayLabel: string;
-};
-
-export const isDetectionClass = (value: unknown): value is DetectionClass => {
-  return (
-    isPlainObject(value) &&
-    isNumber(value.index) &&
-    isString(value.label) &&
-    isString(value.displayLabel)
-  );
 };
 
 /**

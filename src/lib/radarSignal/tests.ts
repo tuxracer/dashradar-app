@@ -17,7 +17,6 @@ import {
 
 const det = (score: number): Detection => ({
   label: "police",
-  displayLabel: "POLICE",
   score,
   box: { xmin: 0.4, ymin: 0.4, xmax: 0.6, ymax: 0.6 },
 });

@@ -85,7 +85,7 @@ describe("the shipping registry", () => {
 describe("classesFromMetadata", () => {
   it("reads the label and the logit index off the stamped names map", () => {
     expect(classesFromMetadata(named({ 1: "police" }), 2)).toEqual([
-      { index: 1, label: "police", displayLabel: "POLICE" },
+      { index: 1, label: "police" },
     ]);
   });
 
@@ -98,8 +98,8 @@ describe("classesFromMetadata", () => {
     );
 
     expect(classes).toEqual([
-      { index: 1, label: "bicycle", displayLabel: "BICYCLE" },
-      { index: 2, label: "car", displayLabel: "CAR" },
+      { index: 1, label: "bicycle" },
+      { index: 2, label: "car" },
     ]);
   });
 
@@ -114,13 +114,6 @@ describe("classesFromMetadata", () => {
     expect(classes.map((entry) => entry.label)).toEqual(["don't walk", "walk"]);
   });
 
-  it("opens separators up for the display label", () => {
-    const [entry] = classesFromMetadata(named({ 1: "fire_truck" }), 2);
-
-    expect(entry.displayLabel).toBe("FIRE TRUCK");
-    expect(entry.label).toBe("fire_truck");
-  });
-
   it("drops slots the loaded head cannot hold", () => {
     const classes = classesFromMetadata(
       named({ 0: "background", 1: "police", 5: "beyond the head" }),
@@ -132,8 +125,8 @@ describe("classesFromMetadata", () => {
 
   it("names every slot generically when the file names nothing", () => {
     expect(classesFromMetadata(undefined, 3)).toEqual([
-      { index: 1, label: "class-1", displayLabel: "CLASS 1" },
-      { index: 2, label: "class-2", displayLabel: "CLASS 2" },
+      { index: 1, label: "class-1" },
+      { index: 2, label: "class-2" },
     ]);
   });
 
@@ -152,7 +145,7 @@ describe("classesFromMetadata", () => {
 
     for (const metadata of cases) {
       expect(classesFromMetadata(metadata, 2)).toEqual([
-        { index: 1, label: "class-1", displayLabel: "CLASS 1" },
+        { index: 1, label: "class-1" },
       ]);
     }
   });

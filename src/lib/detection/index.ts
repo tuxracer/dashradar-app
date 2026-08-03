@@ -1,7 +1,6 @@
 import type { Detection, NormalizedBox } from "@/types";
 import { isRawDetection } from "@/types";
 import type { AutoZoomLevel } from "@/lib/autoZoom";
-import type { DetectionClass } from "@/lib/detectionModels";
 import { ZOOM_OFF } from "@/workers/detection/consts";
 import { centerCropRegion } from "@/workers/detection/inference";
 import { CONFIDENCE_THRESHOLD } from "./consts";
@@ -36,22 +35,26 @@ export type HudModel = {
 };
 
 /**
- * Validate raw worker output and enrich each confident detection with the
- * display label its class reads as on the HUD.
+ * How a class label reads on the HUD: uppercased, because that is the register
+ * the rest of the display is in, with separators opened up so `fire_truck`
+ * reads as FIRE TRUCK rather than FIRE_TRUCK. Derived where it is shown rather
+ * than carried on a detection, since it is a function of the label and a stored
+ * copy could only ever disagree with it.
+ */
+export const displayLabelOf = (label: string): string =>
+  label.replace(/[_-]+/g, " ").trim().toUpperCase();
+
+/**
+ * Validate raw worker output and keep the detections that clear the threshold.
  *
  * There is no allowlist. That made sense against a generic 80-class COCO model,
  * where filtering to road-relevant classes was the point, but against a
  * checkpoint trained in-house, discarding a class we deliberately trained is a
- * bug. A label the table does not name is still kept, under its own name
- * uppercased, so a detection can never disappear without a trace. The classes
- * default to none for the same reason: they arrive from the worker on `ready`,
- * and a detection decoded before they land should read plainly rather than not
- * at all.
+ * bug. Every label the model emits is kept, whatever it is called.
  */
 export const enrichDetections = (
   raw: unknown,
   threshold: number = CONFIDENCE_THRESHOLD,
-  classes: readonly DetectionClass[] = [],
 ): Detection[] => {
   if (!Array.isArray(raw)) {
     return [];
@@ -60,14 +63,8 @@ export const enrichDetections = (
     if (candidate.score < threshold) {
       return [];
     }
-    const known = classes.find((entry) => entry.label === candidate.label);
     return [
-      {
-        label: candidate.label,
-        displayLabel: known?.displayLabel ?? candidate.label.toUpperCase(),
-        score: candidate.score,
-        box: candidate.box,
-      },
+      { label: candidate.label, score: candidate.score, box: candidate.box },
     ];
   });
 };

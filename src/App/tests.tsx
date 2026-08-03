@@ -73,7 +73,7 @@ class FakeWorker {
 const reachModelReady = async () => {
   await waitFor(() => expect(workerOnMessage).not.toBeNull());
   await act(async () => {
-    workerOnMessage?.({ data: { type: "ready", classes: [] } });
+    workerOnMessage?.({ data: { type: "ready" } });
   });
 };
 

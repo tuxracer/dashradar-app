@@ -427,7 +427,7 @@ describe("DetectionProvider", () => {
   it("moves to ready when the worker reports ready", () => {
     const worker = renderWithProvider(<Probe />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     expect(screen.getByTestId("status").textContent).toBe("ready");
   });
@@ -445,7 +445,7 @@ describe("DetectionProvider", () => {
     const worker = renderWithProvider(<Probe />);
     act(() => {
       worker.emit({ type: "model-load-start", fromCache: false });
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     expect(track).toHaveBeenCalledWith("model_ready", { fromCache: false });
   });
@@ -454,7 +454,7 @@ describe("DetectionProvider", () => {
     const worker = renderWithProvider(<Probe />);
     act(() => {
       worker.emit({ type: "model-load-start", fromCache: true });
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     expect(track).toHaveBeenCalledWith("model_ready", { fromCache: true });
   });
@@ -488,7 +488,7 @@ describe("DetectionProvider", () => {
   it("reports the first successful inference to analytics once", () => {
     const worker = renderWithProvider(<Probe />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     expect(track).not.toHaveBeenCalledWith(
       "first_inference",
@@ -548,7 +548,7 @@ describe("DetectionProvider", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -598,7 +598,7 @@ describe("DetectionProvider", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -647,7 +647,7 @@ describe("DetectionProvider", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -697,7 +697,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -726,7 +726,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -770,7 +770,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -818,7 +818,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartStop />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -860,7 +860,7 @@ describe("DetectionProvider", () => {
       </SettingsProvider>,
     );
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -897,7 +897,7 @@ describe("DetectionProvider", () => {
       </SettingsProvider>,
     );
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -941,7 +941,7 @@ describe("DetectionProvider", () => {
     };
     const worker = renderWithProvider(<StartStop />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -990,7 +990,7 @@ describe("DetectionProvider", () => {
       </StrictMode>,
     );
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1018,7 +1018,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartStop />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1088,7 +1088,7 @@ describe("DetectionProvider", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1135,7 +1135,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1167,7 +1167,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1200,7 +1200,7 @@ describe("DetectionProvider", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<StartStopWithVideo video={video} />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1242,7 +1242,7 @@ describe("DetectionProvider", () => {
       devVideoMode: true,
     });
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1287,7 +1287,7 @@ describe("DetectionProvider", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1332,7 +1332,7 @@ describe("DetectionProvider", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1367,7 +1367,7 @@ describe("DetectionProvider", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1399,7 +1399,7 @@ describe("DetectionProvider", () => {
       worker.posted.filter((message) => message.type === "detect"),
     ).toHaveLength(0);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     await waitFor(() => {
       expect(
@@ -1411,7 +1411,7 @@ describe("DetectionProvider", () => {
   it("surfaces a detection immediately on its first frame", () => {
     const worker = renderWithProvider(<Probe />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       worker.emit({
@@ -1432,7 +1432,7 @@ describe("DetectionProvider", () => {
   it("coasts a detection's box through a frame the model misses it", () => {
     const worker = renderWithProvider(<Probe />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     const detection = {
       label: "police",
@@ -1459,7 +1459,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1487,7 +1487,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1513,7 +1513,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1545,7 +1545,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1578,7 +1578,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1611,7 +1611,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1643,7 +1643,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1677,7 +1677,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1701,7 +1701,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1727,7 +1727,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1757,7 +1757,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1809,7 +1809,7 @@ describe("DetectionProvider", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1927,7 +1927,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1955,7 +1955,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -1984,7 +1984,7 @@ describe("DetectionProvider", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2015,7 +2015,7 @@ describe("visibility pause", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2063,7 +2063,7 @@ describe("visibility pause", () => {
     );
     const worker = renderWithProvider(<Probe />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       setDocumentVisibility("hidden");
@@ -2095,7 +2095,7 @@ describe("settings pause", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2148,7 +2148,7 @@ describe("settings pause", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("open-settings").click();
@@ -2178,7 +2178,7 @@ describe("settings pause", () => {
       </>,
     );
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2226,7 +2226,7 @@ describe("scan session reporting", () => {
     );
     const worker = renderWithProvider(<StartStop />, { devVideoMode: true });
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2342,7 +2342,7 @@ describe("crash sentinel heartbeat", () => {
   it("writes a sentinel record once detection starts running", () => {
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     expect(readSentinel()).toBeNull();
     act(() => {
@@ -2357,7 +2357,7 @@ describe("crash sentinel heartbeat", () => {
   it("clears the sentinel record when stop() leaves the running state", () => {
     const worker = renderWithProvider(<StartStop />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2372,7 +2372,7 @@ describe("crash sentinel heartbeat", () => {
   it("clears the sentinel record on pagehide so a reload is not read as a crash", () => {
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2388,7 +2388,7 @@ describe("crash sentinel heartbeat", () => {
     vi.useFakeTimers();
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2415,7 +2415,7 @@ describe("crash sentinel heartbeat", () => {
       </SettingsProvider>,
     );
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2428,7 +2428,7 @@ describe("crash sentinel heartbeat", () => {
   it("does not write a sentinel record while only ready (not running)", () => {
     const worker = renderWithProvider(<Probe />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     expect(readSentinel()).toBeNull();
   });
@@ -2441,7 +2441,7 @@ describe("crash sentinel heartbeat", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2480,7 +2480,7 @@ describe("crash sentinel heartbeat", () => {
     );
     const worker = renderWithProvider(<StartOnReady />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2556,7 +2556,7 @@ describe("worker recycle", () => {
     );
     const workers = renderWithWorkerFactory(<StartOnReady />);
     act(() => {
-      workers[0].emit({ type: "ready", classes: [] });
+      workers[0].emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2591,7 +2591,7 @@ describe("worker recycle", () => {
     );
     const workers = renderWithWorkerFactory(<StartOnReady />);
     act(() => {
-      workers[0].emit({ type: "ready", classes: [] });
+      workers[0].emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2619,7 +2619,7 @@ describe("worker recycle", () => {
     // it: the pump only resumes once the new worker reports ready.
     expect(detectCount(workers[1])).toBe(0);
     act(() => {
-      workers[1].emit({ type: "ready", classes: [] });
+      workers[1].emit({ type: "ready" });
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
@@ -2654,7 +2654,7 @@ describe("worker recycle", () => {
       </>,
     );
     act(() => {
-      workers[0].emit({ type: "ready", classes: [] });
+      workers[0].emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2693,7 +2693,7 @@ describe("worker recycle", () => {
     const workers = renderWithWorkerFactory(<StartOnReady />);
     act(() => {
       workers[0].emit({ type: "model-load-start", fromCache: false });
-      workers[0].emit({ type: "ready", classes: [] });
+      workers[0].emit({ type: "ready" });
     });
     expect(track).toHaveBeenCalledWith("model_ready", { fromCache: false });
     act(() => {
@@ -2713,7 +2713,7 @@ describe("worker recycle", () => {
     vi.mocked(track).mockClear();
     act(() => {
       workers[1].emit({ type: "model-load-start", fromCache: true });
-      workers[1].emit({ type: "ready", classes: [] });
+      workers[1].emit({ type: "ready" });
     });
     expect(track).not.toHaveBeenCalledWith("model_ready", expect.anything());
   });
@@ -2728,7 +2728,7 @@ describe("worker recycle", () => {
     );
     const workers = renderWithWorkerFactory(<StartStop />);
     act(() => {
-      workers[0].emit({ type: "ready", classes: [] });
+      workers[0].emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2747,7 +2747,7 @@ describe("worker recycle", () => {
       screen.getByTestId("stop").click();
     });
     act(() => {
-      workers[1].emit({ type: "ready", classes: [] });
+      workers[1].emit({ type: "ready" });
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
@@ -2766,7 +2766,7 @@ describe("worker recycle", () => {
     );
     const workers = renderWithWorkerFactory(<StartStop />);
     act(() => {
-      workers[0].emit({ type: "ready", classes: [] });
+      workers[0].emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -2799,7 +2799,7 @@ describe("worker recycle", () => {
     // The new worker finishes loading: its ready re-primes the pump exactly
     // once (not zero: the pump would otherwise be dead; not two).
     act(() => {
-      workers[1].emit({ type: "ready", classes: [] });
+      workers[1].emit({ type: "ready" });
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
@@ -3350,7 +3350,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3388,7 +3388,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3425,7 +3425,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3463,7 +3463,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3500,7 +3500,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3533,7 +3533,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3574,7 +3574,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3604,7 +3604,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3646,7 +3646,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3677,7 +3677,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3743,7 +3743,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3826,7 +3826,7 @@ describe("DetectionProvider camera recovery", () => {
     const { video, presentFrame } = videoWithControlledFrames();
     const worker = renderWithProvider(<RecoveryProbe video={video} />);
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3870,7 +3870,7 @@ describe("dev video mode", () => {
       devVideoMode: true,
     });
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3902,7 +3902,7 @@ describe("dev video mode", () => {
       devVideoMode: true,
     });
     act(() => {
-      worker.emit({ type: "ready", classes: [] });
+      worker.emit({ type: "ready" });
     });
     act(() => {
       screen.getByTestId("start").click();
@@ -3994,7 +3994,7 @@ const renderSwapSession = () => {
     </SettingsProvider>,
   );
   act(() => {
-    worker.emit({ type: "ready", classes: [] });
+    worker.emit({ type: "ready" });
   });
   act(() => {
     screen.getByTestId("start").click();

@@ -19,14 +19,6 @@ export const modelWeightsUrl = (model: DetectionModel): string =>
   `${modelRepoUrl(model)}/resolve/${model.revision}/onnx/${model.file}`;
 
 /**
- * How a class label reads on the HUD. Uppercased because that is the register
- * the rest of the display is in, with separators opened up so `fire_truck`
- * reads as FIRE TRUCK rather than FIRE_TRUCK.
- */
-const displayLabelOf = (label: string): string =>
-  label.replace(/[_-]+/g, " ").trim().toUpperCase();
-
-/**
  * The classes a loaded checkpoint names, read from the `names` map its export
  * stamps into the file: logit index to label, the only machine-readable record
  * of what a slot means. Indices outside the head the
@@ -48,7 +40,7 @@ export const classesFromMetadata = (
       if (!Number.isInteger(index) || index < 1 || index >= headWidth) {
         return [];
       }
-      return [{ index, label, displayLabel: displayLabelOf(label) }];
+      return [{ index, label }];
     },
   );
   if (named.length > 0) {
@@ -57,7 +49,6 @@ export const classesFromMetadata = (
   return Array.from({ length: headWidth - 1 }, (_, slot) => ({
     index: slot + 1,
     label: `class-${slot + 1}`,
-    displayLabel: `CLASS ${slot + 1}`,
   }));
 };
 

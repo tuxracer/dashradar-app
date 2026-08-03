@@ -1,6 +1,4 @@
 import { isBoolean, isNumber, isPlainObject, isString } from "remeda";
-import { isDetectionClass } from "@/lib/detectionModels";
-import type { DetectionClass } from "@/lib/detectionModels";
 import { isOnnxMetadata } from "@/lib/onnxMetadata";
 import type { OnnxMetadata } from "@/lib/onnxMetadata";
 import type { RawDetection } from "@/types";
@@ -260,13 +258,7 @@ export type WorkerResponse =
    */
   | { type: "model-downloaded"; durationMs: number }
   | { type: "backend-probe"; probe: BackendProbe }
-  /**
-   * The session is live, and these are the classes the loaded checkpoint names,
-   * derived from its stamped `names` map at load. They travel because the main
-   * thread has to turn a decoded label into what the HUD shows, and only the
-   * worker has seen the weights: nothing in the registry describes them.
-   */
-  | { type: "ready"; classes: readonly DetectionClass[] }
+  | { type: "ready" }
   | {
       type: "detections";
       detections: RawDetection[];
@@ -332,9 +324,7 @@ export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
     case "backend-probe":
       return isBackendProbe(value.probe);
     case "ready":
-      return (
-        Array.isArray(value.classes) && value.classes.every(isDetectionClass)
-      );
+      return true;
     case "detections":
       return (
         Array.isArray(value.detections) &&

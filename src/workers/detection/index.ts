@@ -578,7 +578,7 @@ const loadModel = async (modelId: string | undefined) => {
         modelFile: model.fileMetadata,
       },
     });
-    post({ type: "ready", classes: model.detectionModel.classes });
+    post({ type: "ready" });
   } catch (error) {
     // The probe acquired a device but the session still failed to build (a
     // blocklisted adapter, an OOM on the weights, a corrupt download). There

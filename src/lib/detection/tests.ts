@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Detection, NormalizedBox } from "@/types";
 import {
+  displayLabelOf,
   buildHudModel,
   CONFIDENCE_THRESHOLD,
   coverScale,
@@ -20,37 +21,30 @@ const box = (
 
 const detection = (overrides: Partial<Detection> = {}): Detection => ({
   label: "police",
-  displayLabel: "POLICE",
   score: 0.9,
   box: box(0.4, 0.5, 0.6, 0.8),
   ...overrides,
 });
 
-/** A two-class table, so these tests do not depend on what ships today. */
-const CLASSES = [
-  { index: 1, label: "police", displayLabel: "POLICE" },
-  { index: 2, label: "person", displayLabel: "PERSON" },
-] as const;
-
-describe("enrichDetections", () => {
-  it("enriches a detection with its class's display label and category", () => {
-    const result = enrichDetections(
-      [{ label: "person", score: 0.92, box: box(0.1, 0.1, 0.3, 0.3) }],
-      undefined,
-      CLASSES,
-    );
-    expect(result).toHaveLength(1);
-    expect(result[0].displayLabel).toBe("PERSON");
+describe("displayLabelOf", () => {
+  it("reads a label in the register the rest of the HUD is in", () => {
+    expect(displayLabelOf("police")).toBe("POLICE");
   });
 
-  it("keeps a label the table does not name instead of dropping it", () => {
-    const result = enrichDetections(
-      [{ label: "bicycle", score: 0.92, box: box(0.1, 0.1, 0.3, 0.3) }],
-      undefined,
-      CLASSES,
-    );
+  it("opens separators up rather than showing them", () => {
+    expect(displayLabelOf("fire_truck")).toBe("FIRE TRUCK");
+    expect(displayLabelOf("stop-sign")).toBe("STOP SIGN");
+  });
+});
+
+describe("enrichDetections", () => {
+  it("keeps whatever class the model reported", () => {
+    const result = enrichDetections([
+      { label: "bicycle", score: 0.92, box: box(0.1, 0.1, 0.3, 0.3) },
+    ]);
+
     expect(result).toHaveLength(1);
-    expect(result[0].displayLabel).toBe("BICYCLE");
+    expect(result[0].label).toBe("bicycle");
   });
 
   it("drops low-confidence detections", () => {
@@ -63,7 +57,6 @@ describe("enrichDetections", () => {
         },
       ],
       undefined,
-      CLASSES,
     );
     expect(result).toHaveLength(0);
   });
@@ -78,7 +71,6 @@ describe("enrichDetections", () => {
         },
       ],
       undefined,
-      CLASSES,
     );
     expect(result).toHaveLength(1);
   });
@@ -94,7 +86,6 @@ describe("enrichDetections", () => {
     const result = enrichDetections(
       [{ label: "police", score: 0.3, box: box(0.1, 0.1, 0.3, 0.3) }],
       0.2,
-      CLASSES,
     );
     expect(result).toHaveLength(1);
   });
@@ -103,7 +94,6 @@ describe("enrichDetections", () => {
     const result = enrichDetections(
       [{ label: "police", score: 0.3, box: box(0.1, 0.1, 0.3, 0.3) }],
       0.4,
-      CLASSES,
     );
     expect(result).toHaveLength(0);
   });
@@ -118,7 +108,6 @@ describe("enrichDetections", () => {
         },
       ],
       undefined,
-      CLASSES,
     );
     expect(result).toHaveLength(0);
   });
