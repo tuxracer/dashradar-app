@@ -25,14 +25,9 @@ const det = (score: number): Detection => ({
 
 /**
  * A HudModel built through the real buildHudModel, so these tests exercise
- * the actual selection rule rather than a hand-set one. The det() factory
- * below gives every detection the same box, so `nearest` still lands on the
- * first argument and the existing tests keep their meaning.
+ * the actual selection rule rather than a hand-set one.
  */
-const hudOf = (
-  nearest: Detection | undefined,
-  others: Detection[] = [],
-): HudModel => buildHudModel(nearest ? [nearest, ...others] : others);
+const hudOf = (detections: Detection[]): HudModel => buildHudModel(detections);
 
 const rgbChannels = (color: string): [number, number, number] => {
   const match = color.match(/rgb\((\d+), (\d+), (\d+)\)/);
@@ -48,23 +43,23 @@ describe("hudSignal", () => {
   });
 
   it("returns 0 when there are no detections", () => {
-    expect(hudSignal(hudOf(undefined, []))).toBe(0);
+    expect(hudSignal(hudOf([]))).toBe(0);
   });
 
   it("returns 0 for a score at the floor", () => {
-    expect(hudSignal(hudOf(det(0.5)))).toBe(0);
+    expect(hudSignal(hudOf([det(0.5)]))).toBe(0);
   });
 
   it("maps a full-confidence score to 1", () => {
-    expect(hudSignal(hudOf(det(1)))).toBe(1);
+    expect(hudSignal(hudOf([det(1)]))).toBe(1);
   });
 
   it("remaps the midpoint of the [floor, 1] band to 0.5", () => {
-    expect(hudSignal(hudOf(det(0.75)))).toBeCloseTo(0.5, 5);
+    expect(hudSignal(hudOf([det(0.75)]))).toBeCloseTo(0.5, 5);
   });
 
-  it("takes the max score across nearest and others", () => {
-    expect(hudSignal(hudOf(det(0.6), [det(0.9), det(0.55)]))).toBeCloseTo(
+  it("takes the max score across the frame's detections", () => {
+    expect(hudSignal(hudOf([det(0.6), det(0.9), det(0.55)]))).toBeCloseTo(
       0.8,
       5,
     );
@@ -77,24 +72,24 @@ describe("hudScore", () => {
   });
 
   it("returns 0 when there are no detections", () => {
-    expect(hudScore(hudOf(undefined, []))).toBe(0);
+    expect(hudScore(hudOf([]))).toBe(0);
   });
 
   it("passes a score through without the floor remap", () => {
     // The whole point of the raw readout: 0.75 reads as 0.75, not the 0.5 the
     // meter's [floor, 1] stretch turns it into.
-    expect(hudScore(hudOf(det(0.75)))).toBe(0.75);
-    expect(hudScore(hudOf(det(SIGNAL_FLOOR)))).toBe(SIGNAL_FLOOR);
+    expect(hudScore(hudOf([det(0.75)]))).toBe(0.75);
+    expect(hudScore(hudOf([det(SIGNAL_FLOOR)]))).toBe(SIGNAL_FLOOR);
   });
 
-  it("takes the max score across nearest and others", () => {
-    expect(hudScore(hudOf(det(0.6), [det(0.9), det(0.55)]))).toBe(0.9);
+  it("takes the max score across the frame's detections", () => {
+    expect(hudScore(hudOf([det(0.6), det(0.9), det(0.55)]))).toBe(0.9);
   });
 
-  it("reports the most confident detection, not the nearest one", () => {
-    // The largest box (first argument) is not what the readout reports: it
-    // must report the model's best score in the frame regardless of size.
-    expect(hudScore(hudOf(det(0.55), [det(0.95)]))).toBe(0.95);
+  it("reports the most confident detection, not the largest box", () => {
+    // A small, high-scoring box is not what the readout reports: it must
+    // report the model's best score in the frame regardless of box size.
+    expect(hudScore(hudOf([det(0.55), det(0.95)]))).toBe(0.95);
   });
 });
 

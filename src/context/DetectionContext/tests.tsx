@@ -78,9 +78,7 @@ const Probe = () => {
       <span data-testid="status">{status}</span>
       <span data-testid="downloading">{String(downloadingModel)}</span>
       <span data-testid="loaded">{modelProgress.loadedBytes}</span>
-      <span data-testid="objects">
-        {hud ? (hud.nearest ? 1 : 0) + hud.others.length : "none"}
-      </span>
+      <span data-testid="objects">{hud ? (hud.top ? 1 : 0) : "none"}</span>
       <span data-testid="error">{error ?? "none"}</span>
     </div>
   );

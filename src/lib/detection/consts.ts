@@ -4,12 +4,6 @@ import type { RoadCategory } from "@/types";
 export const CONFIDENCE_THRESHOLD = 0.5;
 
 /**
- * The nearest object gets the amber NEAR treatment once its box covers this
- * fraction of the frame. Tune on-device.
- */
-export const NEAR_AREA_FRACTION = 0.06;
-
-/**
  * Box and label color per category in the detection view. Keyed on category
  * rather than on the class name so a new class inherits a color with no edit
  * here, which is the point of categories existing at all. These are CSS color

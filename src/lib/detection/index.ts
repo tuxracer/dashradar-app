@@ -4,7 +4,7 @@ import type { AutoZoomLevel } from "@/lib/autoZoom";
 import type { DetectionClass } from "@/workers/detection/consts";
 import { MODEL_CLASSES, ZOOM_OFF } from "@/workers/detection/consts";
 import { centerCropRegion } from "@/workers/detection/inference";
-import { CONFIDENCE_THRESHOLD, NEAR_AREA_FRACTION } from "./consts";
+import { CONFIDENCE_THRESHOLD } from "./consts";
 
 export * from "./consts";
 
@@ -30,19 +30,9 @@ export type PixelBox = {
  * lag that lets the class name outlive the detection that produced it. Auto
  * zoom reads the whole tracked set (`stepAutoZoom({ detections: tracked,
  * ... })`), not any single detection here.
- *
- * `nearest` (the largest box by area), `near`, and `others` have no consumer
- * today: nothing outside `buildHudModel` reads them.
  */
 export type HudModel = {
-  nearest: Detection | undefined;
   top: Detection | undefined;
-  near: boolean;
-  others: Detection[];
-};
-
-const boxArea = (box: NormalizedBox): number => {
-  return Math.max(0, box.xmax - box.xmin) * Math.max(0, box.ymax - box.ymin);
 };
 
 /**
@@ -84,22 +74,12 @@ export const enrichDetections = (
 
 /** Shape one frame's detections into what the HUD renders. */
 export const buildHudModel = (detections: Detection[]): HudModel => {
-  const nearest = detections.reduce<Detection | undefined>(
-    (best, candidate) =>
-      best === undefined || boxArea(candidate.box) > boxArea(best.box)
-        ? candidate
-        : best,
-    undefined,
-  );
   const top = detections.reduce<Detection | undefined>(
     (best, candidate) =>
       best === undefined || candidate.score > best.score ? candidate : best,
     undefined,
   );
-  const near =
-    nearest !== undefined && boxArea(nearest.box) >= NEAR_AREA_FRACTION;
-  const others = detections.filter((candidate) => candidate !== nearest);
-  return { nearest, top, near, others };
+  return { top };
 };
 
 /** Scale factor for a video rendered `object-fit: cover` in the viewport. */

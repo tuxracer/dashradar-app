@@ -6,7 +6,6 @@ import {
   mapBoxToViewport,
   scanRegionBox,
   enrichDetections,
-  NEAR_AREA_FRACTION,
 } from "@/lib/detection";
 import { ZOOM_2X } from "@/workers/detection/consts";
 import { centerCropRegion } from "@/workers/detection/inference";
@@ -110,29 +109,8 @@ describe("enrichDetections", () => {
 });
 
 describe("buildHudModel", () => {
-  it("picks the largest box as nearest and excludes it from others", () => {
-    const small = detection({ box: box(0.1, 0.1, 0.2, 0.2) });
-    const large = detection({ box: box(0.3, 0.3, 0.7, 0.9) });
-    const hud = buildHudModel([small, large]);
-    expect(hud.nearest).toBe(large);
-    expect(hud.others).toEqual([small]);
-  });
-
-  it("flags NEAR only when the nearest box exceeds the area threshold", () => {
-    // 0.4 x 0.6 = 0.24 area, well past the threshold
-    const nearCar = detection({ box: box(0.3, 0.3, 0.7, 0.9) });
-    expect(buildHudModel([nearCar]).near).toBe(true);
-
-    // tiny box, far below the threshold
-    const farCar = detection({ box: box(0.4, 0.4, 0.45, 0.45) });
-    expect(buildHudModel([farCar]).near).toBe(false);
-  });
-
-  it("handles the empty frame", () => {
-    const hud = buildHudModel([]);
-    expect(hud.nearest).toBeUndefined();
-    expect(hud.near).toBe(false);
-    expect(hud.others).toEqual([]);
+  it("has no top on an empty frame", () => {
+    expect(buildHudModel([]).top).toBeUndefined();
   });
 
   it("picks the highest-scoring detection as top, independent of size", () => {
@@ -146,18 +124,12 @@ describe("buildHudModel", () => {
     });
     const hud = buildHudModel([bigButUnsure, smallButSure]);
     expect(hud.top).toBe(smallButSure);
-    expect(hud.nearest).toBe(bigButUnsure);
   });
 
-  it("uses the same detection for top and nearest when there is only one", () => {
+  it("makes a single detection the top", () => {
     const only = detection();
     const hud = buildHudModel([only]);
     expect(hud.top).toBe(only);
-    expect(hud.nearest).toBe(only);
-  });
-
-  it("has no top on an empty frame", () => {
-    expect(buildHudModel([]).top).toBeUndefined();
   });
 });
 
@@ -214,14 +186,6 @@ describe("coverScale", () => {
     expect(
       coverScale({ width: 640, height: 480 }, { width: 1280, height: 960 }),
     ).toBeCloseTo(2);
-  });
-});
-
-describe("NEAR_AREA_FRACTION", () => {
-  it("is exceeded by a box exactly at the boundary", () => {
-    const side = Math.sqrt(NEAR_AREA_FRACTION);
-    const boundary = detection({ box: box(0, 0, side, side) });
-    expect(buildHudModel([boundary]).near).toBe(true);
   });
 });
 
