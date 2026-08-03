@@ -39,7 +39,7 @@ Module map (internals in the TRD's Architecture and Detection domain sections):
 - `src/context/SettingsContext/`: localStorage-backed settings (`settings`) behind the `developerOptions` master switch. The provider hands out already-gated effective values, so consumers never repeat the gate. Every developer option starts at its `DEVELOPER_OPTIONS_OFF` value, so turning the master switch on reveals rows without turning anything on; a `settingsVersion` migration clears the five that used to default on.
 - `src/context/DevVideoContext/`: owns the video-file source that stands in for the camera. Every session starts on the camera; a dropped or settings-picked file replaces it until cleared. Consume via `useDevVideo()`.
 - `src/workers/detection/`: downloads the ONNX weights, runs inference; pure preprocess/decode in `inference.ts`, constants in `consts.ts`, typed message protocol in `types.ts`.
-- `src/lib/`: React-free domain modules, one directory each: `detection`, `detectionTracker`, `autoZoom`, `radarSignal`, `radarAudio`, `camera`, `crashSentinel`, `videoFileDrop`, `pwaInstall`, `saveFrame`, `serviceWorker`, `timingHistory`, `wakeLock`, and friends.
+- `src/lib/`: React-free domain modules, one directory each: `detection`, `detectionTracker`, `autoZoom`, `radarSignal`, `radarAudio`, `camera`, `crashSentinel`, `videoFileDrop`, `pwaInstall`, `saveFrame`, `serviceWorker`, `scanClock`, `timingHistory`, `browserEngine`, `appUpdate`, `resetAppData`, `wakeLock`, and friends.
 - `src/components/`: `CameraView` (hidden `<video>`, the feed is never shown outside the developer-only detection view below), `RadarDetectorScreen` (the driver-facing detection UI; rAF peak-hold loop writing straight to the DOM, drives the beeper and contact card), `DetectionView` (developer-only alternative that shows the feed and draws the model's boxes over it), `StatusBar` + indicator pills, `SettingsScreen`, `DebugOverlay`, `SaveToast`, `ShareTarget` (the handoff cluster: SCAN TO OPEN annunciator, QR in lock-on brackets, Web Share button; shared by the desktop intro and `UnsupportedScreen` so the app's two handoffs cannot drift apart), `UnsupportedScreen` (the WEBGPU_UNSUPPORTED handoff, framed as an invitation rather than an error), intro/permission/load/error screens.
 - `src/types/`: shared detection types and guards.
 
@@ -63,6 +63,8 @@ pnpm test:watch  # Run tests in watch mode
 pnpm check       # Verify formatting + lint + typecheck (run before commits)
 pnpm format      # Auto-fix formatting (prettier --write)
 ```
+
+**Environment**: copy `.env.example` to `.env.local` for local dev. `VITE_SENTRY_DSN` is a public client key and may stay empty, which disables Sentry. `SENTRY_AUTH_TOKEN` is what switches the build to hidden source maps and uploads a release; without it the build emits no source maps at all.
 
 **Important**: Always run `pnpm check` before commits. It verifies formatting, lint, and types but fixes nothing; run `pnpm format` for the formatting failures.
 
