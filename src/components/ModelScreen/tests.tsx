@@ -1,11 +1,20 @@
 import type { ReactNode } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ModelScreen } from "@/components/ModelScreen";
 import { SettingsProvider, STORAGE_KEY } from "@/context/SettingsContext";
 import type { PersistedSettings } from "@/context/SettingsContext";
 import type { DetectionModel } from "@/lib/detectionModels";
+
+/**
+ * Stands in for the model the running session pinned at mount. The real
+ * provider needs a worker and a camera, and the pin is the only thing this
+ * screen reads from it.
+ */
+vi.mock("@/context/DetectionContext", () => ({
+  useDetection: () => ({ activeModel: running }),
+}));
 
 afterEach(() => {
   window.localStorage.clear();
@@ -30,6 +39,13 @@ const MODELS: readonly DetectionModel[] = [
   },
 ];
 
+/** What the mocked session reports it is running, reset before every test. */
+let running: DetectionModel = MODELS[0];
+
+beforeEach(() => {
+  running = MODELS[0];
+});
+
 /** The settings field currently persisted to localStorage. */
 const stored = <K extends keyof PersistedSettings>(key: K) =>
   JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}")[key];
@@ -38,11 +54,21 @@ const wrapper = ({ children }: { children: ReactNode }) => (
   <SettingsProvider>{children}</SettingsProvider>
 );
 
-/** Mounts the screen over a developer-options-on blob with `alpha` selected. */
-const mount = (props?: { onClose?: () => void; reload?: () => void }) => {
+/**
+ * Mounts the screen over a developer-options-on blob, `alpha` selected unless
+ * the test stores something else.
+ */
+const mount = (props?: {
+  onClose?: () => void;
+  reload?: () => void;
+  modelIds?: readonly string[];
+}) => {
   window.localStorage.setItem(
     STORAGE_KEY,
-    JSON.stringify({ developerOptions: true, modelIds: ["alpha"] }),
+    JSON.stringify({
+      developerOptions: true,
+      modelIds: props?.modelIds ?? ["alpha"],
+    }),
   );
   return render(
     <ModelScreen
@@ -55,11 +81,28 @@ const mount = (props?: { onClose?: () => void; reload?: () => void }) => {
 };
 
 describe("ModelScreen", () => {
-  it("offers no save until something is actually different", async () => {
+  it("offers no save until the draft differs from the running model", async () => {
     mount();
     expect(screen.getByTestId("model-save")).toBeDisabled();
     await userEvent.click(screen.getByTestId("model-option-beta"));
     expect(screen.getByTestId("model-save")).toBeEnabled();
+  });
+
+  it("offers save when the stored selection is not what the session is running", () => {
+    // What a developer sees after turning developer options on mid-session:
+    // the stored pick was invisible when the session pinned its model, so the
+    // picker shows a model the detector is not running and Save is the route
+    // to making that true.
+    mount({ modelIds: ["beta"] });
+    expect(screen.getByTestId("model-save")).toBeEnabled();
+  });
+
+  it("keeps a model selected when its own row is tapped again", async () => {
+    mount();
+    await userEvent.click(screen.getByTestId("model-option-alpha"));
+    // Nothing selected would leave no model to load, so the tap is a no-op and
+    // there is no emptied selection to save.
+    expect(screen.getByTestId("model-save")).toBeDisabled();
   });
 
   it("selecting past the cap replaces the selection rather than adding to it", async () => {

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import { isDeepEqual } from "remeda";
+import { useDetection } from "@/context/DetectionContext";
 import { useSettings } from "@/context/SettingsContext";
 import {
   DETECTION_MODELS,
@@ -46,12 +47,20 @@ export const ModelScreen = ({
   reload = () => window.location.reload(),
 }: ModelScreenProps) => {
   const { modelIds, commitModelIds } = useSettings();
+  const { activeModel } = useDetection();
   // Seeded from the resolved selection rather than the raw stored ids, so a
   // stale id left by an older build shows as the model that would actually run
   // and Save is not offered for a difference nobody made.
-  const applied = resolveModels(modelIds, models).map((model) => model.id);
-  const [draft, setDraft] = useState<readonly string[]>(applied);
-  const changed = !isDeepEqual([...draft], [...applied]);
+  const [draft, setDraft] = useState<readonly string[]>(() =>
+    resolveModels(modelIds, models).map((model) => model.id),
+  );
+  // Compared against what the session pinned at mount, not against what is
+  // stored, because Save's whole job is applying the draft to the running
+  // detector. The two can disagree: turning developer options on mid-session
+  // reveals a stored selection the session never saw, and comparing against
+  // storage would leave Save disabled while the picker showed a model the
+  // detector is not running, with no way to make it true.
+  const changed = !isDeepEqual([...draft], [activeModel.id]);
 
   const toggleModel = (id: string) => {
     setDraft((previous) => {
