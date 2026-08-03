@@ -55,6 +55,14 @@ type RadarDetectorScreenProps = {
    * (the option off) shows the percentage.
    */
   rawConfidence?: number;
+  /**
+   * Display label of the class the meter is alerting on (the HUD's
+   * highest-scoring detection), which the status word names in place of the
+   * generic ALERT. Undefined when nothing is detected, and also for the whole
+   * decay tail after a detection clears, which is why the loop holds the last
+   * one rather than reading this directly.
+   */
+  detectedLabel?: string;
 };
 
 /** Arc angle for a segment, in degrees, 0 pointing straight up. */
@@ -68,7 +76,12 @@ const ALERT_RING_COLOR = `rgb(${SIGNAL_HIGH_COLOR.join(", ")})`;
  * on a tachometer-style arc around a large percentage readout, over a faint
  * radar grid with a slow scanning sweep inside the dial. As the signal climbs
  * the ticks, readout, and a central glow flood green through amber to red; at
- * ALERT_THRESHOLD a red ring around the dial pulses. A requestAnimationFrame
+ * ALERT_THRESHOLD a red ring around the dial pulses. The status word under the
+ * readout names the class being detected (the detectedLabel prop, which is the
+ * HUD's highest-scoring detection), falling back to ALERT for a signal with no
+ * class to name. It holds that class through the dial's decay tail and only
+ * returns to SCANNING once the meter reaches zero, so the word never contradicts
+ * a readout that is still showing a percentage. A requestAnimationFrame
  * loop applies peak-hold + decay to the incoming confidence and writes the lit
  * segments, colors, readout, status word, and glow straight to the DOM, off
  * React's render path. Before detection has started (the initializing prop)
@@ -106,6 +119,7 @@ export const RadarDetectorScreen = ({
   saveFrames,
   initializing,
   rawConfidence,
+  detectedLabel,
 }: RadarDetectorScreenProps) => {
   const confidenceRef = useRef(confidence);
   const audioEnabledRef = useRef(audioEnabled);
@@ -113,6 +127,7 @@ export const RadarDetectorScreen = ({
   const frameThumbnailsRef = useRef(frameThumbnails);
   const initializingRef = useRef(initializing);
   const rawConfidenceRef = useRef(rawConfidence);
+  const detectedLabelRef = useRef(detectedLabel);
   const beeperRef = useRef<RadarBeeper | undefined>(undefined);
   const peakRef = useRef(0);
   const lastTimeRef = useRef<number | undefined>(undefined);
@@ -161,6 +176,11 @@ export const RadarDetectorScreen = ({
     wakeRef.current();
   }, [rawConfidence]);
 
+  useEffect(() => {
+    detectedLabelRef.current = detectedLabel;
+    wakeRef.current();
+  }, [detectedLabel]);
+
   // Draw the cutout into the card's canvas whenever it changes. The canvas
   // takes the bitmap's intrinsic size; CSS scales it to fit the card.
   useEffect(() => {
@@ -201,7 +221,13 @@ export const RadarDetectorScreen = ({
     // alert does not churn styles and text at display refresh rate.
     let writtenLevel: number | undefined;
     let writtenContactShown: boolean | undefined;
-    let writtenInitializing: boolean | undefined;
+    let writtenStatus: string | undefined;
+    // The class the status word is currently naming. Held across the dial's
+    // decay tail: detectedLabel clears the instant the raw signal does, but
+    // the peak-held level keeps reading a percentage for about a second after,
+    // and the word must not snap to SCANNING while the dial still shows a
+    // number. Released when the meter reaches zero.
+    let heldLabel: string | undefined;
     // Sentinel distinct from any real prop value (a number or undefined), so
     // the first tick always flushes the readout mode.
     let writtenRawConfidence: number | undefined | null = null;
@@ -244,15 +270,36 @@ export const RadarDetectorScreen = ({
       // at an idle meter).
       const raw = rawConfidenceRef.current;
 
+      const hasSignal = level >= CONTACT_THRESHOLD;
+
+      // The label survives the decay tail: adopt a new one whenever there is a
+      // detection, and only release it once the meter has fully decayed.
+      if (detectedLabelRef.current !== undefined) {
+        heldLabel = detectedLabelRef.current;
+      } else if (level === 0) {
+        heldLabel = undefined;
+      }
+
+      // ALERT is the fallback for a signal with no class to name, which the
+      // real app does not produce (a nonzero signal means a detection, and a
+      // detection has a class) but which keeps the word honest if it ever does.
+      const statusText = hasSignal
+        ? heldLabel !== undefined
+          ? `${heldLabel} DETECTED`
+          : "ALERT"
+        : isInitializing
+          ? "INITIALIZING"
+          : "SCANNING";
+
       if (
         level !== writtenLevel ||
         contactShown !== writtenContactShown ||
-        isInitializing !== writtenInitializing ||
+        statusText !== writtenStatus ||
         raw !== writtenRawConfidence
       ) {
         writtenLevel = level;
         writtenContactShown = contactShown;
-        writtenInitializing = isInitializing;
+        writtenStatus = statusText;
         writtenRawConfidence = raw;
 
         const color = signalColor(level);
@@ -270,7 +317,6 @@ export const RadarDetectorScreen = ({
           }
         });
 
-        const hasSignal = level >= CONTACT_THRESHOLD;
         const readout = readoutRef.current;
         if (readout) {
           readout.textContent =
@@ -282,11 +328,7 @@ export const RadarDetectorScreen = ({
 
         const status = statusRef.current;
         if (status) {
-          status.textContent = hasSignal
-            ? "ALERT"
-            : isInitializing
-              ? "INITIALIZING"
-              : "SCANNING";
+          status.textContent = statusText;
           status.style.color = hasSignal ? color : "";
         }
 
@@ -390,9 +432,6 @@ export const RadarDetectorScreen = ({
           />
         ))}
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-[11px] font-semibold tracking-[0.34em] text-white/50">
-            POLICE SIGNAL
-          </span>
           <span
             ref={readoutRef}
             className="text-[min(17vmin,6.5rem)] font-bold leading-none tabular-nums text-white/90"
@@ -404,7 +443,7 @@ export const RadarDetectorScreen = ({
           <span
             ref={statusRef}
             data-testid="signal-status"
-            className="text-[13px] font-semibold tracking-[0.3em] text-white/40"
+            className="whitespace-nowrap text-[13px] font-semibold tracking-[0.24em] text-white/40"
           >
             {initializing ? "INITIALIZING" : "SCANNING"}
           </span>

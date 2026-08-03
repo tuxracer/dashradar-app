@@ -454,3 +454,103 @@ describe("RadarDetectorScreen frame preview", () => {
     expect(screen.queryByTestId("contact-direction")).not.toBeInTheDocument();
   });
 });
+
+describe("RadarDetectorScreen detected class", () => {
+  it("names the detected class in the status word", async () => {
+    render(
+      <RadarDetectorScreen
+        confidence={0.6}
+        audioEnabled={false}
+        detectedLabel="PERSON"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("signal-status")).toHaveTextContent(
+        "PERSON DETECTED",
+      ),
+    );
+  });
+
+  it("holds the class through the dial's decay after the detection clears", async () => {
+    beeperUpdate.mockClear();
+    const view = render(
+      <RadarDetectorScreen
+        confidence={0.8}
+        audioEnabled={false}
+        detectedLabel="POLICE"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("signal-status")).toHaveTextContent(
+        "POLICE DETECTED",
+      ),
+    );
+
+    // The detection clears, so the label goes away, but the peak-held meter is
+    // still decaying and still reading a percentage. The word must not snap to
+    // SCANNING while the dial still shows a number.
+    view.rerender(<RadarDetectorScreen confidence={0} audioEnabled={false} />);
+    // The beeper is fed the raw signal on every awake tick, so a zero there
+    // proves the loop has actually ticked past the rerender. Asserting
+    // straight after the rerender would pass without the hold, since no frame
+    // would have run yet.
+    await waitFor(() =>
+      expect(beeperUpdate).toHaveBeenCalledWith(0, expect.any(Number)),
+    );
+    expect(screen.getByTestId("signal-status")).toHaveTextContent(
+      "POLICE DETECTED",
+    );
+  });
+
+  it("returns to SCANNING once the meter reaches zero", async () => {
+    // Starts just above CONTACT_THRESHOLD so the peak decays to zero in a
+    // fraction of a second. A full-strength signal would take DECAY_PER_SEC
+    // seconds to fall the whole way and turn this into a multi-second test
+    // without exercising anything the small one does not.
+    const view = render(
+      <RadarDetectorScreen
+        confidence={CONTACT_THRESHOLD * 2}
+        audioEnabled={false}
+        detectedLabel="POLICE"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("signal-status")).toHaveTextContent(
+        "POLICE DETECTED",
+      ),
+    );
+
+    view.rerender(<RadarDetectorScreen confidence={0} audioEnabled={false} />);
+    await waitFor(() =>
+      expect(screen.getByTestId("signal-status")).toHaveTextContent("SCANNING"),
+    );
+  });
+
+  it("swaps to a new class when a more confident one takes over", async () => {
+    const view = render(
+      <RadarDetectorScreen
+        confidence={0.6}
+        audioEnabled={false}
+        detectedLabel="POLICE"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("signal-status")).toHaveTextContent(
+        "POLICE DETECTED",
+      ),
+    );
+
+    view.rerender(
+      <RadarDetectorScreen
+        confidence={0.9}
+        audioEnabled={false}
+        detectedLabel="PERSON"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("signal-status")).toHaveTextContent(
+        "PERSON DETECTED",
+      ),
+    );
+  });
+});

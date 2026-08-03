@@ -311,6 +311,7 @@ const RadarScreen = () => {
           saveFrames={saveFrames}
           initializing={status !== "running"}
           rawConfidence={rawConfidence ? hudScore(hud) : undefined}
+          detectedLabel={hud?.top?.displayLabel}
         />
       )}
 
