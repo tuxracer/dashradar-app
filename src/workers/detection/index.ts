@@ -660,7 +660,7 @@ const detect = async ({
       dets,
       labels,
       confidenceThreshold,
-      model.detectionModel.classes,
+      model.detectionModel,
     );
     // The model's boxes describe the cropped square; remap them to full-frame
     // coordinates so every consumer downstream (cropRect below, direction and

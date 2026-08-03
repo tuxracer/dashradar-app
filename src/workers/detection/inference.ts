@@ -1,6 +1,6 @@
 import type { NormalizedBox, RawDetection } from "@/types";
 import { DEFAULT_MODEL } from "@/lib/detectionModels";
-import type { DetectionClass } from "@/lib/detectionModels";
+import type { DetectionClass, DetectionModel } from "@/lib/detectionModels";
 import {
   BRIGHT_FRACTION_STRIDE,
   BRIGHT_LUMA_THRESHOLD,
@@ -142,59 +142,71 @@ const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
  * Decode the model's raw outputs into normalized detections.
  *
  * `dets` is `[1,N,4]` cxcywh boxes (normalized 0..1). `labels` is
- * `[1,N,1+C]` raw class logits, where C is the number of entries in `classes`
- * and slot 0 is an unused background slot. Each query takes the highest-scoring
- * real class, and is emitted when that class's `sigmoid(logit)` clears
- * `threshold`. One box gets one class: the head is multi-label in principle, but a
- * HUD box carrying two names is no use to a driver glancing at it. RF-DETR is
- * set-based, so no NMS is applied.
+ * `[1,N,headWidth]` raw class logits, where slot 0 is an unused background
+ * slot. Each query takes the highest-scoring class the model's table names,
+ * and is emitted when that class's `sigmoid(logit)` clears `threshold`. One box
+ * gets one class: the head is multi-label in principle, but a HUD box carrying
+ * two names is no use to a driver glancing at it. RF-DETR is set-based, so no
+ * NMS is applied.
  *
- * A head width that disagrees with `classes` means the loaded checkpoint is not
- * the one this build was written for. Every box would be silently misread, so
- * this throws MODEL_LOAD_FAILED rather than emitting plausible garbage. Both
- * counts come from the tensor lengths rather than their dims, which keeps this
- * function pure and works the same on the graph-capture path, where outputs
- * arrive through getData().
+ * The table names its logits explicitly and need not cover the head, so a
+ * checkpoint's classes can be surfaced in part. What the table cannot do is
+ * disagree with the checkpoint it describes: a width mismatch means every box
+ * would be silently misread, so this throws MODEL_LOAD_FAILED rather than
+ * emitting plausible garbage. The class indices are range-checked in the same
+ * pass, before the query loop rather than inside it, so the cost is one scan of
+ * the table per frame rather than one per query. The query count comes from the
+ * tensor lengths rather than their dims, which keeps this function pure and
+ * works the same on the graph-capture path, where outputs arrive through
+ * getData().
  */
 export const decodeDetections = (
   dets: Float32Array,
   labels: Float32Array,
   threshold: number,
-  classes: readonly DetectionClass[] = DEFAULT_MODEL.classes,
+  model: DetectionModel = DEFAULT_MODEL,
 ): RawDetection[] => {
   const queryCount = Math.floor(dets.length / 4);
   if (queryCount === 0) {
     return [];
   }
-  const headWidth = labels.length / queryCount;
-  if (headWidth !== 1 + classes.length) {
+  const { headWidth, classes } = model;
+  if (labels.length / queryCount !== headWidth) {
     throw new DetectionError("MODEL_LOAD_FAILED");
+  }
+  for (const entry of classes) {
+    if (entry.index < 1 || entry.index >= headWidth) {
+      throw new DetectionError("MODEL_LOAD_FAILED");
+    }
   }
   const detections: RawDetection[] = [];
   for (let q = 0; q < queryCount; q += 1) {
     let bestScore = -1;
-    let bestIndex = -1;
-    for (let c = 0; c < classes.length; c += 1) {
-      const score = sigmoid(labels[q * headWidth + 1 + c]);
+    let best: DetectionClass | undefined;
+    for (const entry of classes) {
+      const score = sigmoid(labels[q * headWidth + entry.index]);
       if (score > bestScore) {
         bestScore = score;
-        bestIndex = c;
+        best = entry;
       }
     }
-    if (bestIndex < 0 || bestScore < threshold) {
+    if (!best || bestScore < threshold) {
       continue;
     }
     const cx = dets[q * 4];
     const cy = dets[q * 4 + 1];
     const w = dets[q * 4 + 2];
     const h = dets[q * 4 + 3];
-    const box = {
-      xmin: clamp01(cx - w / 2),
-      ymin: clamp01(cy - h / 2),
-      xmax: clamp01(cx + w / 2),
-      ymax: clamp01(cy + h / 2),
-    };
-    detections.push({ label: classes[bestIndex].label, score: bestScore, box });
+    detections.push({
+      label: best.label,
+      score: bestScore,
+      box: {
+        xmin: clamp01(cx - w / 2),
+        ymin: clamp01(cy - h / 2),
+        xmax: clamp01(cx + w / 2),
+        ymax: clamp01(cy + h / 2),
+      },
+    });
   }
   return detections;
 };

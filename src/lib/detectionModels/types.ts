@@ -7,6 +7,13 @@ import type { RoadCategory } from "@/types";
  * detects.
  */
 export type DetectionClass = {
+  /**
+   * This class's logit index in the model's head. Never 0, which every RF-DETR
+   * head reserves as an unused background slot. Explicit rather than implied by
+   * position, so a table can name two classes of a 91-wide COCO head without
+   * enumerating the 88 it does not want.
+   */
+  index: number;
   label: string;
   displayLabel: string;
   category: RoadCategory;
@@ -36,10 +43,18 @@ export type DetectionModel = {
   /** ONNX file within the repo's onnx/ directory. */
   file: string;
   /**
-   * Every class this checkpoint's head emits, in head-index order: entry i is
-   * class logit i + 1 in the model's output, since logit 0 is an unused
-   * background slot. The array's length has to match the model's head width,
-   * which decodeDetections checks on every frame.
+   * Width of this checkpoint's classification head, background slot included.
+   * Declared rather than inferred, because a sparse class table no longer
+   * implies it, and it is what pins a table to its checkpoint: a two-entry
+   * police table read against an accidentally loaded 91-wide COCO head would
+   * otherwise find `person` at logit 1 and report it as POLICE on every frame.
+   * Comes from the export's actual output shape.
+   */
+  headWidth: number;
+  /**
+   * The classes this build surfaces, each naming its own logit index. Need not
+   * cover the head: a checkpoint trained on 80 classes can expose the six that
+   * matter. A logit no entry names is never read.
    */
   classes: readonly DetectionClass[];
 };

@@ -15,14 +15,16 @@ const FAKE_MODELS: readonly DetectionModel[] = [
     slug: "alpha-repo",
     revision: "v1",
     file: "alpha.onnx",
-    classes: [{ label: "a", displayLabel: "A", category: "vehicle" }],
+    headWidth: 2,
+    classes: [{ index: 1, label: "a", displayLabel: "A", category: "vehicle" }],
   },
   {
     id: "beta",
     slug: "beta-repo",
     revision: "v2",
     file: "beta.onnx",
-    classes: [{ label: "b", displayLabel: "B", category: "person" }],
+    headWidth: 2,
+    classes: [{ index: 1, label: "b", displayLabel: "B", category: "person" }],
   },
 ];
 
@@ -83,5 +85,12 @@ describe("the shipping registry", () => {
   it("gives every model a unique id", () => {
     const ids = DETECTION_MODELS.map((model) => model.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("never repeats a class index within a model", () => {
+    for (const model of DETECTION_MODELS) {
+      const indices = model.classes.map((entry) => entry.index);
+      expect(new Set(indices).size).toBe(indices.length);
+    }
   });
 });

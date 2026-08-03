@@ -23,6 +23,7 @@ import {
   isWorkerResponse,
 } from "@/workers/detection/types";
 import { DEFAULT_MODEL } from "@/lib/detectionModels";
+import type { DetectionModel } from "@/lib/detectionModels";
 import type { RawDetection } from "@/types";
 
 /** Build a `[1,queries,C]` logits buffer from per-query score rows. */
@@ -373,6 +374,20 @@ describe("frameBrightFraction", () => {
 });
 
 describe("decodeDetections", () => {
+  /** Runs a decode that should be rejected and hands back the thrown error. */
+  const decodeError = (
+    boxes: Float32Array,
+    labels: Float32Array,
+    model: DetectionModel,
+  ): unknown => {
+    try {
+      decodeDetections(boxes, labels, 0.5, model);
+      return undefined;
+    } catch (error) {
+      return error;
+    }
+  };
+
   it("emits a police detection with the sigmoid score and clamped xyxy box", () => {
     // One query, high class-1 logit, cxcywh centered box within bounds.
     const labels = makeLabels([[-8, 4]]);
@@ -451,18 +466,30 @@ describe("decodeDetections", () => {
     expect(decodeDetections(boxes, labels, 0.5)).toHaveLength(1);
   });
 
-  /** A two-class table, for driving decode past the single class that ships. */
-  const TWO_CLASSES = [
-    { label: "police", displayLabel: "POLICE", category: "vehicle" },
-    { label: "person", displayLabel: "PERSON", category: "person" },
-  ] as const;
+  /** A two-class model, for driving decode past the single class that ships. */
+  const TWO_CLASS_MODEL: DetectionModel = {
+    id: "two-class",
+    slug: "two-class",
+    revision: "v1",
+    file: "model.onnx",
+    headWidth: 3,
+    classes: [
+      {
+        index: 1,
+        label: "police",
+        displayLabel: "POLICE",
+        category: "vehicle",
+      },
+      { index: 2, label: "person", displayLabel: "PERSON", category: "person" },
+    ],
+  };
 
   it("labels a query with its highest-scoring class", () => {
     // One query, 3-wide head: background, weak police, strong person.
     const labels = makeLabels([[-8, 1, 4]]);
     const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
 
-    const detections = decodeDetections(boxes, labels, 0.5, TWO_CLASSES);
+    const detections = decodeDetections(boxes, labels, 0.5, TWO_CLASS_MODEL);
 
     expect(detections).toHaveLength(1);
     expect(detections[0].label).toBe("person");
@@ -482,7 +509,7 @@ describe("decodeDetections", () => {
       [0.2, 0.2, 0.2, 0.2],
     ]);
 
-    const detections = decodeDetections(boxes, labels, 0.5, TWO_CLASSES);
+    const detections = decodeDetections(boxes, labels, 0.5, TWO_CLASS_MODEL);
 
     expect(detections.map((d) => d.label)).toEqual(["police", "person"]);
   });
@@ -492,22 +519,104 @@ describe("decodeDetections", () => {
     const labels = makeLabels([[-8, -1, -2]]);
     const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
 
-    expect(decodeDetections(boxes, labels, 0.5, TWO_CLASSES)).toHaveLength(0);
+    expect(decodeDetections(boxes, labels, 0.5, TWO_CLASS_MODEL)).toHaveLength(
+      0,
+    );
   });
 
-  it("rejects a model whose head does not match the class table", () => {
-    // A 3-wide head decoded against a 1-class table: every box would be
-    // misread, so this must fail loudly rather than emit garbage.
+  it("rejects a model whose declared head width does not match the tensor", () => {
+    // A 3-wide head decoded against the shipping model, which declares 2:
+    // every box would be misread, so this must fail loudly.
     const labels = makeLabels([[-8, 4, -8]]);
     const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
 
-    let thrown: unknown;
-    try {
-      decodeDetections(boxes, labels, 0.5, DEFAULT_MODEL.classes);
-    } catch (error) {
-      thrown = error;
-    }
+    const thrown = decodeError(boxes, labels, DEFAULT_MODEL);
+
     expect(isDetectionError(thrown)).toBe(true);
+    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
+  });
+
+  it("reads a sparse table at the indices it names", () => {
+    // A 5-wide head where only slots 1 and 4 are named. Slot 3 carries the
+    // strongest logit in the tensor and must be ignored entirely: this is the
+    // case a dense table could not express.
+    const sparse: DetectionModel = {
+      ...TWO_CLASS_MODEL,
+      headWidth: 5,
+      classes: [
+        {
+          index: 1,
+          label: "police",
+          displayLabel: "POLICE",
+          category: "vehicle",
+        },
+        {
+          index: 4,
+          label: "person",
+          displayLabel: "PERSON",
+          category: "person",
+        },
+      ],
+    };
+    const labels = makeLabels([[-8, -8, -8, 9, 4]]);
+    const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
+
+    const detections = decodeDetections(boxes, labels, 0.5, sparse);
+
+    expect(detections).toHaveLength(1);
+    expect(detections[0].label).toBe("person");
+    expect(detections[0].score).toBeCloseTo(sigmoid(4), 6);
+  });
+
+  it("rejects a tensor narrower than the declared head width", () => {
+    const narrow: DetectionModel = { ...TWO_CLASS_MODEL, headWidth: 9 };
+    const labels = makeLabels([[-8, 4, -8]]);
+    const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
+
+    const thrown = decodeError(boxes, labels, narrow);
+
+    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
+  });
+
+  it("rejects a class pointed at the background slot", () => {
+    // Slot 0 is never a real class, so a table naming it is misconfigured
+    // rather than merely unlucky.
+    const background: DetectionModel = {
+      ...TWO_CLASS_MODEL,
+      classes: [
+        {
+          index: 0,
+          label: "police",
+          displayLabel: "POLICE",
+          category: "vehicle",
+        },
+      ],
+    };
+    const labels = makeLabels([[-8, 4, -8]]);
+    const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
+
+    const thrown = decodeError(boxes, labels, background);
+
+    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
+  });
+
+  it("rejects a class pointed past the end of the head", () => {
+    const past: DetectionModel = {
+      ...TWO_CLASS_MODEL,
+      classes: [
+        {
+          index: 3,
+          label: "police",
+          displayLabel: "POLICE",
+          category: "vehicle",
+        },
+      ],
+    };
+    const labels = makeLabels([[-8, 4, -8]]);
+    const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
+
+    const thrown = decodeError(boxes, labels, past);
+
     expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
   });
 

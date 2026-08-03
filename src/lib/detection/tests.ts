@@ -28,8 +28,8 @@ const detection = (overrides: Partial<Detection> = {}): Detection => ({
 
 /** A two-class table, so these tests do not depend on what ships today. */
 const CLASSES = [
-  { label: "police", displayLabel: "POLICE", category: "vehicle" },
-  { label: "person", displayLabel: "PERSON", category: "person" },
+  { index: 1, label: "police", displayLabel: "POLICE", category: "vehicle" },
+  { index: 2, label: "person", displayLabel: "PERSON", category: "person" },
 ] as const;
 
 describe("enrichDetections", () => {

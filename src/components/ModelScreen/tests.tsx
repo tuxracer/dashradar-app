@@ -28,14 +28,16 @@ const MODELS: readonly DetectionModel[] = [
     slug: "alpha-repo",
     revision: "v1",
     file: "alpha.onnx",
-    classes: [{ label: "a", displayLabel: "A", category: "vehicle" }],
+    headWidth: 2,
+    classes: [{ index: 1, label: "a", displayLabel: "A", category: "vehicle" }],
   },
   {
     id: "beta",
     slug: "beta-repo",
     revision: "v2",
     file: "beta.onnx",
-    classes: [{ label: "b", displayLabel: "B", category: "vehicle" }],
+    headWidth: 2,
+    classes: [{ index: 1, label: "b", displayLabel: "B", category: "vehicle" }],
   },
 ];
 

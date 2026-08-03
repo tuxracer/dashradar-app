@@ -21,7 +21,15 @@ export const DETECTION_MODELS: readonly DetectionModel[] = [
     slug: "las-vegas-metro-rfdetr-small",
     revision: "v3.5",
     file: "model_fp16.onnx",
-    classes: [{ label: "police", displayLabel: "POLICE", category: "vehicle" }],
+    headWidth: 2,
+    classes: [
+      {
+        index: 1,
+        label: "police",
+        displayLabel: "POLICE",
+        category: "vehicle",
+      },
+    ],
   },
 ];
 
