@@ -240,10 +240,15 @@ export const parseModelUrl = (input: string): ParsedModelUrl | undefined => {
   if (url.hostname !== "huggingface.co") {
     return undefined;
   }
-  const segments = url.pathname
-    .split("/")
-    .filter((segment) => segment.length > 0)
-    .map(decodeURIComponent);
+  let segments: string[];
+  try {
+    segments = url.pathname
+      .split("/")
+      .filter((segment) => segment.length > 0)
+      .map(decodeURIComponent);
+  } catch {
+    return undefined;
+  }
   if (segments.length === 2) {
     const [owner, slug] = segments;
     return { owner, slug };

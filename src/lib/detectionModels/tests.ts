@@ -363,6 +363,12 @@ describe("parseModelUrl", () => {
     expect(parseModelUrl("not a url")).toBeUndefined();
     expect(parseModelUrl("https://huggingface.co/someone")).toBeUndefined();
   });
+
+  it("rejects a path segment with invalid percent-encoding", () => {
+    expect(
+      parseModelUrl("https://huggingface.co/someone/some%zzrepo"),
+    ).toBeUndefined();
+  });
 });
 
 describe("resolveModelFromUrl", () => {
@@ -445,6 +451,17 @@ describe("resolveModelFromUrl", () => {
     const fetcher = fakeApi({});
     await expect(
       resolveModelFromUrl("https://example.com/x/y", fetcher),
+    ).rejects.toMatchObject({ code: "INVALID_URL" });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid percent-encoding before any request", async () => {
+    const fetcher = fakeApi({});
+    await expect(
+      resolveModelFromUrl(
+        "https://huggingface.co/someone/some%zzrepo",
+        fetcher,
+      ),
     ).rejects.toMatchObject({ code: "INVALID_URL" });
     expect(fetcher).not.toHaveBeenCalled();
   });
