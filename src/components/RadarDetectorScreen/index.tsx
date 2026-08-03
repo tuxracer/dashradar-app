@@ -79,9 +79,13 @@ const ALERT_RING_COLOR = `rgb(${SIGNAL_HIGH_COLOR.join(", ")})`;
  * ALERT_THRESHOLD a red ring around the dial pulses. The status word under the
  * readout names the class being detected (the detectedLabel prop, which is the
  * HUD's highest-scoring detection), falling back to ALERT for a signal with no
- * class to name. It holds that class through the dial's decay tail and only
- * returns to SCANNING once the meter reaches zero, so the word never contradicts
- * a readout that is still showing a percentage. A requestAnimationFrame
+ * class to name. It keeps naming that class for as long as the meter registers
+ * a contact at all, which means through the dial's decay tail rather than only
+ * while the detection is live: the prop clears the instant the raw signal does,
+ * so the loop holds the last label instead of reading the prop directly. Below
+ * CONTACT_THRESHOLD the word reverts to SCANNING, and the held label is dropped
+ * once the meter reaches zero so the next detection starts clean.
+ * A requestAnimationFrame
  * loop applies peak-hold + decay to the incoming confidence and writes the lit
  * segments, colors, readout, status word, and glow straight to the DOM, off
  * React's render path. Before detection has started (the initializing prop)
