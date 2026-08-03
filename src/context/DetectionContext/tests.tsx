@@ -53,6 +53,11 @@ vi.mock("@/lib/saveFrame", async (importOriginal) => ({
 // appends a second entry (a copy of the shipping one under another id) so a
 // selection can actually differ from the default. The first entry is left
 // untouched, so DEFAULT_MODEL still means the shipping model everywhere below.
+// The mock has to target the internal consts file rather than the module index,
+// even though imports normally go through the index: resolveModels closes over
+// the DETECTION_MODELS binding it imported from ./consts, so mocking the index
+// would leave the resolver reading the real one-entry registry and these tests
+// would pass against a list where their assertions could not fail.
 vi.mock("@/lib/detectionModels/consts", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/lib/detectionModels/consts")>();

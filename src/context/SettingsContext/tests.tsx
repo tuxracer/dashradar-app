@@ -17,6 +17,9 @@ import { DEFAULT_MODEL } from "@/lib/detectionModels";
 
 afterEach(() => {
   window.localStorage.clear();
+  // A test that spies on Storage.prototype and fails before its own restore
+  // would otherwise leave a throwing setItem behind for every later test here.
+  vi.restoreAllMocks();
 });
 
 const wrapper = ({ children }: { children: ReactNode }) => (
@@ -426,13 +429,10 @@ describe("model selection", () => {
 
   it("reports a commit that storage refused", () => {
     const { result } = mount({ developerOptions: true });
-    const setItem = vi
-      .spyOn(Storage.prototype, "setItem")
-      .mockImplementation(() => {
-        throw new Error("quota");
-      });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota");
+    });
     expect(result.current.commitModelIds(["other"])).toBe(false);
-    setItem.mockRestore();
   });
 });
 
