@@ -498,11 +498,15 @@ export const createDetectionEngine = ({
   const pumpFor = (session: WorkerSession) => {
     let awaitingResult = false;
 
+    /** Every detections result this session delivers. */
+    const detections$ = session.messages$.pipe(
+      filter((message) => message.type === "detections"),
+    );
+
     // Not gated by running: a stale result landing during a pause must still
     // clear the flag, or a resumed pump would wait forever for a message
     // its own (torn-down) subscription already missed.
-    const resultLanded$ = session.messages$.pipe(
-      filter((message) => message.type === "detections"),
+    const resultLanded$ = detections$.pipe(
       tap(() => {
         awaitingResult = false;
       }),
@@ -518,8 +522,7 @@ export const createDetectionEngine = ({
      * outstanding frame dies with the terminated worker; the fresh session's
      * ready re-primes the pump.
      */
-    const nextResult$ = session.messages$.pipe(
-      filter((message) => message.type === "detections"),
+    const nextResult$ = detections$.pipe(
       take(1),
       timeout({
         first: WORKER_REPLY_TIMEOUT_MS,
