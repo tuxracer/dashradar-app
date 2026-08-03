@@ -5,6 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ModelScreen } from "@/components/ModelScreen";
 import { SettingsProvider, STORAGE_KEY } from "@/context/SettingsContext";
 import type { PersistedSettings } from "@/context/SettingsContext";
+import {
+  addStoredModel,
+  DEFAULT_MODEL,
+  loadStoredModels,
+} from "@/lib/detectionModels";
 import type { DetectionModel } from "@/lib/detectionModels";
 
 /**
@@ -156,5 +161,59 @@ describe("ModelScreen", () => {
     await userEvent.click(screen.getByTestId("model-back"));
     expect(stored("modelIds")).toEqual(["alpha"]);
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe("removing a stored model", () => {
+  const addedModel: DetectionModel = {
+    id: "https://huggingface.co/someone/some-repo/resolve/abc/model.onnx",
+    owner: "someone",
+    slug: "some-repo",
+    revision: "abc",
+    file: "model.onnx",
+  };
+
+  /** Mounts the screen with no `models` prop, so `knownModels()` drives it. */
+  const renderModelScreen = () =>
+    render(<ModelScreen onClose={vi.fn()} reload={vi.fn()} />, { wrapper });
+
+  beforeEach(() => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        developerOptions: true,
+        modelIds: [DEFAULT_MODEL.id],
+      }),
+    );
+    addStoredModel(addedModel);
+    running = DEFAULT_MODEL;
+  });
+
+  it("offers no remove control on the default row", () => {
+    renderModelScreen();
+    expect(
+      screen.queryByTestId(`model-remove-${DEFAULT_MODEL.id}`),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId(`model-remove-${addedModel.id}`),
+    ).toBeInTheDocument();
+  });
+
+  it("removes the row and unregisters the model", async () => {
+    renderModelScreen();
+    await userEvent.click(screen.getByTestId(`model-remove-${addedModel.id}`));
+    expect(
+      screen.queryByTestId(`model-option-${addedModel.id}`),
+    ).not.toBeInTheDocument();
+    expect(loadStoredModels()).toEqual([]);
+  });
+
+  it("moves a drafted selection back to the default on remove", async () => {
+    renderModelScreen();
+    await userEvent.click(screen.getByTestId(`model-option-${addedModel.id}`));
+    await userEvent.click(screen.getByTestId(`model-remove-${addedModel.id}`));
+    // The default row is selected again, matching what the running session
+    // pinned, so SAVE has nothing to apply.
+    expect(screen.getByTestId("model-save")).toBeDisabled();
   });
 });

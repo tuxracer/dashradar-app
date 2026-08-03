@@ -1,11 +1,13 @@
 import { useState } from "react";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, X } from "lucide-react";
 import { isDeepEqual } from "remeda";
 import { useDetection } from "@/context/DetectionContext";
 import { useSettings } from "@/context/SettingsContext";
 import {
-  DETECTION_MODELS,
+  DEFAULT_MODEL,
+  knownModels,
   MAX_SELECTED_MODELS,
+  removeStoredModel,
   resolveModels,
 } from "@/lib/detectionModels";
 import type { DetectionModel } from "@/lib/detectionModels";
@@ -18,8 +20,8 @@ type ModelScreenProps = {
   /** Returns to the settings panel, discarding the draft. */
   onClose: () => void;
   /**
-   * Registry to list. Defaults to what ships and is overridable so tests can
-   * drive a multi-model list without one being published.
+   * Registry to list. Defaults to the known models (the build's default plus
+   * stored additions); overridable so tests can drive a fixed list.
    */
   models?: readonly DetectionModel[];
   /**
@@ -43,11 +45,14 @@ type ModelScreenProps = {
  */
 export const ModelScreen = ({
   onClose,
-  models = DETECTION_MODELS,
+  models: modelsProp,
   reload = () => window.location.reload(),
 }: ModelScreenProps) => {
   const { modelIds, commitModelIds } = useSettings();
   const { activeModel } = useDetection();
+  const [models, setModels] = useState<readonly DetectionModel[]>(
+    () => modelsProp ?? knownModels(),
+  );
   // Seeded from the resolved selection rather than the raw stored ids, so a
   // stale id left by an older build shows as the model that would actually run
   // and Save is not offered for a difference nobody made.
@@ -61,6 +66,21 @@ export const ModelScreen = ({
   // storage would leave Save disabled while the picker showed a model the
   // detector is not running, with no way to make it true.
   const changed = !isDeepEqual([...draft], [activeModel.id]);
+
+  /** Re-read the list after a stored-model mutation. */
+  const refreshModels = () => {
+    setModels(modelsProp ?? knownModels());
+  };
+
+  const handleRemove = (id: string) => {
+    removeStoredModel(id);
+    // A drafted selection of the removed row has nothing to apply anymore;
+    // the default is the one row guaranteed to exist.
+    setDraft((previous) =>
+      previous.includes(id) ? [DEFAULT_MODEL.id] : previous,
+    );
+    refreshModels();
+  };
 
   const toggleModel = (id: string) => {
     setDraft((previous) => {
@@ -125,26 +145,38 @@ export const ModelScreen = ({
           {models.map((model) => {
             const selected = draft.includes(model.id);
             return (
-              <button
-                key={model.id}
-                type="button"
-                data-testid={`model-option-${model.id}`}
-                onClick={() => toggleModel(model.id)}
-                className={`flex min-h-20 flex-col gap-1 rounded-xl px-6 py-4 text-left transition-colors ${
-                  selected ? "bg-hud-amber text-surface" : "bg-white/10"
-                }`}
-              >
-                <span className="text-lg font-semibold tracking-[0.04em]">
-                  {model.slug}
-                </span>
-                <span
-                  className={`text-sm font-medium tracking-[0.06em] ${
-                    selected ? "text-surface/70" : "text-white/45"
+              <div key={model.id} className="flex items-stretch gap-2">
+                <button
+                  type="button"
+                  data-testid={`model-option-${model.id}`}
+                  onClick={() => toggleModel(model.id)}
+                  className={`flex min-h-20 flex-1 flex-col gap-1 rounded-xl px-6 py-4 text-left transition-colors ${
+                    selected ? "bg-hud-amber text-surface" : "bg-white/10"
                   }`}
                 >
-                  {model.revision}
-                </span>
-              </button>
+                  <span className="text-lg font-semibold tracking-[0.04em]">
+                    {model.slug}
+                  </span>
+                  <span
+                    className={`text-sm font-medium tracking-[0.06em] ${
+                      selected ? "text-surface/70" : "text-white/45"
+                    }`}
+                  >
+                    {model.revision}
+                  </span>
+                </button>
+                {model.id !== DEFAULT_MODEL.id && (
+                  <button
+                    type="button"
+                    data-testid={`model-remove-${model.id}`}
+                    aria-label={`Remove ${model.slug}`}
+                    onClick={() => handleRemove(model.id)}
+                    className="flex min-w-14 items-center justify-center rounded-xl border border-white/25 text-white/60"
+                  >
+                    <X className="h-5 w-5" strokeWidth={2} />
+                  </button>
+                )}
+              </div>
             );
           })}
         </div>

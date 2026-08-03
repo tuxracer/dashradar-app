@@ -3,7 +3,6 @@ import {
   addStoredModel,
   classesFromMetadata,
   DEFAULT_MODEL,
-  DETECTION_MODELS,
   isDetectionClass,
   isDetectionModel,
   knownModels,
@@ -151,16 +150,11 @@ describe("model URLs (existing fixtures)", () => {
   });
 });
 
-describe("the shipping registry", () => {
+describe("the shipping default", () => {
   it("never pins a mutable ref", () => {
-    for (const model of DETECTION_MODELS) {
-      expect(model.revision).not.toBe("main");
-    }
-  });
-
-  it("gives every model a unique id", () => {
-    const ids = DETECTION_MODELS.map((model) => model.id);
-    expect(new Set(ids).size).toBe(ids.length);
+    // The weights cache is CacheFirst keyed on URL, so a mutable ref would
+    // never see a released update while looking like it might.
+    expect(DEFAULT_MODEL.revision).not.toBe("main");
   });
 });
 
