@@ -1,6 +1,10 @@
 import type { AutoZoomLevel } from "@/lib/autoZoom";
 import type { Size } from "@/lib/detection";
-import { mapBoxToViewport, scanRegionBox } from "@/lib/detection";
+import {
+  mapBoxToViewport,
+  scanRegionBox,
+  CATEGORY_COLORS,
+} from "@/lib/detection";
 import type { Detection } from "@/types";
 
 /** Props for DetectionView. */
@@ -25,7 +29,9 @@ type DetectionViewProps = {
  * detector actually sees rather than against the meter's summary of it. Boxes
  * lag the video by up to a scan: they are drawn where the model saw them, on
  * footage that has moved on since, and there is no interpolation because a
- * box's real position is the only honest thing to show. The faint outline is
+ * box's real position is the only honest thing to show. Boxes are colored by
+ * category, so several classes on screen at once stay apart at a glance. The
+ * faint outline is
  * the region the model is shown at all (the centered square crop, narrowed by
  * the zoom); without it, a vehicle the crop never covered looks like a miss.
  * Geometry goes through mapBoxToViewport, so the feed underneath must be
@@ -54,21 +60,30 @@ export const DetectionView = ({
           height: Math.round(region.height),
         }}
       />
-      {detections.map((detection) => {
+      {detections.map((detection, index) => {
         const drawn = mapBoxToViewport(detection.box, frame, viewport);
+        const color = CATEGORY_COLORS[detection.category];
         return (
           <div
-            key={`${detection.label}:${detection.box.xmin}:${detection.box.ymin}`}
+            // The list is rebuilt whole on every scan and holds no state, so
+            // the index is a stable key here. A key built from the label and
+            // the box collides when two boxes of one class both clamp to a
+            // frame edge.
+            key={index}
             data-testid="detection-box"
-            className="absolute border-2 border-hud-amber"
+            className="absolute border-2"
             style={{
               left: Math.round(drawn.left),
               top: Math.round(drawn.top),
               width: Math.round(drawn.width),
               height: Math.round(drawn.height),
+              borderColor: color,
             }}
           >
-            <span className="absolute left-0 top-full whitespace-nowrap bg-surface/80 px-1 text-sm font-semibold tracking-[0.08em] text-hud-amber">
+            <span
+              className="absolute left-0 top-full whitespace-nowrap bg-surface/80 px-1 text-sm font-semibold tracking-[0.08em]"
+              style={{ color }}
+            >
               {detection.displayLabel} {Math.round(detection.score * 100)}%
             </span>
           </div>

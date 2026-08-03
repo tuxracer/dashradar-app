@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DetectionView } from "@/components/DetectionView";
 import type { Detection } from "@/types";
 import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
@@ -87,5 +87,46 @@ describe("DetectionView", () => {
     );
     expect(screen.queryByTestId("detection-box")).toBeNull();
     expect(screen.getByTestId("scan-region")).toBeInTheDocument();
+  });
+
+  it("draws two categories in different colors", () => {
+    render(
+      <DetectionView
+        detections={[
+          detection({ category: "vehicle" }),
+          detection({
+            category: "person",
+            box: { xmin: 0.1, ymin: 0.1, xmax: 0.2, ymax: 0.2 },
+          }),
+        ]}
+        frame={square}
+        viewport={square}
+        zoom={ZOOM_OFF}
+      />,
+    );
+    const [first, second] = screen.getAllByTestId("detection-box");
+    expect(first.style.borderColor).not.toBe("");
+    expect(first.style.borderColor).not.toBe(second.style.borderColor);
+  });
+
+  it("gives two boxes clamped to the same corner distinct keys", () => {
+    // Two boxes of one class both clamped to the top-left edge produced an
+    // identical key under `label:xmin:ymin`. React still renders both, so the
+    // only observable symptom is the duplicate-key warning.
+    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(
+      <DetectionView
+        detections={[
+          detection({ box: { xmin: 0, ymin: 0, xmax: 0.3, ymax: 0.3 } }),
+          detection({ box: { xmin: 0, ymin: 0, xmax: 0.5, ymax: 0.5 } }),
+        ]}
+        frame={square}
+        viewport={square}
+        zoom={ZOOM_OFF}
+      />,
+    );
+    expect(screen.getAllByTestId("detection-box")).toHaveLength(2);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });
