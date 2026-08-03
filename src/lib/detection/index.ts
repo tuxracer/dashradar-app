@@ -1,13 +1,10 @@
 import type { Detection, NormalizedBox } from "@/types";
 import { isRawDetection } from "@/types";
 import type { AutoZoomLevel } from "@/lib/autoZoom";
-import { ZOOM_OFF } from "@/workers/detection/consts";
+import type { DetectionClass } from "@/workers/detection/consts";
+import { MODEL_CLASSES, ZOOM_OFF } from "@/workers/detection/consts";
 import { centerCropRegion } from "@/workers/detection/inference";
-import {
-  CONFIDENCE_THRESHOLD,
-  NEAR_AREA_FRACTION,
-  ROAD_CLASSES,
-} from "./consts";
+import { CONFIDENCE_THRESHOLD, NEAR_AREA_FRACTION } from "./consts";
 
 export * from "./consts";
 
@@ -30,24 +27,36 @@ const boxArea = (box: NormalizedBox): number => {
   return Math.max(0, box.xmax - box.xmin) * Math.max(0, box.ymax - box.ymin);
 };
 
-/** Validate raw worker output and keep road-relevant, confident detections. */
+/**
+ * Validate raw worker output and enrich each confident detection with its
+ * class's display label and category.
+ *
+ * There is no allowlist. That made sense against a generic 80-class COCO model,
+ * where filtering to road-relevant classes was the point, but against a
+ * checkpoint trained in-house, discarding a class we deliberately trained is a
+ * bug. A label the table does not name is still kept, under the `unknown`
+ * category and its own name uppercased, so a detection can never disappear
+ * without a trace. That case needs the worker and the HUD to have diverged on a
+ * table they both read, so it should be unreachable.
+ */
 export const toRoadDetections = (
   raw: unknown,
   threshold: number = CONFIDENCE_THRESHOLD,
+  classes: readonly DetectionClass[] = MODEL_CLASSES,
 ): Detection[] => {
   if (!Array.isArray(raw)) {
     return [];
   }
   return raw.filter(isRawDetection).flatMap((candidate) => {
-    const roadClass = ROAD_CLASSES[candidate.label];
-    if (!roadClass || candidate.score < threshold) {
+    if (candidate.score < threshold) {
       return [];
     }
+    const known = classes.find((entry) => entry.label === candidate.label);
     return [
       {
         label: candidate.label,
-        displayLabel: roadClass.displayLabel,
-        category: roadClass.category,
+        displayLabel: known?.displayLabel ?? candidate.label.toUpperCase(),
+        category: known?.category ?? "unknown",
         score: candidate.score,
         box: candidate.box,
       },

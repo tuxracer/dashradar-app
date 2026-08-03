@@ -19,80 +19,92 @@ const box = (
 ): NormalizedBox => ({ xmin, ymin, xmax, ymax });
 
 const detection = (overrides: Partial<Detection> = {}): Detection => ({
-  label: "car",
-  displayLabel: "CAR",
+  label: "police",
+  displayLabel: "POLICE",
   category: "vehicle",
   score: 0.9,
   box: box(0.4, 0.5, 0.6, 0.8),
   ...overrides,
 });
 
+/** A two-class table, so these tests do not depend on what ships today. */
+const CLASSES = [
+  { label: "police", displayLabel: "POLICE", category: "vehicle" },
+  { label: "person", displayLabel: "PERSON", category: "person" },
+] as const;
+
 describe("toRoadDetections", () => {
-  it("keeps road classes above the confidence threshold", () => {
-    const result = toRoadDetections([
-      { label: "car", score: 0.92, box: box(0.1, 0.1, 0.3, 0.3) },
-    ]);
+  it("enriches a detection with its class's display label and category", () => {
+    const result = toRoadDetections(
+      [{ label: "person", score: 0.92, box: box(0.1, 0.1, 0.3, 0.3) }],
+      undefined,
+      CLASSES,
+    );
     expect(result).toHaveLength(1);
-    expect(result[0].displayLabel).toBe("CAR");
-    expect(result[0].category).toBe("vehicle");
+    expect(result[0].displayLabel).toBe("PERSON");
+    expect(result[0].category).toBe("person");
   });
 
-  it("drops non-road classes even with high scores", () => {
-    const result = toRoadDetections([
-      { label: "chair", score: 0.99, box: box(0.1, 0.1, 0.3, 0.3) },
-    ]);
-    expect(result).toHaveLength(0);
+  it("keeps a label the table does not name instead of dropping it", () => {
+    const result = toRoadDetections(
+      [{ label: "bicycle", score: 0.92, box: box(0.1, 0.1, 0.3, 0.3) }],
+      undefined,
+      CLASSES,
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0].category).toBe("unknown");
+    expect(result[0].displayLabel).toBe("BICYCLE");
   });
 
   it("drops low-confidence detections", () => {
-    const result = toRoadDetections([
-      { label: "car", score: 0.4, box: box(0.1, 0.1, 0.3, 0.3) },
-    ]);
+    const result = toRoadDetections(
+      [{ label: "police", score: 0.4, box: box(0.1, 0.1, 0.3, 0.3) }],
+      undefined,
+      CLASSES,
+    );
     expect(result).toHaveLength(0);
   });
 
   it("keeps a mid-confidence detection above the threshold", () => {
-    const result = toRoadDetections([
-      { label: "car", score: 0.6, box: box(0.1, 0.1, 0.3, 0.3) },
-    ]);
+    const result = toRoadDetections(
+      [{ label: "police", score: 0.6, box: box(0.1, 0.1, 0.3, 0.3) }],
+      undefined,
+      CLASSES,
+    );
     expect(result).toHaveLength(1);
-  });
-
-  it("maps traffic light to the SIGNAL display label", () => {
-    const result = toRoadDetections([
-      { label: "traffic light", score: 0.8, box: box(0.5, 0.1, 0.6, 0.3) },
-    ]);
-    expect(result[0].displayLabel).toBe("SIGNAL");
-    expect(result[0].category).toBe("signal");
   });
 
   it("ignores malformed entries and non-arrays", () => {
     expect(toRoadDetections("junk")).toEqual([]);
     expect(
-      toRoadDetections([{ label: "car", score: "high", box: {} }, 42]),
+      toRoadDetections([{ label: "police", score: "high", box: {} }, 42]),
     ).toEqual([]);
   });
 
-  it("keeps a detection below 0.5 when given a lower threshold", () => {
+  it("keeps a detection below the default threshold when given a lower one", () => {
     const result = toRoadDetections(
-      [{ label: "car", score: 0.3, box: box(0.1, 0.1, 0.3, 0.3) }],
+      [{ label: "police", score: 0.3, box: box(0.1, 0.1, 0.3, 0.3) }],
       0.2,
+      CLASSES,
     );
     expect(result).toHaveLength(1);
   });
 
   it("drops a detection below the explicit threshold", () => {
     const result = toRoadDetections(
-      [{ label: "car", score: 0.3, box: box(0.1, 0.1, 0.3, 0.3) }],
+      [{ label: "police", score: 0.3, box: box(0.1, 0.1, 0.3, 0.3) }],
       0.4,
+      CLASSES,
     );
     expect(result).toHaveLength(0);
   });
 
-  it("still filters at 0.5 with no threshold argument", () => {
-    const result = toRoadDetections([
-      { label: "car", score: 0.4, box: box(0.1, 0.1, 0.3, 0.3) },
-    ]);
+  it("filters at the default threshold with no threshold argument", () => {
+    const result = toRoadDetections(
+      [{ label: "police", score: 0.4, box: box(0.1, 0.1, 0.3, 0.3) }],
+      undefined,
+      CLASSES,
+    );
     expect(result).toHaveLength(0);
   });
 });

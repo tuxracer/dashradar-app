@@ -577,21 +577,22 @@ describe("DetectionProvider", () => {
         type: "detections",
         detections: [
           {
-            label: "car",
+            label: "police",
             score: 0.9,
             box: { xmin: 0.4, ymin: 0.5, xmax: 0.6, ymax: 0.8 },
           },
           {
-            label: "chair",
-            score: 0.99,
+            label: "police",
+            score: 0.2,
             box: { xmin: 0.1, ymin: 0.1, xmax: 0.2, ymax: 0.2 },
           },
         ],
         timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
       });
     });
-    // The road filter runs before publication, so the chair never reaches the
-    // overlay, and the frame geometry is the captured bitmap's own.
+    // The confidence filter runs before publication, so the low-score
+    // detection never reaches the overlay, and the frame geometry is the
+    // captured bitmap's own.
     expect(screen.getByTestId("scan-count").textContent).toBe("1");
     expect(screen.getByTestId("scan-width").textContent).toBe("1280");
     expect(screen.getByTestId("scan-zoom").textContent).toBe(String(ZOOM_OFF));
