@@ -78,3 +78,43 @@ export type LoadedModel = DetectionModel & {
   headWidth: number;
   classes: readonly DetectionClass[];
 };
+
+/** Parsed identity of a pasted Hugging Face URL, before any pinning. */
+export type ParsedModelUrl = {
+  owner: string;
+  slug: string;
+  /** Undefined when the URL names no revision (a bare repo page). */
+  revision?: string;
+  /** Repo-relative path to the .onnx file; undefined for a bare repo page. */
+  file?: string;
+};
+
+/**
+ * Why an add failed before the trial load: the pasted text is not a usable
+ * Hugging Face URL, the repo lookup failed (missing repo, network, rate
+ * limit), or the repo's file list settles the question of which file to load
+ * in the wrong way (none, or several).
+ */
+export type AddModelErrorCode =
+  | "INVALID_URL"
+  | "REPO_LOOKUP_FAILED"
+  | "NO_ONNX_FILE"
+  | "AMBIGUOUS_ONNX_FILE";
+
+/** Why a pasted Hugging Face URL could not be turned into a loadable model. */
+export class AddModelError extends Error {
+  readonly code: AddModelErrorCode;
+  /** Extra context for the UI, like the candidate files of an ambiguous repo. */
+  readonly detail?: string;
+
+  constructor(code: AddModelErrorCode, detail?: string) {
+    super(detail ? `${code}: ${detail}` : code);
+    this.name = "AddModelError";
+    this.code = code;
+    this.detail = detail;
+  }
+}
+
+/** Whether a runtime-unknown value is an AddModelError. */
+export const isAddModelError = (error: unknown): error is AddModelError =>
+  error instanceof AddModelError;

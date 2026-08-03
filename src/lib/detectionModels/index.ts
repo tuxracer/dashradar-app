@@ -1,7 +1,8 @@
+import { isPlainObject, isString } from "remeda";
 import type { OnnxMetadata } from "@/lib/onnxMetadata";
-import { DEFAULT_MODEL, STORED_MODELS_KEY } from "./consts";
-import { isDetectionModel } from "./types";
-import type { DetectionClass, DetectionModel } from "./types";
+import { DEFAULT_MODEL, HF_API_BASE, STORED_MODELS_KEY } from "./consts";
+import { AddModelError, isDetectionModel } from "./types";
+import type { DetectionClass, DetectionModel, ParsedModelUrl } from "./types";
 
 export * from "./consts";
 export * from "./types";
@@ -221,4 +222,126 @@ export const resolveModels = (
 ): readonly DetectionModel[] => {
   const selected = models.filter((model) => ids.includes(model.id));
   return selected.length > 0 ? selected : [models[0]];
+};
+
+/**
+ * Parse a pasted Hugging Face URL into its parts, or undefined for anything
+ * that is not one of the three accepted forms: a bare repo page, or a
+ * blob/resolve URL pointing at an .onnx file. Rejection here is local and
+ * free; nothing network-shaped happens until resolveModelFromUrl.
+ */
+export const parseModelUrl = (input: string): ParsedModelUrl | undefined => {
+  let url: URL;
+  try {
+    url = new URL(input.trim());
+  } catch {
+    return undefined;
+  }
+  if (url.hostname !== "huggingface.co") {
+    return undefined;
+  }
+  const segments = url.pathname
+    .split("/")
+    .filter((segment) => segment.length > 0)
+    .map(decodeURIComponent);
+  if (segments.length === 2) {
+    const [owner, slug] = segments;
+    return { owner, slug };
+  }
+  const [owner, slug, kind, revision, ...path] = segments;
+  if (
+    (kind !== "blob" && kind !== "resolve") ||
+    revision === undefined ||
+    path.length === 0
+  ) {
+    return undefined;
+  }
+  const file = path.join("/");
+  if (!file.endsWith(".onnx")) {
+    return undefined;
+  }
+  return { owner, slug, revision, file };
+};
+
+/** The two facts the HF revision endpoint answers with that matter here. */
+type HfRevisionInfo = { sha: string; onnxFiles: readonly string[] };
+
+/** Ask the HF API about one revision of a repo: its commit sha and onnx files. */
+const fetchRevisionInfo = async (
+  parsed: ParsedModelUrl,
+  fetcher: typeof fetch,
+): Promise<HfRevisionInfo> => {
+  const revision = encodeURIComponent(parsed.revision ?? "main");
+  const response = await fetcher(
+    `${HF_API_BASE}/${parsed.owner}/${parsed.slug}/revision/${revision}`,
+  );
+  if (!response.ok) {
+    throw new AddModelError("REPO_LOOKUP_FAILED");
+  }
+  const body: unknown = await response.json();
+  if (
+    !isPlainObject(body) ||
+    !isString(body.sha) ||
+    !Array.isArray(body.siblings)
+  ) {
+    throw new AddModelError("REPO_LOOKUP_FAILED");
+  }
+  const onnxFiles = body.siblings.flatMap((sibling: unknown) =>
+    isPlainObject(sibling) &&
+    isString(sibling.rfilename) &&
+    sibling.rfilename.endsWith(".onnx")
+      ? [sibling.rfilename]
+      : [],
+  );
+  return { sha: body.sha, onnxFiles };
+};
+
+/**
+ * Turn a pasted URL into a registrable entry: parsed, revision-pinned, and
+ * with exactly one .onnx file named. A `main` or missing revision is pinned to
+ * the commit sha because the weights cache is CacheFirst keyed on URL, so a
+ * mutable ref stored behind it would never update while looking like it might;
+ * an explicit tag is kept as pasted, the same way the default entry treats
+ * tags as immutable release names. The entry's id is its pinned weights URL.
+ * Throws AddModelError; performs no network request for a fully pinned file
+ * URL. `fetcher` is a seam for tests.
+ */
+export const resolveModelFromUrl = async (
+  input: string,
+  fetcher: typeof fetch = fetch,
+): Promise<DetectionModel> => {
+  const parsed = parseModelUrl(input);
+  if (!parsed) {
+    throw new AddModelError("INVALID_URL");
+  }
+  const pinnedRevision =
+    parsed.revision !== undefined && parsed.revision !== "main"
+      ? parsed.revision
+      : undefined;
+  if (pinnedRevision !== undefined && parsed.file !== undefined) {
+    return withUrlId(parsed.owner, parsed.slug, pinnedRevision, parsed.file);
+  }
+  const info = await fetchRevisionInfo(parsed, fetcher);
+  const revision = pinnedRevision ?? info.sha;
+  if (parsed.file !== undefined) {
+    return withUrlId(parsed.owner, parsed.slug, revision, parsed.file);
+  }
+  if (info.onnxFiles.length === 0) {
+    throw new AddModelError("NO_ONNX_FILE");
+  }
+  if (info.onnxFiles.length > 1) {
+    throw new AddModelError("AMBIGUOUS_ONNX_FILE", info.onnxFiles.join(", "));
+  }
+  return withUrlId(parsed.owner, parsed.slug, revision, info.onnxFiles[0]);
+};
+
+/** Assemble an entry whose id is its own pinned weights URL. */
+const withUrlId = (
+  owner: string,
+  slug: string,
+  revision: string,
+  file: string,
+): DetectionModel => {
+  const parts = { owner, slug, revision, file };
+  return { ...parts, id: modelWeightsUrl(parts) };
 };

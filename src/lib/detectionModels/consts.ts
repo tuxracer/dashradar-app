@@ -46,3 +46,6 @@ export const STORED_MODELS_KEY = "models";
  * own, since the worker protocol would have to carry more than one id.
  */
 export const MAX_SELECTED_MODELS = 1;
+
+/** Hugging Face model API root, answering revision metadata and file lists. */
+export const HF_API_BASE = "https://huggingface.co/api/models";

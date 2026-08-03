@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addStoredModel,
   classesFromMetadata,
@@ -9,7 +9,9 @@ import {
   loadStoredModels,
   modelRepoUrl,
   modelWeightsUrl,
+  parseModelUrl,
   removeStoredModel,
+  resolveModelFromUrl,
   resolveModels,
   STORED_MODELS_KEY,
 } from "@/lib/detectionModels";
@@ -297,5 +299,153 @@ describe("knownModels", () => {
     };
     addStoredModel(stored);
     expect(resolveModels(["url-id"])).toEqual([stored]);
+  });
+});
+
+describe("parseModelUrl", () => {
+  it("parses a resolve URL", () => {
+    expect(
+      parseModelUrl(
+        "https://huggingface.co/someone/some-repo/resolve/v2/onnx/model.onnx",
+      ),
+    ).toEqual({
+      owner: "someone",
+      slug: "some-repo",
+      revision: "v2",
+      file: "onnx/model.onnx",
+    });
+  });
+
+  it("parses a blob URL the same way", () => {
+    expect(
+      parseModelUrl(
+        "https://huggingface.co/someone/some-repo/blob/main/model.onnx",
+      ),
+    ).toEqual({
+      owner: "someone",
+      slug: "some-repo",
+      revision: "main",
+      file: "model.onnx",
+    });
+  });
+
+  it("parses a bare repo URL with no revision or file", () => {
+    expect(parseModelUrl("https://huggingface.co/someone/some-repo")).toEqual({
+      owner: "someone",
+      slug: "some-repo",
+    });
+    expect(parseModelUrl("https://huggingface.co/someone/some-repo/")).toEqual({
+      owner: "someone",
+      slug: "some-repo",
+    });
+  });
+
+  it("ignores a download query string", () => {
+    expect(
+      parseModelUrl(
+        "https://huggingface.co/someone/some-repo/resolve/main/model.onnx?download=true",
+      ),
+    ).toMatchObject({ file: "model.onnx" });
+  });
+
+  it("rejects other hosts, non-onnx files, and junk", () => {
+    expect(
+      parseModelUrl("https://example.com/someone/some-repo"),
+    ).toBeUndefined();
+    expect(
+      parseModelUrl(
+        "https://huggingface.co/someone/some-repo/resolve/main/model.bin",
+      ),
+    ).toBeUndefined();
+    expect(
+      parseModelUrl("https://huggingface.co/someone/some-repo/tree/main"),
+    ).toBeUndefined();
+    expect(parseModelUrl("not a url")).toBeUndefined();
+    expect(parseModelUrl("https://huggingface.co/someone")).toBeUndefined();
+  });
+});
+
+describe("resolveModelFromUrl", () => {
+  /** Fake fetch answering the HF revision endpoint with a canned body. */
+  const fakeApi = (body: unknown, ok = true) =>
+    vi.fn(async () => ({
+      ok,
+      json: async () => body,
+    })) as unknown as typeof fetch;
+
+  it("passes a fully pinned file URL through without any API call", async () => {
+    const fetcher = fakeApi({});
+    const model = await resolveModelFromUrl(
+      "https://huggingface.co/someone/some-repo/resolve/v2/onnx/model.onnx",
+      fetcher,
+    );
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(model).toEqual({
+      id: "https://huggingface.co/someone/some-repo/resolve/v2/onnx/model.onnx",
+      owner: "someone",
+      slug: "some-repo",
+      revision: "v2",
+      file: "onnx/model.onnx",
+    });
+  });
+
+  it("pins a main revision to the API's commit sha", async () => {
+    const fetcher = fakeApi({ sha: "abc123", siblings: [] });
+    const model = await resolveModelFromUrl(
+      "https://huggingface.co/someone/some-repo/blob/main/model.onnx",
+      fetcher,
+    );
+    expect(model.revision).toBe("abc123");
+    expect(model.id).toBe(
+      "https://huggingface.co/someone/some-repo/resolve/abc123/model.onnx",
+    );
+  });
+
+  it("discovers the single onnx file for a bare repo URL", async () => {
+    const fetcher = fakeApi({
+      sha: "abc123",
+      siblings: [{ rfilename: "README.md" }, { rfilename: "onnx/model.onnx" }],
+    });
+    const model = await resolveModelFromUrl(
+      "https://huggingface.co/someone/some-repo",
+      fetcher,
+    );
+    expect(model.file).toBe("onnx/model.onnx");
+    expect(model.revision).toBe("abc123");
+  });
+
+  it("rejects a repo with no onnx file", async () => {
+    const fetcher = fakeApi({ sha: "abc123", siblings: [] });
+    await expect(
+      resolveModelFromUrl("https://huggingface.co/someone/some-repo", fetcher),
+    ).rejects.toMatchObject({ code: "NO_ONNX_FILE" });
+  });
+
+  it("rejects an ambiguous repo, naming the candidates", async () => {
+    const fetcher = fakeApi({
+      sha: "abc123",
+      siblings: [{ rfilename: "a.onnx" }, { rfilename: "b.onnx" }],
+    });
+    await expect(
+      resolveModelFromUrl("https://huggingface.co/someone/some-repo", fetcher),
+    ).rejects.toMatchObject({
+      code: "AMBIGUOUS_ONNX_FILE",
+      detail: expect.stringContaining("a.onnx"),
+    });
+  });
+
+  it("rejects an API failure", async () => {
+    const fetcher = fakeApi({}, false);
+    await expect(
+      resolveModelFromUrl("https://huggingface.co/someone/some-repo", fetcher),
+    ).rejects.toMatchObject({ code: "REPO_LOOKUP_FAILED" });
+  });
+
+  it("rejects an unparseable URL before any request", async () => {
+    const fetcher = fakeApi({});
+    await expect(
+      resolveModelFromUrl("https://example.com/x/y", fetcher),
+    ).rejects.toMatchObject({ code: "INVALID_URL" });
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });
