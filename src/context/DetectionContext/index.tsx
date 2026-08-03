@@ -8,7 +8,6 @@ import {
   useState,
 } from "react";
 import type { ReactNode } from "react";
-import { track } from "@vercel/analytics";
 import { useSettings } from "@/context/SettingsContext";
 import { APP_RELEASE } from "@/lib/appRelease";
 import { waitForNextVideoFrame } from "@/lib/camera";
@@ -20,21 +19,10 @@ import {
 import type { HudModel } from "@/lib/detection";
 import { buildHudModel, enrichDetections } from "@/lib/detection";
 import { resolveModels } from "@/lib/detectionModels";
+import { createDetectionTelemetry } from "@/lib/detectionTelemetry";
 import { createDetectionTracker } from "@/lib/detectionTracker";
-import { isStandalone } from "@/lib/pwaInstall";
 import { contactDirection, signalFromScore } from "@/lib/radarSignal";
-import {
-  createScanClock,
-  SCAN_REPORT_MIN_MS,
-  toBucketedMinutes,
-} from "@/lib/scanClock";
 import { waitForServiceWorkerControl } from "@/lib/serviceWorker";
-import {
-  recordTimings,
-  takeLateTimingReport,
-  takeTimingReport,
-  toBucketedSeconds,
-} from "@/lib/timingHistory";
 import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 import type {
   BackendProbe,
@@ -43,7 +31,6 @@ import type {
 } from "@/workers/detection/types";
 import { isWorkerResponse } from "@/workers/detection/types";
 import {
-  ERROR_DETAIL_MAX_LENGTH,
   FRAME_RETRY_MS,
   INITIAL_DEBUG,
   MIN_FRAME_INTERVAL_MS,
@@ -107,6 +94,12 @@ export const DetectionProvider = ({
   // periodic worker recycle too, which builds a new session 15 minutes in and
   // would otherwise pick up whatever is stored by then.
   const [activeModel] = useState(() => resolveModels(modelIds)[0]);
+  // The analytics sink for this page load. Owns every once-per-load gate (the
+  // worker recycle re-fires load and ready events that must not re-count) and
+  // the scanning clock behind the timing and scan-session events. Lazy state
+  // rather than a ref so one instance spans the provider's life; creating it
+  // has no side effects, so a discarded StrictMode duplicate costs nothing.
+  const [telemetry] = useState(() => createDetectionTelemetry(activeModel));
   // Mirrors the detection-image setting for sendFrame (which asks the worker
   // for the top detection's cutout only while the contact card exists to show
   // it) and the detections handler. A ref rather than a dependency so the
@@ -209,20 +202,6 @@ export const DetectionProvider = ({
   // explicit rather than inferred from status. Set in spawnWorker and the
   // `ready`/error handlers.
   const workerLoadedRef = useRef(false);
-  // Guards the one-time ready analytics (model_ready) so a recycled worker's
-  // `ready` does not re-fire it, which would otherwise inflate the count every
-  // WORKER_RECYCLE_AFTER_MS of a scanning session.
-  const readyTrackedRef = useRef(false);
-  // Guards the one-time model_downloaded analytics. A page load downloads the
-  // weights at most once in practice (later loads read the runtime cache), but
-  // a device whose cache never sticks would otherwise re-download and re-fire
-  // the event on every periodic worker recycle.
-  const modelDownloadTrackedRef = useRef(false);
-  // Guards the one-time first_inference / first_round_trip analytics so only
-  // the first result of the page load is counted, not every scan (which would
-  // be one event every couple of seconds for the whole drive). One ref for
-  // both, since they describe the same first scan and always fire together.
-  const firstResultTrackedRef = useRef(false);
   const videoRef = useRef<HTMLVideoElement | undefined>(undefined);
   const runningRef = useRef(false);
   // Mirrors `status` so event handlers can branch on the current status
@@ -252,21 +231,12 @@ export const DetectionProvider = ({
   // settings effect knows to restart it (and only it) when the panel closes.
   const pausedBySettingsRef = useRef(false);
   const fileProgressRef = useRef(new Map<string, ModelProgress>());
-  // Whether the model loaded from the runtime cache, captured from
-  // `model-load-start` so the `model_ready` analytics event fired on `ready`
-  // can report cache hits against fresh downloads.
-  const modelFromCacheRef = useRef(false);
   // Running total of detections results received this page load, incremented
   // in the "detections" handler body (never a setState updater, which
   // StrictMode double-invokes). The heartbeat effect below reads this against
   // a baseline captured when it starts, so framesProcessed in the sentinel
   // record counts only frames from the current running span.
   const framesTotalRef = useRef(0);
-  // How long the pump has actually spent scanning this page load, which is not
-  // page time: it excludes the settings panel and a hidden page. Read by the
-  // late timing report (drift under sustained load is what the thermal budget
-  // turns on) and drained by the `scan_session` event below.
-  const scanClockRef = useRef(createScanClock());
   // Capture duration of the most recently posted frame and the timestamp it was
   // posted, paired with the next detections result for the debug snapshot.
   const lastCaptureMsRef = useRef(0);
@@ -417,22 +387,11 @@ export const DetectionProvider = ({
       switch (message.type) {
         case "model-load-start": {
           setDownloadingModel(!message.fromCache);
-          modelFromCacheRef.current = message.fromCache;
+          telemetry.modelLoadStart(message.fromCache);
           break;
         }
         case "model-downloaded": {
-          // Which model actually reached this device, and how long the bytes
-          // took to arrive. The revision is the only thing that says which
-          // weights a session ran, so a bad rollout is visible in analytics
-          // without waiting for it to surface as an error.
-          if (!modelDownloadTrackedRef.current) {
-            modelDownloadTrackedRef.current = true;
-            track("model_downloaded", {
-              model: activeModel.slug,
-              revision: activeModel.revision,
-              seconds: Math.round(message.durationMs / 1_000),
-            });
-          }
+          telemetry.modelDownloaded(message.durationMs);
           break;
         }
         case "model-progress": {
@@ -457,18 +416,7 @@ export const DetectionProvider = ({
           // Mark the worker loaded before priming the pump below, so the
           // sendFrame() call in the running branch is not itself bailed.
           workerLoadedRef.current = true;
-          // Report how the weights loaded. With no backend there is no other
-          // view into how often the runtime cache is actually hit, which is
-          // the difference between a first-visit download and an instant
-          // start. Emitted from the message handler body, not a setState
-          // updater, so StrictMode's double-invoke of updaters can't
-          // double-count it. Gated to the first ready of the page load: a
-          // periodic worker recycle produces a fresh `ready` every
-          // WORKER_RECYCLE_AFTER_MS, which must not re-fire the event.
-          if (!readyTrackedRef.current) {
-            readyTrackedRef.current = true;
-            track("model_ready", { fromCache: modelFromCacheRef.current });
-          }
+          telemetry.modelReady();
           if (runningRef.current) {
             statusRef.current = "running";
             setStatus("running");
@@ -551,55 +499,7 @@ export const DetectionProvider = ({
             pacingDelayMs: debugRef.current.pacingDelayMs,
             pacingRule: debugRef.current.pacingRule,
           };
-          // The session actually got scanning: the intro was dismissed, camera
-          // permission was granted, the stream started, the model loaded, and a
-          // frame made it through inference. Every earlier gate has its own
-          // drop-off, so this is the one event that says all of them were
-          // cleared. The pair carries this first scan's inference time and
-          // round trip on the same half-second grid the timing events use,
-          // which are the cold numbers those medians never see: the first scan
-          // pays the session compile and a cold GPU. Once per page load only,
-          // since a per-frame event would fire every couple of seconds for the
-          // length of a drive. Emitted from the handler body, not a setState
-          // updater, which StrictMode double-invokes.
-          if (!firstResultTrackedRef.current) {
-            firstResultTrackedRef.current = true;
-            track("first_inference", {
-              seconds: toBucketedSeconds(inferenceMs),
-            });
-            track("first_round_trip", {
-              seconds: toBucketedSeconds(roundTripMs),
-            });
-          }
-          // Roll the same two numbers into the sessionStorage window, so a
-          // drive's recent pacing can be read back off the device afterwards
-          // without the debug overlay having been open at the time. Once the
-          // window first fills, report its medians to analytics: five scans in
-          // is past the first-run costs (session compile, a cold GPU) and is
-          // early enough that even a short session reaches it, so the
-          // fleet-wide numbers cover every drive. takeTimingReport is the
-          // once-per-session guard, so this stays quiet for the rest of the
-          // drive no matter how long it scans.
-          const timings = recordTimings({ roundTripMs, inferenceMs });
-          const report = takeTimingReport(timings);
-          if (report) {
-            track("timing_round_trip", { seconds: report.roundTrip });
-            track("timing_inference", { seconds: report.inference });
-          }
-          // The same window again, a quarter hour of scanning later. The early
-          // report is by construction the coldest reading of the drive, so on
-          // its own it cannot show the one thing the pacing floor and rest
-          // ratio exist to hold back: a phone clamped to a windshield in the
-          // sun throttling as it heats. Reading the two side by side is the
-          // fleet-wide view of that drift. Also once per session.
-          const lateReport = takeLateTimingReport(
-            timings,
-            scanClockRef.current.elapsedMs(),
-          );
-          if (lateReport) {
-            track("timing_round_trip_late", { seconds: lateReport.roundTrip });
-            track("timing_inference_late", { seconds: lateReport.inference });
-          }
+          telemetry.result({ inferenceMs, roundTripMs });
           // Recycle the worker once it has been running long enough, at this
           // result boundary where nothing is in flight (inFlightRef was just
           // decremented to 0), so no frame is lost. Terminating and recreating
@@ -629,15 +529,7 @@ export const DetectionProvider = ({
           break;
         }
         case "worker-error": {
-          // The cause rides along only for codes that carry one (the GPUDevice
-          // lost reason today), truncated because a platform string is not
-          // something to hand an analytics property unbounded.
-          track("error", {
-            code: message.code,
-            ...(message.detail && {
-              detail: message.detail.slice(0, ERROR_DETAIL_MAX_LENGTH),
-            }),
-          });
+          telemetry.error(message.code, message.detail);
           setError(message.code);
           statusRef.current = "error";
           setStatus("error");
@@ -654,7 +546,7 @@ export const DetectionProvider = ({
     };
 
     const handleError = () => {
-      track("error", { code: "WORKER_CRASHED" });
+      telemetry.error("WORKER_CRASHED");
       setError("WORKER_CRASHED");
       statusRef.current = "error";
       setStatus("error");
@@ -706,6 +598,7 @@ export const DetectionProvider = ({
     replaceContact,
     schedulePacedFrame,
     sendFrame,
+    telemetry,
   ]);
 
   const start = useCallback(
@@ -750,48 +643,29 @@ export const DetectionProvider = ({
     }
   }, []);
 
-  // Bracket the pump's running window on the scan clock. Keyed on [status]
-  // alone, which is exactly the window: stop() takes "running" back to "ready"
-  // for every pause the app has (settings open, page hidden, feed swap), so
-  // none of that dead time is counted as drive time.
+  // Bracket the pump's running window on the telemetry scanning clock. Keyed
+  // on [status] alone, which is exactly the window: stop() takes "running"
+  // back to "ready" for every pause the app has (settings open, page hidden),
+  // so none of that dead time is counted as drive time.
   useEffect(() => {
     if (status !== "running") {
       return;
     }
-    const clock = scanClockRef.current;
-    clock.start();
+    telemetry.scanningStarted();
     return () => {
-      clock.stop();
+      telemetry.scanningStopped();
     };
-  }, [status]);
+  }, [status, telemetry]);
 
-  // Report how long this drive actually scanned, when it goes away. Nothing
-  // else answers whether a session survives a drive or dies minutes in, which
-  // for a detector meant to run for hours on a dash mount is the question, and
-  // it is the only measure of how much the fleet actually scans. Both
-  // listeners are the same report, because neither
-  // alone covers the ways a drive ends: `pagehide` catches a navigation or
-  // reload, and a page going hidden catches the far more common one, the phone
-  // backgrounded or locked at the end of a trip. Draining the clock is what
-  // keeps them from double-counting, and what makes an interrupted drive
-  // report each of its stretches once instead of losing everything after the
-  // interruption. An OS kill mid-scan fires neither, by design: that session
-  // is the crash sentinel's to report, and this event counting only endings
-  // the page survived is what keeps the two readings separable.
+  // Report how long this drive actually scanned, when it goes away. Both
+  // listeners fire the same report, because neither alone covers the ways a
+  // drive ends: `pagehide` catches a navigation or reload, and a page going
+  // hidden catches the far more common one, the phone backgrounded or locked
+  // at the end of a trip. The telemetry sink drains its clock per report, so
+  // the two never double-count one drive.
   useEffect(() => {
     const reportScanSession = () => {
-      const scannedMs =
-        scanClockRef.current.takeUnreportedMs(SCAN_REPORT_MIN_MS);
-      if (scannedMs === 0) {
-        return;
-      }
-      track("scan_session", {
-        minutes: toBucketedMinutes(scannedMs),
-        // Whether the drive ran from the installed PWA or a browser tab. The
-        // one-shot `pwa_installed` event counts installs, never use, so this
-        // is the only read on which of the two the app is actually used from.
-        standalone: isStandalone(),
-      });
+      telemetry.reportScanSession();
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
@@ -804,7 +678,7 @@ export const DetectionProvider = ({
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("pagehide", reportScanSession);
     };
-  }, []);
+  }, [telemetry]);
 
   // Pause the pump while the page is hidden (app switched away, screen off).
   // rAF loops throttle on their own, but the pump is driven by worker results,
