@@ -49,6 +49,20 @@ describe("isWorkerRequest", () => {
     vi.unstubAllGlobals();
   });
 
+  it("accepts a load with no model id, which means the shipping model", () => {
+    expect(isWorkerRequest({ type: "load" })).toBe(true);
+  });
+
+  it("accepts a load naming a model", () => {
+    expect(isWorkerRequest({ type: "load", modelId: "las-vegas-metro" })).toBe(
+      true,
+    );
+  });
+
+  it("rejects a load whose model id is not a string", () => {
+    expect(isWorkerRequest({ type: "load", modelId: 3 })).toBe(false);
+  });
+
   it("accepts detect with and without the includeFrame flag", () => {
     vi.stubGlobal("ImageBitmap", FakeImageBitmap);
     const frame = new FakeImageBitmap();

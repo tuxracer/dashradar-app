@@ -7,11 +7,16 @@ import { env, InferenceSession, Tensor } from "onnxruntime-web/webgpu";
 import { isWebKitUa } from "@/lib/browserEngine";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 import {
+  DETECTION_MODELS,
+  modelWeightsUrl,
+  resolveModels,
+} from "@/lib/detectionModels";
+import type { DetectionModel } from "@/lib/detectionModels";
+import {
   CROP_MAX_EDGE,
   DEV_MODEL_CACHE_NAME,
   FRAME_JPEG_QUALITY,
   INPUT_SIZE,
-  MODEL_URL,
   WASM_THREAD_CAP,
   WEBGPU_GRAPH_CAPTURE,
   ZOOM_OFF,
@@ -67,7 +72,16 @@ type ModelIo = {
   capture?: CaptureIo;
   /** Why the graph-capture attempt fell back to a plain session, if it did. */
   captureError?: string;
+  /** The registry entry this session was built from: its URL and class table. */
+  detectionModel: DetectionModel;
 };
+
+/**
+ * Everything resolved from the session graph, before the registry entry it was
+ * built from is attached. The session-building helpers work in this shape so
+ * only createModel has to know which model it is loading.
+ */
+type SessionIo = Omit<ModelIo, "detectionModel">;
 
 let model: ModelIo | undefined;
 
@@ -228,24 +242,32 @@ const fetchModel = async (url: string): Promise<Uint8Array<ArrayBuffer>> => {
  * Store freshly downloaded weights in CacheStorage on the dev server, where
  * no service worker exists to cache them, so later dev launches load the
  * model locally through matchCachedModel instead of re-downloading tens of
- * megabytes per reload. The entry is keyed on the revision-pinned URL, so a
- * MODEL_REVISION bump misses and re-downloads; entries for URLs no longer in
- * MODEL_URL (old revisions) are evicted so stale weights don't accumulate.
+ * megabytes per reload.
+ *
+ * The entry is keyed on the revision-pinned URL, so a revision bump misses and
+ * re-downloads. Entries that no registered model names any more (old revisions)
+ * are evicted, while a model a developer is switching between keeps its
+ * weights, so flipping back does not pay for the download twice.
+ *
  * No-op in production builds and best-effort in dev: any failure just means a
  * re-download on the next launch.
  */
-const cacheModelInDev = async (weights: Uint8Array<ArrayBuffer>) => {
+const cacheModelInDev = async (
+  url: string,
+  weights: Uint8Array<ArrayBuffer>,
+) => {
   if (!import.meta.env.DEV || !("caches" in self)) {
     return;
   }
   try {
     const cache = await caches.open(DEV_MODEL_CACHE_NAME);
+    const current = new Set(DETECTION_MODELS.map(modelWeightsUrl));
     for (const request of await cache.keys()) {
-      if (request.url !== MODEL_URL) {
+      if (!current.has(request.url)) {
         await cache.delete(request);
       }
     }
-    await cache.put(MODEL_URL, new Response(weights));
+    await cache.put(url, new Response(weights));
   } catch {
     // Dev convenience only; never let a cache failure affect the load.
   }
@@ -254,7 +276,7 @@ const cacheModelInDev = async (weights: Uint8Array<ArrayBuffer>) => {
 /** Resolve the graph's input/output names from a freshly created session. */
 const resolveIoNames = (
   session: InferenceSession,
-): Pick<ModelIo, "inputName" | "detsName" | "labelsName"> => {
+): Pick<SessionIo, "inputName" | "detsName" | "labelsName"> => {
   const inputName = session.inputNames[0];
   const detsName = session.outputNames.includes(EXPECTED_DETS_NAME)
     ? EXPECTED_DETS_NAME
@@ -289,7 +311,7 @@ const resolveIoNames = (
 const createCaptureModel = async (
   weights: Uint8Array,
   onSessionCreated: () => void,
-): Promise<ModelIo> => {
+): Promise<SessionIo> => {
   const session = await InferenceSession.create(weights, {
     executionProviders: ["webgpu"],
     enableGraphCapture: true,
@@ -351,7 +373,7 @@ const createCaptureModel = async (
  * outcome the first real frame would have produced, only sooner and named more
  * accurately than a per-frame INFERENCE_FAILED.
  */
-const warmUpSession = async (io: ModelIo): Promise<void> => {
+const warmUpSession = async (io: SessionIo): Promise<void> => {
   const input = new Tensor("float32", inputBuffer, [
     1,
     3,
@@ -380,8 +402,11 @@ const warmUpSession = async (io: ModelIo): Promise<void> => {
  * visit loads once, while every worker recycle after it reads from cache and so
  * takes the releasing path.
  */
-const createModel = async (): Promise<ModelIo> => {
-  const cached = await matchCachedModel(MODEL_URL);
+const createModel = async (
+  detectionModel: DetectionModel,
+): Promise<ModelIo> => {
+  const url = modelWeightsUrl(detectionModel);
+  const cached = await matchCachedModel(url);
   // Tell the context whether this is a network download so it can show the
   // download-progress screen only when we are actually downloading, not when
   // reading already-cached weights (a cache read still takes a beat to compile
@@ -392,7 +417,7 @@ const createModel = async (): Promise<ModelIo> => {
     weights = new Uint8Array(await cached.arrayBuffer());
   } else {
     const downloadStartedAt = performance.now();
-    weights = await fetchModel(MODEL_URL);
+    weights = await fetchModel(url);
     // Report the completed download before the session is built from it, so a
     // device that downloads the weights but then fails session creation still
     // counts as a successful download.
@@ -400,7 +425,7 @@ const createModel = async (): Promise<ModelIo> => {
       type: "model-downloaded",
       durationMs: performance.now() - downloadStartedAt,
     });
-    await cacheModelInDev(weights);
+    await cacheModelInDev(url, weights);
   }
   const releaseWeights = () => {
     if (cached) {
@@ -413,7 +438,10 @@ const createModel = async (): Promise<ModelIo> => {
   // its instability risk (see the WEBGPU_GRAPH_CAPTURE doc in consts.ts).
   if (WEBGPU_GRAPH_CAPTURE && !isWebKitUa(navigator.userAgent)) {
     try {
-      return await createCaptureModel(weights, releaseWeights);
+      return {
+        ...(await createCaptureModel(weights, releaseWeights)),
+        detectionModel,
+      };
     } catch (error) {
       // Capture may not work on this device or export; fall back to a plain
       // WebGPU session and record why for the debug overlay.
@@ -424,7 +452,7 @@ const createModel = async (): Promise<ModelIo> => {
     // The capture attempt released the buffer after building its session, so
     // re-read the entry it came from. Guaranteed present: this same cache was
     // matched moments ago, and the miss branch never releases.
-    const entry = await matchCachedModel(MODEL_URL);
+    const entry = await matchCachedModel(url);
     if (!entry) {
       throw new DetectionError("MODEL_LOAD_FAILED");
     }
@@ -434,9 +462,9 @@ const createModel = async (): Promise<ModelIo> => {
     executionProviders: ["webgpu"],
   });
   releaseWeights();
-  const io = { session, ...resolveIoNames(session), captureError };
+  const io: SessionIo = { session, ...resolveIoNames(session), captureError };
   await warmUpSession(io);
-  return io;
+  return { ...io, detectionModel };
 };
 
 /**
@@ -475,13 +503,18 @@ const watchDeviceLoss = async () => {
   }
 };
 
-const loadModel = async () => {
+const loadModel = async (modelId: string | undefined) => {
   if (!(await gpuProbe())) {
     reportUnsupported();
     return;
   }
+  // An omitted or unrecognized id resolves to the shipping model, so a stale
+  // selection loads something rather than failing.
+  const [detectionModel] = resolveModels(
+    modelId === undefined ? [] : [modelId],
+  );
   try {
-    model = await createModel();
+    model = await createModel(detectionModel);
     // Watch only once the session exists, so the device being resolved is the
     // one the backend actually runs on.
     void watchDeviceLoss();
@@ -623,7 +656,12 @@ const detect = async ({
     const inferenceMs = performance.now() - inferenceStart;
 
     const decodeStart = performance.now();
-    const decoded = decodeDetections(dets, labels, confidenceThreshold);
+    const decoded = decodeDetections(
+      dets,
+      labels,
+      confidenceThreshold,
+      model.detectionModel.classes,
+    );
     // The model's boxes describe the cropped square; remap them to full-frame
     // coordinates so every consumer downstream (cropRect below, direction and
     // HUD shaping in the context) keeps one space.
@@ -731,7 +769,7 @@ self.onmessage = (event: MessageEvent<unknown>) => {
     return;
   }
   if (request.type === "load") {
-    void loadModel();
+    void loadModel(request.modelId);
     return;
   }
   void detect({

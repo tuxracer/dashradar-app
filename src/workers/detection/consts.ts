@@ -30,11 +30,7 @@
  * away with WEBGPU_UNSUPPORTED rather than handed a detector that looks like
  * it works and does not.
  */
-import {
-  DEFAULT_MODEL,
-  modelRepoUrl,
-  modelWeightsUrl,
-} from "@/lib/detectionModels";
+import { DEFAULT_MODEL, modelRepoUrl } from "@/lib/detectionModels";
 
 /**
  * Hugging Face revision tag the shipping model's URLs pin to. Read from the
@@ -49,16 +45,14 @@ export const MODEL_SLUG = DEFAULT_MODEL.slug;
 /** Hugging Face model page the shipping model's weights come from. */
 export const MODEL_REPO_URL = modelRepoUrl(DEFAULT_MODEL);
 
-/** Revision-pinned URL of the shipping model's weights. */
-export const MODEL_URL = modelWeightsUrl(DEFAULT_MODEL);
-
 /**
  * CacheStorage cache the worker writes downloaded weights into on the dev
  * server, where no service worker (and so no Workbox "model-cache" route)
- * exists to cache them. Entries are keyed on the revision-pinned model URL,
- * so an unchanged MODEL_REVISION loads locally across dev launches while a
- * bump misses and re-downloads. Unused in production builds, where the
- * service worker owns model caching.
+ * exists to cache them. It holds one entry per registered model, each keyed on
+ * that model's own revision-pinned URL, so a model whose revision has not moved
+ * loads locally across dev launches while a bumped one misses and
+ * re-downloads, and switching between two models does not evict either.
+ * Unused in production builds, where the service worker owns model caching.
  */
 export const DEV_MODEL_CACHE_NAME = "model-cache-dev";
 

@@ -69,7 +69,14 @@ export type WorkerRequest =
    * for `load`.
    */
   | { type: "probe" }
-  | { type: "load" }
+  /**
+   * Build a session for the model this names, downloading its weights if they
+   * are not already cached. The id comes from the developer model selection and
+   * is resolved against the registry in src/lib/detectionModels; an omitted or
+   * unrecognized id loads the shipping model. It travels on the message because
+   * a worker has no localStorage of its own to read the selection from.
+   */
+  | { type: "load"; modelId?: string }
   | {
       type: "detect";
       frame: ImageBitmap;
@@ -113,8 +120,11 @@ export const isWorkerRequest = (value: unknown): value is WorkerRequest => {
   if (!isPlainObject(value)) {
     return false;
   }
-  if (value.type === "probe" || value.type === "load") {
+  if (value.type === "probe") {
     return true;
+  }
+  if (value.type === "load") {
+    return value.modelId === undefined || isString(value.modelId);
   }
   return (
     value.type === "detect" &&
