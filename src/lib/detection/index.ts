@@ -18,13 +18,18 @@ export type PixelBox = {
 };
 
 /**
- * One frame's detections shaped for the HUD. `nearest` and `top` answer
- * different questions and are often different detections: `nearest` is the
- * physically closest object, which is what the contact card crops, what the
- * direction readout points at, and what auto zoom steps on; `top` is the one
- * the model is most sure of, which is what the dial's percentage and the class
- * it names both come from, so the two always describe the same detection.
- * `others` is everything except `nearest`, so `top` usually appears there too.
+ * One frame's detections shaped for the HUD. `top` is the highest-scoring
+ * detection: the dial's percentage and the class name beside it both read it.
+ *
+ * The contact card and its direction readout are not drawn from this model at
+ * all; they come from the worker's own score-based pick (`topDetectionIndex`
+ * in `src/workers/detection/index.ts`), which is why the card, the
+ * percentage, and the class name always describe the same detection. Auto
+ * zoom reads the whole tracked set (`stepAutoZoom({ detections: tracked,
+ * ... })`), not any single detection here.
+ *
+ * `nearest` (the largest box by area), `near`, and `others` have no consumer
+ * today: nothing outside `buildHudModel` reads them.
  */
 export type HudModel = {
   nearest: Detection | undefined;
@@ -49,7 +54,7 @@ const boxArea = (box: NormalizedBox): number => {
  * without a trace. That case needs the worker and the HUD to have diverged on a
  * table they both read, so it should be unreachable.
  */
-export const toRoadDetections = (
+export const enrichDetections = (
   raw: unknown,
   threshold: number = CONFIDENCE_THRESHOLD,
   classes: readonly DetectionClass[] = MODEL_CLASSES,

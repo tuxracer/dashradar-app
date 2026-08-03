@@ -17,8 +17,9 @@ export const DECAY_PER_SEC = 0.15;
 
 /**
  * Scores at or below this fraction map to zero signal. Matches the detection
- * confidence threshold: anything the road filter keeps is already above it, so
- * the ladder maps its full range onto the meaningful [floor, 1] score band.
+ * confidence threshold: anything the confidence filter keeps is already above
+ * it, so the ladder maps its full range onto the meaningful [floor, 1] score
+ * band.
  */
 export const SIGNAL_FLOOR = 0.5;
 

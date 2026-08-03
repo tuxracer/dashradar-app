@@ -49,7 +49,7 @@ export type RoadCategory =
   | "animal"
   | "unknown";
 
-/** A road-relevant detection enriched for HUD display. */
+/** A detection enriched with its class's display label and category for HUD display. */
 export type Detection = {
   label: string;
   displayLabel: string;

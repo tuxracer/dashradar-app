@@ -22,7 +22,7 @@ export * from "./consts";
 
 /** Props for RadarDetectorScreen. */
 type RadarDetectorScreenProps = {
-  /** Current raw police-signal strength in [0, 1] (see hudSignal). */
+  /** Current raw signal strength in [0, 1] (see hudSignal). */
   confidence: number;
   /** Whether the beeping audio indicator is on (the radarAudio setting). */
   audioEnabled: boolean;
@@ -77,43 +77,43 @@ const ALERT_RING_COLOR = `rgb(${SIGNAL_HIGH_COLOR.join(", ")})`;
  * radar grid with a slow scanning sweep inside the dial. As the signal climbs
  * the ticks, readout, and a central glow flood green through amber to red; at
  * ALERT_THRESHOLD a red ring around the dial pulses. The status word under the
- * readout names the class being detected (the detectedLabel prop, which is the
- * HUD's highest-scoring detection), falling back to ALERT for a signal with no
- * class to name. It keeps naming that class for as long as the meter registers
- * a contact at all, which means through the dial's decay tail rather than only
- * while the detection is live: the prop clears the instant the raw signal does,
- * so the loop holds the last label instead of reading the prop directly. Below
- * CONTACT_THRESHOLD the word reverts to SCANNING, and the held label is dropped
- * once the meter reaches zero so the next detection starts clean.
- * A requestAnimationFrame
- * loop applies peak-hold + decay to the incoming confidence and writes the lit
- * segments, colors, readout, status word, and glow straight to the DOM, off
- * React's render path. Before detection has started (the initializing prop)
- * the instrument still renders in full, but the status word reads INITIALIZING
- * and the sweep stays parked, so the first paint is the dial rather than a
- * blank screen and the sweep's motion signals that scanning is actually live.
- * The rAF loop runs off
- * React's render path, so smoothness does not depend on the detector's frame
- * rate. The loop parks itself once the meter is quiescent (no raw signal and a
- * fully decayed peak) and any prop change wakes it, so the idle scanning state,
- * which dominates a session, schedules no animation frames and does no
- * per-frame work; while awake it also skips DOM writes whenever the values
- * behind them have not changed. The camera feed and bounding boxes are
- * intentionally not shown in this mode. The same loop feeds a radar-detector beeper (see lib/radarAudio) the
- * raw signal rather than the peak-held level, so the beeps cut off as soon as
- * the detection is gone while the dial decays smoothly behind them; the beeper
+ * readout names the class being detected (the detectedLabel prop, which is
+ * the HUD's highest-scoring detection), falling back to ALERT for a signal
+ * with no class to name. It keeps naming that class for as long as the meter
+ * registers a contact at all, which means through the dial's decay tail
+ * rather than only while the detection is live: the prop clears the instant
+ * the raw signal does, so the loop holds the last label instead of reading
+ * the prop directly. Below CONTACT_THRESHOLD the word reverts to SCANNING,
+ * and the held label is dropped once the meter reaches zero so the next
+ * detection starts clean. A requestAnimationFrame loop applies peak-hold +
+ * decay to the incoming confidence and writes the lit segments, colors,
+ * readout, status word, and glow straight to the DOM, off React's render
+ * path. Before detection has started (the initializing prop) the instrument
+ * still renders in full, but the status word reads INITIALIZING and the
+ * sweep stays parked, so the first paint is the dial rather than a blank
+ * screen and the sweep's motion signals that scanning is actually live. The
+ * rAF loop runs off React's render path, so smoothness does not depend on
+ * the detector's frame rate. The loop parks itself once the meter is
+ * quiescent (no raw signal and a fully decayed peak) and any prop change
+ * wakes it, so the idle scanning state, which dominates a session, schedules
+ * no animation frames and does no per-frame work; while awake it also skips
+ * DOM writes whenever the values behind them have not changed. The camera
+ * feed and bounding boxes are intentionally not shown in this mode. The same
+ * loop feeds a radar-detector beeper (see lib/radarAudio) the raw signal
+ * rather than the peak-held level, so the beeps cut off as soon as the
+ * detection is gone while the dial decays smoothly behind them; the beeper
  * exists only while this mode is mounted, and audioEnabled false feeds it
  * silence instead. The contact card's direction row follows the same rule as
  * the audio: it renders only while the raw signal is nonzero (a live
  * detection), so a stale heading is never shown while the card lingers
  * through the dial's decay tail. The two card developer options each add one
- * thing to the card: with frameThumbnails on it stays lit on every scan, since
- * a detection-free scan arrives as a bare frame preview (a thumbnail of the
- * whole frame) that should always reflect what the last scan saw; with
- * saveFrames on it shows a SAVE button that downloads the model's square input
- * frame as a JPEG for collecting training data. A third developer option swaps
- * the dial's percentage for the raw model score (the rawConfidence prop) while
- * the ladder keeps tracking the peak-held signal.
+ * thing to the card: with frameThumbnails on it stays lit on every scan,
+ * since a detection-free scan arrives as a bare frame preview (a thumbnail
+ * of the whole frame) that should always reflect what the last scan saw;
+ * with saveFrames on it shows a SAVE button that downloads the model's
+ * square input frame as a JPEG for collecting training data. A third
+ * developer option swaps the dial's percentage for the raw model score (the
+ * rawConfidence prop) while the ladder keeps tracking the peak-held signal.
  */
 export const RadarDetectorScreen = ({
   confidence,

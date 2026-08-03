@@ -3152,12 +3152,12 @@ describe("DetectionProvider auto save", () => {
     expect(downloadBlob).not.toHaveBeenCalled();
   });
 
-  it("never downloads a crop whose detection fails the road filter", () => {
+  it("never downloads a crop whose detection fails the confidence filter", () => {
     const worker = renderWithAutoSave(true);
     act(() => {
       worker.emit({
         type: "detections",
-        // Below the 0.5 confidence floor, so toRoadDetections drops it and the
+        // Below the 0.5 confidence floor, so enrichDetections drops it and the
         // crop is discarded rather than shown or saved.
         detections: [policeDetection(0.2)],
         timing,

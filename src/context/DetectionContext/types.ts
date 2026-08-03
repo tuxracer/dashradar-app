@@ -84,9 +84,9 @@ export type DebugSnapshot = {
   decodeMs: number;
   /** Wall time from posting a frame to receiving its result (context-side). */
   roundTripMs: number;
-  /** Detections decoded by the worker before the road-class/threshold filter. */
+  /** Detections decoded by the worker before class enrichment and the confidence filter. */
   rawCount: number;
-  /** Detections remaining after toRoadDetections filtering. */
+  /** Detections remaining after enrichDetections. */
   filteredCount: number;
   /** Detections after the coasting tracker (what the HUD renders). */
   shownCount: number;
@@ -117,12 +117,12 @@ export type DebugSnapshot = {
 
 /**
  * One completed scan as the detection view draws it: the frame's own
- * detections after the road-class and confidence filter, before the coasting
- * tracker, so a box on screen means the model saw it on that frame rather than
- * that a track is being held through a miss. The frame geometry and crop
- * factor travel with them, because the boxes must be mapped against the frame
- * that produced them and not against whatever the video element measures a
- * second later, after a rotation or an auto-zoom step.
+ * detections after class enrichment and the confidence filter, before the
+ * coasting tracker, so a box on screen means the model saw it on that frame
+ * rather than that a track is being held through a miss. The frame geometry
+ * and crop factor travel with them, because the boxes must be mapped against
+ * the frame that produced them and not against whatever the video element
+ * measures a second later, after a rotation or an auto-zoom step.
  */
 export type ScanResult = {
   detections: Detection[];

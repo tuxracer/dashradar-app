@@ -21,7 +21,7 @@ import {
 import { initialAutoZoomState, stepAutoZoom } from "@/lib/autoZoom";
 import type { AutoZoomLevel, AutoZoomState } from "@/lib/autoZoom";
 import type { HudModel } from "@/lib/detection";
-import { buildHudModel, toRoadDetections } from "@/lib/detection";
+import { buildHudModel, enrichDetections } from "@/lib/detection";
 import { createDetectionTracker } from "@/lib/detectionTracker";
 import { isStandalone } from "@/lib/pwaInstall";
 import { contactDirection, signalFromScore } from "@/lib/radarSignal";
@@ -666,11 +666,11 @@ export const DetectionProvider = ({
         case "detections": {
           inFlightRef.current = Math.max(0, inFlightRef.current - 1);
           framesTotalRef.current += 1;
-          const roadDetections = toRoadDetections(
+          const detections = enrichDetections(
             message.detections,
             confidenceThresholdRef.current,
           );
-          const tracked = trackerRef.current?.update(roadDetections) ?? [];
+          const tracked = trackerRef.current?.update(detections) ?? [];
           setHud(buildHudModel(tracked));
           const frameInfo = lastFrameInfoRef.current;
           // Publish this scan's own detections for the detection view. Raw
@@ -681,7 +681,7 @@ export const DetectionProvider = ({
           // boxes needs the frame's geometry.
           if (frameInfo) {
             setScan({
-              detections: roadDetections,
+              detections,
               frame: { width: frameInfo.width, height: frameInfo.height },
               zoom: frameInfo.zoom,
               at: performance.now(),
@@ -701,11 +701,12 @@ export const DetectionProvider = ({
             });
             setAutoZoom(autoZoomRef.current);
           }
-          // Pair the crop with its detection. Validation mirrors the road
-          // filter; a crop whose detection is dropped is discarded so the
-          // card never shows evidence the HUD pipeline would not count.
+          // Pair the crop with its detection. Validation mirrors the
+          // enrichment and confidence filter above; a crop whose detection is
+          // dropped is discarded so the card never shows evidence the HUD
+          // pipeline would not count.
           if (message.crop) {
-            const [cropDetection] = toRoadDetections(
+            const [cropDetection] = enrichDetections(
               [message.detections[message.crop.detectionIndex]],
               confidenceThresholdRef.current,
             );
@@ -731,9 +732,9 @@ export const DetectionProvider = ({
               // without reaching for the card's SAVE button. Deliberately
               // inside this branch: only scans that actually detected
               // something download, never the detection-free scans (which is
-              // most of them), and never a crop whose detection failed the road
-              // filter above. Sits in the handler body rather than a setState
-              // updater, which StrictMode double-invokes.
+              // most of them), and never a crop whose detection was dropped by
+              // the filter above. Sits in the handler body rather than a
+              // setState updater, which StrictMode double-invokes.
               if (autoSaveRef.current && message.frame) {
                 const filename = frameFilename(new Date());
                 downloadBlob(message.frame, filename);
@@ -774,7 +775,7 @@ export const DetectionProvider = ({
           // the debounce alive. Kept out of the setHud updater above:
           // StrictMode double-invokes updaters, which would double-count the
           // sighting.
-          if (roadDetections.length > 0) {
+          if (detections.length > 0) {
             const now = performance.now();
             if (now - lastPoliceSeenAtRef.current >= POLICE_EVENT_DEBOUNCE_MS) {
               track("police_detected");
@@ -797,7 +798,7 @@ export const DetectionProvider = ({
               roundTripMs - (preprocessMs + inferenceMs + decodeMs),
             ),
             rawCount: message.detections.length,
-            filteredCount: roadDetections.length,
+            filteredCount: detections.length,
             shownCount: tracked.length,
             brightFraction: message.brightFraction ?? 0,
             zoom: frameInfo?.zoom ?? ZOOM_OFF,

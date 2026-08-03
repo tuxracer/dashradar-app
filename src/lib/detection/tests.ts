@@ -5,7 +5,7 @@ import {
   coverScale,
   mapBoxToViewport,
   scanRegionBox,
-  toRoadDetections,
+  enrichDetections,
   NEAR_AREA_FRACTION,
 } from "@/lib/detection";
 import { ZOOM_2X } from "@/workers/detection/consts";
@@ -33,9 +33,9 @@ const CLASSES = [
   { label: "person", displayLabel: "PERSON", category: "person" },
 ] as const;
 
-describe("toRoadDetections", () => {
+describe("enrichDetections", () => {
   it("enriches a detection with its class's display label and category", () => {
-    const result = toRoadDetections(
+    const result = enrichDetections(
       [{ label: "person", score: 0.92, box: box(0.1, 0.1, 0.3, 0.3) }],
       undefined,
       CLASSES,
@@ -46,7 +46,7 @@ describe("toRoadDetections", () => {
   });
 
   it("keeps a label the table does not name instead of dropping it", () => {
-    const result = toRoadDetections(
+    const result = enrichDetections(
       [{ label: "bicycle", score: 0.92, box: box(0.1, 0.1, 0.3, 0.3) }],
       undefined,
       CLASSES,
@@ -57,7 +57,7 @@ describe("toRoadDetections", () => {
   });
 
   it("drops low-confidence detections", () => {
-    const result = toRoadDetections(
+    const result = enrichDetections(
       [{ label: "police", score: 0.4, box: box(0.1, 0.1, 0.3, 0.3) }],
       undefined,
       CLASSES,
@@ -66,7 +66,7 @@ describe("toRoadDetections", () => {
   });
 
   it("keeps a mid-confidence detection above the threshold", () => {
-    const result = toRoadDetections(
+    const result = enrichDetections(
       [{ label: "police", score: 0.6, box: box(0.1, 0.1, 0.3, 0.3) }],
       undefined,
       CLASSES,
@@ -75,14 +75,14 @@ describe("toRoadDetections", () => {
   });
 
   it("ignores malformed entries and non-arrays", () => {
-    expect(toRoadDetections("junk")).toEqual([]);
+    expect(enrichDetections("junk")).toEqual([]);
     expect(
-      toRoadDetections([{ label: "police", score: "high", box: {} }, 42]),
+      enrichDetections([{ label: "police", score: "high", box: {} }, 42]),
     ).toEqual([]);
   });
 
   it("keeps a detection below the default threshold when given a lower one", () => {
-    const result = toRoadDetections(
+    const result = enrichDetections(
       [{ label: "police", score: 0.3, box: box(0.1, 0.1, 0.3, 0.3) }],
       0.2,
       CLASSES,
@@ -91,7 +91,7 @@ describe("toRoadDetections", () => {
   });
 
   it("drops a detection below the explicit threshold", () => {
-    const result = toRoadDetections(
+    const result = enrichDetections(
       [{ label: "police", score: 0.3, box: box(0.1, 0.1, 0.3, 0.3) }],
       0.4,
       CLASSES,
@@ -100,7 +100,7 @@ describe("toRoadDetections", () => {
   });
 
   it("filters at the default threshold with no threshold argument", () => {
-    const result = toRoadDetections(
+    const result = enrichDetections(
       [{ label: "police", score: 0.4, box: box(0.1, 0.1, 0.3, 0.3) }],
       undefined,
       CLASSES,

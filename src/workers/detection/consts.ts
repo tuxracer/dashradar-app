@@ -157,9 +157,14 @@ export type DetectionClass = {
  * color, so the two can never disagree about what the model detects.
  *
  * The table ships with the checkpoint. A new checkpoint that detects more
- * classes changes this array and MODEL_REVISION together, and nothing else.
- * Its length also has to match the model's head width, which decodeDetections
- * checks on every frame.
+ * classes changes this array and MODEL_REVISION together. That is not the
+ * whole cost of adding a class, though: hudSignal takes the max score across
+ * every detection regardless of class, so a new class immediately drives the
+ * dial, the alert ring, and the beeper, with no per-class alert concept to
+ * opt it out. MIN_BOX_EDGE_PX is also a single global threshold, tuned for
+ * vehicles; a class with a smaller on-screen footprint may need a different
+ * one. This array's length also has to match the model's head width, which
+ * decodeDetections checks on every frame.
  */
 export const MODEL_CLASSES: readonly DetectionClass[] = [
   { label: "police", displayLabel: "POLICE", category: "vehicle" },

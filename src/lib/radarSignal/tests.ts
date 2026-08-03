@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildHudModel } from "@/lib/detection";
 import type { HudModel } from "@/lib/detection";
 import type { Detection } from "@/types";
 import {
@@ -23,26 +24,15 @@ const det = (score: number): Detection => ({
 });
 
 /**
- * A HudModel with `top` derived the way buildHudModel derives it, so these
- * tests exercise the real relationship between the fields rather than a
- * hand-set one.
+ * A HudModel built through the real buildHudModel, so these tests exercise
+ * the actual selection rule rather than a hand-set one. The det() factory
+ * below gives every detection the same box, so `nearest` still lands on the
+ * first argument and the existing tests keep their meaning.
  */
 const hudOf = (
   nearest: Detection | undefined,
   others: Detection[] = [],
-): HudModel => {
-  const all = nearest ? [nearest, ...others] : others;
-  return {
-    nearest,
-    top: all.reduce<Detection | undefined>(
-      (best, candidate) =>
-        best === undefined || candidate.score > best.score ? candidate : best,
-      undefined,
-    ),
-    near: false,
-    others,
-  };
-};
+): HudModel => buildHudModel(nearest ? [nearest, ...others] : others);
 
 const rgbChannels = (color: string): [number, number, number] => {
   const match = color.match(/rgb\((\d+), (\d+), (\d+)\)/);
