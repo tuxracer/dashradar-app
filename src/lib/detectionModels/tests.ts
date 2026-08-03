@@ -16,10 +16,11 @@ const FAKE_MODELS: readonly DetectionModel[] = [
   { id: "beta", slug: "beta-repo", revision: "v2", file: "beta.onnx" },
 ];
 
-/** Metadata carrying whatever `names` map a case needs. */
-const named = (names: unknown): OnnxMetadata => ({
-  props: { names: JSON.stringify(names) },
-});
+/** Metadata carrying a `names` map already stringified into its dialect. */
+const stamped = (names: string): OnnxMetadata => ({ props: { names } });
+
+/** Metadata carrying a `names` map in the JSON dialect. */
+const named = (names: unknown): OnnxMetadata => stamped(JSON.stringify(names));
 
 describe("resolveModels", () => {
   it("falls back to the first model when no id is known", () => {
@@ -88,6 +89,31 @@ describe("classesFromMetadata", () => {
     ]);
   });
 
+  it("reads the Python dialect an Ultralytics export writes", () => {
+    // `str()` on the dict, so bare integer keys and single quotes. This is what
+    // the great majority of ONNX detectors in the wild carry, and it is not JSON.
+    const classes = classesFromMetadata(
+      stamped("{0: 'person', 1: 'bicycle', 2: 'car'}"),
+      3,
+    );
+
+    expect(classes).toEqual([
+      { index: 1, label: "bicycle", displayLabel: "BICYCLE" },
+      { index: 2, label: "car", displayLabel: "CAR" },
+    ]);
+  });
+
+  it("reads a label whose apostrophe forced the other quote style", () => {
+    // Python emits {0: "don't"} rather than escaping, so both quote styles turn
+    // up in one map.
+    const classes = classesFromMetadata(
+      stamped("{1: \"don't walk\", 2: 'walk'}"),
+      3,
+    );
+
+    expect(classes.map((entry) => entry.label)).toEqual(["don't walk", "walk"]);
+  });
+
   it("opens separators up for the display label", () => {
     const [entry] = classesFromMetadata(named({ 1: "fire_truck" }), 2);
 
@@ -114,9 +140,13 @@ describe("classesFromMetadata", () => {
   it("falls back the same way for a names map it cannot read", () => {
     const cases: (OnnxMetadata | undefined)[] = [
       { props: {} },
-      { props: { names: "not json" } },
+      { props: { names: "not a map at all" } },
       { props: { names: "[1, 2]" } },
-      named({ 1: 7 }),
+      // A map, but not of index to label: a class table cannot be either of
+      // these, so reading them as one would invent classes.
+      stamped("{1: 7}"),
+      stamped("{'police': 1}"),
+      stamped("{1: 'police'"),
       named({ 1: "" }),
     ];
 

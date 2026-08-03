@@ -1,4 +1,3 @@
-import { isString } from "remeda";
 import type { OnnxMetadata } from "@/lib/onnxMetadata";
 import { DETECTION_MODELS, MODEL_OWNER } from "./consts";
 import type { DetectionClass, DetectionModel } from "./types";
@@ -29,8 +28,8 @@ const displayLabelOf = (label: string): string =>
 
 /**
  * The classes a loaded checkpoint names, read from the `names` map its export
- * stamps into the file: a JSON object of logit index to label, the only
- * machine-readable record of what a slot means. Indices outside the head the
+ * stamps into the file: logit index to label, the only machine-readable record
+ * of what a slot means. Indices outside the head the
  * session reported are dropped, as is slot 0, the background slot every RF-DETR
  * head reserves and no decode reads.
  *
@@ -63,30 +62,98 @@ export const classesFromMetadata = (
 };
 
 /**
- * The `names` entry as index/label pairs, or nothing at all. It is a JSON
- * string inside a string map, so every part of it is untrusted: not present,
- * not JSON, not an object, or an entry whose key is not a number or whose value
- * is not a string all mean the file named nothing usable.
+ * The `names` entry as index/label pairs, or nothing at all.
+ *
+ * `names` is the ecosystem's convention for the one thing an ONNX file has no
+ * standard field for, and it comes in two dialects. Ultralytics stringifies the
+ * dict with Python's own `str()`, giving `{0: 'person', 1: 'bicycle'}`: bare
+ * integer keys and single quotes, which is a Python literal and not JSON. A
+ * `json.dumps` export gives `{"1": "police"}` instead. Both name the same thing
+ * and a reader that takes only one of them silently reads half the models it
+ * meets, so this parses the shape rather than either dialect.
+ *
+ * The shape is narrow on purpose: a flat map of integer to label is all a class
+ * table can be, so anything else in there means the value is not a names map and
+ * the file named nothing usable.
  */
 const parseNames = (
   metadata: OnnxMetadata | undefined,
 ): readonly (readonly [number, string])[] => {
-  const raw = metadata?.props.names;
-  if (raw === undefined) {
+  const raw = metadata?.props.names?.trim();
+  if (raw === undefined || !raw.startsWith("{") || !raw.endsWith("}")) {
     return [];
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return [];
+  const entries: (readonly [number, string])[] = [];
+  let at = 1;
+  const end = raw.length - 1;
+  const skipSpace = () => {
+    while (at < end && /\s/.test(raw[at])) {
+      at += 1;
+    }
+  };
+  /** Read a quoted string in either quote style, or undefined if there is none. */
+  const readQuoted = (): string | undefined => {
+    const quote = raw[at];
+    if (quote !== "'" && quote !== '"') {
+      return undefined;
+    }
+    at += 1;
+    let value = "";
+    while (at < end) {
+      const char = raw[at];
+      if (char === "\\") {
+        value += raw[at + 1] ?? "";
+        at += 2;
+        continue;
+      }
+      at += 1;
+      if (char === quote) {
+        return value;
+      }
+      value += char;
+    }
+    return undefined;
+  };
+  for (;;) {
+    skipSpace();
+    if (at >= end) {
+      return entries;
+    }
+    // The key: bare digits in the Python dialect, quoted in the JSON one.
+    const digits = /^\d+/.exec(raw.slice(at));
+    let index: number;
+    if (digits) {
+      index = Number(digits[0]);
+      at += digits[0].length;
+    } else {
+      const quoted = readQuoted();
+      if (quoted === undefined || !/^\d+$/.test(quoted)) {
+        return [];
+      }
+      index = Number(quoted);
+    }
+    skipSpace();
+    if (raw[at] !== ":") {
+      return [];
+    }
+    at += 1;
+    skipSpace();
+    const label = readQuoted();
+    if (label === undefined) {
+      return [];
+    }
+    if (label.length > 0) {
+      entries.push([index, label] as const);
+    }
+    skipSpace();
+    if (at >= end) {
+      return entries;
+    }
+    if (raw[at] !== ",") {
+      return [];
+    }
+    at += 1;
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    return [];
-  }
-  return Object.entries(parsed).flatMap(([key, value]) =>
-    isString(value) && value.length > 0 ? [[Number(key), value] as const] : [],
-  );
 };
 
 /**
