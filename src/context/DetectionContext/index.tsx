@@ -17,11 +17,10 @@ import {
   writeHeartbeat,
 } from "@/lib/crashSentinel";
 import type { HudModel } from "@/lib/detection";
-import { buildHudModel, enrichDetections } from "@/lib/detection";
 import { resolveModels } from "@/lib/detectionModels";
 import { createDetectionTelemetry } from "@/lib/detectionTelemetry";
 import { createDetectionTracker } from "@/lib/detectionTracker";
-import { contactDirection, signalFromScore } from "@/lib/radarSignal";
+import { processDetectionResult } from "@/lib/processDetectionResult";
 import { waitForServiceWorkerControl } from "@/lib/serviceWorker";
 import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 import type {
@@ -430,12 +429,16 @@ export const DetectionProvider = ({
         case "detections": {
           inFlightRef.current = Math.max(0, inFlightRef.current - 1);
           framesTotalRef.current += 1;
-          const detections = enrichDetections(
-            message.detections,
-            confidenceThresholdRef.current,
-          );
-          const tracked = trackerRef.current?.update(detections) ?? [];
-          setHud(buildHudModel(tracked));
+          const result = processDetectionResult({
+            detections: message.detections,
+            crop: message.crop,
+            confidenceThreshold: confidenceThresholdRef.current,
+            updateTracks: (detections) =>
+              trackerRef.current?.update(detections) ?? [],
+            includeContact: detectionImageRef.current,
+            at: performance.now(),
+          });
+          setHud(result.hud);
           const frameInfo = lastFrameInfoRef.current;
           // Publish this scan's own detections for the detection view. Raw
           // per-frame output, not the coasted `tracked` set, since the view
@@ -445,36 +448,16 @@ export const DetectionProvider = ({
           // boxes needs the frame's geometry.
           if (frameInfo) {
             setScan({
-              detections,
+              detections: result.detections,
               frame: { width: frameInfo.width, height: frameInfo.height },
               zoom: frameInfo.zoom,
               at: performance.now(),
             });
           }
-          // Pair the crop with its detection. Validation mirrors the
-          // enrichment and confidence filter above; a crop whose detection is
-          // dropped is discarded so the card never shows evidence the HUD
-          // pipeline would not count.
-          if (message.crop) {
-            const [cropDetection] = enrichDetections(
-              [message.detections[message.crop.detectionIndex]],
-              confidenceThresholdRef.current,
-            );
-            // The gate covers a crop that was already in flight when the
-            // detection image was turned off.
-            if (cropDetection && detectionImageRef.current) {
-              replaceContact({
-                image: message.crop.image,
-                score: cropDetection.score,
-                signal: signalFromScore(cropDetection.score),
-                box: cropDetection.box,
-                direction: contactDirection(cropDetection.box),
-                at: performance.now(),
-              });
-            } else {
-              message.crop.image.close();
-            }
+          if (result.contact) {
+            replaceContact(result.contact);
           }
+          result.discardedCrop?.close();
           const { preprocessMs, inferenceMs, decodeMs } = message.timing;
           const roundTripMs = performance.now() - postTimeRef.current;
           debugRef.current = {
@@ -491,8 +474,8 @@ export const DetectionProvider = ({
               roundTripMs - (preprocessMs + inferenceMs + decodeMs),
             ),
             rawCount: message.detections.length,
-            filteredCount: detections.length,
-            shownCount: tracked.length,
+            filteredCount: result.detections.length,
+            shownCount: result.tracked.length,
             zoom: frameInfo?.zoom ?? ZOOM_OFF,
             // Carried forward for one line; schedulePacedFrame below writes
             // this frame's actual pacing decision.

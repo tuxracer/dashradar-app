@@ -1,7 +1,7 @@
 import type { HudModel, Size } from "@/lib/detection";
 import type { DetectionModel } from "@/lib/detectionModels";
-import type { ContactDirection } from "@/lib/radarSignal";
-import type { Detection, NormalizedBox } from "@/types";
+import type { Contact } from "@/lib/processDetectionResult";
+import type { Detection } from "@/types";
 import type {
   BackendProbe,
   DetectionErrorCode,
@@ -13,25 +13,7 @@ export type DetectionStatus = "loading-model" | "ready" | "running" | "error";
 
 export type ModelProgress = { loadedBytes: number; totalBytes: number };
 
-/**
- * Latest detection cutout the radar detector mode renders on its contact
- * card.
- */
-export type Contact = {
-  /** The card image: a cutout of the detection. */
-  image: ImageBitmap;
-  /** Raw model score of the cropped detection. */
-  score: number;
-  /** Score remapped onto the meter's signal band (signalFromScore); the same
-   * semantic as the dial readout so the two can never disagree. */
-  signal: number;
-  /** Cropped detection's box. */
-  box: NormalizedBox;
-  /** Cropped detection's heading. */
-  direction: ContactDirection;
-  /** performance.now() when the result carrying this image arrived. */
-  at: number;
-};
+export type { Contact } from "@/lib/processDetectionResult";
 
 /**
  * Which pacing rule set the delay before the next capture: the absolute
