@@ -1,0 +1,82 @@
+import { ZOOM_OFF } from "@/workers/detection/consts";
+import type { DebugSnapshot, DetectionSnapshot } from "./types";
+
+/** Retry delay when the video element has no frame data yet. */
+export const FRAME_RETRY_MS = 100;
+
+/**
+ * Minimum interval between frame captures: detection runs at most once per
+ * second. Without a floor the pump sends the next frame the instant a
+ * result returns, so detection runs at whatever rate the device manages: fast
+ * WebGPU phones end up running inference back-to-back, pegging the GPU
+ * continuously and thermal-throttling a dash-mounted phone (or draining the
+ * battery hard enough to shut down). A once-per-second sweep is enough
+ * for spotting police vehicles ahead, and the coasting tracker plus motion
+ * stabilization keep the HUD steady between results; anything faster mostly
+ * spends battery and heat. Devices whose adaptive rest (see PACING_REST_RATIO
+ * below) already spaces captures wider than this are unaffected.
+ */
+export const MIN_FRAME_INTERVAL_MS = 1_000;
+
+/**
+ * Fraction of a result's round-trip time the pump idles before starting the
+ * next capture. Resting a full round trip puts captures 2x the round trip
+ * apart, so the GPU is idle at least half the time. The absolute floor above
+ * only paces devices whose round trip is under half of it; a device slower
+ * than that would otherwise run the GPU back-to-back with little idle, the
+ * worst case for heat and battery on a dash-mounted phone, and sustained
+ * thermal throttling then makes inference slower still. A round trip that
+ * grows because the phone is already throttling therefore buys back more
+ * cool-down time on its own, trading a lower detection rate (which was
+ * already low on such devices) for the phone staying alive for the drive.
+ */
+export const PACING_REST_RATIO = 1;
+
+/** Zeroed debug snapshot shown before the first detection result arrives. */
+export const INITIAL_DEBUG: DebugSnapshot = {
+  captureMs: 0,
+  preprocessMs: 0,
+  inferenceMs: 0,
+  decodeMs: 0,
+  roundTripMs: 0,
+  rawCount: 0,
+  filteredCount: 0,
+  shownCount: 0,
+  overheadMs: 0,
+  pacingDelayMs: 0,
+  pacingRule: "floor",
+  zoom: ZOOM_OFF,
+};
+
+/**
+ * How long to wait for the service worker to control the page before starting
+ * the worker's model download anyway. On a first visit the model fetch would
+ * otherwise race ahead of Workbox taking control and bypass its runtime cache;
+ * this bounds that wait so startup never stalls if control never arrives.
+ */
+export const SW_CONTROL_TIMEOUT_MS = 3_000;
+
+/**
+ * How long a detection worker may run before it is recycled (terminated and
+ * recreated) at the next result boundary. onnxruntime-web and the browser GPU
+ * stacks accumulate native memory over thousands of runs that JS cannot observe
+ * or free: ORT arenas, GPU buffer pools, and the WASM heap all grow invisibly.
+ * Recreating the worker resets all of that, turning unbounded growth into
+ * bounded growth. iOS kills the whole page near a hard memory cap, so this is
+ * the primary crash mitigation for the long scanning sessions this app is built
+ * for (hours on a dash-mounted phone). The weights are cached, so a recycle
+ * re-loads from CacheStorage without a network download or visible loading UI.
+ */
+export const WORKER_RECYCLE_AFTER_MS = 900_000;
+
+/** Published state before the worker reports anything. */
+export const INITIAL_SNAPSHOT: DetectionSnapshot = {
+  status: "loading-model",
+  backendProbe: undefined,
+  downloadingModel: false,
+  modelProgress: { loadedBytes: 0, totalBytes: 0 },
+  hud: undefined,
+  scan: undefined,
+  error: undefined,
+  contact: undefined,
+};
