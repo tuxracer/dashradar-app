@@ -24,7 +24,7 @@ export const CONFIDENCE_LEVELS = [
  * options master switch is off: nothing extra on the glass (no debug overlay,
  * no zoom or round-trip pill, no camera preview, no detection view), no
  * per-frame JPEG encode, no downloads, the thermal pacing floor in place, the
- * auto zoom (the production scanning behavior), the production confidence
+ * full 1x scan, the production confidence
  * floor, the percentage readout, and the shipping detection model. The floor is
  * CONFIDENCE_THRESHOLD itself rather than a copy of its value, so the state
  * every driver runs in cannot quietly disagree with the one the detector
@@ -38,7 +38,7 @@ export const DEVELOPER_OPTIONS_OFF: DeveloperOptions = {
   saveFrames: false,
   autoSaveFrames: false,
   throttleInference: true,
-  zoomMode: "auto",
+  zoomMode: "1x",
   confidenceThreshold: CONFIDENCE_THRESHOLD,
   modelIds: [DEFAULT_MODEL.id],
   zoomIndicator: false,

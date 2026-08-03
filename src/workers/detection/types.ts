@@ -5,6 +5,7 @@ import { isOnnxMetadata } from "@/lib/onnxMetadata";
 import type { OnnxMetadata } from "@/lib/onnxMetadata";
 import type { RawDetection } from "@/types";
 import { isRawDetection } from "@/types";
+import type { ZOOM_2X, ZOOM_OFF } from "./consts";
 
 /**
  * WEBGPU_UNSUPPORTED is raised by the GPU probe, before any weights are
@@ -311,6 +312,12 @@ export type WorkerResponse =
        */
       detail?: string;
     };
+
+/**
+ * Crop factor a detect request scans at: the full centered square (ZOOM_OFF)
+ * or the half-side 2x crop (ZOOM_2X).
+ */
+export type ZoomLevel = typeof ZOOM_OFF | typeof ZOOM_2X;
 
 export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
   if (!isPlainObject(value)) {

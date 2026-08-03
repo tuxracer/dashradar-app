@@ -3,15 +3,12 @@ import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 import { CONFIDENCE_LEVELS } from "./consts";
 
 /**
- * Crop-factor modes the zoom setting offers. "1x" scans the full
- * centered square, "2x" always scans the half-side crop, and "auto" lets the
- * detection loop pick per scan: alternating between the two while nothing is
- * detected, then locking or zooming based on where the detection sits (see
- * src/lib/autoZoom).
+ * Crop-factor modes the zoom setting offers. "1x" scans the full centered
+ * square, "2x" scans the half-side crop.
  */
-export type ZoomMode = "1x" | "2x" | "auto";
+export type ZoomMode = "1x" | "2x";
 
-const ZOOM_MODES: readonly ZoomMode[] = ["1x", "2x", "auto"];
+const ZOOM_MODES: readonly ZoomMode[] = ["1x", "2x"];
 
 /** Validates a persisted or otherwise untrusted value as a ZoomMode. */
 export const isZoomMode = (value: unknown): value is ZoomMode => {
@@ -91,15 +88,12 @@ export type Settings = {
   /**
    * Crop factor the worker scans at. "2x" halves the centered square fed to
    * the model, so the same 512x512 input covers half the field of view and
-   * distant vehicles occupy twice the linear size in the input grid; "auto"
-   * alternates between 1x and 2x while nothing is detected and locks or zooms
-   * per scan once something is (src/lib/autoZoom). A digital crop rather than
-   * the camera's own zoom, because native zoom is unavailable on iOS Safari
-   * and uses device-defined units on Chrome Android; cropping ourselves is the
-   * only way one setting means the same thing on both. Defaults to "auto",
-   * the production scanning behavior; the developer row exists to override it
-   * with a fixed 1x or 2x for testing, and that override only takes effect
-   * while developerOptions is on.
+   * distant vehicles occupy twice the linear size in the input grid. A digital
+   * crop rather than the camera's own zoom, because native zoom is unavailable
+   * on iOS Safari and uses device-defined units on Chrome Android; cropping
+   * ourselves is the only way one setting means the same thing on both. A
+   * developer option: it only takes effect while developerOptions is on, and a
+   * normal drive always scans the full 1x square.
    */
   zoomMode: ZoomMode;
   /**
@@ -123,10 +117,9 @@ export type Settings = {
   confidenceThreshold: number;
   /**
    * When true, an amber pill on the status bar line shows the crop factor the
-   * detector is scanning at, including the auto mode's live level and lock
-   * state. A developer option, so it only takes effect while developerOptions
-   * is on, and off until asked for there: it is the on-glass counterpart of the
-   * debug overlay's zoom row.
+   * detector is scanning at. A developer option, so it only takes effect
+   * while developerOptions is on, and off until asked for there: it is the
+   * on-glass counterpart of the debug overlay's zoom row.
    */
   zoomIndicator: boolean;
   /**
@@ -228,7 +221,7 @@ export type SettingsContextValue = {
   throttleInference: boolean;
   toggleThrottleInference: () => void;
   zoomMode: ZoomMode;
-  /** Sets the zoom mode (1x, 2x, or auto). */
+  /** Sets the zoom mode (1x or 2x). */
   setZoomMode: (mode: ZoomMode) => void;
   modelIds: readonly string[];
   /**

@@ -1,4 +1,3 @@
-import type { AutoZoomLevel, AutoZoomState } from "@/lib/autoZoom";
 import type { HudModel, Size } from "@/lib/detection";
 import type { DetectionModel } from "@/lib/detectionModels";
 import type { ContactDirection } from "@/lib/radarSignal";
@@ -7,6 +6,7 @@ import type {
   BackendProbe,
   DetectionErrorCode,
   WorkerRequest,
+  ZoomLevel,
 } from "@/workers/detection/types";
 
 export type DetectionStatus = "loading-model" | "ready" | "running" | "error";
@@ -93,11 +93,6 @@ export type DebugSnapshot = {
   pacingRule: PacingRule;
   /** Crop factor the frame was scanned at (ZOOM_OFF or ZOOM_2X). */
   zoom: number;
-  /**
-   * Whether the auto zoom is holding its level because a detection is
-   * present. Always false in the fixed zoom modes.
-   */
-  zoomLocked: boolean;
 };
 
 /**
@@ -107,14 +102,14 @@ export type DebugSnapshot = {
  * rather than that a track is being held through a miss. The frame geometry
  * and crop factor travel with them, because the boxes must be mapped against
  * the frame that produced them and not against whatever the video element
- * measures a second later, after a rotation or an auto-zoom step.
+ * measures a second later, after a rotation.
  */
 export type ScanResult = {
   detections: Detection[];
   /** Intrinsic size of the captured frame, in pixels. */
   frame: Size;
   /** Crop factor the frame was captured at. */
-  zoom: AutoZoomLevel;
+  zoom: ZoomLevel;
   /** performance.now() when the result arrived. */
   at: number;
 };
@@ -166,14 +161,6 @@ export type DetectionContextValue = {
    * toast times itself out.
    */
   savedFrame: SavedFrame | undefined;
-  /**
-   * The auto zoom machine's current state (crop factor and whether a present
-   * detection is locking it), for the on-glass zoom indicator. Advances once
-   * per scan while the zoom mode is auto; resets to 1x/unlocked on stop, so
-   * it reads that way in the fixed modes too (where the indicator derives its
-   * label from the mode alone).
-   */
-  autoZoom: AutoZoomState;
   /**
    * The model this session is running. Pinned at mount, so it answers "what is
    * detecting right now", which is not necessarily what is selected: a change

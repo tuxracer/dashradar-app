@@ -147,10 +147,7 @@ export const DebugOverlay = ({
       )}
       <Row label="round-trip" value={ms(debug.roundTripMs)} />
       <Row label="throttle" value={throttleInference ? "on" : "off"} />
-      <Row
-        label="zoom"
-        value={`${zoomMode} · ${debug.zoom}x${debug.zoomLocked ? " · locked" : ""}`}
-      />
+      <Row label="zoom" value={`${zoomMode} · ${debug.zoom}x`} />
       <Row
         label="pacing"
         value={`${ms(debug.pacingDelayMs)} · ${debug.pacingRule}`}

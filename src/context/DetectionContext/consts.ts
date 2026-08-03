@@ -55,7 +55,6 @@ export const INITIAL_DEBUG: DebugSnapshot = {
   pacingDelayMs: 0,
   pacingRule: "floor",
   zoom: ZOOM_OFF,
-  zoomLocked: false,
 };
 
 /**

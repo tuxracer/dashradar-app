@@ -1,4 +1,4 @@
-import type { AutoZoomLevel } from "@/lib/autoZoom";
+import type { ZoomLevel } from "@/workers/detection/types";
 import type { Size } from "@/lib/detection";
 import {
   mapBoxToViewport,
@@ -20,7 +20,7 @@ type DetectionViewProps = {
   /** Current viewport size, which the feed fills with object-fit: cover. */
   viewport: Size;
   /** Crop factor the frame was captured at, which sizes the region outline. */
-  zoom: AutoZoomLevel;
+  zoom: ZoomLevel;
 };
 
 /**

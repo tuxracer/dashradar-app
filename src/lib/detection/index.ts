@@ -1,6 +1,6 @@
 import type { Detection, NormalizedBox } from "@/types";
 import { isRawDetection } from "@/types";
-import type { AutoZoomLevel } from "@/lib/autoZoom";
+import type { ZoomLevel } from "@/workers/detection/types";
 import { ZOOM_OFF } from "@/workers/detection/consts";
 import { centerCropRegion } from "@/workers/detection/inference";
 import { CONFIDENCE_THRESHOLD } from "./consts";
@@ -26,9 +26,7 @@ export type PixelBox = {
  * different data: the card from the raw detections of the frame just decoded,
  * this model from the coasted tracker set. So they name the same detection on
  * a live frame and can drift apart while a track coasts, which is the same
- * lag that lets the class name outlive the detection that produced it. Auto
- * zoom reads the whole tracked set (`stepAutoZoom({ detections: tracked,
- * ... })`), not any single detection here.
+ * lag that lets the class name outlive the detection that produced it.
  */
 export type HudModel = {
   top: Detection | undefined;
@@ -105,7 +103,7 @@ export const mapBoxToViewport = (
  */
 export const scanRegionBox = (
   frame: Size,
-  zoom: AutoZoomLevel = ZOOM_OFF,
+  zoom: ZoomLevel = ZOOM_OFF,
 ): NormalizedBox => {
   const { sx, sy, side } = centerCropRegion(frame.width, frame.height, zoom);
   return {

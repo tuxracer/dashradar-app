@@ -17,7 +17,6 @@ const snapshot = (roundTripMs: number): DebugSnapshot => ({
   pacingDelayMs: 0,
   pacingRule: "floor",
   zoom: 1,
-  zoomLocked: false,
 });
 
 describe("RoundTripIndicator", () => {

@@ -72,7 +72,14 @@ const loadSettings = (): Settings => {
     if (!raw) {
       return DEFAULT_SETTINGS;
     }
-    const parsed: unknown = JSON.parse(raw);
+    const rawParsed: unknown = JSON.parse(raw);
+    // Migrate the retired "auto" zoom mode (every pre-removal blob stores it,
+    // since it was the default) to the plain 1x scan before validation, so it
+    // reads as the new default instead of invalidating the whole blob.
+    const parsed: unknown =
+      isPlainObject(rawParsed) && rawParsed.zoomMode === "auto"
+        ? { ...rawParsed, zoomMode: "1x" }
+        : rawParsed;
     // Migrate the legacy zoom2x boolean (which zoomMode replaced): a stored
     // true carries over as the 2x mode so the tweak survives the rename. Read
     // off the raw blob, since zoom2x is no longer part of the Settings shape.

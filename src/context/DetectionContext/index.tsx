@@ -18,8 +18,6 @@ import {
   heartbeatDelayMs,
   writeHeartbeat,
 } from "@/lib/crashSentinel";
-import { initialAutoZoomState, stepAutoZoom } from "@/lib/autoZoom";
-import type { AutoZoomLevel, AutoZoomState } from "@/lib/autoZoom";
 import type { HudModel } from "@/lib/detection";
 import { buildHudModel, enrichDetections } from "@/lib/detection";
 import { resolveModels } from "@/lib/detectionModels";
@@ -43,6 +41,7 @@ import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 import type {
   BackendProbe,
   DetectionErrorCode,
+  ZoomLevel,
 } from "@/workers/detection/types";
 import { isWorkerResponse } from "@/workers/detection/types";
 import {
@@ -167,33 +166,15 @@ export const DetectionProvider = ({
   // Developer options, so a normal drive always scans the full centered square
   // and can never be left narrowed by a stale persisted mode.
   const zoomModeRef = useRef(zoomMode);
-  // Auto zoom machine state: the crop factor the next auto-mode scan captures
-  // at, advanced by the detections handler from each scan's outcome (see
-  // src/lib/autoZoom). A ref, not state: it changes per result and nothing
-  // renders it directly.
-  const autoZoomRef = useRef(initialAutoZoomState());
-  // The machine's current state (level and lock), mirrored into React state
-  // for the ZoomIndicator chip. Updates once per scan at most (the same
-  // cadence as setHud), so the ref/state split costs nothing extra here; the
-  // ref stays the source the pump reads synchronously.
-  const [autoZoom, setAutoZoom] = useState<AutoZoomState>(
-    initialAutoZoomState(),
-  );
   useEffect(() => {
     zoomModeRef.current = zoomMode;
-    // A mode change invalidates any lock or alternation phase, so auto always
-    // begins a fresh spell zoomed out. The autoZoom state needs no reset
-    // here: the mode is only changeable from the settings panel, and opening
-    // the panel already stopped the pump, which resets the level with the
-    // machine.
-    autoZoomRef.current = initialAutoZoomState();
   }, [zoomMode]);
   // Crop factor and dimensions of the most recently posted frame. Only one
   // frame is ever in flight, so when a detections result arrives this always
-  // describes the frame it came from; the auto zoom step needs the capture
-  // zoom (was this a 1x or 2x look?) and the frame geometry for its fit check.
+  // describes the frame it came from; publishing the scan needs the frame's
+  // geometry and the zoom it was captured at.
   const lastFrameInfoRef = useRef<
-    { zoom: AutoZoomLevel; width: number; height: number } | undefined
+    { zoom: ZoomLevel; width: number; height: number } | undefined
   >(undefined);
   // Mirrors the effective minimum confidence for sendFrame and the detections
   // handler, both of which read it per result rather than re-subscribing.
@@ -391,14 +372,7 @@ export const DetectionProvider = ({
       lastCaptureMsRef.current = performance.now() - captureStart;
       postTimeRef.current = performance.now();
       inFlightRef.current += 1;
-      // Fixed modes always post their level; auto posts whatever the machine
-      // decided after the previous scan (1x on the first scan of a session).
-      const zoom: AutoZoomLevel =
-        zoomModeRef.current === "2x"
-          ? ZOOM_2X
-          : zoomModeRef.current === "auto"
-            ? autoZoomRef.current.zoom
-            : ZOOM_OFF;
+      const zoom: ZoomLevel = zoomModeRef.current === "2x" ? ZOOM_2X : ZOOM_OFF;
       // Recorded before the transfer detaches the bitmap.
       lastFrameInfoRef.current = {
         zoom,
@@ -573,20 +547,6 @@ export const DetectionProvider = ({
               at: performance.now(),
             });
           }
-          // Auto zoom: pick the next scan's crop factor from this scan's
-          // outcome. Fed the coasted set, not the raw detections, so a
-          // one-frame flicker cannot release a lock before the tracker drops
-          // the object. In the fixed modes the machine is left at its reset
-          // state; sendFrame ignores it there.
-          if (zoomModeRef.current === "auto" && frameInfo) {
-            autoZoomRef.current = stepAutoZoom({
-              zoom: frameInfo.zoom,
-              detections: tracked,
-              frameWidth: frameInfo.width,
-              frameHeight: frameInfo.height,
-            });
-            setAutoZoom(autoZoomRef.current);
-          }
           // Pair the crop with its detection. Validation mirrors the
           // enrichment and confidence filter above; a crop whose detection is
           // dropped is discarded so the card never shows evidence the HUD
@@ -668,7 +628,6 @@ export const DetectionProvider = ({
             filteredCount: detections.length,
             shownCount: tracked.length,
             zoom: frameInfo?.zoom ?? ZOOM_OFF,
-            zoomLocked: autoZoomRef.current.locked,
             // Carried forward for one line; schedulePacedFrame below writes
             // this frame's actual pacing decision.
             pacingDelayMs: debugRef.current.pacingDelayMs,
@@ -867,10 +826,6 @@ export const DetectionProvider = ({
     // long stop() would otherwise confirm on the first matched frame after
     // restart. A resumed session must re-earn confirmation from scratch.
     trackerRef.current = createDetectionTracker();
-    // The auto zoom resets with the tracker: whatever it had locked onto is
-    // gone with the tracks, so the next session starts zoomed out.
-    autoZoomRef.current = initialAutoZoomState();
-    setAutoZoom(initialAutoZoomState());
     if (statusRef.current === "running") {
       statusRef.current = "ready";
       setStatus("ready");
@@ -882,8 +837,8 @@ export const DetectionProvider = ({
    * null. Stops the pump first, synchronously: child effects run before parent
    * effects, so a stop() scheduled after the state change would land after the
    * newly mounted view had already called start() and would kill the pump it
-   * just started. stop() also resets the tracker and auto zoom, which is what
-   * you want when frames start arriving from a different world.
+   * just started. stop() also resets the tracker, which is what you want when
+   * frames start arriving from a different world.
    */
   const swapVideoSource = useCallback(
     (file: File | null) => {
@@ -1093,7 +1048,6 @@ export const DetectionProvider = ({
       error,
       contact: shownContact,
       savedFrame,
-      autoZoom,
       activeModel,
       start,
       stop,
@@ -1110,7 +1064,6 @@ export const DetectionProvider = ({
       error,
       shownContact,
       savedFrame,
-      autoZoom,
       activeModel,
       start,
       stop,

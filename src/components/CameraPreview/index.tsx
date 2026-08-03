@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { isFunction } from "remeda";
-import type { AutoZoomLevel } from "@/lib/autoZoom";
+import type { ZoomLevel } from "@/workers/detection/types";
 
 /**
  * A video element that can mirror its playback into a MediaStream.
@@ -31,7 +31,7 @@ type CameraPreviewProps = {
    * level in the 1x/2x modes, the machine's live level in auto mode. The
    * preview narrows to the same region.
    */
-  zoom: AutoZoomLevel;
+  zoom: ZoomLevel;
 };
 
 /**

@@ -16,5 +16,4 @@ export const ZOOM_MODE_OPTIONS: readonly {
 }[] = [
   { mode: "1x", label: "1X" },
   { mode: "2x", label: "2X" },
-  { mode: "auto", label: "AUTO" },
 ];

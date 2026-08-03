@@ -65,7 +65,6 @@ const RadarScreen = () => {
     hud,
     contact,
     savedFrame,
-    autoZoom,
     getDebugSnapshot,
     error,
     scan,
@@ -332,13 +331,7 @@ const RadarScreen = () => {
       {!modelLoading && cameraPreview && !detectionView && cameraVideo && (
         <CameraPreview
           source={cameraVideo}
-          zoom={
-            zoomMode === "2x"
-              ? ZOOM_2X
-              : zoomMode === "auto"
-                ? autoZoom.zoom
-                : ZOOM_OFF
-          }
+          zoom={zoomMode === "2x" ? ZOOM_2X : ZOOM_OFF}
         />
       )}
       <SaveToast saved={savedFrame} />
@@ -346,13 +339,7 @@ const RadarScreen = () => {
         center={
           zoomIndicator || roundTripIndicator ? (
             <span className="flex items-center gap-2">
-              {zoomIndicator && (
-                <ZoomIndicator
-                  mode={zoomMode}
-                  level={autoZoom.zoom}
-                  locked={autoZoom.locked}
-                />
-              )}
+              {zoomIndicator && <ZoomIndicator mode={zoomMode} />}
               {roundTripIndicator && (
                 <RoundTripIndicator getDebug={getDebugSnapshot} />
               )}

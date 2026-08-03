@@ -244,8 +244,6 @@ describe("SettingsScreen", () => {
     expect(stored("zoomMode")).toBe("2x");
     await user.click(screen.getByRole("button", { name: "1X" }));
     expect(stored("zoomMode")).toBe("1x");
-    await user.click(screen.getByRole("button", { name: "AUTO" }));
-    expect(stored("zoomMode")).toBe("auto");
   });
 
   it("persists a confidence picked from the Min confidence slider", async () => {

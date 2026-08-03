@@ -28,7 +28,12 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 );
 
 /** Mounts the provider over `blob`, if any, and hands back the hook result. */
-const mount = (blob?: Partial<PersistedSettings> & { zoom2x?: boolean }) => {
+const mount = (
+  blob?: Omit<Partial<PersistedSettings>, "zoomMode"> & {
+    zoom2x?: boolean;
+    zoomMode?: string;
+  },
+) => {
   if (blob) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(blob));
   return renderHook(() => useSettings(), { wrapper });
 };
@@ -129,7 +134,7 @@ describe("SettingsContext", () => {
     for (const { key, fresh } of TOGGLES) {
       expect(result.current[key], key).toBe(fresh);
     }
-    expect(result.current.zoomMode).toBe("auto");
+    expect(result.current.zoomMode).toBe("1x");
     expect(result.current.confidenceThreshold).toBe(
       DEVELOPER_OPTIONS_OFF.confidenceThreshold,
     );
@@ -144,7 +149,7 @@ describe("SettingsContext", () => {
     for (const { key, fresh } of TOGGLES) {
       expect(result.current[key], key).toBe(fresh);
     }
-    expect(result.current.zoomMode).toBe("auto");
+    expect(result.current.zoomMode).toBe("1x");
     expect(result.current.confidenceThreshold).toBe(
       DEVELOPER_OPTIONS_OFF.confidenceThreshold,
     );
@@ -178,7 +183,7 @@ describe("SettingsContext", () => {
         radarAudio: true,
         detectionImage: false,
         throttleInference: true,
-        zoomMode: "auto",
+        zoomMode: "1x",
         confidenceThreshold: DEVELOPER_OPTIONS_OFF.confidenceThreshold,
         modelIds: [DEFAULT_MODEL.id],
         zoomIndicator: false,
@@ -211,7 +216,7 @@ describe("SettingsContext", () => {
     }
     // A fixed-zoom override and a lowered threshold are developer tweaks; a
     // normal drive always runs the defaults.
-    expect(result.current.zoomMode).toBe("auto");
+    expect(result.current.zoomMode).toBe("1x");
     expect(result.current.confidenceThreshold).toBe(
       DEVELOPER_OPTIONS_OFF.confidenceThreshold,
     );
@@ -231,7 +236,7 @@ describe("SettingsContext", () => {
     act(() => result.current.toggleDeveloperOptions());
     act(() => result.current.toggleThrottleInference());
     act(() => result.current.toggleShowDebug());
-    act(() => result.current.setZoomMode("1x"));
+    act(() => result.current.setZoomMode("2x"));
     act(() => result.current.setConfidenceThreshold(0.3));
 
     // Off: each reverts to its off-switch value for the rest of the drive,
@@ -239,7 +244,7 @@ describe("SettingsContext", () => {
     act(() => result.current.toggleDeveloperOptions());
     expect(result.current.throttleInference).toBe(true);
     expect(result.current.showDebug).toBe(false);
-    expect(result.current.zoomMode).toBe("auto");
+    expect(result.current.zoomMode).toBe("1x");
     expect(result.current.confidenceThreshold).toBe(
       DEVELOPER_OPTIONS_OFF.confidenceThreshold,
     );
@@ -249,7 +254,7 @@ describe("SettingsContext", () => {
     act(() => result.current.toggleDeveloperOptions());
     expect(result.current.throttleInference).toBe(false);
     expect(result.current.showDebug).toBe(true);
-    expect(result.current.zoomMode).toBe("1x");
+    expect(result.current.zoomMode).toBe("2x");
     expect(result.current.confidenceThreshold).toBe(0.3);
   });
 
@@ -293,13 +298,13 @@ describe("SettingsContext stored blob", () => {
     expect(result.current.showDebug).toBe(false);
   });
 
-  it("falls back to the auto mode when a stored zoomMode is invalid", () => {
+  it("falls back to the 1x mode when a stored zoomMode is invalid", () => {
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({ developerOptions: true, zoomMode: "4x" }),
     );
     const { result } = renderHook(() => useSettings(), { wrapper });
-    expect(result.current.zoomMode).toBe("auto");
+    expect(result.current.zoomMode).toBe("1x");
   });
 
   it("snaps a corrupt stored confidence to a valid level", () => {
@@ -319,7 +324,7 @@ describe("SettingsContext migrations", () => {
 
   it("ignores a legacy stored zoom2x false", () => {
     const { result } = mount({ developerOptions: true, zoom2x: false });
-    expect(result.current.zoomMode).toBe("auto");
+    expect(result.current.zoomMode).toBe("1x");
   });
 
   it("prefers a stored zoomMode over a lingering legacy zoom2x", () => {
@@ -329,6 +334,19 @@ describe("SettingsContext migrations", () => {
       zoomMode: "1x",
     });
     expect(result.current.zoomMode).toBe("1x");
+  });
+
+  // Every blob from before the auto mode was retired stores zoomMode "auto"
+  // (it was the default), so it must read as 1x rather than invalidating the
+  // whole blob and resetting every other setting with it.
+  it("migrates a stored auto zoom mode to 1x without resetting the blob", () => {
+    const { result } = mount({
+      developerOptions: true,
+      zoomMode: "auto",
+      radarAudio: false,
+    });
+    expect(result.current.zoomMode).toBe("1x");
+    expect(result.current.radarAudio).toBe(false);
   });
 
   // A blob from before the developer options stopped defaulting on stores the
