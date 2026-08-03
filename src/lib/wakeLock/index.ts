@@ -1,6 +1,6 @@
 import { track } from "@vercel/analytics";
 import { isObjectType, isString } from "remeda";
-import { filter, fromEvent, merge, Observable, of, switchMap } from "rxjs";
+import { filter, fromEvent, Observable, startWith, switchMap } from "rxjs";
 import {
   WAKE_LOCK_UNKNOWN_REASON,
   WAKE_LOCK_UNSUPPORTED_REASON,
@@ -94,10 +94,9 @@ export const screenWakeLock = (): Observable<never> => {
     };
   });
 
-  return merge(
-    of(undefined),
-    fromEvent(document, "visibilitychange").pipe(
-      filter(() => document.visibilityState === "visible"),
-    ),
-  ).pipe(switchMap(() => heldLock$));
+  return fromEvent(document, "visibilitychange").pipe(
+    filter(() => document.visibilityState === "visible"),
+    startWith(undefined),
+    switchMap(() => heldLock$),
+  );
 };
