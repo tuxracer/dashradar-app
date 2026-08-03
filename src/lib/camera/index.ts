@@ -103,9 +103,15 @@ export const cameraFeed = (
     })();
     return () => {
       cancelled = true;
-      stream?.getTracks().forEach((track) => {
-        track.stop();
-      });
+      if (stream) {
+        for (const track of stream.getTracks()) {
+          track.stop();
+        }
+        // Detach the dead stream too, so the element neither shows a frozen
+        // last frame nor holds a reference to it. Guarded by `stream`: only
+        // the subscription that attached a stream may clear the element.
+        video.srcObject = null;
+      }
       video.removeEventListener("resize", handleResize);
     };
   });
