@@ -43,7 +43,7 @@ A custom **RF-DETR Small** checkpoint, published as ONNX at [`tuxracer/las-vegas
 
 ## Privacy
 
-Camera frames never leave the phone. Detection runs on the device's own GPU, so no photo or video of what the camera sees is uploaded anywhere, and frames you save yourself download straight to the phone.
+Camera frames never leave the phone. Detection runs on the device's own GPU, so no photo or video of what the camera sees is uploaded anywhere.
 
 No account, no login, nothing to sign up for.
 
