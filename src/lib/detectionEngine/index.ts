@@ -75,10 +75,12 @@ export * from "./types";
  * no pause/resume protocol to hold correctly at call sites.
  *
  * The race invariants the old imperative pump guarded with counters are
- * structural here: one frame in flight because the loop is sequential
- * (capture, post, await result, pace, repeat), no stale capture after a
- * stop because teardown is unsubscription, and no frame posted to a still
- * loading worker because each session's pump starts behind its ready.
+ * mostly structural here: no stale capture after a stop because teardown is
+ * unsubscription, and no frame posted to a still loading worker because
+ * each session's pump starts behind its ready. One frame in flight is the
+ * sequential loop (capture, post, await result, pace, repeat) plus a single
+ * non-structural residue, a session-scoped awaiting-result flag that covers
+ * a stop/start landing while a reply is still outstanding.
  */
 export const createDetectionEngine = ({
   model,
@@ -307,7 +309,7 @@ export const createDetectionEngine = ({
   // runs again until deactivate then activate, matching the old halt.
   const halt$ = new Subject<void>();
   // Completes the current worker session so repeat() spawns a fresh one; the
-  // detections handler fires it at a result boundary once the worker's age
+  // pump's scanOnce fires it at a result boundary once the worker's age
   // passes WORKER_RECYCLE_AFTER_MS.
   const recycle$ = new Subject<void>();
 
