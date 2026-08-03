@@ -2,9 +2,16 @@ import {
   BehaviorSubject,
   combineLatest,
   distinctUntilChanged,
+  EMPTY,
   map,
+  Observable,
   pairwise,
+  repeat,
   skip,
+  Subject,
+  switchMap,
+  takeUntil,
+  tap,
 } from "rxjs";
 import { APP_RELEASE } from "@/lib/appRelease";
 import { waitForNextVideoFrame } from "@/lib/camera";
@@ -22,7 +29,7 @@ import { processDetectionResult } from "@/lib/processDetectionResult";
 import { waitForServiceWorkerControl } from "@/lib/serviceWorker";
 import { createWakeLockManager } from "@/lib/wakeLock";
 import { ZOOM_OFF } from "@/workers/detection/consts";
-import type { ZoomLevel } from "@/workers/detection/types";
+import type { WorkerResponse, ZoomLevel } from "@/workers/detection/types";
 import { isWorkerResponse } from "@/workers/detection/types";
 import {
   FRAME_RETRY_MS,
@@ -111,17 +118,13 @@ export const createDetectionEngine = ({
   );
 
   // ---- pump state ----
-  // Bumped per activation so a pending model-load continuation from a
-  // deactivated span can never post onto a later worker.
-  let activation = 0;
   // The derived running state's current value; compared against the fresh
   // derivation on every input change to find the edges.
   let running = false;
-  let worker: DetectionWorkerLike | undefined;
-  // performance.now() at the moment the current worker was created, so the
-  // detections handler can recycle it once WORKER_RECYCLE_AFTER_MS has
-  // elapsed (monotonic within a page load, which is the only comparison made).
-  let workerCreatedAt = 0;
+  // The session the pump currently posts frames through. Set by
+  // sessionLoop$ below on every (re)spawn and recycle; undefined between
+  // deactivation and the next session.
+  let currentSession: WorkerSession | undefined;
   // False from spawn until the worker reports `ready`, then false again on
   // error. The pump bails while it is false so a detect frame is never posted
   // to a worker whose model has not loaded (the worker silently drops it,
@@ -259,7 +262,7 @@ export const createDetectionEngine = ({
 
   const sendFrame = async () => {
     const video = inputs$.value.video;
-    if (!running || !video || !worker) {
+    if (!running || !video || !currentSession) {
       return;
     }
     if (!workerLoaded) {
@@ -296,7 +299,7 @@ export const createDetectionEngine = ({
       const zoom = settings$.value.zoom;
       // Recorded before the transfer detaches the bitmap.
       lastFrameInfo = { zoom, width: frame.width, height: frame.height };
-      worker.postMessage(
+      currentSession.post(
         {
           type: "detect",
           frame,
@@ -344,40 +347,81 @@ export const createDetectionEngine = ({
     }, delay);
   };
 
-  /**
-   * Defer the model download until a service worker controls the page so its
-   * fetch flows through Workbox's runtime cache on a first visit (dev has no
-   * service worker, so load immediately). The activation stamp discards the
-   * continuation if the engine deactivated, or recycled to a newer worker,
-   * while the wait was pending.
-   */
-  const requestLoad = (target: DetectionWorkerLike) => {
-    const requestedIn = activation;
-    const startLoad = import.meta.env.PROD
-      ? waitForServiceWorkerControl(SW_CONTROL_TIMEOUT_MS)
-      : Promise.resolve();
-    void startLoad.then(() => {
-      if (requestedIn !== activation || target !== worker) {
-        return;
-      }
-      target.postMessage({ type: "load", model });
-    });
+  /** One spawned worker: its post channel, parsed messages, and load state. */
+  type WorkerSession = {
+    post: DetectionWorkerLike["postMessage"];
+    messages$: Observable<WorkerResponse>;
+    loaded$: BehaviorSubject<boolean>;
+    createdAt: number;
   };
 
-  const haltOnError = () => {
+  // Ends the current activation's inner work after a worker error. Nothing
+  // runs again until deactivate then activate, matching the old halt.
+  const halt$ = new Subject<void>();
+  // Completes the current worker session so repeat() spawns a fresh one; the
+  // detections handler fires it at a result boundary once the worker's age
+  // passes WORKER_RECYCLE_AFTER_MS.
+  const recycle$ = new Subject<void>();
+
+  const haltForError = () => {
     running = false;
     workerLoaded = false;
     generation += 1;
     inFlight = 0;
     clearTimers();
     replaceContact(undefined);
+    halt$.next();
   };
 
-  const handleMessage = (event: MessageEvent) => {
-    const message: unknown = event.data;
-    if (!isWorkerResponse(message)) {
-      return;
-    }
+  /**
+   * One worker lifetime as an Observable: subscribing spawns the worker,
+   * posts the probe synchronously (the GPU verdict must not wait on anything),
+   * and requests the model load once a service worker controls the page so a
+   * first visit's fetch lands in the runtime cache (dev has none, load
+   * immediately). Unsubscribing terminates the worker and abandons a pending
+   * load wait, which is what retires the old activation-counter guard.
+   */
+  const workerSession$ = new Observable<WorkerSession>((subscriber) => {
+    const target = createWorker();
+    const messages = new Subject<WorkerResponse>();
+    const loaded$ = new BehaviorSubject(false);
+    target.onmessage = (event: MessageEvent) => {
+      const message: unknown = event.data;
+      if (isWorkerResponse(message)) {
+        messages.next(message);
+      }
+    };
+    target.onerror = () => {
+      telemetry.error("WORKER_CRASHED");
+      publish({ error: "WORKER_CRASHED" });
+      setStatus("error");
+      haltForError();
+    };
+    target.postMessage({ type: "probe" });
+    let cancelled = false;
+    const startLoad = import.meta.env.PROD
+      ? waitForServiceWorkerControl(SW_CONTROL_TIMEOUT_MS)
+      : Promise.resolve();
+    void startLoad.then(() => {
+      if (!cancelled) {
+        target.postMessage({ type: "load", model });
+      }
+    });
+    subscriber.next({
+      post: (message, transfer) => {
+        target.postMessage(message, transfer);
+      },
+      messages$: messages,
+      loaded$,
+      createdAt: performance.now(),
+    });
+    return () => {
+      cancelled = true;
+      target.terminate();
+    };
+  });
+
+  const handleMessage = (session: WorkerSession, message: WorkerResponse) => {
     switch (message.type) {
       case "model-load-start": {
         publish({ downloadingModel: !message.fromCache });
@@ -410,6 +454,7 @@ export const createDetectionEngine = ({
         // Mark the worker loaded before priming the pump below, so the
         // sendFrame() call in the running branch is not itself bailed.
         workerLoaded = true;
+        session.loaded$.next(true);
         telemetry.modelReady();
         if (running) {
           setStatus("running");
@@ -484,18 +529,15 @@ export const createDetectionEngine = ({
         // pump; the recycle replaces schedulePacedFrame for this result.
         if (
           running &&
-          performance.now() - workerCreatedAt >= WORKER_RECYCLE_AFTER_MS
+          performance.now() - session.createdAt >= WORKER_RECYCLE_AFTER_MS
         ) {
-          worker?.terminate();
           // Invalidate any capture from the old pump so it can't post onto
           // the new worker, and drop the in-flight count for the restart.
           generation += 1;
           inFlight = 0;
           clearTimers();
-          spawnWorker();
-          if (worker) {
-            requestLoad(worker);
-          }
+          workerLoaded = false;
+          recycle$.next();
         } else {
           schedulePacedFrame(roundTripMs);
         }
@@ -505,37 +547,34 @@ export const createDetectionEngine = ({
         telemetry.error(message.code, message.detail);
         publish({ error: message.code });
         setStatus("error");
-        haltOnError();
+        haltForError();
         break;
       }
     }
   };
 
-  const handleError = () => {
-    telemetry.error("WORKER_CRASHED");
-    publish({ error: "WORKER_CRASHED" });
-    setStatus("error");
-    haltOnError();
-  };
+  // One activation's worker chain: sessions repeat on recycle and end on
+  // halt; flipping active$ off unsubscribes the current session, which is
+  // what terminates its worker.
+  const sessionLoop$ = workerSession$.pipe(
+    tap((session) => {
+      currentSession = session;
+      workerLoaded = false;
+    }),
+    switchMap((session) =>
+      session.messages$.pipe(tap((message) => handleMessage(session, message))),
+    ),
+    takeUntil(recycle$),
+    repeat(),
+    takeUntil(halt$),
+  );
 
-  /**
-   * Create a worker, wire its handlers, and record its birth time. Used by
-   * activation and the periodic recycle. The probe is posted immediately and
-   * separately from `load`: the load waits on service-worker control so the
-   * weights land in the runtime cache, but that wait must not delay the
-   * verdict, because a device without usable WebGPU has to reach the
-   * unsupported screen before the camera ask and before any model bytes.
-   */
-  const spawnWorker = () => {
-    const next = createWorker();
-    worker = next;
-    workerCreatedAt = performance.now();
-    // Fresh worker: its model is not loaded until it reports `ready`.
-    workerLoaded = false;
-    next.onmessage = handleMessage;
-    next.onerror = handleError;
-    next.postMessage({ type: "probe" });
-  };
+  active$
+    .pipe(
+      distinctUntilChanged(),
+      switchMap((isActive) => (isActive ? sessionLoop$ : EMPTY)),
+    )
+    .subscribe();
 
   // The old evaluate(): act on the edges of the derived running state. The
   // BehaviorSubject replays the initial false at subscribe; its "falling edge"
@@ -579,7 +618,6 @@ export const createDetectionEngine = ({
       if (active$.value) {
         return;
       }
-      activation += 1;
       // A fresh activation behaves like a fresh mount: published state and
       // per-load counters reset before the new worker reports anything.
       snapshot$.value.contact?.image.close();
@@ -589,10 +627,6 @@ export const createDetectionEngine = ({
       inFlight = 0;
       generation += 1;
       tracker = createDetectionTracker();
-      spawnWorker();
-      if (worker) {
-        requestLoad(worker);
-      }
       active$.next(true);
     },
     deactivate: () => {
@@ -600,13 +634,8 @@ export const createDetectionEngine = ({
         return;
       }
       active$.next(false);
-      activation += 1;
       clearTimers();
       replaceContact(undefined);
-      // Terminate whichever worker is current, which is the recycled one if
-      // a recycle has happened, not the one spawned at activation.
-      worker?.terminate();
-      worker = undefined;
       workerLoaded = false;
       inFlight = 0;
       generation += 1;
