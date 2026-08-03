@@ -1,22 +1,23 @@
 import type { OnnxMetadata } from "@/lib/onnxMetadata";
-import { DETECTION_MODELS, MODEL_OWNER } from "./consts";
+import { DETECTION_MODELS } from "./consts";
 import type { DetectionClass, DetectionModel } from "./types";
 
 export * from "./consts";
 export * from "./types";
 
 /** Hugging Face page a model's weights are published on. */
-export const modelRepoUrl = (model: DetectionModel): string =>
-  `https://huggingface.co/${MODEL_OWNER}/${model.slug}`;
+export const modelRepoUrl = (model: Omit<DetectionModel, "id">): string =>
+  `https://huggingface.co/${model.owner}/${model.slug}`;
 
 /**
  * Revision-pinned URL of a model's ONNX weights. The pin is what makes a model
  * release reach anyone: the service worker caches weights CacheFirst keyed on
  * URL, so a changed revision is a changed URL and a cache miss, while an
- * unchanged one is served from cache forever.
+ * unchanged one is served from cache forever. Takes the id-less shape because
+ * an added model's id IS this URL, so the id cannot exist before the URL does.
  */
-export const modelWeightsUrl = (model: DetectionModel): string =>
-  `${modelRepoUrl(model)}/resolve/${model.revision}/onnx/${model.file}`;
+export const modelWeightsUrl = (model: Omit<DetectionModel, "id">): string =>
+  `${modelRepoUrl(model)}/resolve/${model.revision}/${model.file}`;
 
 /**
  * The classes a loaded checkpoint names, read from the `names` map its export

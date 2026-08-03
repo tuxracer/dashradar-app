@@ -1,3 +1,5 @@
+import { isPlainObject, isString } from "remeda";
+
 /**
  * One class the loaded checkpoint names. Derived at load from the `names` map
  * the export stamps into the weights, never typed into this repo, so the label
@@ -27,7 +29,9 @@ export type DetectionModel = {
    * is never reused for a different checkpoint.
    */
   id: string;
-  /** Hugging Face repo name, under the MODEL_OWNER account. */
+  /** Hugging Face account the repo is published under. */
+  owner: string;
+  /** Hugging Face repo name. */
   slug: string;
   /**
    * Revision tag the weights URL pins. Never "main": the Workbox model cache is
@@ -35,8 +39,31 @@ export type DetectionModel = {
    * cache entry and a new model would never reach anyone.
    */
   revision: string;
-  /** ONNX file within the repo's onnx/ directory. */
+  /** Repo-relative path of the ONNX file (for example "onnx/model_fp16.onnx"). */
   file: string;
+};
+
+/**
+ * Whether a runtime-unknown value is a usable model entry. Entries arrive from
+ * localStorage and from the worker load message, so shape is enforced here
+ * rather than assumed. The `.onnx` check is the one content rule: everything
+ * else about a file is proven by the trial load, but a path that is not even
+ * an ONNX file can be rejected before a byte moves.
+ */
+export const isDetectionModel = (value: unknown): value is DetectionModel => {
+  return (
+    isPlainObject(value) &&
+    isString(value.id) &&
+    value.id.length > 0 &&
+    isString(value.owner) &&
+    value.owner.length > 0 &&
+    isString(value.slug) &&
+    value.slug.length > 0 &&
+    isString(value.revision) &&
+    value.revision.length > 0 &&
+    isString(value.file) &&
+    value.file.endsWith(".onnx")
+  );
 };
 
 /**

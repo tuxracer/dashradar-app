@@ -25,15 +25,17 @@ afterEach(() => {
 const MODELS: readonly DetectionModel[] = [
   {
     id: "alpha",
+    owner: "tuxracer",
     slug: "alpha-repo",
     revision: "v1",
-    file: "alpha.onnx",
+    file: "onnx/alpha.onnx",
   },
   {
     id: "beta",
+    owner: "tuxracer",
     slug: "beta-repo",
     revision: "v2",
-    file: "beta.onnx",
+    file: "onnx/beta.onnx",
   },
 ];
 

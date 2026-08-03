@@ -3,6 +3,7 @@ import {
   classesFromMetadata,
   DEFAULT_MODEL,
   DETECTION_MODELS,
+  isDetectionModel,
   modelRepoUrl,
   modelWeightsUrl,
   resolveModels,
@@ -12,8 +13,20 @@ import type { OnnxMetadata } from "@/lib/onnxMetadata";
 
 /** A registry that does not ship, so multi-model behavior is testable. */
 const FAKE_MODELS: readonly DetectionModel[] = [
-  { id: "alpha", slug: "alpha-repo", revision: "v1", file: "alpha.onnx" },
-  { id: "beta", slug: "beta-repo", revision: "v2", file: "beta.onnx" },
+  {
+    id: "alpha",
+    owner: "tuxracer",
+    slug: "alpha-repo",
+    revision: "v1",
+    file: "onnx/alpha.onnx",
+  },
+  {
+    id: "beta",
+    owner: "tuxracer",
+    slug: "beta-repo",
+    revision: "v2",
+    file: "onnx/beta.onnx",
+  },
 ];
 
 /** Metadata carrying a `names` map already stringified into its dialect. */
@@ -21,6 +34,58 @@ const stamped = (names: string): OnnxMetadata => ({ props: { names } });
 
 /** Metadata carrying a `names` map in the JSON dialect. */
 const named = (names: unknown): OnnxMetadata => stamped(JSON.stringify(names));
+
+describe("isDetectionModel", () => {
+  const entry = {
+    id: "x",
+    owner: "someone",
+    slug: "some-repo",
+    revision: "abc123",
+    file: "weights/model.onnx",
+  };
+
+  it("accepts a complete entry", () => {
+    expect(isDetectionModel(entry)).toBe(true);
+  });
+
+  it("rejects a missing owner", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { owner, ...rest } = entry;
+    expect(isDetectionModel(rest)).toBe(false);
+  });
+
+  it("rejects a file that is not an onnx path", () => {
+    expect(isDetectionModel({ ...entry, file: "weights/model.bin" })).toBe(
+      false,
+    );
+  });
+
+  it("rejects empty strings", () => {
+    expect(isDetectionModel({ ...entry, revision: "" })).toBe(false);
+  });
+
+  it("rejects non-objects", () => {
+    expect(isDetectionModel("weights/model.onnx")).toBe(false);
+  });
+});
+
+describe("model URLs", () => {
+  it("builds the weights URL from owner, revision, and the repo-relative path", () => {
+    const model = {
+      id: "m",
+      owner: "someone",
+      slug: "some-repo",
+      revision: "abc123",
+      file: "nested/dir/model.onnx",
+    };
+    expect(modelWeightsUrl(model)).toBe(
+      "https://huggingface.co/someone/some-repo/resolve/abc123/nested/dir/model.onnx",
+    );
+    expect(modelRepoUrl(model)).toBe(
+      "https://huggingface.co/someone/some-repo",
+    );
+  });
+});
 
 describe("resolveModels", () => {
   it("falls back to the first model when no id is known", () => {
@@ -55,7 +120,7 @@ describe("resolveModels", () => {
   });
 });
 
-describe("model urls", () => {
+describe("model URLs (existing fixtures)", () => {
   it("pins the revision and file the entry names", () => {
     expect(modelWeightsUrl(FAKE_MODELS[1])).toBe(
       "https://huggingface.co/tuxracer/beta-repo/resolve/v2/onnx/beta.onnx",

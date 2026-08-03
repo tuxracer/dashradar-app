@@ -1,7 +1,18 @@
 import type { DetectionModel } from "./types";
 
-/** Hugging Face account every model repo is published under. */
-export const MODEL_OWNER = "tuxracer";
+/**
+ * The model a build runs unless a developer picked otherwise, and the fallback
+ * for a stored selection this build no longer recognizes. A build-time
+ * constant on purpose: the app must run with empty storage, and the error
+ * screen's revert action needs a target that always exists.
+ */
+export const DEFAULT_MODEL: DetectionModel = {
+  id: "las-vegas-metro",
+  owner: "tuxracer",
+  slug: "las-vegas-metro-rfdetr-small",
+  revision: "v3.8",
+  file: "onnx/model_fp16.onnx",
+};
 
 /**
  * Every model the detector can be pointed at, in the order the picker lists
@@ -20,20 +31,7 @@ export const MODEL_OWNER = "tuxracer";
  * so a checkpoint that expects a different input size needs more than an entry
  * here.
  */
-export const DETECTION_MODELS: readonly DetectionModel[] = [
-  {
-    id: "las-vegas-metro",
-    slug: "las-vegas-metro-rfdetr-small",
-    revision: "v3.8",
-    file: "model_fp16.onnx",
-  },
-];
-
-/**
- * The model a build runs unless a developer picked otherwise, and the fallback
- * for a stored selection this build no longer recognizes.
- */
-export const DEFAULT_MODEL: DetectionModel = DETECTION_MODELS[0];
+export const DETECTION_MODELS: readonly DetectionModel[] = [DEFAULT_MODEL];
 
 /**
  * How many models may be selected at once. One today: the worker loads a single

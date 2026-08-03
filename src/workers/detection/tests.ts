@@ -389,9 +389,10 @@ const POLICE_MODEL: LoadedModel = {
 /** A two-class model, for driving decode past the single class that ships. */
 const TWO_CLASS_MODEL: LoadedModel = {
   id: "two-class",
+  owner: "tuxracer",
   slug: "two-class",
   revision: "v1",
-  file: "model.onnx",
+  file: "onnx/model.onnx",
   headWidth: 3,
   classes: [
     {
