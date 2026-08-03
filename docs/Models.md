@@ -21,7 +21,7 @@ One input, two outputs.
 
 `N` is the query count and is read from the tensor lengths, not their declared
 dims, so a dynamic axis is fine as long as both outputs agree on it. RF-DETR
-uses 300.
+defaults to 300; the shipping export re-exports at 100.
 
 Name the outputs `dets` and `labels`. The worker looks for those names and only
 falls back to output order if they are absent, so unnamed outputs work but
