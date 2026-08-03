@@ -19,6 +19,7 @@ const debug: DebugSnapshot = {
   filteredCount: 2,
   shownCount: 1,
   overheadMs: 2.5,
+  captureFailures: 0,
   pacingDelayMs: 600,
   pacingRule: "rest",
   zoom: 1,

@@ -1,6 +1,5 @@
 import {
   BehaviorSubject,
-  catchError,
   combineLatest,
   defer,
   distinctUntilChanged,
@@ -13,6 +12,7 @@ import {
   merge,
   Observable,
   repeat,
+  retry,
   skip,
   Subject,
   switchMap,
@@ -446,6 +446,9 @@ export const createDetectionEngine = ({
           filteredCount: result.detections.length,
           shownCount: result.tracked.length,
           zoom: frameInfo?.zoom ?? ZOOM_OFF,
+          // Owned by the pump's capture retry loop; carried through so a
+          // result never erases an in-progress failure streak readout.
+          captureFailures: debug.captureFailures,
           // Carried forward for one line; the pump's paceDelay writes this
           // frame's actual pacing decision.
           pacingDelayMs: debug.pacingDelayMs,
@@ -520,6 +523,8 @@ export const createDetectionEngine = ({
               };
               postTime = performance.now();
               awaitingResult = true;
+              // A capture made it through, so any failure streak is over.
+              debug = { ...debug, captureFailures: 0 };
               session.post(
                 {
                   type: "detect",
@@ -572,7 +577,18 @@ export const createDetectionEngine = ({
           }
           return timer(paceDelay(performance.now() - postTime));
         }),
-        catchError(() => timer(FRAME_RETRY_MS)),
+        // A failed capture retries forever: the expected cause is a video
+        // element with no frame data yet (typically mid-attach), which
+        // resolves itself moments later. The retry is deliberately quiet
+        // beyond the debug counter; stall detection and recovery were
+        // removed on purpose, so a persistent failure shows up as a climbing
+        // captureFailures readout rather than an alert.
+        retry({
+          delay: () => {
+            debug = { ...debug, captureFailures: debug.captureFailures + 1 };
+            return timer(FRAME_RETRY_MS);
+          },
+        }),
       );
 
     const captureLoop$ = running$.pipe(

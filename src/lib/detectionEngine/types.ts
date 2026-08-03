@@ -41,6 +41,14 @@ export type DebugSnapshot = {
    * cost from model compute.
    */
   overheadMs: number;
+  /**
+   * Consecutive frame captures that failed since the last successful one.
+   * The pump retries a failed capture forever (the expected cause, a video
+   * element with no frame data yet, resolves itself moments later), so a
+   * value that keeps climbing is the one visible sign the pump is spinning
+   * on a video that never delivers.
+   */
+  captureFailures: number;
   /** Idle delay scheduled after the last result before the next capture. */
   pacingDelayMs: number;
   /** Which pacing rule produced pacingDelayMs. */

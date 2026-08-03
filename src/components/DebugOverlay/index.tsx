@@ -153,6 +153,9 @@ export const DebugOverlay = ({
         value={`${ms(debug.pacingDelayMs)} · ${debug.pacingRule}`}
       />
       <Row label="capture" value={ms(debug.captureMs)} />
+      {debug.captureFailures > 0 && (
+        <Row label="capture retries" value={`${debug.captureFailures}`} />
+      )}
       <Row label="preprocess" value={ms(debug.preprocessMs)} />
       <Row label="inference" value={ms(debug.inferenceMs)} />
       <Row label="decode" value={ms(debug.decodeMs)} />

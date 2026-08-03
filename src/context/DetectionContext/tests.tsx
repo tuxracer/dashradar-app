@@ -104,6 +104,9 @@ const DebugProbe = () => {
       <span data-testid="overhead">{debug?.overheadMs ?? "none"}</span>
       <span data-testid="pacing-delay">{debug?.pacingDelayMs ?? "none"}</span>
       <span data-testid="pacing-rule">{debug?.pacingRule ?? "none"}</span>
+      <span data-testid="capture-failures">
+        {debug?.captureFailures ?? "none"}
+      </span>
     </div>
   );
 };
@@ -688,6 +691,49 @@ describe("DetectionProvider", () => {
     expect(
       worker.posted.filter((message) => message.type === "detect"),
     ).toHaveLength(1);
+  });
+
+  it("counts consecutive capture failures and clears the streak on success", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi
+        .fn()
+        .mockRejectedValueOnce(new Error("video has no frame data"))
+        .mockRejectedValueOnce(new Error("video has no frame data"))
+        .mockImplementation(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(
+      <>
+        <DebugProbe />
+        <StartOnReady />
+      </>,
+    );
+    act(() => {
+      worker.emit({ type: "ready" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    // Two captures fail back to back; the streak is visible mid-retry.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FRAME_RETRY_MS);
+    });
+    act(() => {
+      screen.getByTestId("read-debug").click();
+    });
+    expect(screen.getByTestId("capture-failures").textContent).toBe("2");
+    // The third capture succeeds and posts, ending the streak.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(FRAME_RETRY_MS);
+    });
+    expect(
+      worker.posted.filter((message) => message.type === "detect"),
+    ).toHaveLength(1);
+    act(() => {
+      screen.getByTestId("read-debug").click();
+    });
+    expect(screen.getByTestId("capture-failures").textContent).toBe("0");
   });
 
   it("paces the next frame to the minimum interval after a fast result", async () => {
