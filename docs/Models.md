@@ -63,21 +63,19 @@ does not work without moving the gate too.
 
 ## Where the weights live
 
-The registry builds one URL per model:
+Every entry builds its own URL from its own fields:
 
 ```
-https://huggingface.co/<account>/<slug>/resolve/<revision>/onnx/<file>
+https://huggingface.co/<owner>/<slug>/resolve/<revision>/<file>
 ```
 
-Three things follow from that shape.
+**`file` is the repo-relative path, not just a filename.** It has to include
+whatever subdirectory the repo actually uses (`onnx/model_fp16.onnx` for the
+shipping checkpoint); nothing prepends a directory for you.
 
-**The file has to sit under `onnx/` in the repo.** The path segment is not
-configurable per entry.
-
-**The account is one constant** (`MODEL_OWNER` in
-`src/lib/detectionModels/consts.ts`), so every model resolves under the same
-Hugging Face account. Loading a model from somewhere else means changing that
-constant or mirroring the weights.
+**`owner` and `slug` are just that repo's Hugging Face account and name.**
+There is no shared-account constant: each entry names its own account, so a
+model can come from anywhere on huggingface.co.
 
 **Pin an immutable revision tag, never `main`.** The service worker caches
 weights `CacheFirst` keyed on the URL, so a mutable ref would sit behind an
@@ -86,16 +84,36 @@ loaded the old one. Changing the tag changes the URL, which is what makes a
 release land. The host also has to be `huggingface.co`; that is what the cache
 route matches on.
 
-## Registering it
+## Adding a model
 
-A model is one entry in `DETECTION_MODELS` in `src/lib/detectionModels/consts.ts`.
+For a checkpoint that already meets the contract above, the normal way onto a
+device is the developer model picker (Settings > Detection model > ADD MODEL):
+paste a Hugging Face URL. A bare repo page
+(`https://huggingface.co/<owner>/<repo>`) works if the repo has exactly one
+`.onnx` file; a link to a specific file (a `blob` or `resolve` URL) works
+regardless. `main` or an unpinned revision is resolved to that revision's
+commit SHA before anything is stored, so what gets registered is pinned the
+same way a shipped entry is.
+
+The paste does not just register a URL. The app spins up a real detection
+worker, downloads the weights, builds a WebGPU session, and runs it once, on
+the device that is about to use it: the tensor-signature contract above,
+enforced end to end rather than assumed. A checkpoint that fails any part of
+it fails right there with a reason, not after a reload deep into a drive. A
+model added this way is stored on the device and can be selected, removed, or
+replaced like any other, and the trial's download is also the cache fill, so
+nothing downloads twice.
+
+Registering a model in code is still how a build's own default changes:
+`DEFAULT_MODEL` in `src/lib/detectionModels/consts.ts` is one entry.
 
 | Field      | What it is                                                               |
 | ---------- | ------------------------------------------------------------------------ |
 | `id`       | Stable key the stored selection uses. Keep it free of the revision, so a routine re-export does not reset anyone's choice. Never reuse an id for a different checkpoint. |
+| `owner`    | Hugging Face account the repo is published under.                        |
 | `slug`     | Hugging Face repo name.                                                   |
 | `revision` | The pinned tag.                                                           |
-| `file`     | ONNX filename inside the repo's `onnx/` directory.                        |
+| `file`     | Repo-relative path to the ONNX file (for example `onnx/model_fp16.onnx`). |
 
 That is the whole entry. It says which bytes to fetch and nothing about what
 they contain, because everything else is read from the bytes themselves at load.
@@ -137,7 +155,7 @@ alternative is plausible-looking garbage.
 ## Budget
 
 The shipping model is about 57 MB. Each registered model is a full checkpoint
-against the origin's storage quota, and the cache route holds four entries.
+against the origin's storage quota, and the cache route holds eight entries.
 
 Inference runs at most once a second on a phone clamped to a windshield in
 direct sun, which is close to the worst thermal environment a phone sees. A
@@ -149,7 +167,10 @@ thermals on a real device, not a desktop browser.
 
 None of this is covered by the test suite. jsdom cannot run the worker,
 inference, or the camera, so a green suite says nothing about whether a model
-works. Check on real hardware:
+works. This list is the full manual pass for changing the build's own
+`DEFAULT_MODEL`; a model added through the picker gets 1 through 3 for free
+from its trial load, so only thermals still need checking by hand. Check on
+real hardware:
 
 1. The weights URL returns 200.
 2. The app reaches the scanning state and the console shows no GridSample or

@@ -71,13 +71,13 @@ Both directions are validated by type guards; a malformed message is ignored rat
 | Direction | Message | Purpose |
 | --- | --- | --- |
 | → worker | `probe` | Can this device run the detector? Downloads nothing; posted ahead of `load` |
-| → worker | `load` | Download the named model's weights, create the session; deferred until service-worker control in production |
+| → worker | `load` | Download the given model's weights and create the session (an omitted model loads the default); deferred until service-worker control in production |
 | → worker | `detect` | Run one transferred frame, with per-frame flags (full frame, thumbnail, cutout) and the effective threshold |
 | → main | `model-load-start` | Whether weights came from cache; drives whether the download screen shows |
 | → main | `model-progress` | Byte counts while streaming; not sent on a cache hit |
 | → main | `model-downloaded` | Weights done, before session build, so download success is counted apart from session failure |
 | → main | `backend-probe` | Session error, graph-capture state, isolation, thread count, and what the loaded weights say about themselves; feeds the debug overlay |
-| → main | `ready` | Session is live |
+| → main | `ready` | Session is live, reporting what the checkpoint turned out to hold (head width, classes) |
 | → main | `detections` | Decoded boxes, per-stage timing, optional extras |
 | → main | `worker-error` | A typed `DetectionErrorCode` plus optional detail |
 
@@ -89,7 +89,9 @@ The `detections` extras: the **cutout** (top detection's box, padded, clamped, d
 
 A custom **RF-DETR Small** checkpoint fine-tuned on Las Vegas Metro police vehicles, published at [`tuxracer/las-vegas-metro-rfdetr-small`](https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small) and exported from a sibling training repo. Signature: input `[1,3,512,512]` fp32 NCHW, ImageNet-normalized; outputs `dets [1,300,4]` (cxcywh, normalized) and `labels [1,300,2]` (raw logits). No NMS; RF-DETR is set-based.
 
-**One registry, one selection.** `src/lib/detectionModels` is the only place a checkpoint is described: one entry per selectable model, holding its Hugging Face repo, pinned revision, and ONNX file (`model_fp16.onnx`, ~57 MB, for the shipping entry). An entry says which bytes to fetch and nothing about what they hold: the head width and the class labels are read off the loaded session and the file's own stamped `names` map (§8), so no table here can drift from the weights it describes. The selection is a developer option, stored as a list of ids so multi-model selection later needs no settings migration. Resolving that list never yields nothing: an id left by a build that had a model this one does not falls back to the shipping entry instead of asking for weights that do not exist.
+**Default plus stored models.** `src/lib/detectionModels` defines the uniform shape every checkpoint entry takes: Hugging Face `owner`, `slug`, pinned `revision`, and repo-relative `file`. `DEFAULT_MODEL` is the one entry every build ships with (`model_fp16.onnx`, ~57 MB); a developer can register more from the model picker by pasting a Hugging Face URL, and those persist as full entries in `localStorage` under the `models` key. `knownModels()` is the default plus whatever is stored, and is what a selection resolves against: resolving never yields nothing, since an id left by a build that had a model this one does not falls back to the default instead of asking for weights that do not exist. An entry says which bytes to fetch and nothing about what they hold: the head width and the class labels are read off the loaded session and the file's own stamped `names` map (§8), so no table here can drift from the weights it describes. The default keeps a stable id (`las-vegas-metro`) so a routine revision bump still reaches a stored selection; an added model's id is its own pinned weights URL, since nothing else about it is guaranteed stable.
+
+**Adding a model from a URL.** The picker accepts a bare Hugging Face repo page or a `blob`/`resolve` URL pointing at an `.onnx` file. A `main` or unpinned revision is resolved to its commit SHA through the Hugging Face API before anything is stored, since the weights cache is keyed on URL and a mutable ref behind it would never update; an explicit tag is kept as pasted, the same as the default entry's. A bare repo URL also asks the API which `.onnx` file to load, and the add fails if there is none or more than one. Before an entry is stored, a throwaway detection worker gives it a full trial load: download the weights, build a WebGPU session, run it once. That download is the same one that fills the cache, so a successful trial has already cached the weights, and it is the same contract check a real load performs, so an incompatible checkpoint fails in the picker instead of stranding a driver after a reload. Success registers the entry, drafts it as the selection, and shows the classes the checkpoint reported.
 
 **What the file says about itself.** An export can stamp provenance into the ONNX file (release tag, source model id, class names), and onnxruntime-web's JS API surfaces none of it: all a session exposes is its input and output names, types and shapes. `src/lib/onnxMetadata` reads those top-level fields out of the downloaded bytes instead, stepping over the graph by its declared length rather than parsing it, which keeps the read at a fraction of a millisecond on a 57 MB file. The result rides to the debug overlay on `backend-probe` and is the only way to tell which build a device is really running, since the URL says which revision was asked for and not which bytes a cache returned. A build exported before stamping reads fine and reports nothing.
 
@@ -182,7 +184,7 @@ Typed error classes with a machine-readable `code`, never string-matched message
 
 **Detection**: `WEBGPU_UNSUPPORTED` (probe failed; terminal, before any download), `MODEL_LOAD_FAILED` (download or session creation threw; no second backend to retry on), `INFERENCE_FAILED` (one frame threw), `GPU_DEVICE_LOST` and `WORKER_CRASHED` (§6), plus `CAMERA_STALLED` raised by the context when recovery gives up (§5).
 
-Each code maps to a headline, body copy, optional reassurance rows, and a glyph. Every error screen offers one exit, a full page reload; no soft in-app retry. `WEBGPU_UNSUPPORTED` is excluded from the type the error screen accepts, so routing it into the generic panel is a compile error rather than a lookup that finds no copy.
+Each code maps to a headline, body copy, optional reassurance rows, and a glyph. Every error screen offers a full page reload as its exit; no soft in-app retry. `MODEL_LOAD_FAILED` gets a second action when the failing selection was not the default, since retrying the same load would just fail again: it commits the default selection and reloads. `WEBGPU_UNSUPPORTED` is excluded from the type the error screen accepts, so routing it into the generic panel is a compile error rather than a lookup that finds no copy.
 
 ## 14. Testing
 

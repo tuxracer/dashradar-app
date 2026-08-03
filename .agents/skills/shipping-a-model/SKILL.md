@@ -11,7 +11,7 @@ Mobile WebGPU is the only target and the only execution path. There is no CPU fa
 
 ## Signature the worker expects
 
-Every selectable checkpoint is one entry in `src/lib/detectionModels/consts.ts`, naming the repo, revision, and weights file, and nothing about what the weights hold. The shipping entry streams `model_fp16.onnx`, about 57 MB, mixed precision. The shapes below are that entry's.
+Every selectable checkpoint is a `DetectionModel` entry naming its repo, revision, and weights file, and nothing about what the weights hold: `DEFAULT_MODEL` in `src/lib/detectionModels/consts.ts` is the entry a build ships with, and a developer can add more from the model picker. The shipping entry streams `model_fp16.onnx`, about 57 MB, mixed precision. The shapes below are that entry's.
 
 | Tensor   | Shape           | Notes                                            |
 | -------- | --------------- | ------------------------------------------------ |
@@ -33,9 +33,9 @@ The `"model-cache"` Workbox route is `CacheFirst` keyed on URL, so the URL is th
 
 1. Push a new tag on the Hugging Face repo.
 2. Verify the new weights URL returns 200: `curl -sIL -o /dev/null -w '%{http_code}' <url>`
-3. Bump the entry's `revision` in `src/lib/detectionModels/consts.ts`. That is the whole edit: the head width and the class labels are read off the loaded session and the file's `names` map, so nothing app-side describes the checkpoint. A genuinely different checkpoint is a new entry with a new `id` rather than an edit to an existing one, so a stored selection is never silently repointed at a different detector.
+3. Bump `DEFAULT_MODEL`'s `revision` in `src/lib/detectionModels/consts.ts`. That is the whole edit: the head width and the class labels are read off the loaded session and the file's `names` map, so nothing app-side describes the checkpoint. A genuinely different checkpoint is a new entry with a new `id` rather than an edit to `DEFAULT_MODEL`, so a stored selection is never silently repointed at a different detector.
    Stamp `names` into the export or the classes come back as `CLASS 1`, `CLASS 2`. Every class it names is live: there is no allowlist, and `hudSignal` takes the max score across every detection, so a named `person` class beeps at every pedestrian.
 4. Verify end-to-end on WebGPU in a real browser (see the `verifying-in-browser` skill): zero GridSample or WGSL errors in the console, and a reference-image score match against the previous model.
 5. Verify on a real device before calling it done. Round-trip time and thermals are the numbers that matter, and neither shows up in a desktop browser.
 
-Only one model has ever been registered, so the change that adds the second entry is the first time two paths run outside a test: the model screen's save, confirm, and reload, and a second model earning its own `"model-cache"` entry. Give both a real-browser pass on that change.
+Testing an unreleased revision on a device needs no code change at all: paste the revision-pinned weights URL into the developer model picker's ADD MODEL row. The picker's trial load runs the same download-build-run sequence as a real load, so it covers steps 2 and 4 on that one device; still verify thermals separately, and still bump `DEFAULT_MODEL` for the release itself.
