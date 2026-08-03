@@ -304,6 +304,7 @@ export const ModelScreen = ({
                 event.preventDefault();
                 void handleAdd(add.url);
               }}
+              noValidate
               className="flex flex-col gap-2"
             >
               <input

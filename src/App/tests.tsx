@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
 import type { DetectionContextValue } from "@/context/DetectionContext";
 import { STORAGE_KEY } from "@/context/SettingsContext";
+import { STORED_MODELS_KEY } from "@/lib/detectionModels";
 
 /**
  * The live DetectionContext value, published by the passthrough hook below so
@@ -389,5 +390,58 @@ describe("App", () => {
     expect(screen.queryByTestId("detection-view")).toBeNull();
     // The feed is never shown outside the developer option.
     expect(screen.getByTestId("camera-view").className).toContain("opacity-0");
+  });
+
+  it("offers no revert action for a model load failure while the default model is active", async () => {
+    stubBrowser(grantedCamera);
+    render(<App />);
+    acceptFirstRunScreens();
+    await waitFor(() => expect(workerOnMessage).not.toBeNull());
+    await act(async () => {
+      workerOnMessage?.({
+        data: { type: "worker-error", code: "MODEL_LOAD_FAILED" },
+      });
+    });
+    await screen.findByTestId("error-message");
+    expect(
+      screen.queryByRole("button", { name: "USE DEFAULT MODEL" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers a revert action for a model load failure while a non-default model is pinned", async () => {
+    // The session pins activeModel at mount from modelIds, which only reads a
+    // stored selection with developer options on; the stored entry itself has
+    // to be a real registered model, or resolveModels would fall back to the
+    // default and the revert action would never appear.
+    const storedModel = {
+      id: "https://huggingface.co/someone/some-repo/resolve/abc123/model.onnx",
+      owner: "someone",
+      slug: "some-repo",
+      revision: "abc123",
+      file: "model.onnx",
+    };
+    window.localStorage.setItem(
+      STORED_MODELS_KEY,
+      JSON.stringify([storedModel]),
+    );
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        developerOptions: true,
+        modelIds: [storedModel.id],
+      }),
+    );
+    stubBrowser(grantedCamera);
+    render(<App />);
+    acceptFirstRunScreens();
+    await waitFor(() => expect(workerOnMessage).not.toBeNull());
+    await act(async () => {
+      workerOnMessage?.({
+        data: { type: "worker-error", code: "MODEL_LOAD_FAILED" },
+      });
+    });
+    expect(
+      await screen.findByRole("button", { name: "USE DEFAULT MODEL" }),
+    ).toBeInTheDocument();
   });
 });
