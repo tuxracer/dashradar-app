@@ -96,6 +96,21 @@ const loadSettings = (): Settings => {
   }
 };
 
+/**
+ * Persists a settings blob, reporting whether the write landed. Storage can be
+ * unavailable (private mode) or full, and the two callers want different things
+ * from that: the persist effect keeps the in-memory value and moves on, while a
+ * commit that is about to reload the page has to know it failed.
+ */
+const writeSettings = (next: PersistedSettings): boolean => {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 /** Props for SettingsProvider component. */
 type SettingsProviderProps = {
   children: ReactNode;
@@ -130,6 +145,9 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   );
   const [storedConfidenceThreshold, setStoredConfidenceThreshold] = useState(
     () => loadSettings().confidenceThreshold,
+  );
+  const [storedModelIds, setStoredModelIds] = useState(
+    () => loadSettings().modelIds,
   );
   const [storedZoomIndicator, setZoomIndicator] = useState(
     () => loadSettings().zoomIndicator,
@@ -174,6 +192,9 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
   const confidenceThreshold = developerOptions
     ? storedConfidenceThreshold
     : DEVELOPER_OPTIONS_OFF.confidenceThreshold;
+  const modelIds = developerOptions
+    ? storedModelIds
+    : DEVELOPER_OPTIONS_OFF.modelIds;
   const zoomIndicator = developerOptions
     ? storedZoomIndicator
     : DEVELOPER_OPTIONS_OFF.zoomIndicator;
@@ -190,8 +211,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
     ? storedRawConfidence
     : DEVELOPER_OPTIONS_OFF.rawConfidence;
 
-  useEffect(() => {
-    const next: PersistedSettings = {
+  const persisted: PersistedSettings = useMemo(
+    () => ({
       settingsVersion: SETTINGS_VERSION,
       developerOptions,
       showDebug: storedShowDebug,
@@ -203,34 +224,50 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       throttleInference: storedThrottleInference,
       zoomMode: storedZoomMode,
       confidenceThreshold: storedConfidenceThreshold,
+      modelIds: storedModelIds,
       zoomIndicator: storedZoomIndicator,
       roundTripIndicator: storedRoundTripIndicator,
       cameraPreview: storedCameraPreview,
       detectionView: storedDetectionView,
       rawConfidence: storedRawConfidence,
-    };
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    } catch {
-      // Storage unavailable (private mode / quota); keep the in-memory value.
-    }
-  }, [
-    developerOptions,
-    storedShowDebug,
-    storedFrameThumbnails,
-    storedSaveFrames,
-    storedAutoSaveFrames,
-    radarAudio,
-    detectionImage,
-    storedThrottleInference,
-    storedZoomMode,
-    storedConfidenceThreshold,
-    storedZoomIndicator,
-    storedRoundTripIndicator,
-    storedCameraPreview,
-    storedDetectionView,
-    storedRawConfidence,
-  ]);
+    }),
+    [
+      developerOptions,
+      storedShowDebug,
+      storedFrameThumbnails,
+      storedSaveFrames,
+      storedAutoSaveFrames,
+      radarAudio,
+      detectionImage,
+      storedThrottleInference,
+      storedZoomMode,
+      storedConfidenceThreshold,
+      storedModelIds,
+      storedZoomIndicator,
+      storedRoundTripIndicator,
+      storedCameraPreview,
+      storedDetectionView,
+      storedRawConfidence,
+    ],
+  );
+
+  useEffect(() => {
+    writeSettings(persisted);
+  }, [persisted]);
+
+  const commitModelIds = useCallback(
+    (ids: readonly string[]) => {
+      // Written straight through rather than left to the persist effect: the
+      // caller reloads on the next line, and the effect would not have run by
+      // then.
+      const wrote = writeSettings({ ...persisted, modelIds: ids });
+      if (wrote) {
+        setStoredModelIds(ids);
+      }
+      return wrote;
+    },
+    [persisted],
+  );
 
   const toggleDeveloperOptions = useCallback(() => {
     setDeveloperOptions((prev) => !prev);
@@ -322,6 +359,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleThrottleInference,
       zoomMode,
       setZoomMode,
+      modelIds,
+      commitModelIds,
       confidenceThreshold,
       setConfidenceThreshold,
       zoomIndicator,
@@ -357,6 +396,8 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleThrottleInference,
       zoomMode,
       setZoomMode,
+      modelIds,
+      commitModelIds,
       confidenceThreshold,
       setConfidenceThreshold,
       zoomIndicator,

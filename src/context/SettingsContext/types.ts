@@ -1,4 +1,4 @@
-import { isBoolean, isNumber, isPlainObject, isString } from "remeda";
+import { isArray, isBoolean, isNumber, isPlainObject, isString } from "remeda";
 import { CONFIDENCE_LEVELS } from "./consts";
 
 /**
@@ -22,7 +22,7 @@ export type Settings = {
   /**
    * Master switch for the development-only settings (showDebug,
    * frameThumbnails, saveFrames, autoSaveFrames, throttleInference,
-   * zoomMode, confidenceThreshold, zoomIndicator,
+   * zoomMode, confidenceThreshold, modelIds, zoomIndicator,
    * roundTripIndicator, cameraPreview, detectionView, rawConfidence). Off by
    * default. While it is off, SettingsProvider
    * reports each of those at its DEVELOPER_OPTIONS_OFF value no matter what is
@@ -101,6 +101,17 @@ export type Settings = {
    * while developerOptions is on.
    */
   zoomMode: ZoomMode;
+  /**
+   * Which detection models the app runs, by registry id. A list rather than a
+   * single id so multi-model selection needs no settings migration later, even
+   * though MAX_SELECTED_MODELS caps it at one today. Ids are stored unresolved
+   * and resolved through resolveModels at the point of use, so an id left by a
+   * build that had a model this one does not degrades to the shipping model
+   * instead of invalidating the whole blob. A developer option, so it only
+   * takes effect while developerOptions is on and the app runs the shipping
+   * model otherwise.
+   */
+  modelIds: readonly string[];
   /**
    * Minimum detection confidence. Detections scoring below this are discarded.
    * A developer option, so it only takes effect while developerOptions is on and
@@ -181,6 +192,7 @@ export type DeveloperOptions = Pick<
   | "throttleInference"
   | "zoomMode"
   | "confidenceThreshold"
+  | "modelIds"
   | "zoomIndicator"
   | "roundTripIndicator"
   | "cameraPreview"
@@ -191,7 +203,7 @@ export type DeveloperOptions = Pick<
 /**
  * Value exposed by the settings context via useSettings(). The developer
  * options (showDebug, frameThumbnails, saveFrames, autoSaveFrames,
- * throttleInference, zoomMode, confidenceThreshold, zoomIndicator,
+ * throttleInference, zoomMode, confidenceThreshold, modelIds, zoomIndicator,
  * roundTripIndicator, cameraPreview, detectionView, rawConfidence) are the
  * *effective* values, already gated on developerOptions, so consumers never
  * have to repeat the gate. Each toggle (or setter) still writes the stored
@@ -217,6 +229,17 @@ export type SettingsContextValue = {
   zoomMode: ZoomMode;
   /** Sets the zoom mode (1x, 2x, or auto). */
   setZoomMode: (mode: ZoomMode) => void;
+  modelIds: readonly string[];
+  /**
+   * Writes a model selection straight to localStorage and reports whether the
+   * write landed. Deliberately not a plain setState: the caller reloads the
+   * page immediately afterwards to apply the change, which would outrun the
+   * persist effect every other setter relies on. The in-memory value follows a
+   * write that landed, so a caller that decides not to reload is not left out
+   * of step. A false return means storage refused the write (private mode,
+   * quota), so the caller must not reload.
+   */
+  commitModelIds: (ids: readonly string[]) => boolean;
   confidenceThreshold: number;
   /** Sets the minimum-confidence level, snapping to the nearest allowed step. */
   setConfidenceThreshold: (level: number) => void;
@@ -264,6 +287,8 @@ export const isPersistedSettings = (
     (value.zoomMode === undefined || isZoomMode(value.zoomMode)) &&
     (value.confidenceThreshold === undefined ||
       isNumber(value.confidenceThreshold)) &&
+    (value.modelIds === undefined ||
+      (isArray(value.modelIds) && value.modelIds.every(isString))) &&
     (value.zoomIndicator === undefined || isBoolean(value.zoomIndicator)) &&
     (value.roundTripIndicator === undefined ||
       isBoolean(value.roundTripIndicator)) &&

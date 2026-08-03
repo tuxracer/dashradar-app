@@ -1,6 +1,6 @@
 import { act, render, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CONFIDENCE_LEVELS,
   SETTINGS_VERSION,
@@ -13,6 +13,7 @@ import type {
   PersistedSettings,
   SettingsContextValue,
 } from "@/context/SettingsContext";
+import { DEFAULT_MODEL } from "@/lib/detectionModels";
 
 afterEach(() => {
   window.localStorage.clear();
@@ -171,6 +172,7 @@ describe("SettingsContext", () => {
         throttleInference: true,
         zoomMode: "auto",
         confidenceThreshold: 0.5,
+        modelIds: [DEFAULT_MODEL.id],
         zoomIndicator: false,
         roundTripIndicator: false,
         cameraPreview: false,
@@ -379,6 +381,58 @@ describe("SettingsContext migrations", () => {
     expect(result.current.frameThumbnails).toBe(false);
     expect(result.current.saveFrames).toBe(false);
     expect(result.current.autoSaveFrames).toBe(false);
+  });
+});
+
+describe("model selection", () => {
+  it("starts on the shipping model", () => {
+    const { result } = mount();
+    expect(result.current.modelIds).toEqual([DEFAULT_MODEL.id]);
+  });
+
+  it("reports the shipping model while developer options are off", () => {
+    const { result } = mount({ developerOptions: false, modelIds: ["other"] });
+    expect(result.current.modelIds).toEqual([DEFAULT_MODEL.id]);
+  });
+
+  it("reports the stored selection once developer options are on", () => {
+    const { result } = mount({ developerOptions: true, modelIds: ["other"] });
+    expect(result.current.modelIds).toEqual(["other"]);
+  });
+
+  it("ignores a stored selection that is not a list of strings", () => {
+    const { result } = mount({
+      developerOptions: true,
+      modelIds: [7],
+    } as unknown as Partial<PersistedSettings>);
+    expect(result.current.modelIds).toEqual([DEFAULT_MODEL.id]);
+  });
+
+  it("commits the selection without waiting for an effect", () => {
+    const { result } = mount({ developerOptions: true });
+    // Deliberately not wrapped in act(): the commit has to reach storage on its
+    // own, because the caller reloads the page on the next line and would
+    // outrun the persist effect.
+    expect(result.current.commitModelIds(["other"])).toBe(true);
+    expect(stored("modelIds")).toEqual(["other"]);
+  });
+
+  it("keeps the rest of the settings when it commits", () => {
+    const { result } = mount({ developerOptions: true, radarAudio: false });
+    result.current.commitModelIds(["other"]);
+    expect(stored("radarAudio")).toBe(false);
+    expect(stored("developerOptions")).toBe(true);
+  });
+
+  it("reports a commit that storage refused", () => {
+    const { result } = mount({ developerOptions: true });
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new Error("quota");
+      });
+    expect(result.current.commitModelIds(["other"])).toBe(false);
+    setItem.mockRestore();
   });
 });
 

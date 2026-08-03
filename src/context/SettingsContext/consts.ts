@@ -1,3 +1,4 @@
+import { DEFAULT_MODEL } from "@/lib/detectionModels";
 import type { DeveloperOptions, Settings } from "./types";
 
 /** localStorage key holding the JSON-serialized Settings. */
@@ -22,10 +23,10 @@ export const CONFIDENCE_LEVELS = [
  * options master switch is off: nothing extra on the glass (no debug overlay,
  * no zoom or round-trip pill, no camera preview, no detection view), no
  * per-frame JPEG encode, no downloads, the thermal pacing floor in place, the
- * auto zoom (the production scanning behavior), the 0.5 confidence floor, and
- * the percentage readout. These are also the values every developer option
- * starts at (DEFAULT_SETTINGS builds on them), so the two switch states agree
- * until someone changes a row by hand.
+ * auto zoom (the production scanning behavior), the 0.5 confidence floor, the
+ * percentage readout, and the shipping detection model. These are also the
+ * values every developer option starts at (DEFAULT_SETTINGS builds on them), so
+ * the two switch states agree until someone changes a row by hand.
  */
 export const DEVELOPER_OPTIONS_OFF: DeveloperOptions = {
   showDebug: false,
@@ -35,6 +36,7 @@ export const DEVELOPER_OPTIONS_OFF: DeveloperOptions = {
   throttleInference: true,
   zoomMode: "auto",
   confidenceThreshold: 0.5,
+  modelIds: [DEFAULT_MODEL.id],
   zoomIndicator: false,
   roundTripIndicator: false,
   cameraPreview: false,
