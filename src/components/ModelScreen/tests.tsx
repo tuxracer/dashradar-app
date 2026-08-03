@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ModelScreen } from "@/components/ModelScreen";
@@ -11,6 +11,7 @@ import {
   loadStoredModels,
 } from "@/lib/detectionModels";
 import type { DetectionModel } from "@/lib/detectionModels";
+import type { trialLoadModel } from "@/lib/modelTrialLoad";
 
 /**
  * Stands in for the model the running session pinned at mount. The real
@@ -164,6 +165,25 @@ describe("ModelScreen", () => {
   });
 });
 
+/**
+ * Mounts the screen with no `models` prop, so `knownModels()` drives it.
+ * `trialLoad` is a test seam (jsdom cannot run a worker); the other props
+ * default to no-ops the way the screen's own defaults would behave.
+ */
+const renderModelScreen = (props?: {
+  onClose?: () => void;
+  reload?: () => void;
+  trialLoad?: typeof trialLoadModel;
+}) =>
+  render(
+    <ModelScreen
+      onClose={props?.onClose ?? vi.fn()}
+      reload={props?.reload ?? vi.fn()}
+      trialLoad={props?.trialLoad}
+    />,
+    { wrapper },
+  );
+
 describe("removing a stored model", () => {
   const addedModel: DetectionModel = {
     id: "https://huggingface.co/someone/some-repo/resolve/abc/model.onnx",
@@ -172,10 +192,6 @@ describe("removing a stored model", () => {
     revision: "abc",
     file: "model.onnx",
   };
-
-  /** Mounts the screen with no `models` prop, so `knownModels()` drives it. */
-  const renderModelScreen = () =>
-    render(<ModelScreen onClose={vi.fn()} reload={vi.fn()} />, { wrapper });
 
   beforeEach(() => {
     window.localStorage.setItem(
@@ -215,5 +231,68 @@ describe("removing a stored model", () => {
     // The default row is selected again, matching what the running session
     // pinned, so SAVE has nothing to apply.
     expect(screen.getByTestId("model-save")).toBeDisabled();
+  });
+});
+
+describe("adding a model from a URL", () => {
+  const pastedUrl =
+    "https://huggingface.co/someone/some-repo/resolve/abc/model.onnx";
+
+  const openAndSubmit = async (trialLoad: typeof trialLoadModel) => {
+    renderModelScreen({ trialLoad });
+    await userEvent.click(screen.getByTestId("model-add-open"));
+    await userEvent.type(screen.getByTestId("model-add-url"), pastedUrl);
+    await userEvent.click(screen.getByTestId("model-add-submit"));
+  };
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("registers and draft-selects a model that passes its trial", async () => {
+    await openAndSubmit(async () => ({
+      ok: true,
+      loaded: { headWidth: 2, classes: [{ index: 1, label: "police" }] },
+    }));
+    await waitFor(() => {
+      expect(loadStoredModels()).toHaveLength(1);
+    });
+    const added = loadStoredModels()[0];
+    expect(added.id).toBe(pastedUrl);
+    // Draft-selected: saving is now offered.
+    expect(screen.getByTestId("model-save")).toBeEnabled();
+    // The summary names what it detects.
+    expect(screen.getByTestId("model-add-status").textContent).toContain(
+      "police",
+    );
+  });
+
+  it("registers nothing when the trial fails, and shows the reason", async () => {
+    await openAndSubmit(async () => ({
+      ok: false,
+      reason: "input shape mismatch",
+    }));
+    await waitFor(() => {
+      expect(screen.getByTestId("model-add-status").textContent).toContain(
+        "input shape mismatch",
+      );
+    });
+    expect(loadStoredModels()).toEqual([]);
+  });
+
+  it("rejects a non-HF URL locally without running a trial", async () => {
+    const trialLoad = vi.fn();
+    renderModelScreen({ trialLoad });
+    await userEvent.click(screen.getByTestId("model-add-open"));
+    await userEvent.type(
+      screen.getByTestId("model-add-url"),
+      "https://example.com/model.onnx",
+    );
+    await userEvent.click(screen.getByTestId("model-add-submit"));
+    await waitFor(() => {
+      expect(screen.getByTestId("model-add-status")).toBeInTheDocument();
+    });
+    expect(trialLoad).not.toHaveBeenCalled();
+    expect(loadStoredModels()).toEqual([]);
   });
 });

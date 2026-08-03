@@ -1,19 +1,40 @@
-import { useState } from "react";
+import type { FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, X } from "lucide-react";
 import { isDeepEqual } from "remeda";
 import { useDetection } from "@/context/DetectionContext";
 import { useSettings } from "@/context/SettingsContext";
 import {
+  addStoredModel,
   DEFAULT_MODEL,
+  isAddModelError,
   knownModels,
   MAX_SELECTED_MODELS,
   removeStoredModel,
+  resolveModelFromUrl,
   resolveModels,
 } from "@/lib/detectionModels";
 import type { DetectionModel } from "@/lib/detectionModels";
-import { COMMIT_FAILED_MESSAGE } from "./consts";
+import { trialLoadModel } from "@/lib/modelTrialLoad";
+import {
+  ADD_ERROR_COPY,
+  ADD_FAILED_MESSAGE,
+  COMMIT_FAILED_MESSAGE,
+  GENERIC_CLASSES_MESSAGE,
+} from "./consts";
 
 export * from "./consts";
+
+/**
+ * The add-flow's state, one discriminated union so the row renders from a
+ * single value.
+ */
+type AddPhase =
+  | { phase: "closed" }
+  | { phase: "editing"; url: string }
+  | { phase: "busy"; percent: number | undefined }
+  | { phase: "failed"; message: string }
+  | { phase: "added"; summary: string };
 
 /** Props for ModelScreen. */
 type ModelScreenProps = {
@@ -30,6 +51,11 @@ type ModelScreenProps = {
    * would otherwise have to stub an unforgeable global.
    */
   reload?: () => void;
+  /**
+   * Runs the candidate's trial load. Defaults to the real one, which spawns a
+   * detection worker; overridable because jsdom cannot run a worker.
+   */
+  trialLoad?: typeof trialLoadModel;
 };
 
 /**
@@ -47,6 +73,7 @@ export const ModelScreen = ({
   onClose,
   models: modelsProp,
   reload = () => window.location.reload(),
+  trialLoad = trialLoadModel,
 }: ModelScreenProps) => {
   const { modelIds, commitModelIds } = useSettings();
   const { activeModel } = useDetection();
@@ -67,9 +94,70 @@ export const ModelScreen = ({
   // detector is not running, with no way to make it true.
   const changed = !isDeepEqual([...draft], [activeModel.id]);
 
+  const [add, setAdd] = useState<AddPhase>({ phase: "closed" });
+  // The input's live text, tracked apart from `add` so it survives the
+  // "failed" phase (the URL stays there to be corrected) without the
+  // discriminated union carrying a field every phase but "editing" ignores.
+  const [url, setUrl] = useState("");
+  // Aborts a trial in flight when the screen unmounts, so BACK does not leave
+  // a worker downloading tens of megabytes for a screen nobody is on.
+  const abortRef = useRef<AbortController | undefined>(undefined);
+  useEffect(() => () => abortRef.current?.abort(), []);
+
   /** Re-read the list after a stored-model mutation. */
   const refreshModels = () => {
     setModels(modelsProp ?? knownModels());
+  };
+
+  const openAdd = () => {
+    setUrl("");
+    setAdd({ phase: "editing", url: "" });
+  };
+
+  const handleAdd = async (candidateUrl: string) => {
+    setAdd({ phase: "busy", percent: undefined });
+    let entry: DetectionModel;
+    try {
+      entry = await resolveModelFromUrl(candidateUrl);
+    } catch (error) {
+      setAdd({
+        phase: "failed",
+        message: isAddModelError(error)
+          ? [ADD_ERROR_COPY[error.code], error.detail].filter(Boolean).join(" ")
+          : ADD_ERROR_COPY.REPO_LOOKUP_FAILED,
+      });
+      return;
+    }
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const result = await trialLoad(entry, {
+      signal: controller.signal,
+      onProgress: (fraction) =>
+        setAdd({ phase: "busy", percent: Math.round(fraction * 100) }),
+    });
+    if (!result.ok) {
+      setAdd({ phase: "failed", message: result.reason });
+      return;
+    }
+    if (!addStoredModel(entry)) {
+      setAdd({ phase: "failed", message: ADD_FAILED_MESSAGE });
+      return;
+    }
+    refreshModels();
+    setDraft([entry.id]);
+    const labels = (result.loaded?.classes ?? []).map((c) => c.label);
+    setAdd({
+      phase: "added",
+      summary:
+        labels.length > 0
+          ? `Detects: ${labels.join(", ")}`
+          : GENERIC_CLASSES_MESSAGE,
+    });
+  };
+
+  const handleAddSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    void handleAdd(url);
   };
 
   const handleRemove = (id: string) => {
@@ -179,6 +267,72 @@ export const ModelScreen = ({
               </div>
             );
           })}
+
+          {(add.phase === "closed" || add.phase === "added") && (
+            <button
+              type="button"
+              data-testid="model-add-open"
+              onClick={openAdd}
+              className="flex min-h-20 items-center justify-center rounded-xl bg-white/10 px-6 text-lg font-semibold tracking-[0.04em] text-white/90"
+            >
+              ADD MODEL
+            </button>
+          )}
+          {add.phase === "added" && (
+            <span
+              data-testid="model-add-status"
+              className="text-sm font-medium tracking-[0.06em] text-white/45"
+            >
+              {add.summary}
+            </span>
+          )}
+
+          {(add.phase === "editing" || add.phase === "failed") && (
+            <form onSubmit={handleAddSubmit} className="flex flex-col gap-2">
+              <input
+                type="url"
+                inputMode="url"
+                data-testid="model-add-url"
+                value={url}
+                onChange={(event) => setUrl(event.target.value)}
+                placeholder="https://huggingface.co/owner/repo"
+                className="min-h-14 w-full rounded-xl bg-white/10 px-4 text-base font-medium tracking-[0.04em] text-white/90 placeholder:text-white/35"
+              />
+              <button
+                type="submit"
+                data-testid="model-add-submit"
+                disabled={url.trim().length === 0}
+                className={`min-h-14 rounded-xl px-6 text-base font-semibold tracking-[0.12em] transition-colors ${
+                  url.trim().length > 0
+                    ? "bg-hud-amber text-surface"
+                    : "bg-white/10 text-white/35"
+                }`}
+              >
+                ADD
+              </button>
+              {add.phase === "failed" && (
+                <span
+                  data-testid="model-add-status"
+                  className="text-sm font-medium tracking-[0.06em] text-white/60"
+                >
+                  {add.message}
+                </span>
+              )}
+            </form>
+          )}
+
+          {add.phase === "busy" && (
+            <div className="flex min-h-20 flex-col items-center justify-center gap-1 rounded-xl bg-white/10 px-6 py-4">
+              <span
+                data-testid="model-add-status"
+                className="text-sm font-medium tracking-[0.06em] text-white/60"
+              >
+                {add.percent !== undefined
+                  ? `DOWNLOADING ${add.percent}%`
+                  : "CHECKING MODEL..."}
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>
