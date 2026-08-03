@@ -48,3 +48,17 @@ export const DIRECTION_LEFT_MAX = 1 / 3;
 
 /** Box center-x at or above this fraction reads as a right contact. */
 export const DIRECTION_RIGHT_MIN = 2 / 3;
+
+/**
+ * Signal level at or above which the pulsing alert ring lights up, marking a
+ * strong signal.
+ */
+export const ALERT_THRESHOLD = 0.8;
+
+/**
+ * Signal level at or above which the meter registers a contact: the readout
+ * and status word take the signal color and the status word leaves SCANNING.
+ * Just above zero so the idle meter stays quiet while any real signal
+ * registers immediately.
+ */
+export const CONTACT_THRESHOLD = 0.01;

@@ -7,9 +7,11 @@ import {
   decayPeak,
   hudScore,
   hudSignal,
+  initialMeterState,
   litSegments,
   signalColor,
   signalFromScore,
+  stepMeter,
   DECAY_PER_SEC,
   SEGMENT_COUNT,
   SIGNAL_FLOOR,
@@ -183,5 +185,92 @@ describe("contactDirection", () => {
 
   it("reads a right-third contact as right", () => {
     expect(contactDirection(boxAtCenterX(0.8))).toBe("right");
+  });
+});
+
+describe("stepMeter", () => {
+  const step = (
+    state = initialMeterState(),
+    inputs: Partial<Parameters<typeof stepMeter>[1]> = {},
+    dtSec = 0.016,
+  ) =>
+    stepMeter(
+      state,
+      {
+        signal: 0,
+        detectedLabel: undefined,
+        contactPresent: false,
+        ...inputs,
+      },
+      dtSec,
+    );
+
+  it("snaps the level up to a new signal and decays it once the signal drops", () => {
+    const risen = step(initialMeterState(), { signal: 0.9 });
+    expect(risen.display.level).toBe(0.9);
+
+    const decayed = step(risen.state, { signal: 0 });
+    expect(decayed.display.level).toBeLessThan(0.9);
+    expect(decayed.display.level).toBeGreaterThan(0);
+  });
+
+  it("holds the detected label through the decay tail", () => {
+    const live = step(initialMeterState(), {
+      signal: 0.9,
+      detectedLabel: "police",
+    });
+    expect(live.display.heldLabel).toBe("police");
+
+    // The detection clears while the dial still shows a number: the label
+    // must survive rather than snapping away mid-decay.
+    const coasting = step(live.state, { signal: 0 });
+    expect(coasting.display.level).toBeGreaterThan(0);
+    expect(coasting.display.heldLabel).toBe("police");
+  });
+
+  it("releases the held label once the meter fully decays to zero", () => {
+    const live = step(initialMeterState(), {
+      signal: 0.5,
+      detectedLabel: "police",
+    });
+    // A long step decays any level to zero.
+    const drained = step(live.state, { signal: 0 }, 60);
+    expect(drained.display.level).toBe(0);
+    expect(drained.display.heldLabel).toBeUndefined();
+  });
+
+  it("adopts a new label the moment a different detection is live", () => {
+    const first = step(initialMeterState(), {
+      signal: 0.9,
+      detectedLabel: "police",
+    });
+    const second = step(first.state, {
+      signal: 0.9,
+      detectedLabel: "sheriff",
+    });
+    expect(second.display.heldLabel).toBe("sheriff");
+  });
+
+  it("shows the contact only while one exists and the meter is live", () => {
+    const live = step(initialMeterState(), {
+      signal: 0.9,
+      contactPresent: true,
+    });
+    expect(live.display.contactShown).toBe(true);
+
+    // The card follows the decay tail: still shown while the level drains...
+    const coasting = step(live.state, { signal: 0, contactPresent: true });
+    expect(coasting.display.contactShown).toBe(true);
+
+    // ...and gone at a zero meter, or when no contact exists at any level.
+    const drained = step(
+      coasting.state,
+      { signal: 0, contactPresent: true },
+      60,
+    );
+    expect(drained.display.contactShown).toBe(false);
+    expect(
+      step(initialMeterState(), { signal: 0.9 }).display.contactShown,
+    ).toBe(false);
   });
 });

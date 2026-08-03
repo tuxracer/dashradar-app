@@ -3,16 +3,15 @@ import type { Contact } from "@/context/DetectionContext";
 import { createRadarBeeper } from "@/lib/radarAudio";
 import type { RadarBeeper } from "@/lib/radarAudio";
 import {
-  decayPeak,
+  initialMeterState,
   litSegments,
   signalColor,
+  stepMeter,
   SEGMENT_COUNT,
   SIGNAL_HIGH_COLOR,
 } from "@/lib/radarSignal";
 import {
-  ALERT_THRESHOLD,
   ARC_SWEEP_DEG,
-  CONTACT_THRESHOLD,
   DIRECTION_DISPLAY,
   RAW_CONFIDENCE_DECIMALS,
 } from "./consts";
@@ -113,7 +112,7 @@ export const RadarDetectorScreen = ({
   const rawConfidenceRef = useRef(rawConfidence);
   const detectedLabelRef = useRef(detectedLabel);
   const beeperRef = useRef<RadarBeeper | undefined>(undefined);
-  const peakRef = useRef(0);
+  const meterRef = useRef(initialMeterState());
   const lastTimeRef = useRef<number | undefined>(undefined);
   const segmentRefs = useRef<(HTMLDivElement | null)[]>([]);
   const readoutRef = useRef<HTMLSpanElement>(null);
@@ -195,18 +194,12 @@ export const RadarDetectorScreen = ({
     let disposed = false;
     let running = false;
     let frame = 0;
-    // Values behind the last DOM flush. While both hold, every write below
+    // Values behind the last DOM flush. While all hold, every write below
     // would rewrite an identical value, so the flush is skipped and a steady
     // alert does not churn styles and text at display refresh rate.
     let writtenLevel: number | undefined;
     let writtenContactShown: boolean | undefined;
     let writtenStatus: string | undefined;
-    // The class the status word is currently naming. Held across the dial's
-    // decay tail: detectedLabel clears the instant the raw signal does, but
-    // the peak-held level keeps reading a percentage for about a second after,
-    // and the word must not snap to SCANNING while the dial still shows a
-    // number. Released when the meter reaches zero.
-    let heldLabel: string | undefined;
     // Sentinel distinct from any real prop value (a number or undefined), so
     // the first tick always flushes the readout mode.
     let writtenRawConfidence: number | undefined | null = null;
@@ -217,8 +210,19 @@ export const RadarDetectorScreen = ({
       const dtSec = Math.min(0.05, (now - last) / 1000);
       lastTimeRef.current = now;
 
-      const level = decayPeak(peakRef.current, confidenceRef.current, dtSec);
-      peakRef.current = level;
+      // The display state machine (peak-hold decay, held label, thresholds)
+      // is the pure stepMeter; this loop only writes what it says and parks.
+      const { state, display } = stepMeter(
+        meterRef.current,
+        {
+          signal: confidenceRef.current,
+          detectedLabel: detectedLabelRef.current,
+          contactPresent: contactRef.current !== undefined,
+        },
+        dtSec,
+      );
+      meterRef.current = state;
+      const { level, hasSignal, contactShown } = display;
 
       // Feed the audio the raw signal, not the peak-held meter level: the
       // beeps stop the instant the detection is gone instead of winding down
@@ -229,10 +233,6 @@ export const RadarDetectorScreen = ({
         audioEnabledRef.current ? confidenceRef.current : 0,
         now,
       );
-
-      // The card tracks the meter, fading in with a detection and out with
-      // the decay tail.
-      const contactShown = contactRef.current !== undefined && level > 0;
 
       // The status word flips between INITIALIZING and SCANNING at a zero
       // meter, so the initializing flag gates the flush alongside the level.
@@ -245,22 +245,12 @@ export const RadarDetectorScreen = ({
       // at an idle meter).
       const raw = rawConfidenceRef.current;
 
-      const hasSignal = level >= CONTACT_THRESHOLD;
-
-      // The label survives the decay tail: adopt a new one whenever there is a
-      // detection, and only release it once the meter has fully decayed.
-      if (detectedLabelRef.current !== undefined) {
-        heldLabel = detectedLabelRef.current;
-      } else if (level === 0) {
-        heldLabel = undefined;
-      }
-
       // ALERT is the fallback for a signal with no class to name, which the
       // real app does not produce (a nonzero signal means a detection, and a
       // detection has a class) but which keeps the word honest if it ever does.
       const statusText = hasSignal
-        ? heldLabel !== undefined
-          ? `${heldLabel} DETECTED`
+        ? display.heldLabel !== undefined
+          ? `${display.heldLabel} DETECTED`
           : "ALERT"
         : isInitializing
           ? "INITIALIZING"
@@ -317,7 +307,7 @@ export const RadarDetectorScreen = ({
         // the group-data-[alert=true] classes below).
         const screen = screenRef.current;
         if (screen) {
-          screen.dataset.alert = String(level >= ALERT_THRESHOLD);
+          screen.dataset.alert = String(display.alert);
           screen.dataset.contact = String(contactShown);
         }
       }

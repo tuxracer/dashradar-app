@@ -2,6 +2,8 @@ import type { HudModel } from "@/lib/detection";
 import type { NormalizedBox } from "@/types";
 import type { ContactDirection } from "./types";
 import {
+  ALERT_THRESHOLD,
+  CONTACT_THRESHOLD,
   DECAY_PER_SEC,
   DIRECTION_LEFT_MAX,
   DIRECTION_RIGHT_MIN,
@@ -95,4 +97,76 @@ export const signalColor = (level: number): string => {
   return clamped < 0.5
     ? mixColor(SIGNAL_LOW_COLOR, SIGNAL_MID_COLOR, clamped / 0.5)
     : mixColor(SIGNAL_MID_COLOR, SIGNAL_HIGH_COLOR, (clamped - 0.5) / 0.5);
+};
+
+/** The meter's cross-frame state: the peak-held level and the held label. */
+export type MeterState = {
+  /** Peak-held meter level in [0, 1], decaying toward the live signal. */
+  level: number;
+  /**
+   * The class name the status word is naming. Held across the dial's decay
+   * tail: the live label clears the instant the raw signal does, but the
+   * peak-held level keeps reading a number for about a second after, and the
+   * word must not snap back while the dial still shows one. Released once the
+   * meter fully decays to zero.
+   */
+  heldLabel: string | undefined;
+};
+
+/** The meter's state before any signal has registered. */
+export const initialMeterState = (): MeterState => ({
+  level: 0,
+  heldLabel: undefined,
+});
+
+/** What one meter step says the display should show. */
+export type MeterDisplay = {
+  /** Peak-held level driving the ladder, readout, and glow. */
+  level: number;
+  /** Whether the meter registers a contact (readout and word take color). */
+  hasSignal: boolean;
+  /** Whether the pulsing alert ring is lit. */
+  alert: boolean;
+  /** Whether the contact card is shown (a contact exists and the meter is live). */
+  contactShown: boolean;
+  /** The class name to display, surviving the decay tail. */
+  heldLabel: string | undefined;
+};
+
+/**
+ * One step of the meter's display state machine: peak-hold decay, the
+ * held-label rule, and the threshold gates, pure so the rendering loop that
+ * calls it per animation frame is nothing but "step, write, park when
+ * quiescent". The quiescence test is the caller's (raw signal zero and level
+ * zero), since only the caller knows the raw signal.
+ */
+export const stepMeter = (
+  state: MeterState,
+  inputs: {
+    /** Live signal in [0, 1] (hudSignal). */
+    signal: number;
+    /** Class label of the live detection, if any. */
+    detectedLabel: string | undefined;
+    /** Whether a contact image exists to show. */
+    contactPresent: boolean;
+  },
+  dtSec: number,
+): { state: MeterState; display: MeterDisplay } => {
+  const level = decayPeak(state.level, inputs.signal, dtSec);
+  const heldLabel =
+    inputs.detectedLabel !== undefined
+      ? inputs.detectedLabel
+      : level === 0
+        ? undefined
+        : state.heldLabel;
+  return {
+    state: { level, heldLabel },
+    display: {
+      level,
+      hasSignal: level >= CONTACT_THRESHOLD,
+      alert: level >= ALERT_THRESHOLD,
+      contactShown: inputs.contactPresent && level > 0,
+      heldLabel,
+    },
+  };
 };
