@@ -41,14 +41,6 @@ pnpm format      # Auto-fix formatting (prettier --write)
 
 A custom **RF-DETR Small** checkpoint, published as ONNX at [`tuxracer/las-vegas-metro-rfdetr-small`](https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small). It recognizes Las Vegas Metro patrol vehicles best today, since they make up most of the training data, and the training set keeps growing toward broader coverage. The app streams the weights from Hugging Face on first launch.
 
-## Privacy
-
-Camera frames never leave the phone. Detection runs on the device's own GPU, so no photo or video of what the camera sees is uploaded anywhere.
-
-No account, no login, nothing to sign up for.
-
-Everything works offline after the first launch. Install it to the home screen and it keeps detecting with no connection at all. The only network traffic is the app's own files, the one-time model download from Hugging Face, and anonymous aggregate usage analytics.
-
 ## Contact
 
 Mastodon: [@tuxracer@fosstodon.org](https://fosstodon.org/@tuxracer)
