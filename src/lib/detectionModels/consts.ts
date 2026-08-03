@@ -24,7 +24,7 @@ export const DETECTION_MODELS: readonly DetectionModel[] = [
   {
     id: "las-vegas-metro",
     slug: "las-vegas-metro-rfdetr-small",
-    revision: "v3.7",
+    revision: "v3.8",
     file: "model_fp16.onnx",
   },
 ];
