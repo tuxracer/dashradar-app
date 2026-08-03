@@ -8,6 +8,7 @@ import {
   frameFingerprint,
   mapCropBoxToFrame,
   preprocess,
+  resolveLoadedModel,
   topDetectionIndex,
 } from "@/workers/detection/inference";
 import {
@@ -23,7 +24,7 @@ import {
   isWorkerResponse,
 } from "@/workers/detection/types";
 import { DEFAULT_MODEL } from "@/lib/detectionModels";
-import type { DetectionModel } from "@/lib/detectionModels";
+import type { DetectionModel, LoadedModel } from "@/lib/detectionModels";
 import type { RawDetection } from "@/types";
 
 /** Build a `[1,queries,C]` logits buffer from per-query score rows. */
@@ -373,31 +374,177 @@ describe("frameBrightFraction", () => {
   });
 });
 
-describe("decodeDetections", () => {
+/** The shipping entry as a loaded 2-wide session reports it. */
+const POLICE_MODEL: LoadedModel = { ...DEFAULT_MODEL, headWidth: 2 };
+
+/** A two-class model, for driving decode past the single class that ships. */
+const TWO_CLASS_MODEL: LoadedModel = {
+  id: "two-class",
+  slug: "two-class",
+  revision: "v1",
+  file: "model.onnx",
+  headWidth: 3,
+  classes: [
+    {
+      index: 1,
+      label: "police",
+      displayLabel: "POLICE",
+      category: "vehicle",
+    },
+    { index: 2, label: "person", displayLabel: "PERSON", category: "person" },
+  ],
+};
+
+/** A `labels` output shape for a head of this width: [batch, queries, C]. */
+const labelsDims = (headWidth: number): readonly number[] => [1, 4, headWidth];
+
+describe("resolveLoadedModel", () => {
   /**
-   * Runs a decode that should be rejected and hands back the thrown error, or
+   * Runs a resolve that should be rejected and hands back the thrown error, or
    * undefined when it returned instead. The undefined is what makes these
    * assertions fail if the guard they cover is ever removed.
    */
-  const decodeError = (
-    boxes: Float32Array,
-    labels: Float32Array,
+  const resolveError = (
+    dims: readonly number[],
     model: DetectionModel,
   ): unknown => {
     try {
-      decodeDetections(boxes, labels, 0.5, model);
+      resolveLoadedModel(dims, model);
       return undefined;
     } catch (error) {
       return error;
     }
   };
 
+  it("takes the width the session reported when the entry declares none", () => {
+    // The pairing an unregistered checkpoint arrives as: a class table with
+    // nothing to assert about the head it will be read through.
+    const undeclared: DetectionModel = {
+      ...TWO_CLASS_MODEL,
+      headWidth: undefined,
+    };
+
+    expect(resolveLoadedModel(labelsDims(7), undeclared).headWidth).toBe(7);
+  });
+
+  it("carries the class table through onto the loaded model", () => {
+    const loaded = resolveLoadedModel(labelsDims(3), TWO_CLASS_MODEL);
+
+    expect(loaded.classes).toEqual(TWO_CLASS_MODEL.classes);
+    expect(loaded.id).toBe(TWO_CLASS_MODEL.id);
+  });
+
+  it("rejects a session whose head is wider than the entry declares", () => {
+    // The dangerous direction: a 2-slot table read against a 91-wide COCO head
+    // would find `person` at logit 1 and report POLICE at every pedestrian, so
+    // a declared width has to outrank the measured one here.
+    const thrown = resolveError(labelsDims(91), POLICE_MODEL);
+
+    expect(isDetectionError(thrown)).toBe(true);
+    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
+  });
+
+  it("rejects a session whose head is narrower than the entry declares", () => {
+    const thrown = resolveError(labelsDims(2), TWO_CLASS_MODEL);
+
+    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
+  });
+
+  it("rejects a labels output that is not shaped like a classification head", () => {
+    // Two dimensions cannot carry a per-query stride, so there is no width to
+    // read and every later offset would be invented.
+    const thrown = resolveError([1, 300], TWO_CLASS_MODEL);
+
+    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
+  });
+
+  it("rejects a head with no room for a class beside the background slot", () => {
+    const undeclared: DetectionModel = {
+      ...TWO_CLASS_MODEL,
+      headWidth: undefined,
+    };
+
+    const thrown = resolveError(labelsDims(1), undeclared);
+
+    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
+  });
+
+  it("rejects a class pointed at the background slot", () => {
+    // Slot 0 is never a real class, so a table naming it is misconfigured
+    // rather than merely unlucky.
+    const background: LoadedModel = {
+      ...TWO_CLASS_MODEL,
+      classes: [
+        {
+          index: 0,
+          label: "police",
+          displayLabel: "POLICE",
+          category: "vehicle",
+        },
+      ],
+    };
+
+    const thrown = resolveError(labelsDims(3), background);
+
+    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
+  });
+
+  it("rejects a class pointed past the end of the head", () => {
+    const past: LoadedModel = {
+      ...TWO_CLASS_MODEL,
+      classes: [
+        {
+          index: 3,
+          label: "police",
+          displayLabel: "POLICE",
+          category: "vehicle",
+        },
+      ],
+    };
+
+    const thrown = resolveError(labelsDims(3), past);
+
+    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
+  });
+
+  it("rejects a table that names no class at all", () => {
+    // An empty table skips every query and reports nothing forever, which on
+    // the road is indistinguishable from an empty road.
+    const empty: LoadedModel = { ...TWO_CLASS_MODEL, classes: [] };
+
+    const thrown = resolveError(labelsDims(3), empty);
+
+    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
+  });
+
+  it("rejects a class index that is not a whole logit", () => {
+    // A fractional index lands between logits, reads as undefined, and scores
+    // NaN, so that class loses every comparison and never surfaces.
+    const fractional: LoadedModel = {
+      ...TWO_CLASS_MODEL,
+      classes: [
+        {
+          index: 1.5,
+          label: "police",
+          displayLabel: "POLICE",
+          category: "vehicle",
+        },
+      ],
+    };
+
+    const thrown = resolveError(labelsDims(3), fractional);
+
+    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
+  });
+});
+
+describe("decodeDetections", () => {
   it("emits a police detection with the sigmoid score and clamped xyxy box", () => {
     // One query, high class-1 logit, cxcywh centered box within bounds.
     const labels = makeLabels([[-8, 4]]);
     const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
 
-    const detections = decodeDetections(boxes, labels, 0.5);
+    const detections = decodeDetections(boxes, labels, 0.5, POLICE_MODEL);
 
     expect(detections).toHaveLength(1);
     expect(detections[0].label).toBe("police");
@@ -413,7 +560,7 @@ describe("decodeDetections", () => {
     // Wide/tall box centered at origin corner overflows on the low side.
     const boxes = makeBoxes([[0.1, 0.1, 0.6, 0.6]]);
 
-    const detections = decodeDetections(boxes, labels, 0.5);
+    const detections = decodeDetections(boxes, labels, 0.5, POLICE_MODEL);
 
     expect(detections[0].box.xmin).toBe(0);
     expect(detections[0].box.ymin).toBe(0);
@@ -426,7 +573,7 @@ describe("decodeDetections", () => {
     const labels = makeLabels([[-8, -1]]);
     const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
 
-    expect(decodeDetections(boxes, labels, 0.5)).toHaveLength(0);
+    expect(decodeDetections(boxes, labels, 0.5, POLICE_MODEL)).toHaveLength(0);
   });
 
   it("ignores the class-0 slot entirely", () => {
@@ -434,7 +581,7 @@ describe("decodeDetections", () => {
     const labels = makeLabels([[10, -8]]);
     const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
 
-    expect(decodeDetections(boxes, labels, 0.5)).toHaveLength(0);
+    expect(decodeDetections(boxes, labels, 0.5, POLICE_MODEL)).toHaveLength(0);
   });
 
   it("keeps only the queries that clear the threshold", () => {
@@ -449,7 +596,7 @@ describe("decodeDetections", () => {
       [0.8, 0.8, 0.2, 0.2],
     ]);
 
-    const detections = decodeDetections(boxes, labels, 0.5);
+    const detections = decodeDetections(boxes, labels, 0.5, POLICE_MODEL);
 
     expect(detections).toHaveLength(2);
     expect(detections.map((detection) => detection.score)).toEqual([
@@ -467,26 +614,8 @@ describe("decodeDetections", () => {
     const side = 2 / INPUT_SIZE;
     const boxes = makeBoxes([[0.5, 0.5, side, side]]);
 
-    expect(decodeDetections(boxes, labels, 0.5)).toHaveLength(1);
+    expect(decodeDetections(boxes, labels, 0.5, POLICE_MODEL)).toHaveLength(1);
   });
-
-  /** A two-class model, for driving decode past the single class that ships. */
-  const TWO_CLASS_MODEL: DetectionModel = {
-    id: "two-class",
-    slug: "two-class",
-    revision: "v1",
-    file: "model.onnx",
-    headWidth: 3,
-    classes: [
-      {
-        index: 1,
-        label: "police",
-        displayLabel: "POLICE",
-        category: "vehicle",
-      },
-      { index: 2, label: "person", displayLabel: "PERSON", category: "person" },
-    ],
-  };
 
   it("labels a query with its highest-scoring class", () => {
     // One query, 3-wide head: background, weak police, strong person.
@@ -528,13 +657,25 @@ describe("decodeDetections", () => {
     );
   });
 
-  it("rejects a model whose declared head width does not match the tensor", () => {
-    // A 3-wide head decoded against the shipping model, which declares 2:
-    // every box would be misread, so this must fail loudly.
-    const labels = makeLabels([[-8, 4, -8]]);
-    const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
+  it("rejects a labels tensor that does not fit the model's stride", () => {
+    // Two logits per query against a model whose stride is 3: from the second
+    // query on, every class would be read at the wrong offset, so this must
+    // fail loudly rather than emit plausible garbage.
+    const labels = makeLabels([
+      [-8, 4],
+      [-8, 4],
+    ]);
+    const boxes = makeBoxes([
+      [0.5, 0.5, 0.4, 0.2],
+      [0.2, 0.2, 0.2, 0.2],
+    ]);
 
-    const thrown = decodeError(boxes, labels, DEFAULT_MODEL);
+    let thrown: unknown;
+    try {
+      decodeDetections(boxes, labels, 0.5, TWO_CLASS_MODEL);
+    } catch (error) {
+      thrown = error;
+    }
 
     expect(isDetectionError(thrown)).toBe(true);
     expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
@@ -544,7 +685,7 @@ describe("decodeDetections", () => {
     // A 5-wide head where only slots 1 and 4 are named. Slot 3 carries the
     // strongest logit in the tensor and must be ignored entirely: this is the
     // case a dense table could not express.
-    const sparse: DetectionModel = {
+    const sparse: LoadedModel = {
       ...TWO_CLASS_MODEL,
       headWidth: 5,
       classes: [
@@ -572,95 +713,14 @@ describe("decodeDetections", () => {
     expect(detections[0].score).toBeCloseTo(sigmoid(4), 6);
   });
 
-  it("rejects a tensor narrower than the declared head width", () => {
-    const narrow: DetectionModel = { ...TWO_CLASS_MODEL, headWidth: 9 };
-    const labels = makeLabels([[-8, 4, -8]]);
-    const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
-
-    const thrown = decodeError(boxes, labels, narrow);
-
-    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
-  });
-
-  it("rejects a class pointed at the background slot", () => {
-    // Slot 0 is never a real class, so a table naming it is misconfigured
-    // rather than merely unlucky.
-    const background: DetectionModel = {
-      ...TWO_CLASS_MODEL,
-      classes: [
-        {
-          index: 0,
-          label: "police",
-          displayLabel: "POLICE",
-          category: "vehicle",
-        },
-      ],
-    };
-    const labels = makeLabels([[-8, 4, -8]]);
-    const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
-
-    const thrown = decodeError(boxes, labels, background);
-
-    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
-  });
-
-  it("rejects a class pointed past the end of the head", () => {
-    const past: DetectionModel = {
-      ...TWO_CLASS_MODEL,
-      classes: [
-        {
-          index: 3,
-          label: "police",
-          displayLabel: "POLICE",
-          category: "vehicle",
-        },
-      ],
-    };
-    const labels = makeLabels([[-8, 4, -8]]);
-    const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
-
-    const thrown = decodeError(boxes, labels, past);
-
-    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
-  });
-
-  it("rejects a table that names no class at all", () => {
-    // An empty table skips every query and reports nothing forever, which on
-    // the road is indistinguishable from an empty road.
-    const empty: DetectionModel = { ...TWO_CLASS_MODEL, classes: [] };
-    const labels = makeLabels([[-8, 4, -8]]);
-    const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
-
-    const thrown = decodeError(boxes, labels, empty);
-
-    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
-  });
-
-  it("rejects a class index that is not a whole logit", () => {
-    // A fractional index lands between logits, reads as undefined, and scores
-    // NaN, so that class loses every comparison and never surfaces.
-    const fractional: DetectionModel = {
-      ...TWO_CLASS_MODEL,
-      classes: [
-        {
-          index: 1.5,
-          label: "police",
-          displayLabel: "POLICE",
-          category: "vehicle",
-        },
-      ],
-    };
-    const labels = makeLabels([[-8, 4, -8]]);
-    const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
-
-    const thrown = decodeError(boxes, labels, fractional);
-
-    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
-  });
-
   it("returns no detections for an empty output rather than failing the guard", () => {
     expect(
-      decodeDetections(new Float32Array(0), new Float32Array(0), 0.5),
+      decodeDetections(
+        new Float32Array(0),
+        new Float32Array(0),
+        0.5,
+        POLICE_MODEL,
+      ),
     ).toEqual([]);
   });
 });

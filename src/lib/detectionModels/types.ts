@@ -43,14 +43,18 @@ export type DetectionModel = {
   /** ONNX file within the repo's onnx/ directory. */
   file: string;
   /**
-   * Width of this checkpoint's classification head, background slot included.
-   * Declared rather than inferred, because a sparse class table no longer
-   * implies it, and it is what pins a table to its checkpoint: a police table
-   * naming logit 1, read against an accidentally loaded 91-wide COCO head,
-   * would otherwise find `person` there and report it as POLICE on every frame.
-   * Comes from the export's actual output shape.
+   * Width of this checkpoint's classification head, background slot included,
+   * when the entry wants to assert one. The worker measures the real width off
+   * the session's own `labels` output either way, so this is a check rather
+   * than the source: declaring it says which checkpoint the class indices were
+   * written against, and a session that reports a different width fails to
+   * load. That assertion is worth making for anything registered here, because
+   * a police table naming logit 1, read against an accidentally loaded 91-wide
+   * COCO head, would otherwise find `person` there and report it as POLICE on
+   * every frame. Omit it only where there is nothing to assert, as for a
+   * checkpoint this build does not ship a class table for.
    */
-  headWidth: number;
+  headWidth?: number;
   /**
    * The classes this build surfaces, each naming its own logit index. Need not
    * cover the head: a checkpoint trained on 80 classes can expose the six that
@@ -58,3 +62,11 @@ export type DetectionModel = {
    */
   classes: readonly DetectionClass[];
 };
+
+/**
+ * A registry entry paired with the head width the session built from it
+ * actually reported. The decode reads its stride from here, so carrying the two
+ * as one value is what keeps a width from being handed to a table it was never
+ * measured against.
+ */
+export type LoadedModel = DetectionModel & { headWidth: number };

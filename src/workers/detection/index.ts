@@ -11,7 +11,7 @@ import {
   modelWeightsUrl,
   resolveModels,
 } from "@/lib/detectionModels";
-import type { DetectionModel } from "@/lib/detectionModels";
+import type { DetectionModel, LoadedModel } from "@/lib/detectionModels";
 import {
   CROP_MAX_EDGE,
   DEV_MODEL_CACHE_NAME,
@@ -30,6 +30,7 @@ import {
   frameFingerprint,
   mapCropBoxToFrame,
   preprocess,
+  resolveLoadedModel,
   topDetectionIndex,
 } from "./inference";
 import type { DetectionCrop, WorkerResponse } from "./types";
@@ -62,8 +63,12 @@ type CaptureIo = {
   inputTensor: Tensor;
 };
 
-/** Names discovered from the session graph, resolved at load time. */
-type ModelIo = {
+/**
+ * Everything resolved from the session graph, before the registry entry it was
+ * built from is attached. The session-building helpers work in this shape so
+ * only createModel has to know which model it is loading.
+ */
+type SessionIo = {
   session: InferenceSession;
   inputName: string;
   detsName: string;
@@ -72,16 +77,23 @@ type ModelIo = {
   capture?: CaptureIo;
   /** Why the graph-capture attempt fell back to a plain session, if it did. */
   captureError?: string;
-  /** The registry entry this session was built from: its URL and class table. */
-  detectionModel: DetectionModel;
+  /**
+   * Shape of the `labels` output this session's first run produced. Both load
+   * paths run the model once before reporting ready (the capture path to
+   * perform the capture, the plain path to warm the shaders up), so the real
+   * head width is available without a run of its own.
+   */
+  labelsDims: readonly number[];
 };
 
-/**
- * Everything resolved from the session graph, before the registry entry it was
- * built from is attached. The session-building helpers work in this shape so
- * only createModel has to know which model it is loading.
- */
-type SessionIo = Omit<ModelIo, "detectionModel">;
+/** Names discovered from the session graph, resolved at load time. */
+type ModelIo = Omit<SessionIo, "labelsDims"> & {
+  /**
+   * The registry entry this session was built from: its URL and class table,
+   * reconciled with the head width the session reported.
+   */
+  detectionModel: LoadedModel;
+};
 
 let model: ModelIo | undefined;
 
@@ -338,9 +350,17 @@ const createCaptureModel = async (
     // Validation + capture run on the (still zeroed) input buffer.
     device.queue.writeBuffer(inputGpuBuffer, 0, inputBuffer);
     const outputs = await session.run({ [io.inputName]: inputTensor });
+    // Read before getData(), which downloads the data and releases the
+    // GPU-side output.
+    const labelsDims = outputs[io.labelsName].dims;
     await outputs[io.detsName].getData(true);
     await outputs[io.labelsName].getData(true);
-    return { session, ...io, capture: { device, inputGpuBuffer, inputTensor } };
+    return {
+      session,
+      ...io,
+      labelsDims,
+      capture: { device, inputGpuBuffer, inputTensor },
+    };
   } catch (error) {
     inputGpuBuffer?.destroy();
     try {
@@ -372,15 +392,21 @@ const createCaptureModel = async (
  * MODEL_LOAD_FAILED (with the reason on the backend probe) reports the same
  * outcome the first real frame would have produced, only sooner and named more
  * accurately than a per-frame INFERENCE_FAILED.
+ *
+ * Returns the run's `labels` shape, which is where the plain path gets the head
+ * width the capture path reads off its capture run.
  */
-const warmUpSession = async (io: SessionIo): Promise<void> => {
+const warmUpSession = async (
+  io: Omit<SessionIo, "labelsDims">,
+): Promise<readonly number[]> => {
   const input = new Tensor("float32", inputBuffer, [
     1,
     3,
     INPUT_SIZE,
     INPUT_SIZE,
   ]);
-  await io.session.run({ [io.inputName]: input });
+  const outputs = await io.session.run({ [io.inputName]: input });
+  return outputs[io.labelsName].dims;
 };
 
 /**
@@ -433,38 +459,45 @@ const createModel = async (
     }
   };
   let captureError: string | undefined;
+  let io: SessionIo | undefined;
   // WebKit never attempts capture: measured iPhone round trips are the same
   // with capture on or off, so the replay buys nothing there to weigh against
   // its instability risk (see the WEBGPU_GRAPH_CAPTURE doc in consts.ts).
   if (WEBGPU_GRAPH_CAPTURE && !isWebKitUa(navigator.userAgent)) {
     try {
-      return {
-        ...(await createCaptureModel(weights, releaseWeights)),
-        detectionModel,
-      };
+      io = await createCaptureModel(weights, releaseWeights);
     } catch (error) {
       // Capture may not work on this device or export; fall back to a plain
       // WebGPU session and record why for the debug overlay.
       captureError = describeError(error);
     }
   }
-  if (!weights) {
-    // The capture attempt released the buffer after building its session, so
-    // re-read the entry it came from. Guaranteed present: this same cache was
-    // matched moments ago, and the miss branch never releases.
-    const entry = await matchCachedModel(url);
-    if (!entry) {
-      throw new DetectionError("MODEL_LOAD_FAILED");
+  if (!io) {
+    if (!weights) {
+      // The capture attempt released the buffer after building its session, so
+      // re-read the entry it came from. Guaranteed present: this same cache was
+      // matched moments ago, and the miss branch never releases.
+      const entry = await matchCachedModel(url);
+      if (!entry) {
+        throw new DetectionError("MODEL_LOAD_FAILED");
+      }
+      weights = new Uint8Array(await entry.arrayBuffer());
     }
-    weights = new Uint8Array(await entry.arrayBuffer());
+    const session = await InferenceSession.create(weights, {
+      executionProviders: ["webgpu"],
+    });
+    releaseWeights();
+    const plain = { session, ...resolveIoNames(session), captureError };
+    io = { ...plain, labelsDims: await warmUpSession(plain) };
   }
-  const session = await InferenceSession.create(weights, {
-    executionProviders: ["webgpu"],
-  });
-  releaseWeights();
-  const io: SessionIo = { session, ...resolveIoNames(session), captureError };
-  await warmUpSession(io);
-  return { ...io, detectionModel };
+  // Reconciled once, after whichever path built the session, so a head width
+  // the entry disagrees with cannot send the capture path into a pointless
+  // fallback that builds a second session only to fail the same way.
+  const { labelsDims, ...rest } = io;
+  return {
+    ...rest,
+    detectionModel: resolveLoadedModel(labelsDims, detectionModel),
+  };
 };
 
 /**

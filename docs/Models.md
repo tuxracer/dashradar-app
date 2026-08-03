@@ -96,7 +96,7 @@ A model is one entry in `DETECTION_MODELS` in `src/lib/detectionModels/consts.ts
 | `slug`      | Hugging Face repo name.                                                  |
 | `revision`  | The pinned tag.                                                          |
 | `file`      | ONNX filename inside the repo's `onnx/` directory.                        |
-| `headWidth` | Width of the classification head, background slot included.              |
+| `headWidth` | Optional. Width of the classification head, background slot included, asserted against what the session reports. |
 | `classes`   | The classes this build surfaces, each naming its own logit index.        |
 
 `classes` does not have to cover the head. A checkpoint trained on 80 classes
@@ -109,15 +109,23 @@ Categories are `vehicle`, `person`, `bike`, `signal`, `animal`, and `unknown`.
 
 ### What gets checked, and when
 
-`headWidth` is declared rather than measured because a partial class table
-cannot imply it. It is what pins a table to its checkpoint. Without it, a police
-table naming logit 1 read against an accidentally loaded 91-wide head would find
-`person` there and report it as `POLICE` on every frame, silently.
+The head width itself is measured, not declared. Both load paths run the model
+once before reporting ready, so the `labels` output's own shape says how wide the
+head is, and a checkpoint nobody hand-measured still decodes correctly.
 
-The decode rejects a model on the first scan, as `MODEL_LOAD_FAILED`, when the
-label tensor's width disagrees with the declared `headWidth`, when the class
-table is empty, or when any index is not a whole number inside `[1, headWidth)`.
-Failing loudly is deliberate: the alternative is plausible-looking garbage.
+Declaring `headWidth` anyway is how an entry pins its class table to a specific
+checkpoint. The measured width cannot do that job, because it agrees with
+whatever loaded: a police table naming logit 1, read against an accidentally
+loaded 91-wide head, would find `person` there and report it as `POLICE` on every
+frame, silently. Declare it for anything registered here. Omit it only where
+there is nothing to assert.
+
+The load fails with `MODEL_LOAD_FAILED`, before the camera is asked for, when
+`labels` is not shaped `[batch, queries, classes]`, when a declared `headWidth`
+disagrees with the measured one, when the class table is empty, or when any index
+is not a whole number inside `[1, headWidth)`. The decode then rejects a frame
+whose two output tensors disagree about the query count. Failing loudly is
+deliberate: the alternative is plausible-looking garbage.
 
 The test suite catches the same errors in committed registry data, along with
 duplicate class indices and duplicate labels, so a bad entry does not have to

@@ -105,7 +105,12 @@ describe("the shipping registry", () => {
       for (const entry of model.classes) {
         expect(Number.isInteger(entry.index)).toBe(true);
         expect(entry.index).toBeGreaterThanOrEqual(1);
-        expect(entry.index).toBeLessThan(model.headWidth);
+        // Only an entry that declares a width can be checked against one here.
+        // The worker checks every entry against the width its session actually
+        // reported, declared or not (resolveLoadedModel).
+        if (model.headWidth !== undefined) {
+          expect(entry.index).toBeLessThan(model.headWidth);
+        }
       }
     }
   });

@@ -1,6 +1,9 @@
 import type { NormalizedBox, RawDetection } from "@/types";
-import { DEFAULT_MODEL } from "@/lib/detectionModels";
-import type { DetectionClass, DetectionModel } from "@/lib/detectionModels";
+import type {
+  DetectionClass,
+  DetectionModel,
+  LoadedModel,
+} from "@/lib/detectionModels";
 import {
   BRIGHT_FRACTION_STRIDE,
   BRIGHT_LUMA_THRESHOLD,
@@ -139,6 +142,60 @@ const sigmoid = (x: number): number => 1 / (1 + Math.exp(-x));
 const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
 
 /**
+ * Pair a registry entry with the head width the session built from it actually
+ * reported, from the `dims` of the `labels` tensor its first run produced.
+ * Measuring beats declaring for the width itself: it is a fact about the
+ * checkpoint, and reading it off the session means a checkpoint nobody
+ * hand-measured can still be decoded.
+ *
+ * The two are not interchangeable, though, which is why a declared width is
+ * still honored as a check. An entry that declares one is asserting which
+ * checkpoint its class indices were written against, and dropping that would
+ * let a police table naming logit 1, read against an accidentally loaded
+ * 91-wide COCO head, find `person` there and report POLICE at every pedestrian.
+ * The measured width cannot catch that on its own, because it agrees with
+ * whatever loaded.
+ *
+ * So this throws MODEL_LOAD_FAILED when the `labels` output is not shaped like
+ * a classification head at all, when a declared width disagrees with the one
+ * measured, when the table names no class (which would report an empty road
+ * forever), or when an index is not a whole number inside `[1, headWidth)` (a
+ * fractional one reads between logits as undefined and scores NaN, so that
+ * class silently never wins). Failing here means failing at load, before the
+ * camera is asked for, rather than on the first decoded frame.
+ */
+export const resolveLoadedModel = (
+  labelsDims: readonly number[],
+  model: DetectionModel,
+): LoadedModel => {
+  // [batch, queries, classes]. Anything else is not a head this decode can read
+  // its per-query stride out of.
+  if (labelsDims.length !== 3) {
+    throw new DetectionError("MODEL_LOAD_FAILED");
+  }
+  const headWidth = labelsDims[2];
+  if (!Number.isInteger(headWidth) || headWidth < 2) {
+    throw new DetectionError("MODEL_LOAD_FAILED");
+  }
+  if (model.headWidth !== undefined && model.headWidth !== headWidth) {
+    throw new DetectionError("MODEL_LOAD_FAILED");
+  }
+  if (model.classes.length === 0) {
+    throw new DetectionError("MODEL_LOAD_FAILED");
+  }
+  for (const entry of model.classes) {
+    if (
+      !Number.isInteger(entry.index) ||
+      entry.index < 1 ||
+      entry.index >= headWidth
+    ) {
+      throw new DetectionError("MODEL_LOAD_FAILED");
+    }
+  }
+  return { ...model, headWidth };
+};
+
+/**
  * Decode the model's raw outputs into normalized detections.
  *
  * `dets` is `[1,N,4]` cxcywh boxes (normalized 0..1). `labels` is
@@ -149,17 +206,12 @@ const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
  * two names is no use to a driver glancing at it. RF-DETR is set-based, so no
  * NMS is applied.
  *
- * The table names its logits explicitly and need not cover the head, so a
- * checkpoint's classes can be surfaced in part. What the table cannot do is
- * disagree with the checkpoint it describes: a width mismatch means every box
- * would be silently misread, so this throws MODEL_LOAD_FAILED rather than
- * emitting plausible garbage. A table with no classes in it is that same
- * disagreement at its largest, since it would report an empty road forever,
- * and every index has to be a whole number inside the head, because a
- * fractional one reads between logits as undefined and scores NaN, so that
- * class silently never wins. All of it is checked before the query loop rather
- * than inside it, so the cost is one scan of the table per frame rather than
- * one per query. The query count
+ * The model arrives already reconciled with the session it was loaded from (see
+ * resolveLoadedModel), so the table and its width are not re-checked per frame.
+ * What is still checked here is that the two tensors agree with each other: a
+ * `labels` length that is not the query count times the stride means the head
+ * would be read at the wrong offset from the second query on, so this throws
+ * MODEL_LOAD_FAILED rather than emitting plausible garbage. The query count
  * comes from the tensor lengths rather than their dims, which keeps this
  * function pure and works the same on the graph-capture path, where outputs
  * arrive through getData().
@@ -168,24 +220,15 @@ export const decodeDetections = (
   dets: Float32Array,
   labels: Float32Array,
   threshold: number,
-  model: DetectionModel = DEFAULT_MODEL,
+  model: LoadedModel,
 ): RawDetection[] => {
   const queryCount = Math.floor(dets.length / 4);
   if (queryCount === 0) {
     return [];
   }
   const { headWidth, classes } = model;
-  if (labels.length / queryCount !== headWidth || classes.length === 0) {
+  if (labels.length / queryCount !== headWidth) {
     throw new DetectionError("MODEL_LOAD_FAILED");
-  }
-  for (const entry of classes) {
-    if (
-      !Number.isInteger(entry.index) ||
-      entry.index < 1 ||
-      entry.index >= headWidth
-    ) {
-      throw new DetectionError("MODEL_LOAD_FAILED");
-    }
   }
   const detections: RawDetection[] = [];
   for (let q = 0; q < queryCount; q += 1) {
