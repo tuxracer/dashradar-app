@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { track } from "@vercel/analytics";
 import {
   CameraPermissionScreen,
@@ -34,7 +34,6 @@ import {
   UPDATE_PENDING_TIMEOUT_MS,
   waitForUpdateSettled,
 } from "@/lib/serviceWorker";
-import { createWakeLockManager } from "@/lib/wakeLock";
 import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 
 const useViewportSize = (): Size => {
@@ -63,7 +62,7 @@ const RadarScreen = () => {
     getDebugSnapshot,
     error,
     scan,
-    start,
+    attachVideo,
     activeModel,
   } = useDetection();
   const {
@@ -89,7 +88,6 @@ const RadarScreen = () => {
   // the same MediaStream. Refreshed on every stream (re)start.
   const [cameraVideo, setCameraVideo] = useState<HTMLVideoElement>();
   const viewportSize = useViewportSize();
-  const wakeLock = useMemo(() => createWakeLockManager(), []);
 
   // iOS forgets camera permission between launches of an installed web app,
   // so every launch re-prompts. When an app update is found at launch, the
@@ -114,15 +112,6 @@ const RadarScreen = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (status === "running") {
-      void wakeLock.acquire();
-      return () => {
-        void wakeLock.release();
-      };
-    }
-  }, [status, wakeLock]);
-
   // Report a camera failure to analytics once when it occurs. Detection-side
   // failures (model load, worker crash) are tracked at their source in
   // DetectionContext; camera errors only surface here, where getUserMedia's
@@ -142,9 +131,9 @@ const RadarScreen = () => {
     (video: HTMLVideoElement) => {
       updateVideoSize(video);
       setCameraVideo(video);
-      start(video);
+      attachVideo(video);
     },
-    [start, updateVideoSize],
+    [attachVideo, updateVideoSize],
   );
 
   if (showIntro) {

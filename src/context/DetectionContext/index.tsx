@@ -153,13 +153,13 @@ export const DetectionProvider = ({
     };
   }, [telemetry]);
 
-  const start = useCallback(
+  const attachVideo = useCallback(
     (video: HTMLVideoElement) => {
       engine.setInputs({ video });
     },
     [engine],
   );
-  const stop = useCallback(() => {
+  const detachVideo = useCallback(() => {
     engine.setInputs({ video: undefined });
   }, [engine]);
 
@@ -175,10 +175,10 @@ export const DetectionProvider = ({
       contact: shownContact,
       getDebugSnapshot: engine.getDebugSnapshot,
       activeModel,
-      start,
-      stop,
+      attachVideo,
+      detachVideo,
     }),
-    [snapshot, shownContact, engine, activeModel, start, stop],
+    [snapshot, shownContact, engine, activeModel, attachVideo, detachVideo],
   );
 
   return (

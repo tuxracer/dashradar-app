@@ -12,6 +12,7 @@ import { createDetectionTracker } from "@/lib/detectionTracker";
 import type { Contact } from "@/lib/processDetectionResult";
 import { processDetectionResult } from "@/lib/processDetectionResult";
 import { waitForServiceWorkerControl } from "@/lib/serviceWorker";
+import { createWakeLockManager } from "@/lib/wakeLock";
 import { ZOOM_OFF } from "@/workers/detection/consts";
 import type { ZoomLevel } from "@/workers/detection/types";
 import { isWorkerResponse } from "@/workers/detection/types";
@@ -140,6 +141,9 @@ export const createDetectionEngine = ({
   // sentinel reads it against a baseline captured when scanning starts.
   let framesTotal = 0;
   let debug: DebugSnapshot = INITIAL_DEBUG;
+  // Keeps the screen awake while scanning; a dash-mounted phone that sleeps
+  // mid-drive stops seeing the road with no sign anything changed.
+  const wakeLock = createWakeLockManager();
 
   const clearTimers = () => {
     window.clearTimeout(retryTimer);
@@ -220,9 +224,11 @@ export const createDetectionEngine = ({
     if (next === "running") {
       telemetry.scanningStarted();
       sentinelStart();
+      void wakeLock.acquire();
     } else if (previous === "running") {
       telemetry.scanningStopped();
       sentinelStop();
+      void wakeLock.release();
     }
   };
 

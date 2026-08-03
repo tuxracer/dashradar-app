@@ -38,7 +38,7 @@ export type DetectionContextValue = DetectionSnapshot & {
    */
   activeModel: DetectionModel;
   /** Attach the camera's video element; detection runs while one is attached. */
-  start: (video: HTMLVideoElement) => void;
+  attachVideo: (video: HTMLVideoElement) => void;
   /** Detach the video element, stopping detection. */
-  stop: () => void;
+  detachVideo: () => void;
 };

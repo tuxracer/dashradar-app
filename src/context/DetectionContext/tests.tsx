@@ -109,7 +109,7 @@ const DebugProbe = () => {
 };
 
 const StartOnReady = () => {
-  const { status, start } = useDetection();
+  const { status, attachVideo: start } = useDetection();
   return (
     <button
       onClick={() => start(document.createElement("video"))}
@@ -122,7 +122,7 @@ const StartOnReady = () => {
 };
 
 const StartStop = () => {
-  const { start, stop } = useDetection();
+  const { attachVideo: start, detachVideo: stop } = useDetection();
   return (
     <>
       <button
@@ -139,7 +139,7 @@ const StartStop = () => {
 };
 
 const StartStopWithVideo = ({ video }: { video: HTMLVideoElement }) => {
-  const { start, stop } = useDetection();
+  const { attachVideo: start, detachVideo: stop } = useDetection();
   return (
     <>
       <button onClick={() => start(video)} data-testid="start">
