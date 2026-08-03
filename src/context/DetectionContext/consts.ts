@@ -51,7 +51,6 @@ export const INITIAL_DEBUG: DebugSnapshot = {
   rawCount: 0,
   filteredCount: 0,
   shownCount: 0,
-  brightFraction: 0,
   overheadMs: 0,
   pacingDelayMs: 0,
   pacingRule: "floor",
@@ -79,73 +78,3 @@ export const SW_CONTROL_TIMEOUT_MS = 3_000;
  * re-loads from CacheStorage without a network download or visible loading UI.
  */
 export const WORKER_RECYCLE_AFTER_MS = 900_000;
-
-/**
- * Consecutive byte-identical inference frames that mark a frozen or black
- * camera feed and trigger camera recovery. At the 1 fps pacing floor (a
- * capture at most once per second) this is about five seconds of a dead
- * feed. Conservative on purpose: a spurious reconnect while driving is worse
- * than a few seconds of delay before recovering.
- */
-export const STALE_FRAME_THRESHOLD = 5;
-
-/**
- * Consecutive in-place camera recoveries that each re-stall before the feed
- * proves healthy, after which a full page reload is the last resort instead
- * of another remount. Reset once a recovery yields RECOVERY_HEALTHY_FRAMES
- * good frames.
- */
-export const MAX_RECONNECT_ATTEMPTS = 3;
-
-/**
- * Changing (non-identical) frames after a recovery that mark it successful
- * and reset the reconnect-attempt counter, so an isolated takeover long ago
- * does not push a later, unrelated stall straight to a reload.
- */
-export const RECOVERY_HEALTHY_FRAMES = 5;
-
-/**
- * Floor for the stalled-feed watchdog: the shortest window the pump may go
- * without a detection result while it is live before the camera is assumed
- * fully stalled (requestVideoFrameCallback stopped firing, so the pump is hung
- * waiting for a new frame) and recovery runs. Healthy devices are governed by
- * this floor alone; slower ones scale past it (see
- * WATCHDOG_ROUND_TRIP_MULTIPLE). Set well above the interval between two
- * legitimate results on such a device, and deliberately larger than the
- * crash-sentinel HEARTBEAT_INTERVAL_MS so a heartbeat-length gap never trips
- * the watchdog. A truly stalled feed never recovers on its own, so a longer
- * detection latency here is a safe trade for not false-firing on a
- * slow-but-alive device.
- */
-export const WATCHDOG_MS = 15_000;
-
-/**
- * Multiple of the last result's round trip the watchdog waits when that
- * exceeds the WATCHDOG_MS floor. Pacing puts results about 2x the round trip
- * apart (PACING_REST_RATIO), so a fixed window would make every result on a
- * slow enough device land after its own deadline: recovery would run
- * continuously, never collect RECOVERY_HEALTHY_FRAMES to prove it worked, and
- * escalate to reloading a phone that was slow but scanning fine. Scaling the
- * window with the device leaves a real stall (which produces no result at all,
- * ever) as the only thing that can trip it, and the headroom above the 2x
- * pacing interval absorbs the jitter of one unusually slow scan.
- */
-export const WATCHDOG_ROUND_TRIP_MULTIPLE = 3;
-
-/**
- * brightFraction below which an inference frame counts as "dark" for the
- * obscured-lens detector. The reference obscured frame has zero pixels above
- * the worker's BRIGHT_LUMA_THRESHOLD, so its brightFraction is 0; this 0.1%
- * floor tolerates a few noisy bright specks while any genuinely lit region
- * (which a night driving scene always has) blows well past it.
- */
-export const DARK_BRIGHT_FRACTION = 0.001;
-
-/**
- * Consecutive dark frames (brightFraction below DARK_BRIGHT_FRACTION) that mark
- * a physically obscured lens and trigger camera recovery. At the ~0.5 fps
- * pacing floor this is about ten seconds, matching STALE_FRAME_THRESHOLD's
- * conservatism: long enough to ride out a momentary dark patch (a brief
- * underpass) without a spurious reconnect while driving.
- */
-export const OBSCURED_FRAME_THRESHOLD = 5;

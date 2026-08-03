@@ -298,23 +298,6 @@ export type WorkerResponse =
        * contact card's SAVE button downloads for training data.
        */
       frame?: Blob;
-      /**
-       * Cheap content hash of the inference frame (frameFingerprint). The
-       * context compares it across frames to detect a frozen or black camera
-       * feed. Always present in production. It is optional in the type only
-       * so a hand-built test message or a future best-effort omission still
-       * validates.
-       */
-      fingerprint?: number;
-      /**
-       * Fraction (0..1) of the inference frame's subsampled pixels bright
-       * enough to rule out an obscured lens (frameBrightFraction). The context
-       * counts consecutive near-zero values to detect a physically covered
-       * camera that the byte-identical fingerprint check cannot. Always present
-       * in production; optional in the type only so a hand-built test message
-       * or a future best-effort omission still validates.
-       */
-      brightFraction?: number;
     }
   | {
       type: "worker-error";
@@ -353,9 +336,7 @@ export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
         (value.frameThumbnail === undefined ||
           (typeof ImageBitmap !== "undefined" &&
             value.frameThumbnail instanceof ImageBitmap)) &&
-        (value.frame === undefined || value.frame instanceof Blob) &&
-        (value.fingerprint === undefined || isNumber(value.fingerprint)) &&
-        (value.brightFraction === undefined || isNumber(value.brightFraction))
+        (value.frame === undefined || value.frame instanceof Blob)
       );
     case "worker-error":
       return (

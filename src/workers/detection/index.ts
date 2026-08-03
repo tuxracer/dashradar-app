@@ -24,8 +24,6 @@ import {
   cropRect,
   decodeDetections,
   ensureCapacity,
-  frameBrightFraction,
-  frameFingerprint,
   mapCropBoxToFrame,
   preprocess,
   resolveLoadedModel,
@@ -673,8 +671,6 @@ const detect = async ({
       INPUT_SIZE,
     );
     const imageData = inputContext.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
-    const fingerprint = frameFingerprint(imageData);
-    const brightFraction = frameBrightFraction(imageData);
     const inputData = preprocess(imageData, inputBuffer);
     const preprocessMs = performance.now() - preprocessStart;
 
@@ -785,8 +781,6 @@ const detect = async ({
         crop,
         frameThumbnail,
         frame: savedFrame,
-        fingerprint,
-        brightFraction,
       },
       transfer,
     );

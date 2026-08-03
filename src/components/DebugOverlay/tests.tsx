@@ -18,7 +18,6 @@ const debug: DebugSnapshot = {
   rawCount: 4,
   filteredCount: 2,
   shownCount: 1,
-  brightFraction: 0.42,
   overheadMs: 2.5,
   pacingDelayMs: 600,
   pacingRule: "rest",

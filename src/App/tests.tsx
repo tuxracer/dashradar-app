@@ -332,7 +332,7 @@ describe("App", () => {
 
   // A video/* file the browser cannot decode (ProRes .mov, H.265 .mp4, .mkv)
   // passes the drop filter, and the pump then waits forever on a frame
-  // callback that never fires, with the stall watchdog off for a file feed.
+  // callback that never fires.
   it("returns to the camera when the dropped clip cannot be decoded", async () => {
     stubBrowser(grantedCamera);
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});

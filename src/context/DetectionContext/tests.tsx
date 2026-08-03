@@ -6,14 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DetectionProvider,
   FRAME_RETRY_MS,
-  MAX_RECONNECT_ATTEMPTS,
   MIN_FRAME_INTERVAL_MS,
-  OBSCURED_FRAME_THRESHOLD,
-  RECOVERY_HEALTHY_FRAMES,
-  STALE_FRAME_THRESHOLD,
   useDetection,
-  WATCHDOG_MS,
-  WATCHDOG_ROUND_TRIP_MULTIPLE,
   WORKER_RECYCLE_AFTER_MS,
 } from "@/context/DetectionContext";
 import { DevVideoProvider, useDevVideo } from "@/context/DevVideoContext";
@@ -116,7 +110,6 @@ const DebugProbe = () => {
       <span data-testid="overhead">{debug?.overheadMs ?? "none"}</span>
       <span data-testid="pacing-delay">{debug?.pacingDelayMs ?? "none"}</span>
       <span data-testid="pacing-rule">{debug?.pacingRule ?? "none"}</span>
-      <span data-testid="bright">{debug?.brightFraction ?? "none"}</span>
     </div>
   );
 };
@@ -165,19 +158,6 @@ const StartStopWithVideo = ({ video }: { video: HTMLVideoElement }) => {
   );
 };
 
-const RecoveryProbe = ({ video }: { video: HTMLVideoElement }) => {
-  const { cameraStalled, cameraEpoch, start } = useDetection();
-  return (
-    <>
-      <button onClick={() => start(video)} data-testid="start">
-        start
-      </button>
-      <span data-testid="camera-stalled">{String(cameraStalled)}</span>
-      <span data-testid="camera-epoch">{cameraEpoch}</span>
-    </>
-  );
-};
-
 const SettingsToggle = () => {
   const { openSettings, closeSettings } = useSettings();
   return (
@@ -203,19 +183,11 @@ const DeveloperOptionsToggle = () => {
   );
 };
 
-const renderWithProvider = (
-  ui: ReactNode,
-  options?: { devVideoMode?: boolean },
-) => {
+const renderWithProvider = (ui: ReactNode) => {
   const worker = new FakeWorker();
   render(
     <SettingsProvider>
-      <DetectionProvider
-        createWorker={() => worker}
-        devVideoMode={options?.devVideoMode}
-      >
-        {ui}
-      </DetectionProvider>
+      <DetectionProvider createWorker={() => worker}>{ui}</DetectionProvider>
     </SettingsProvider>,
   );
   return worker;
@@ -227,27 +199,6 @@ const fakeBitmap = () => {
     height: 720,
     close: () => {},
   } as unknown as ImageBitmap;
-};
-
-/**
- * Emit one detections result with the given fingerprint and optional
- * brightFraction. Assumes the pump has already posted a detect frame (a prior
- * present + prime). These tests run under `vi.useFakeTimers()`, so callers
- * step the pump between rounds by calling `presentFrame()` and advancing the
- * fake timers, not by awaiting real elapsed time.
- */
-const emitDetections = (
-  worker: FakeWorker,
-  fingerprint: number,
-  brightFraction?: number,
-) => {
-  worker.emit({
-    type: "detections",
-    detections: [],
-    timing: { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 },
-    fingerprint,
-    brightFraction,
-  });
 };
 
 /**
@@ -280,14 +231,11 @@ const videoWithControlledFrames = () => {
 
 /**
  * Run `count` scans through the pump, each reporting a one-second inference.
- * Fingerprints run from `firstFingerprint` and must differ between rounds, or
- * the frozen-feed detector reads the repeat as a stalled camera.
  */
 const runScans = async (
   worker: FakeWorker,
   presentFrame: () => void,
   count: number,
-  firstFingerprint: number,
 ) => {
   for (let scan = 0; scan < count; scan += 1) {
     await act(async () => {
@@ -299,8 +247,6 @@ const runScans = async (
         type: "detections",
         detections: [],
         timing: { preprocessMs: 1, inferenceMs: 1_000, decodeMs: 1 },
-        fingerprint: firstFingerprint + scan,
-        brightFraction: 0.5,
       });
     });
     await act(async () => {
@@ -647,7 +593,6 @@ describe("DetectionProvider", () => {
           },
         ],
         timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
-        fingerprint: 1,
       });
     });
     await act(async () => {
@@ -658,7 +603,6 @@ describe("DetectionProvider", () => {
         type: "detections",
         detections: [],
         timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
-        fingerprint: 2,
       });
     });
     // The tracker coasts the lost car, so the HUD still shows it; the scan is
@@ -1194,11 +1138,11 @@ describe("DetectionProvider", () => {
 
     // A partial window reports nothing: a median of a couple of readings is
     // not worth an event.
-    await runScans(worker, presentFrame, TIMING_HISTORY_LIMIT - 1, 1);
+    await runScans(worker, presentFrame, TIMING_HISTORY_LIMIT - 1);
     expect(timingEvents()).toHaveLength(0);
 
     // The next scan fills the window and reports both medians.
-    await runScans(worker, presentFrame, 1, 100);
+    await runScans(worker, presentFrame, 1);
     expect(timingEvents()).toEqual([
       ["timing_round_trip", { seconds: expect.any(Number) }],
       ["timing_inference", { seconds: 1 }],
@@ -1206,7 +1150,7 @@ describe("DetectionProvider", () => {
 
     // The drive keeps scanning, and the window keeps rolling; neither event
     // may fire a second time.
-    await runScans(worker, presentFrame, TIMING_HISTORY_LIMIT, 200);
+    await runScans(worker, presentFrame, TIMING_HISTORY_LIMIT);
     expect(timingEvents()).toHaveLength(2);
   });
 
@@ -1217,11 +1161,7 @@ describe("DetectionProvider", () => {
       vi.fn(() => Promise.resolve(fakeBitmap())),
     );
     const { video, presentFrame } = videoWithControlledFrames();
-    // devVideoMode keeps the stall watchdog from arming: this test sits idle
-    // for a quarter hour of fake time, which a live camera would call a stall.
-    const worker = renderWithProvider(<StartStopWithVideo video={video} />, {
-      devVideoMode: true,
-    });
+    const worker = renderWithProvider(<StartStopWithVideo video={video} />);
     act(() => {
       worker.emit({ type: "ready" });
     });
@@ -1232,7 +1172,7 @@ describe("DetectionProvider", () => {
       vi.mocked(track).mock.calls.filter(([event]) => event.endsWith("_late"));
 
     // The early report fires here; the late one is not due on scan count.
-    await runScans(worker, presentFrame, TIMING_HISTORY_LIMIT, 1);
+    await runScans(worker, presentFrame, TIMING_HISTORY_LIMIT);
     expect(lateEvents()).toHaveLength(0);
 
     // A quarter hour of scanning later, the same rolling window reports again,
@@ -1240,14 +1180,14 @@ describe("DetectionProvider", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(LATE_TIMING_AFTER_MS);
     });
-    await runScans(worker, presentFrame, 1, 100);
+    await runScans(worker, presentFrame, 1);
     expect(lateEvents()).toEqual([
       ["timing_round_trip_late", { seconds: expect.any(Number) }],
       ["timing_inference_late", { seconds: 1 }],
     ]);
 
     // Still once per session, however much longer the drive runs.
-    await runScans(worker, presentFrame, TIMING_HISTORY_LIMIT, 200);
+    await runScans(worker, presentFrame, TIMING_HISTORY_LIMIT);
     expect(lateEvents()).toHaveLength(2);
   });
 
@@ -1333,38 +1273,6 @@ describe("DetectionProvider", () => {
     });
     const pacingDelay = Number(screen.getByTestId("pacing-delay").textContent);
     expect(pacingDelay).toBeGreaterThan(0);
-  });
-
-  it("records brightFraction from the detections message in the debug snapshot", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const worker = renderWithProvider(
-      <>
-        <DebugProbe />
-        <StartOnReady />
-      </>,
-    );
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    // Post a real frame so the detections handler below has an in-flight
-    // capture to resolve.
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    act(() => {
-      emitDetections(worker, 1, 0.37);
-    });
-    act(() => {
-      screen.getByTestId("read-debug").click();
-    });
-    expect(Number(screen.getByTestId("bright").textContent)).toBeCloseTo(0.37);
   });
 
   it("auto-starts detection when ready arrives after start", async () => {
@@ -2193,19 +2101,14 @@ describe("settings pause", () => {
 describe("scan session reporting", () => {
   const MINUTE = 60_000;
 
-  /**
-   * Mount with the pump running. devVideoMode is on so the camera-stall
-   * watchdog never arms: these tests advance minutes of fake time with no
-   * frames coming back, which a live camera would rightly call a stall and
-   * recover from, stopping the very clock under test.
-   */
+  /** Mount with the pump running. */
   const startScanning = async () => {
     vi.useFakeTimers();
     vi.stubGlobal(
       "createImageBitmap",
       vi.fn(() => Promise.resolve(fakeBitmap())),
     );
-    const worker = renderWithProvider(<StartStop />, { devVideoMode: true });
+    const worker = renderWithProvider(<StartStop />);
     act(() => {
       worker.emit({ type: "ready" });
     });
@@ -2266,7 +2169,7 @@ describe("scan session reporting", () => {
 
   it("counts nothing for a session that never scanned", async () => {
     vi.useFakeTimers();
-    renderWithProvider(<StartStop />, { devVideoMode: true });
+    renderWithProvider(<StartStop />);
     await advance(30 * MINUTE);
     act(() => {
       window.dispatchEvent(new Event("pagehide"));
@@ -2274,8 +2177,8 @@ describe("scan session reporting", () => {
     expect(scanSessions()).toEqual([]);
   });
 
-  // Time on the settings panel, on a stalled camera, or with the app in the
-  // background is not time the detector watched the road.
+  // Time on the settings panel or with the app in the background is not time
+  // the detector watched the road.
   it("leaves out the time the pump was stopped", async () => {
     await startScanning();
     await advance(10 * MINUTE);
@@ -3291,657 +3194,17 @@ describe("DetectionProvider auto save", () => {
   });
 });
 
-/**
- * Drive one frozen-feed stall: repeat an identical fingerprint to the
- * threshold, tripping recovery. Does NOT resume the pump, so it exercises the
- * terminal escalation (which stops the pump for good) as well as the remount
- * path.
- */
-const driveFrozenStall = async (worker: FakeWorker, present: () => void) => {
-  for (let i = 0; i <= STALE_FRAME_THRESHOLD; i += 1) {
-    await act(async () => {
-      present();
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    act(() => {
-      emitDetections(worker, 99);
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS + 20);
-    });
-  }
-};
-
-/**
- * Drive one frozen-feed recovery: stall to the threshold, then simulate the
- * remounted CameraView delivering a fresh stream that resumes the pump. Needs
- * a probe rendering the "start" button.
- */
-const driveFrozenRecovery = async (worker: FakeWorker, present: () => void) => {
-  await driveFrozenStall(worker, present);
-  // Fresh stream from the remount resumes the pump.
-  act(() => {
-    screen.getByTestId("start").click();
-  });
-};
-
-describe("DetectionProvider camera recovery", () => {
-  // Real timers plus MIN_FRAME_INTERVAL_MS-scale sleeps would run these tests
-  // past vitest's default 5 s test timeout (STALE_FRAME_THRESHOLD-plus rounds
-  // at just over a second each). Fake timers keep them fast and deterministic
-  // while exercising the exact same pump path as the real-timer paced-frame
-  // tests above (presentFrame to flush the camera wait, then advance past
-  // MIN_FRAME_INTERVAL_MS to fire the paced re-prime).
-  it("recovers the camera after a run of identical frames", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const { video, presentFrame } = videoWithControlledFrames();
-    const worker = renderWithProvider(<RecoveryProbe video={video} />);
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-
-    expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
-
-    // Drive STALE_FRAME_THRESHOLD + 1 results all carrying the same fingerprint.
-    // The first sets the baseline; each equal one after increments the streak.
-    for (let i = 0; i <= STALE_FRAME_THRESHOLD; i += 1) {
-      await act(async () => {
-        presentFrame();
-        await vi.advanceTimersByTimeAsync(0);
-      });
-      act(() => {
-        emitDetections(worker, 42);
-      });
-      // Let the paced re-prime schedule the next frame.
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
-      });
-    }
-
-    expect(screen.getByTestId("camera-epoch").textContent).toBe("1");
-    // The detected stall is reported to analytics, tagged as a frozen feed.
-    expect(track).toHaveBeenCalledWith("camera_stall", { reason: "frozen" });
-  });
-
-  it("recovers the camera after a run of dark frames", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const { video, presentFrame } = videoWithControlledFrames();
-    const worker = renderWithProvider(<RecoveryProbe video={video} />);
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-
-    expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
-
-    // Distinct fingerprint each round (so the frozen detector never fires) but
-    // brightFraction 0 (a fully dark feed), isolating the obscured detector.
-    for (let i = 0; i <= OBSCURED_FRAME_THRESHOLD; i += 1) {
-      await act(async () => {
-        presentFrame();
-        await vi.advanceTimersByTimeAsync(0);
-      });
-      act(() => {
-        emitDetections(worker, i, 0);
-      });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
-      });
-    }
-
-    expect(screen.getByTestId("camera-epoch").textContent).toBe("1");
-    // The detected stall is reported to analytics, tagged as an obscured lens.
-    expect(track).toHaveBeenCalledWith("camera_stall", { reason: "obscured" });
-  });
-
-  it("tags a byte-identical dark feed as frozen, not obscured", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const { video, presentFrame } = videoWithControlledFrames();
-    const worker = renderWithProvider(<RecoveryProbe video={video} />);
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-
-    // A solid-black frozen feed is both byte-identical AND dark, so the stale
-    // and dark streaks reach their (equal) thresholds on the same frame. The
-    // frozen check runs first, so it must win the reason tag.
-    for (let i = 0; i <= STALE_FRAME_THRESHOLD; i += 1) {
-      await act(async () => {
-        presentFrame();
-        await vi.advanceTimersByTimeAsync(0);
-      });
-      act(() => {
-        emitDetections(worker, 42, 0);
-      });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
-      });
-    }
-
-    expect(screen.getByTestId("camera-epoch").textContent).toBe("1");
-    expect(track).toHaveBeenCalledWith("camera_stall", { reason: "frozen" });
-    expect(track).not.toHaveBeenCalledWith("camera_stall", {
-      reason: "obscured",
-    });
-  });
-
-  it("does not recover when a bright frame interrupts the dark run", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const { video, presentFrame } = videoWithControlledFrames();
-    const worker = renderWithProvider(<RecoveryProbe video={video} />);
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-
-    for (let i = 0; i <= OBSCURED_FRAME_THRESHOLD + 2; i += 1) {
-      await act(async () => {
-        presentFrame();
-        await vi.advanceTimersByTimeAsync(0);
-      });
-      act(() => {
-        // A single bright frame (0.5) in the middle resets the streak; the dark
-        // runs on either side of it (3 frames, then 4) each stay under
-        // OBSCURED_FRAME_THRESHOLD, so the streak never reaches the threshold.
-        emitDetections(worker, i, i === 3 ? 0.5 : 0);
-      });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
-      });
-    }
-
-    expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
-    expect(track).not.toHaveBeenCalledWith("camera_stall", {
-      reason: "obscured",
-    });
-  });
-
-  it("does not recover while frames keep changing", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const { video, presentFrame } = videoWithControlledFrames();
-    const worker = renderWithProvider(<RecoveryProbe video={video} />);
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-
-    for (let i = 0; i <= STALE_FRAME_THRESHOLD + 2; i += 1) {
-      await act(async () => {
-        presentFrame();
-        await vi.advanceTimersByTimeAsync(0);
-      });
-      act(() => {
-        emitDetections(worker, i); // distinct fingerprint each round
-      });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
-      });
-    }
-
-    expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
-    // A healthy feed reports no stall.
-    expect(track).not.toHaveBeenCalledWith("camera_stall", expect.anything());
-  });
-
-  it("clears the recovery guard when the fresh stream starts", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const { video, presentFrame } = videoWithControlledFrames();
-    const worker = renderWithProvider(<RecoveryProbe video={video} />);
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    const driveStall = async (fingerprint: number) => {
-      for (let i = 0; i <= STALE_FRAME_THRESHOLD; i += 1) {
-        await act(async () => {
-          presentFrame();
-          await vi.advanceTimersByTimeAsync(0);
-        });
-        act(() => {
-          emitDetections(worker, fingerprint);
-        });
-        await act(async () => {
-          await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
-        });
-      }
-    };
-    await driveStall(7);
-    expect(screen.getByTestId("camera-epoch").textContent).toBe("1");
-
-    // Simulate CameraView remounting and delivering a fresh stream, then stall
-    // it again: the second recovery only engages if start() released the
-    // re-entrancy guard the first one took.
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    await driveStall(8);
-    expect(screen.getByTestId("camera-epoch").textContent).toBe("2");
-  });
-
-  it("recovers when no result arrives within the watchdog window", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(async () => fakeBitmap()),
-    );
-    const { video, presentFrame } = videoWithControlledFrames();
-    const worker = renderWithProvider(<RecoveryProbe video={video} />);
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    // Present one frame so the pump posts and the watchdog is armed, but never
-    // emit a result: the feed is fully stalled.
-    await act(async () => {
-      presentFrame();
-      await Promise.resolve();
-    });
-
-    expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
-    act(() => {
-      vi.advanceTimersByTime(WATCHDOG_MS + 50);
-    });
-    expect(screen.getByTestId("camera-epoch").textContent).toBe("1");
-    // A full stall reports the same event, tagged as a watchdog trip.
-    expect(track).toHaveBeenCalledWith("camera_stall", { reason: "watchdog" });
-  });
-
-  it("stretches the watchdog window to fit a slow device's round trip", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(async () => fakeBitmap()),
-    );
-    const { video, presentFrame } = videoWithControlledFrames();
-    const worker = renderWithProvider(<RecoveryProbe video={video} />);
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    await act(async () => {
-      presentFrame();
-      await Promise.resolve();
-    });
-    // A slow device: the result lands 8 s after the frame was posted, so
-    // pacing will space this device's results roughly 16 s apart.
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(8_000);
-    });
-    act(() => {
-      emitDetections(worker, 1);
-    });
-    // Then the feed stalls for longer than the floor. Recovering here would
-    // tear down a camera whose own results are legitimately wider than that,
-    // and since every later result would land past the deadline too, the
-    // device could never prove a recovery worked.
-    act(() => {
-      vi.advanceTimersByTime(WATCHDOG_MS + 50);
-    });
-    expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
-    // Past the stretched window, a genuine stall still recovers.
-    act(() => {
-      vi.advanceTimersByTime(WATCHDOG_ROUND_TRIP_MULTIPLE * 8_000);
-    });
-    expect(screen.getByTestId("camera-epoch").textContent).toBe("1");
-    expect(track).toHaveBeenCalledWith("camera_stall", { reason: "watchdog" });
-  });
-
-  it("does not fire the watchdog after the pump is stopped", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(async () => fakeBitmap()),
-    );
-    const { video, presentFrame } = videoWithControlledFrames();
-    const worker = renderWithProvider(<RecoveryProbe video={video} />);
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    await act(async () => {
-      presentFrame();
-      await Promise.resolve();
-    });
-    // Hide the page: the visibility handler stops the pump, which clears the
-    // watchdog. Advancing past the window must not trigger recovery.
-    act(() => {
-      setDocumentVisibility("hidden");
-    });
-    act(() => {
-      vi.advanceTimersByTime(WATCHDOG_MS + 50);
-    });
-    expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
-    // A stopped pump reports no stall.
-    expect(track).not.toHaveBeenCalledWith("camera_stall", expect.anything());
-  });
-
-  it("shows the stalled alert after MAX_RECONNECT_ATTEMPTS failed recoveries", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(async () => fakeBitmap()),
-    );
-    const { video, presentFrame } = videoWithControlledFrames();
-    const worker = renderWithProvider(<RecoveryProbe video={video} />);
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-
-    // Each frozen recovery re-stalls immediately (identical fingerprint again),
-    // never reaching RECOVERY_HEALTHY_FRAMES healthy frames, so attempts stack.
-    for (let attempt = 0; attempt < MAX_RECONNECT_ATTEMPTS; attempt += 1) {
-      await driveFrozenRecovery(worker, presentFrame);
-    }
-    expect(screen.getByTestId("camera-stalled").textContent).toBe("false");
-
-    // One more frozen stall: attempts now equal MAX, so recovery gives up and
-    // surfaces the terminal alert instead of remounting, leaving cameraEpoch
-    // where the third remount left it.
-    await driveFrozenStall(worker, presentFrame);
-    expect(screen.getByTestId("camera-stalled").textContent).toBe("true");
-    expect(screen.getByTestId("camera-epoch").textContent).toBe(
-      String(MAX_RECONNECT_ATTEMPTS),
-    );
-
-    // The unrecoverable stall is reported to analytics exactly once: it is the
-    // only signal of a fleet-wide camera failure the old silent reload erased,
-    // and the recovery re-entrancy guard must keep a further stall from
-    // re-firing it. `track`'s other calls here are ready events, not "error".
-    const stalledReports = vi
-      .mocked(track)
-      .mock.calls.filter(([event]) => event === "error");
-    expect(stalledReports).toEqual([["error", { code: "CAMERA_STALLED" }]]);
-  });
-
-  /** Drive `count` pump rounds with a distinct (changing) fingerprint each
-   *  round, simulating a healthy feed that grows the recovery's healthy-frame
-   *  streak instead of its stale-frame streak. Mirrors driveFrozenRecovery's
-   *  present -> emit -> advance cycle, but never calls start(): the pump is
-   *  already running (resumed by a prior recovery), and a healthy run alone
-   *  must not touch cameraEpoch. */
-  const driveHealthyFrames = async (
-    worker: FakeWorker,
-    present: () => void,
-    count: number,
-  ) => {
-    for (let i = 0; i < count; i += 1) {
-      await act(async () => {
-        present();
-        await Promise.resolve();
-      });
-      act(() => {
-        emitDetections(worker, 1_000 + i);
-      });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS + 20);
-      });
-    }
-  };
-
-  it("a healthy run resets the reconnect counter so a later stall does not give up", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(async () => fakeBitmap()),
-    );
-    const { video, presentFrame } = videoWithControlledFrames();
-    const worker = renderWithProvider(<RecoveryProbe video={video} />);
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-
-    // Stack attempts to the brink of the terminal alert, exactly as the test
-    // above.
-    for (let attempt = 0; attempt < MAX_RECONNECT_ATTEMPTS; attempt += 1) {
-      await driveFrozenRecovery(worker, presentFrame);
-    }
-    expect(screen.getByTestId("camera-stalled").textContent).toBe("false");
-
-    // A healthy run on the resumed pump proves the feed recovered, resetting
-    // the reconnect counter back to 0.
-    await driveHealthyFrames(worker, presentFrame, RECOVERY_HEALTHY_FRAMES);
-
-    // One more frozen run: without the reset, attempts would already equal MAX
-    // and this stall would surface the terminal alert; the healthy run zeroed
-    // the counter, so this recovery just remounts (bumping cameraEpoch) instead.
-    await driveFrozenRecovery(worker, presentFrame);
-    expect(screen.getByTestId("camera-stalled").textContent).toBe("false");
-    // Confirms the final recovery actually engaged (rather than the alert being
-    // skipped for some other reason): the first loop's 3 recoveries bump
-    // cameraEpoch to 3, the healthy run leaves it untouched, and this last
-    // recovery bumps it to 4.
-    expect(screen.getByTestId("camera-epoch").textContent).toBe("4");
-  });
-
-  // Shared across every driveObscuredStall call in the file so fingerprints
-  // never repeat, including across a chain of driveObscuredRecovery calls
-  // within a single test: a noisy obscured lens must never trip the frozen
-  // detector's identical-fingerprint check.
-  let obscuredFingerprintCounter = 0;
-
-  /** Drive one obscured-lens stall: repeat OBSCURED_FRAME_THRESHOLD + 1 dark
-   *  (brightFraction 0) frames, each with a distinct, never-before-seen
-   *  fingerprint so the frozen detector never fires, isolating the obscured
-   *  detector. Does NOT resume the pump, so it exercises the terminal
-   *  escalation (which stops the pump for good) as well as the remount path.
-   *  Mirrors driveFrozenStall's present -> emit -> advance cycle. */
-  const driveObscuredStall = async (
-    worker: FakeWorker,
-    present: () => void,
-  ) => {
-    for (let i = 0; i <= OBSCURED_FRAME_THRESHOLD; i += 1) {
-      await act(async () => {
-        present();
-        await vi.advanceTimersByTimeAsync(0);
-      });
-      act(() => {
-        obscuredFingerprintCounter += 1;
-        emitDetections(worker, obscuredFingerprintCounter, 0);
-      });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS + 20);
-      });
-    }
-  };
-
-  /** Drive one obscured-lens recovery: stall to the threshold, then simulate
-   *  the remounted CameraView delivering a fresh stream that resumes the
-   *  pump. */
-  const driveObscuredRecovery = async (
-    worker: FakeWorker,
-    present: () => void,
-  ) => {
-    await driveObscuredStall(worker, present);
-    // Fresh stream from the remount resumes the pump.
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-  };
-
-  it("shows the stalled alert after MAX_RECONNECT_ATTEMPTS failed obscured recoveries", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(async () => fakeBitmap()),
-    );
-    const { video, presentFrame } = videoWithControlledFrames();
-    const worker = renderWithProvider(<RecoveryProbe video={video} />);
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-
-    // Each obscured recovery re-stalls immediately (still dark, still
-    // changing), never reaching RECOVERY_HEALTHY_FRAMES healthy frames since a
-    // dark frame is never healthy, so attempts stack.
-    for (let attempt = 0; attempt < MAX_RECONNECT_ATTEMPTS; attempt += 1) {
-      await driveObscuredRecovery(worker, presentFrame);
-    }
-    expect(screen.getByTestId("camera-stalled").textContent).toBe("false");
-
-    // One more obscured stall: attempts now equal MAX, so recovery gives up
-    // and surfaces the terminal alert instead of remounting.
-    await driveObscuredStall(worker, presentFrame);
-    expect(screen.getByTestId("camera-stalled").textContent).toBe("true");
-    expect(screen.getByTestId("camera-epoch").textContent).toBe(
-      String(MAX_RECONNECT_ATTEMPTS),
-    );
-
-    // The unrecoverable stall is reported to analytics exactly once.
-    const stalledReports = vi
-      .mocked(track)
-      .mock.calls.filter(([event]) => event === "error");
-    expect(stalledReports).toEqual([["error", { code: "CAMERA_STALLED" }]]);
-  });
-});
-
-describe("dev video mode", () => {
-  // A file-backed feed legitimately pauses (no new frames) and repeats frames
-  // (a scrubbed or looping clip), so the stall machinery must never fire.
-  it("never fires the watchdog in dev video mode", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const { video, presentFrame } = videoWithControlledFrames();
-    const worker = renderWithProvider(<RecoveryProbe video={video} />, {
-      devVideoMode: true,
-    });
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    // One frame reaches the worker, then no result ever comes back: exactly
-    // what a paused dev video looks like to the pump.
-    await act(async () => {
-      presentFrame();
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(WATCHDOG_MS * 2);
-    });
-    expect(screen.getByTestId("camera-stalled").textContent).toBe("false");
-    expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
-    expect(track).not.toHaveBeenCalledWith("camera_stall", {
-      reason: "watchdog",
-    });
-  });
-
-  it("keeps scanning through identical dark frames in dev video mode", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const { video, presentFrame } = videoWithControlledFrames();
-    const worker = renderWithProvider(<RecoveryProbe video={video} />, {
-      devVideoMode: true,
-    });
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    // Identical fingerprints AND zero brightness: past both thresholds, this
-    // trips the frozen detector first outside dev video mode (see the
-    // "tags a byte-identical dark feed as frozen" test above). Here neither
-    // detector may fire, and the pump must keep re-priming (the disabled
-    // stall branch must not skip the paced re-prime).
-    for (let i = 0; i <= STALE_FRAME_THRESHOLD; i += 1) {
-      await act(async () => {
-        presentFrame();
-        await vi.advanceTimersByTimeAsync(0);
-      });
-      act(() => {
-        emitDetections(worker, 42, 0);
-      });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
-      });
-    }
-    expect(screen.getByTestId("camera-epoch").textContent).toBe("0");
-    expect(track).not.toHaveBeenCalledWith("camera_stall", expect.anything());
-    // Every loop round posted a fresh detect frame: the pump stayed alive.
-    expect(
-      worker.posted.filter((message) => message.type === "detect"),
-    ).toHaveLength(STALE_FRAME_THRESHOLD + 1);
-  });
-});
-
 /** A dropped clip, the file a swap hands to the feed. */
 const clip = () => new File(["x"], "clip.mp4", { type: "video/mp4" });
 
 /**
  * Probe for the feed-swap tests: starts the pump, swaps the feed to a clip or
- * back to the startup source, clears a stall, and renders everything those
- * touch. The feed name comes from DevVideoContext, so it shows whether the
- * swap actually reached the provider that owns the source.
+ * back to the startup source, and renders everything those touch. The feed
+ * name comes from DevVideoContext, so it shows whether the swap actually
+ * reached the provider that owns the source.
  */
 const SwapProbe = ({ video }: { video: HTMLVideoElement }) => {
-  const {
-    status,
-    cameraStalled,
-    cameraEpoch,
-    start,
-    swapVideoSource,
-    clearCameraStall,
-  } = useDetection();
+  const { status, start, swapVideoSource } = useDetection();
   const { source } = useDevVideo();
   return (
     <>
@@ -3954,13 +3217,8 @@ const SwapProbe = ({ video }: { video: HTMLVideoElement }) => {
       <button onClick={() => swapVideoSource(null)} data-testid="unswap">
         unswap
       </button>
-      <button onClick={() => clearCameraStall()} data-testid="clear-stall">
-        clear stall
-      </button>
       <span data-testid="status">{status}</span>
       <span data-testid="feed">{source ? source.name : "camera"}</span>
-      <span data-testid="camera-stalled">{String(cameraStalled)}</span>
-      <span data-testid="camera-epoch">{cameraEpoch}</span>
     </>
   );
 };
@@ -4018,7 +3276,7 @@ describe("dev video source swaps", () => {
 
     expect(screen.getByTestId("feed").textContent).toBe("clip.mp4");
     // Respawning would terminate the worker and recompile the model on every
-    // swap, which is the whole reason the flag is ref-mirrored.
+    // swap.
     expect(createWorker).toHaveBeenCalledTimes(1);
   });
 
@@ -4045,59 +3303,5 @@ describe("dev video source swaps", () => {
     });
 
     expect(screen.getByTestId("feed").textContent).toBe("camera");
-  });
-
-  it("never remounts the camera for a stalled file-backed feed", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(async () => fakeBitmap()),
-    );
-    const { presentFrame } = renderSwapSession();
-    const epoch = screen.getByTestId("camera-epoch").textContent;
-
-    act(() => {
-      screen.getByTestId("swap").click();
-    });
-    // The clip's view mounts and starts the pump on the new feed. One frame
-    // reaches the worker and no result ever comes back, which is what a paused
-    // clip looks like to the pump: on the camera that would arm the watchdog
-    // and recover.
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    await act(async () => {
-      presentFrame();
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(WATCHDOG_MS * 2);
-    });
-
-    expect(screen.getByTestId("camera-epoch").textContent).toBe(epoch);
-    expect(screen.getByTestId("camera-stalled").textContent).toBe("false");
-    expect(track).not.toHaveBeenCalledWith("camera_stall", expect.anything());
-  });
-
-  it("clears a camera stall so the camera gets a fresh chance", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(async () => fakeBitmap()),
-    );
-    const { worker, presentFrame } = renderSwapSession();
-    // Exhaust the reconnect attempts, then stall once more so recovery gives
-    // up and leaves the terminal alert behind.
-    for (let attempt = 0; attempt < MAX_RECONNECT_ATTEMPTS; attempt += 1) {
-      await driveFrozenRecovery(worker, presentFrame);
-    }
-    await driveFrozenStall(worker, presentFrame);
-    expect(screen.getByTestId("camera-stalled").textContent).toBe("true");
-
-    act(() => {
-      screen.getByTestId("clear-stall").click();
-    });
-
-    expect(screen.getByTestId("camera-stalled").textContent).toBe("false");
   });
 });

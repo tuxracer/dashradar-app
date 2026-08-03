@@ -46,23 +46,15 @@ import type {
 } from "@/workers/detection/types";
 import { isWorkerResponse } from "@/workers/detection/types";
 import {
-  DARK_BRIGHT_FRACTION,
   ERROR_DETAIL_MAX_LENGTH,
   FRAME_RETRY_MS,
   INITIAL_DEBUG,
-  MAX_RECONNECT_ATTEMPTS,
   MIN_FRAME_INTERVAL_MS,
-  OBSCURED_FRAME_THRESHOLD,
   PACING_REST_RATIO,
-  RECOVERY_HEALTHY_FRAMES,
-  STALE_FRAME_THRESHOLD,
   SW_CONTROL_TIMEOUT_MS,
-  WATCHDOG_MS,
-  WATCHDOG_ROUND_TRIP_MULTIPLE,
   WORKER_RECYCLE_AFTER_MS,
 } from "./consts";
 import type {
-  CameraStallReason,
   Contact,
   DebugSnapshot,
   DetectionContextValue,
@@ -99,21 +91,11 @@ type DetectionProviderProps = {
   children: ReactNode;
   /** Test seam: defaults to the real detection worker. */
   createWorker?: () => DetectionWorkerLike;
-  /**
-   * Overrides whether the feed is a video file rather than the camera. A
-   * file-backed feed legitimately pauses and repeats frames, so the
-   * camera-stall machinery (watchdog, frozen and obscured detectors, recovery)
-   * is disabled while one is playing. This is a test seam; production leaves
-   * it undefined and derives the answer from DevVideoContext, which can change
-   * mid-session when a file is dropped.
-   */
-  devVideoMode?: boolean;
 };
 
 export const DetectionProvider = ({
   children,
   createWorker = createDetectionWorker,
-  devVideoMode,
 }: DetectionProviderProps) => {
   const {
     frameThumbnails,
@@ -132,20 +114,7 @@ export const DetectionProvider = ({
   // periodic worker recycle too, which builds a new session 15 minutes in and
   // would otherwise pick up whatever is stored by then.
   const [activeModel] = useState(() => resolveModels(modelIds)[0]);
-  const {
-    source: devVideoSource,
-    setVideoFile,
-    clearVideoFile,
-  } = useDevVideo();
-  const devVideoActive = devVideoMode ?? devVideoSource !== null;
-  // Ref-mirrored rather than read directly: devVideoMode used to be a
-  // dependency of the worker lifecycle effect below, so making it reactive
-  // would terminate and respawn the worker (recompiling the model) on every
-  // feed swap. Same pattern as includeFrameRef below.
-  const devVideoModeRef = useRef(devVideoActive);
-  useEffect(() => {
-    devVideoModeRef.current = devVideoActive;
-  }, [devVideoActive]);
+  const { setVideoFile, clearVideoFile } = useDevVideo();
   // Mirrors the frame-saving flags for sendFrame, which is a stable callback:
   // the pump reads the current value per capture instead of re-subscribing on
   // toggles. It asks the worker for the model-input JPEG the contact card's
@@ -266,49 +235,6 @@ export const DetectionProvider = ({
   // handlers without a side effect inside a setState updater (StrictMode
   // double-invokes updaters; see statusRef above).
   const contactRef = useRef<Contact | undefined>(undefined);
-  // Terminal flag: automatic recovery gave up after MAX_RECONNECT_ATTEMPTS on a
-  // frozen or black feed. App renders the CAMERA_STALLED alert; a reload (the
-  // alert's button) is the only exit, so no ref mirror is needed.
-  const [cameraStalled, setCameraStalled] = useState(false);
-  // True while a camera recovery is in flight. Recovery is silent (nothing is
-  // shown to the driver), so this is a ref, not state: it exists only for
-  // beginRecovery's re-entrancy guard, which branches on it outside a setState
-  // updater (StrictMode double-invokes those).
-  const recoveringRef = useRef(false);
-  // Bumped once per recovery; App keys <CameraView> on it, so incrementing it
-  // remounts the camera element and re-runs getUserMedia.
-  const [cameraEpoch, setCameraEpoch] = useState(0);
-  // Fingerprint of the previous detection frame and the count of consecutive
-  // byte-identical frames since. STALE_FRAME_THRESHOLD identical frames means
-  // a frozen or black feed (a live feed always varies), triggering recovery.
-  const lastFingerprintRef = useRef<number | undefined>(undefined);
-  const staleFrameCountRef = useRef(0);
-  // Count of consecutive dark inference frames (brightFraction below
-  // DARK_BRIGHT_FRACTION). OBSCURED_FRAME_THRESHOLD of them means a physically
-  // obscured lens: a noisy near-black feed the byte-identical fingerprint check
-  // above cannot catch, because sensor noise perturbs every frame.
-  const darkFrameCountRef = useRef(0);
-  // Consecutive changing frames since the last stall; RECOVERY_HEALTHY_FRAMES
-  // of them prove a recovery worked and reset the reconnect-attempt counter.
-  const healthyFrameCountRef = useRef(0);
-  // Consecutive recoveries that re-stalled before proving healthy. At
-  // MAX_RECONNECT_ATTEMPTS the next stall reloads the page instead of
-  // remounting.
-  const reconnectAttemptsRef = useRef(0);
-  // Pending watchdog timeout (Task 3): fires when no result arrives in time.
-  const watchdogTimerRef = useRef<number | undefined>(undefined);
-  // Holds the latest beginRecovery so the message handler and watchdog
-  // (defined inside the worker effect, before beginRecovery's declaration)
-  // can call it, mirroring the sendFrameRef idiom already used for sendFrame.
-  // The argument tags which detector tripped, for the camera_stall analytics.
-  const beginRecoveryRef = useRef<(reason: CameraStallReason) => void>(
-    () => {},
-  );
-  // Holds the latest armWatchdog (a closure inside the worker effect) so start()
-  // can arm the watchdog when it primes the pump, not only the ready/detections
-  // handlers inside the effect. Mirrors the beginRecoveryRef idiom.
-  const armWatchdogRef = useRef<(lastRoundTripMs?: number) => void>(() => {});
-
   /** Swap in the next contact (or none), closing the previous crop bitmap. */
   const replaceContact = useCallback((next: Contact | undefined) => {
     contactRef.current?.image.close();
@@ -398,10 +324,9 @@ export const DetectionProvider = ({
   // record counts only frames from the current running span.
   const framesTotalRef = useRef(0);
   // How long the pump has actually spent scanning this page load, which is not
-  // page time: it excludes the settings panel, a hidden page, and the gap
-  // between a stall and its recovery. Read by the late timing report (drift
-  // under sustained load is what the thermal budget turns on) and drained by
-  // the `scan_session` event below.
+  // page time: it excludes the settings panel and a hidden page. Read by the
+  // late timing report (drift under sustained load is what the thermal budget
+  // turns on) and drained by the `scan_session` event below.
   const scanClockRef = useRef(createScanClock());
   // Capture duration of the most recently posted frame and the timestamp it was
   // posted, paired with the next detections result for the debug snapshot.
@@ -554,40 +479,6 @@ export const DetectionProvider = ({
       });
     };
 
-    /**
-     * (Re)start the stalled-feed watchdog. Armed on ready and on every result
-     * while the pump is live; if it lapses (rVFC stopped firing, so no result
-     * came back) it recovers the camera. Gated on runningRef + workerLoadedRef
-     * so it never fires during a paused pump or the recycle load window.
-     *
-     * The window scales with the round trip that preceded it, floored at
-     * WATCHDOG_MS, so a device slow enough to space its results wider than the
-     * floor is not permanently past its own deadline. Arming before a session
-     * has produced a result has no round trip to scale from and uses the floor.
-     */
-    const armWatchdog = (lastRoundTripMs = 0) => {
-      // Clearing precedes the file-feed bail so a camera-to-clip swap can never
-      // leave the previous timer running. stop() clears it on every source
-      // change today, and beginRecovery vetoes a stray firing, but this way the
-      // helper is correct on its own rather than by arrangement.
-      window.clearTimeout(watchdogTimerRef.current);
-      // A paused video file produces no results for as long as the user
-      // likes; never arm the stall watchdog against a file-backed feed.
-      if (devVideoModeRef.current) {
-        return;
-      }
-      const timeoutMs = Math.max(
-        WATCHDOG_MS,
-        WATCHDOG_ROUND_TRIP_MULTIPLE * lastRoundTripMs,
-      );
-      watchdogTimerRef.current = window.setTimeout(() => {
-        if (runningRef.current && workerLoadedRef.current) {
-          beginRecoveryRef.current("watchdog");
-        }
-      }, timeoutMs);
-    };
-    armWatchdogRef.current = armWatchdog;
-
     const handleMessage = (event: MessageEvent) => {
       const message: unknown = event.data;
       if (!isWorkerResponse(message)) {
@@ -651,7 +542,6 @@ export const DetectionProvider = ({
           if (runningRef.current) {
             statusRef.current = "running";
             setStatus("running");
-            armWatchdog();
             void sendFrame();
           } else {
             statusRef.current = "ready";
@@ -777,7 +667,6 @@ export const DetectionProvider = ({
             rawCount: message.detections.length,
             filteredCount: detections.length,
             shownCount: tracked.length,
-            brightFraction: message.brightFraction ?? 0,
             zoom: frameInfo?.zoom ?? ZOOM_OFF,
             zoomLocked: autoZoomRef.current.locked,
             // Carried forward for one line; schedulePacedFrame below writes
@@ -834,76 +723,6 @@ export const DetectionProvider = ({
             track("timing_round_trip_late", { seconds: lateReport.roundTrip });
             track("timing_inference_late", { seconds: lateReport.inference });
           }
-          // Camera-health check. Only while the pump is live: a late in-flight
-          // result arriving after stop() (e.g. mid-recovery) has runningRef
-          // false and must not touch the detectors. A byte-identical
-          // fingerprint means a frozen or black feed; a changing one is a
-          // healthy frame and, after enough of them, proves a prior recovery
-          // worked.
-          if (runningRef.current) {
-            armWatchdog(roundTripMs);
-            // Stall detectors are meaningless against a file-backed feed: a
-            // paused or scrubbed dev video repeats frames legitimately. Skip
-            // the accounting entirely so a tripped threshold can never take
-            // the break that skips the paced re-prime below.
-            if (!devVideoModeRef.current) {
-              const { fingerprint, brightFraction } = message;
-              if (
-                fingerprint !== undefined &&
-                fingerprint === lastFingerprintRef.current
-              ) {
-                // Byte-identical frame: a frozen or camera-takeover stall, the
-                // frozen detector's territory. Clearing the dark streak here is
-                // what makes a solid-black frozen feed tag "frozen" rather than
-                // "obscured": the obscured detector only ever counts changing
-                // frames (its real signature, see the else branch), so a stall
-                // whose frames repeat byte for byte can only ever be frozen.
-                staleFrameCountRef.current += 1;
-                healthyFrameCountRef.current = 0;
-                darkFrameCountRef.current = 0;
-              } else {
-                // Changing frame. The obscured-lens detector looks only at these:
-                // a covered lens presents a noisy near-black feed (sensor noise
-                // changes every frame, so the frozen check never fires for it)
-                // with no bright pixels anywhere. brightFraction below the dark
-                // threshold for OBSCURED_FRAME_THRESHOLD consecutive changing
-                // frames means the lens is blocked. A night scene keeps some
-                // bright region, so it stays above and both streaks reset.
-                staleFrameCountRef.current = 0;
-                if (
-                  brightFraction !== undefined &&
-                  brightFraction < DARK_BRIGHT_FRACTION
-                ) {
-                  // A dark frame is not a healthy frame. Counting it as healthy
-                  // would drive healthyFrameCountRef to RECOVERY_HEALTHY_FRAMES
-                  // and zero reconnectAttemptsRef on the same frame the obscured
-                  // detector fires, so reconnectAttemptsRef could never reach
-                  // MAX_RECONNECT_ATTEMPTS and a covered lens would never escalate
-                  // to the terminal CAMERA_STALLED alert.
-                  darkFrameCountRef.current += 1;
-                  healthyFrameCountRef.current = 0;
-                } else {
-                  darkFrameCountRef.current = 0;
-                  healthyFrameCountRef.current += 1;
-                  if (healthyFrameCountRef.current >= RECOVERY_HEALTHY_FRAMES) {
-                    reconnectAttemptsRef.current = 0;
-                  }
-                }
-              }
-              lastFingerprintRef.current = fingerprint;
-              if (staleFrameCountRef.current >= STALE_FRAME_THRESHOLD) {
-                beginRecoveryRef.current("frozen");
-                // Recovery owns the pump now (stop() ran); skip the re-prime
-                // below.
-                break;
-              }
-              if (darkFrameCountRef.current >= OBSCURED_FRAME_THRESHOLD) {
-                beginRecoveryRef.current("obscured");
-                // Recovery owns the pump now (stop() ran); skip the re-prime.
-                break;
-              }
-            }
-          }
           // Recycle the worker once it has been running long enough, at this
           // result boundary where nothing is in flight (inFlightRef was just
           // decremented to 0), so no frame is lost. Terminating and recreating
@@ -925,7 +744,6 @@ export const DetectionProvider = ({
             inFlightRef.current = 0;
             window.clearTimeout(retryTimerRef.current);
             window.clearTimeout(paceTimerRef.current);
-            window.clearTimeout(watchdogTimerRef.current);
             const next = spawnWorker();
             requestLoad(next);
           } else {
@@ -952,7 +770,6 @@ export const DetectionProvider = ({
           inFlightRef.current = 0;
           window.clearTimeout(retryTimerRef.current);
           window.clearTimeout(paceTimerRef.current);
-          window.clearTimeout(watchdogTimerRef.current);
           replaceContact(undefined);
           break;
         }
@@ -970,7 +787,6 @@ export const DetectionProvider = ({
       inFlightRef.current = 0;
       window.clearTimeout(retryTimerRef.current);
       window.clearTimeout(paceTimerRef.current);
-      window.clearTimeout(watchdogTimerRef.current);
       replaceContact(undefined);
     };
 
@@ -1002,7 +818,6 @@ export const DetectionProvider = ({
       cancelled = true;
       window.clearTimeout(retryTimerRef.current);
       window.clearTimeout(paceTimerRef.current);
-      window.clearTimeout(watchdogTimerRef.current);
       replaceContact(undefined);
       // Terminate whichever worker is current, which is the recycled one if a
       // recycle has happened, not the one spawned at mount.
@@ -1029,23 +844,12 @@ export const DetectionProvider = ({
         return;
       }
       runningRef.current = true;
-      // A fresh stream (initial or post-recovery) clears the recovery guard
-      // and resets the frozen-feed detectors for a clean measurement window.
-      // The reconnect-attempt counter is deliberately NOT reset here; only a
-      // run of healthy frames (in the detections handler) proves a recovery
-      // worked.
-      recoveringRef.current = false;
-      lastFingerprintRef.current = undefined;
-      staleFrameCountRef.current = 0;
-      darkFrameCountRef.current = 0;
-      healthyFrameCountRef.current = 0;
       // Branch on statusRef outside the setStatus updater: StrictMode
       // double-invokes updater functions, so a side effect (the frame pump)
       // inside one would post two frames per start().
       if (statusRef.current === "ready") {
         statusRef.current = "running";
         setStatus("running");
-        armWatchdogRef.current();
         void sendFrame();
       }
       // Otherwise stay as-is; the "ready" handler starts the pump via
@@ -1059,7 +863,6 @@ export const DetectionProvider = ({
     pumpGenerationRef.current += 1;
     window.clearTimeout(retryTimerRef.current);
     window.clearTimeout(paceTimerRef.current);
-    window.clearTimeout(watchdogTimerRef.current);
     // Confirmation is wall-clock-age based, so a track left pending across a
     // long stop() would otherwise confirm on the first matched frame after
     // restart. A resumed session must re-earn confirmation from scratch.
@@ -1094,72 +897,10 @@ export const DetectionProvider = ({
     [stop, setVideoFile, clearVideoFile],
   );
 
-  /**
-   * Forgets a camera stall. Returning to the camera after a clip has played
-   * deserves a fresh attempt rather than the terminal screen a previous stall
-   * left behind, so the attempt counter resets with it.
-   */
-  const clearCameraStall = useCallback(() => {
-    reconnectAttemptsRef.current = 0;
-    setCameraStalled(false);
-  }, []);
-
-  /**
-   * Recover a dead camera feed in place, silently: nothing is shown to the
-   * driver while it happens, since the meter's own pause is the only thing
-   * worth their attention and an overlay would just take the glass away from
-   * it. Stops the pump, resets the frozen-feed detectors, and remounts the
-   * camera by bumping cameraEpoch (App keys CameraView on it). After
-   * MAX_RECONNECT_ATTEMPTS consecutive
-   * recoveries that never proved healthy, gives up and surfaces the
-   * CAMERA_STALLED alert (via setCameraStalled) instead of another remount: a
-   * feed still black after several remounts is likely an obscured or failed
-   * lens that a silent page reload would only loop on, so the driver is asked
-   * to clear the camera and reload manually. The re-entrancy guard means a
-   * second trigger while already recovering is a no-op; the fresh stream's
-   * start() clears it.
-   */
-  const beginRecovery = useCallback(
-    (reason: CameraStallReason) => {
-      // Defense in depth alongside the disabled detectors: recovery would
-      // remount the player and lose the clip's playback position.
-      if (devVideoModeRef.current || recoveringRef.current) {
-        return;
-      }
-      recoveringRef.current = true;
-      // Report every detected stall, past the re-entrancy guard so a burst of
-      // triggers counts once, tagged with which detector tripped. This covers
-      // both the transient stalls a remount fixes and the terminal give-up below
-      // (which also fires the CAMERA_STALLED error), so the fleet-wide stall rate
-      // and its cause are visible even when recovery succeeds silently.
-      track("camera_stall", { reason });
-      window.clearTimeout(watchdogTimerRef.current);
-      lastFingerprintRef.current = undefined;
-      staleFrameCountRef.current = 0;
-      darkFrameCountRef.current = 0;
-      healthyFrameCountRef.current = 0;
-      stop();
-      if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
-        // Automatic recovery is out of attempts; hand off to the driver. Track it
-        // so the fleet-wide rate of unrecoverable camera stalls is visible (the
-        // old silent reload left no signal).
-        track("error", { code: "CAMERA_STALLED" });
-        setCameraStalled(true);
-        return;
-      }
-      reconnectAttemptsRef.current += 1;
-      setCameraEpoch((epoch) => epoch + 1);
-    },
-    [stop],
-  );
-  useEffect(() => {
-    beginRecoveryRef.current = beginRecovery;
-  }, [beginRecovery]);
-
   // Bracket the pump's running window on the scan clock. Keyed on [status]
   // alone, which is exactly the window: stop() takes "running" back to "ready"
-  // for every pause the app has (settings open, page hidden, stall recovery,
-  // feed swap), so none of that dead time is counted as drive time.
+  // for every pause the app has (settings open, page hidden, feed swap), so
+  // none of that dead time is counted as drive time.
   useEffect(() => {
     if (status !== "running") {
       return;
@@ -1353,13 +1094,10 @@ export const DetectionProvider = ({
       contact: shownContact,
       savedFrame,
       autoZoom,
-      cameraStalled,
-      cameraEpoch,
       activeModel,
       start,
       stop,
       swapVideoSource,
-      clearCameraStall,
     }),
     [
       status,
@@ -1373,13 +1111,10 @@ export const DetectionProvider = ({
       shownContact,
       savedFrame,
       autoZoom,
-      cameraStalled,
-      cameraEpoch,
       activeModel,
       start,
       stop,
       swapVideoSource,
-      clearCameraStall,
     ],
   );
 

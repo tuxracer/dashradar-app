@@ -14,16 +14,6 @@ export type DetectionStatus = "loading-model" | "ready" | "running" | "error";
 export type ModelProgress = { loadedBytes: number; totalBytes: number };
 
 /**
- * Which detector tripped a camera-stall recovery, reported on the `camera_stall`
- * analytics event: `frozen` is the streak of byte-identical frames (a frozen or
- * black feed), `watchdog` is no detection result arriving within the watchdog
- * window (the feed fully stalled, so no result comes back at all), `obscured`
- * is a streak of frames with no bright pixels anywhere (a physically covered
- * lens).
- */
-export type CameraStallReason = "frozen" | "watchdog" | "obscured";
-
-/**
  * Latest cutout the radar detector mode renders on its contact card. Usually a
  * detection crop with its score, signal, box, and direction. With the frame
  * preview setting on, a scan with no detection instead produces a bare frame
@@ -92,12 +82,6 @@ export type DebugSnapshot = {
   /** Detections after the coasting tracker (what the HUD renders). */
   shownCount: number;
   /**
-   * Fraction of the last frame's subsample bright enough to rule out an
-   * obscured lens (frameBrightFraction). Near zero means a dark or covered
-   * feed; shown in the debug overlay to tune the obscured-lens threshold.
-   */
-  brightFraction: number;
-  /**
    * Time inside the round trip not spent in the worker's three stages:
    * postMessage delivery each way plus scheduling. Isolates worker-boundary
    * cost from model compute.
@@ -153,9 +137,9 @@ export type DetectionContextValue = {
   /**
    * The most recent scan's raw per-frame detections, for the detection view's
    * bounding boxes. Undefined until the first result. Never cleared, so after
-   * a feed swap or a camera remount the view can show one stale scan's boxes
-   * against the new feed's geometry for up to a scan interval; tolerable in a
-   * developer-only view.
+   * a feed swap the view can show one stale scan's boxes against the new
+   * feed's geometry for up to a scan interval; tolerable in a developer-only
+   * view.
    */
   scan: ScanResult | undefined;
   /**
@@ -191,18 +175,6 @@ export type DetectionContextValue = {
    */
   autoZoom: AutoZoomState;
   /**
-   * True once automatic camera recovery has exhausted its remount attempts on a
-   * frozen or black feed. Terminal for the camera: the pump is stopped and the
-   * app shows the CAMERA_STALLED alert asking the driver to clear the lens and
-   * reload. Only a reload or clearCameraStall clears it.
-   */
-  cameraStalled: boolean;
-  /**
-   * Increments once per camera recovery. App keys the CameraView element on
-   * it, so a bump remounts the camera and re-runs getUserMedia.
-   */
-  cameraEpoch: number;
-  /**
    * The model this session is running. Pinned at mount, so it answers "what is
    * detecting right now", which is not necessarily what is selected: a change
    * made on the model screen applies on the reload that screen performs.
@@ -216,12 +188,6 @@ export type DetectionContextValue = {
    * one that starts it again.
    */
   swapVideoSource: (file: File | null) => void;
-  /**
-   * Forgets a camera stall. Returning to the camera after a clip has played
-   * deserves a fresh attempt rather than the terminal screen a previous stall
-   * left behind.
-   */
-  clearCameraStall: () => void;
 };
 
 /**

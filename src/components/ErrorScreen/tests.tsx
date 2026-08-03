@@ -16,7 +16,6 @@ describe("ErrorScreen", () => {
       "MODEL_LOAD_FAILED",
       "INFERENCE_FAILED",
       "WORKER_CRASHED",
-      "CAMERA_STALLED",
     ] as const;
     for (const code of codes) {
       const { container, unmount } = render(<ErrorScreen code={code} />);

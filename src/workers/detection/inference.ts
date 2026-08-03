@@ -7,11 +7,8 @@ import type {
 } from "@/lib/detectionModels";
 import type { OnnxMetadata } from "@/lib/onnxMetadata";
 import {
-  BRIGHT_FRACTION_STRIDE,
-  BRIGHT_LUMA_THRESHOLD,
   CROP_MAX_EDGE,
   CROP_PADDING,
-  FINGERPRINT_STRIDE,
   IMAGENET_MEAN,
   IMAGENET_STD,
   INPUT_SIZE,
@@ -91,52 +88,6 @@ export const preprocess = (
     tensor[2 * pixels + i] = (b - IMAGENET_MEAN[2]) / IMAGENET_STD[2];
   }
   return tensor;
-};
-
-/**
- * Cheap content fingerprint of a decoded frame, for camera-stall detection.
- * A 32-bit FNV-1a hash over a strided subsample of the RGBA buffer (see
- * FINGERPRINT_STRIDE). Two live camera frames practically never collide because
- * sensor noise perturbs every frame, while a frozen or black feed produces a
- * byte-identical buffer and thus an identical fingerprint. The pixels are
- * already in hand from preprocessing, so this adds negligible cost.
- */
-export const frameFingerprint = (imageData: ImageData): number => {
-  const { data } = imageData;
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < data.length; i += FINGERPRINT_STRIDE) {
-    hash ^= data[i];
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
-};
-
-/**
- * Fraction (0..1) of a strided subsample of the frame whose luma exceeds
- * BRIGHT_LUMA_THRESHOLD, for obscured-lens detection. A physically covered lens
- * presents a noisy near-black frame that the byte-identical fingerprint check
- * cannot catch (sensor noise perturbs every frame), but it has no bright pixels
- * anywhere, so this fraction is essentially zero. A night driving scene keeps
- * some bright region (the road lit by the car's own headlights, oncoming
- * lights, a streetlight), so its fraction stays well above zero. Luma is
- * computed from all three channels so a scene lit by a pure blue or green
- * source is not misread as dark. The pixels are already in hand from
- * preprocessing, so the strided pass adds negligible cost.
- */
-export const frameBrightFraction = (imageData: ImageData): number => {
-  const { data } = imageData;
-  const pixels = data.length / 4;
-  let sampled = 0;
-  let bright = 0;
-  for (let p = 0; p < pixels; p += BRIGHT_FRACTION_STRIDE) {
-    const i = p * 4;
-    const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-    sampled += 1;
-    if (luma > BRIGHT_LUMA_THRESHOLD) {
-      bright += 1;
-    }
-  }
-  return sampled === 0 ? 0 : bright / sampled;
 };
 
 const sigmoid = (x: number): number => 1 / (1 + Math.exp(-x));

@@ -50,9 +50,8 @@ const isAbortError = (error: unknown): boolean =>
  * rather than the
  * dash-mount touch-target rules, so the clip can be paused and scrubbed;
  * capture reads the full intrinsic resolution regardless of display size.
- * Pausing legitimately stops new frames; DetectionContext disables the
- * camera-stall machinery while a video source is active so that never
- * triggers recovery. Playback does not start on mount: it waits for the
+ * Pausing legitimately stops new frames, which simply pauses detection with
+ * it. Playback does not start on mount: it waits for the
  * first `scanning` transition so the clip's opening seconds aren't consumed
  * while the model is still downloading or compiling. The player is also kept
  * invisible until that same transition, so the load and compile phase shows

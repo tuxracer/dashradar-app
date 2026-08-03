@@ -165,10 +165,6 @@ export const DebugOverlay = ({
         value={`${debug.shownCount} / ${debug.filteredCount} / ${debug.rawCount}`}
       />
       <Row
-        label="bright"
-        value={`${(debug.brightFraction * 100).toFixed(2)}%`}
-      />
-      <Row
         label="viewport"
         value={`${viewportSize.width}x${viewportSize.height}`}
       />

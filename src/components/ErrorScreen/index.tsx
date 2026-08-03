@@ -23,7 +23,6 @@ const ERROR_ICON: Readonly<Record<AppErrorCode, LucideIcon>> = {
   INFERENCE_FAILED: TriangleAlert,
   GPU_DEVICE_LOST: TriangleAlert,
   WORKER_CRASHED: TriangleAlert,
-  CAMERA_STALLED: CameraOff,
 };
 
 const ErrorPointRow = ({ label, text }: ErrorPoint) => (

@@ -2,15 +2,6 @@ import type { CameraErrorCode } from "@/lib/camera";
 import type { DetectionErrorCode } from "@/workers/detection/types";
 
 /**
- * Error codes the app raises itself, neither a getUserMedia CameraErrorCode nor
- * a worker DetectionErrorCode. CAMERA_STALLED is surfaced when automatic camera
- * recovery has exhausted its remount attempts on a frozen or black feed, so the
- * driver is asked to clear the lens and reload rather than the page silently
- * reloading in a loop.
- */
-export type AppLevelErrorCode = "CAMERA_STALLED";
-
-/**
  * Codes this generic panel renders. WEBGPU_UNSUPPORTED is deliberately
  * excluded: it is not a fault to report but a handoff to a device that can run
  * the detector, and it has its own screen (`UnsupportedScreen`). Excluding it
@@ -18,7 +9,7 @@ export type AppLevelErrorCode = "CAMERA_STALLED";
  * that finds no copy.
  */
 export type AppErrorCode = Exclude<
-  CameraErrorCode | DetectionErrorCode | AppLevelErrorCode,
+  CameraErrorCode | DetectionErrorCode,
   "WEBGPU_UNSUPPORTED"
 >;
 
@@ -71,9 +62,5 @@ export const ERROR_COPY: Readonly<Record<AppErrorCode, ErrorCopy>> = {
   WORKER_CRASHED: {
     title: "DETECTION STOPPED",
     body: "Detection stopped unexpectedly. Reload to restart it.",
-  },
-  CAMERA_STALLED: {
-    title: "CAMERA VIEW LOST",
-    body: "Make sure nothing is blocking the camera, then try again.",
   },
 };

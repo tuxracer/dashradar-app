@@ -13,7 +13,6 @@ const snapshot = (roundTripMs: number): DebugSnapshot => ({
   rawCount: 0,
   filteredCount: 0,
   shownCount: 0,
-  brightFraction: 0,
   overheadMs: 0,
   pacingDelayMs: 0,
   pacingRule: "floor",

@@ -138,30 +138,3 @@ export const CROP_MAX_EDGE = 320;
  * artifacts stay irrelevant for training data, at a fraction of PNG size.
  */
 export const FRAME_JPEG_QUALITY = 0.92;
-
-/**
- * Byte stride for frameFingerprint's subsample of the decoded RGBA frame. The
- * 512x512 input is 1,048,576 bytes; stepping 16 samples one channel byte per 4
- * pixels (~65k samples), enough to distinguish any two live camera frames while
- * staying a cheap fixed-cost loop on the detection hot path.
- */
-export const FINGERPRINT_STRIDE = 16;
-
-/**
- * Luma (Rec. 601) above which a subsampled pixel counts as "bright" for
- * frameBrightFraction. Set well above the reference obscured frame's brightest
- * pixel (luma ~21) and far below any real light source a night scene contains
- * (headlights, streetlights, dashboard glow are 150-255), so a covered lens
- * reads as zero bright pixels while any genuine illumination does not.
- */
-export const BRIGHT_LUMA_THRESHOLD = 48;
-
-/**
- * Pixel stride for frameBrightFraction's subsample of the decoded RGBA frame.
- * Stepping 4 pixels samples ~65k of the 512x512 frame's pixels, enough to
- * measure whether any bright region exists while staying a cheap fixed-cost
- * loop on the detection hot path. A separate stride from FINGERPRINT_STRIDE
- * because that one steps raw bytes and samples the red channel only, while this
- * pass reads all three channels per sampled pixel to compute luma.
- */
-export const BRIGHT_FRACTION_STRIDE = 4;

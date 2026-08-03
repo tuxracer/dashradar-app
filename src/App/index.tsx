@@ -70,9 +70,6 @@ const RadarScreen = () => {
     error,
     scan,
     start,
-    cameraStalled,
-    cameraEpoch,
-    clearCameraStall,
     swapVideoSource,
     activeModel,
   } = useDetection();
@@ -103,8 +100,7 @@ const RadarScreen = () => {
   const [cameraError, setCameraError] = useState<CameraError>();
   const [videoSize, setVideoSize] = useState<Size>();
   // The camera's video element, kept so the developer camera preview can play
-  // the same MediaStream. Refreshed on every stream (re)start, including the
-  // remount a cameraEpoch bump forces.
+  // the same MediaStream. Refreshed on every stream (re)start.
   const [cameraVideo, setCameraVideo] = useState<HTMLVideoElement>();
   const viewportSize = useViewportSize();
   const wakeLock = useMemo(() => createWakeLockManager(), []);
@@ -167,17 +163,17 @@ const RadarScreen = () => {
 
   // A file the browser cannot decode presents no frames at all, so the feed
   // goes back to the camera. Leaving it in place would park the pump on a
-  // frame callback that never fires, with the stall watchdog disabled for a
-  // file feed, and the meter would read SCANNING for the rest of the drive.
+  // frame callback that never fires, and the meter would read SCANNING for
+  // the rest of the drive.
   const handleDevVideoError = useCallback(() => {
     swapVideoSource(null);
   }, [swapVideoSource]);
 
-  // Returning to the camera gives it a clean slate: a permission error or a
-  // stall recorded before the clip was loaded must not pre-empt the fresh
-  // getUserMedia call the remounting CameraView is about to make. Those two
-  // are the only screens a clip must not restore, which is why they reset here
-  // while every other camera screen is merely outranked by a source. The ref
+  // Returning to the camera gives it a clean slate: a permission error
+  // recorded before the clip was loaded must not pre-empt the fresh
+  // getUserMedia call the remounting CameraView is about to make. It is the
+  // only screen a clip must not restore, which is why it resets here while
+  // every other camera screen is merely outranked by a source. The ref
   // narrows this to the clip-to-camera edge, so a session that never played a
   // clip is untouched.
   const clipPlayedRef = useRef(false);
@@ -191,8 +187,7 @@ const RadarScreen = () => {
     }
     clipPlayedRef.current = false;
     setCameraError(undefined);
-    clearCameraStall();
-  }, [source, clearCameraStall]);
+  }, [source]);
 
   if (showIntro && !source) {
     return (
@@ -259,11 +254,6 @@ const RadarScreen = () => {
         : undefined;
     return <ErrorScreen code={error} action={revertAction} />;
   }
-  // Automatic camera recovery gave up on a frozen or black feed: ask the driver
-  // to clear the lens and reload rather than looping silent remounts/reloads.
-  if (cameraStalled && !source) {
-    return <ErrorScreen code="CAMERA_STALLED" />;
-  }
 
   // The camera is acquired only once the model is loaded and warmed, never
   // alongside it. Session creation plus the worker's warm-up run is the
@@ -298,7 +288,6 @@ const RadarScreen = () => {
         !modelLoading &&
         updateSettled && (
           <CameraView
-            key={cameraEpoch}
             visible={detectionView}
             onStream={handleStream}
             onError={setCameraError}

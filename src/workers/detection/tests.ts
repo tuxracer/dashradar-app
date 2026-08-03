@@ -4,8 +4,6 @@ import {
   cropRect,
   decodeDetections,
   ensureCapacity,
-  frameBrightFraction,
-  frameFingerprint,
   mapCropBoxToFrame,
   preprocess,
   resolveLoadedModel,
@@ -237,50 +235,6 @@ describe("isWorkerResponse", () => {
       }),
     ).toBe(false);
   });
-
-  it("accepts a detections message carrying a fingerprint", () => {
-    expect(
-      isWorkerResponse({
-        type: "detections",
-        detections: [],
-        timing: { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 },
-        fingerprint: 12_345,
-      }),
-    ).toBe(true);
-  });
-
-  it("rejects a detections message with a non-number fingerprint", () => {
-    expect(
-      isWorkerResponse({
-        type: "detections",
-        detections: [],
-        timing: { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 },
-        fingerprint: "nope",
-      }),
-    ).toBe(false);
-  });
-
-  it("accepts a detections message carrying a brightFraction", () => {
-    expect(
-      isWorkerResponse({
-        type: "detections",
-        detections: [],
-        timing: { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 },
-        brightFraction: 0.42,
-      }),
-    ).toBe(true);
-  });
-
-  it("rejects a detections message with a non-number brightFraction", () => {
-    expect(
-      isWorkerResponse({
-        type: "detections",
-        detections: [],
-        timing: { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 },
-        brightFraction: "nope",
-      }),
-    ).toBe(false);
-  });
 });
 
 describe("preprocess", () => {
@@ -315,87 +269,6 @@ describe("preprocess", () => {
 
     expect(tensor).toBe(out);
     expect(out[0]).toBeCloseTo(normalized(255, 0), 6);
-  });
-});
-
-describe("frameFingerprint", () => {
-  const pixels = INPUT_SIZE * INPUT_SIZE;
-
-  /** Structural full-size RGBA ImageData; frameFingerprint only reads `.data`. */
-  const imageDataFrom = (
-    mutate?: (data: Uint8ClampedArray) => void,
-  ): ImageData => {
-    const data = new Uint8ClampedArray(pixels * 4);
-    data.fill(120);
-    mutate?.(data);
-    return { data, width: INPUT_SIZE, height: INPUT_SIZE, colorSpace: "srgb" };
-  };
-
-  it("hashes byte-identical frames to the same value", () => {
-    expect(frameFingerprint(imageDataFrom())).toBe(
-      frameFingerprint(imageDataFrom()),
-    );
-  });
-
-  it("hashes differing frames to different values", () => {
-    const base = frameFingerprint(imageDataFrom());
-    // Change a sampled byte (index 0 is on the stride) so the hash must differ.
-    const changed = frameFingerprint(imageDataFrom((data) => (data[0] = 250)));
-    expect(changed).not.toBe(base);
-  });
-
-  it("returns an unsigned 32-bit integer", () => {
-    const hash = frameFingerprint(imageDataFrom());
-    expect(Number.isInteger(hash)).toBe(true);
-    expect(hash).toBeGreaterThanOrEqual(0);
-    expect(hash).toBeLessThanOrEqual(0xffffffff);
-  });
-});
-
-describe("frameBrightFraction", () => {
-  const pixels = INPUT_SIZE * INPUT_SIZE;
-
-  /**
-   * Structural full-size RGBA ImageData filled with one gray level, so every
-   * pixel's luma is that level. frameBrightFraction only reads `.data`.
-   */
-  const solidFrame = (level: number): ImageData => {
-    const data = new Uint8ClampedArray(pixels * 4);
-    for (let i = 0; i < data.length; i += 4) {
-      data[i] = level;
-      data[i + 1] = level;
-      data[i + 2] = level;
-      data[i + 3] = 255;
-    }
-    return { data, width: INPUT_SIZE, height: INPUT_SIZE, colorSpace: "srgb" };
-  };
-
-  it("returns zero for an all-dark frame", () => {
-    expect(frameBrightFraction(solidFrame(8))).toBe(0);
-  });
-
-  it("returns zero for a near-black frame just under the threshold", () => {
-    // Every pixel at luma ~24 (below BRIGHT_LUMA_THRESHOLD 48): the noisy-black
-    // obscured case, where no pixel is bright even though it is not pure black.
-    expect(frameBrightFraction(solidFrame(24))).toBe(0);
-  });
-
-  it("returns ~1 for a fully bright frame", () => {
-    expect(frameBrightFraction(solidFrame(200))).toBeGreaterThan(0.99);
-  });
-
-  it("returns a small nonzero fraction for a mostly-dark frame with a bright patch", () => {
-    // Dark everywhere except the first 2000 pixels set bright: a lit region in
-    // an otherwise dark scene, which must read as nonzero (do not recover).
-    const frame = solidFrame(8);
-    for (let p = 0; p < 2_000; p += 1) {
-      frame.data[p * 4] = 255;
-      frame.data[p * 4 + 1] = 255;
-      frame.data[p * 4 + 2] = 255;
-    }
-    const fraction = frameBrightFraction(frame);
-    expect(fraction).toBeGreaterThan(0);
-    expect(fraction).toBeLessThan(0.05);
   });
 });
 
