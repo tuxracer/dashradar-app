@@ -43,7 +43,11 @@ A custom **RF-DETR Small** checkpoint, published as ONNX at [`tuxracer/las-vegas
 
 ## Privacy
 
-Camera frames, images, and detection boxes never leave the device. No account, no login, no per-user tracking. Nothing about what the detector sees is reported anywhere, not even a count. Network traffic is limited to the app's static files, the one-time model download (huggingface.co), and anonymous aggregate analytics (Vercel): page views and a few usage milestones such as how long a drive scanned and whether the app hit an error.
+Camera frames never leave the phone. Detection runs on the device's own GPU, so no photo or video of what the camera sees is uploaded anywhere, and frames you save yourself download straight to the phone.
+
+No account, no login, nothing to sign up for.
+
+Everything works offline after the first launch. Install it to the home screen and it keeps detecting with no connection at all. The only network traffic is the app's own files, the one-time model download from Hugging Face, and anonymous aggregate usage analytics.
 
 ## Contact
 
