@@ -1,8 +1,9 @@
 import type { Detection, NormalizedBox } from "@/types";
 import { isRawDetection } from "@/types";
 import type { AutoZoomLevel } from "@/lib/autoZoom";
-import type { DetectionClass } from "@/workers/detection/consts";
-import { MODEL_CLASSES, ZOOM_OFF } from "@/workers/detection/consts";
+import { DEFAULT_MODEL } from "@/lib/detectionModels";
+import type { DetectionClass } from "@/lib/detectionModels";
+import { ZOOM_OFF } from "@/workers/detection/consts";
 import { centerCropRegion } from "@/workers/detection/inference";
 import { CONFIDENCE_THRESHOLD } from "./consts";
 
@@ -50,7 +51,7 @@ export type HudModel = {
 export const enrichDetections = (
   raw: unknown,
   threshold: number = CONFIDENCE_THRESHOLD,
-  classes: readonly DetectionClass[] = MODEL_CLASSES,
+  classes: readonly DetectionClass[] = DEFAULT_MODEL.classes,
 ): Detection[] => {
   if (!Array.isArray(raw)) {
     return [];

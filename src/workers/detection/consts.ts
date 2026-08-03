@@ -10,13 +10,9 @@
  * wrong and drops every detection. Bypassing it lets us apply the correct
  * sigmoid + cxcywh decode.
  *
- * The URLs pin a specific Hugging Face revision tag (not `main`) on purpose.
- * The service worker caches the weights `CacheFirst` keyed on the URL, and the
- * worker probes `caches.match(url)` before fetching, so a stable URL is served
- * from cache forever and a new model pushed to the same path is never noticed.
- * Bumping the tag here changes the URL, which busts both caches and pulls the
- * new weights once. When you publish a new model, push a new tag on the HF repo
- * and update `MODEL_REVISION` below to match.
+ * The model itself is described in src/lib/detectionModels, one entry per
+ * selectable checkpoint. The constants below name the shipping entry, which is
+ * what a build runs unless a developer picked another one on the model screen.
  *
  * One build is shipped: the mixed-precision fp16 model (~57 MB: fp16 weights
  * and compute, the three GridSample nodes kept fp32 behind boundary Casts),
@@ -34,30 +30,27 @@
  * away with WEBGPU_UNSUPPORTED rather than handed a detector that looks like
  * it works and does not.
  */
-import type { RoadCategory } from "@/types";
+import {
+  DEFAULT_MODEL,
+  modelRepoUrl,
+  modelWeightsUrl,
+} from "@/lib/detectionModels";
 
 /**
- * Hugging Face revision tag the model URLs pin to. Bump this (and push the
- * matching tag on the model repo) to ship a new model: the changed URL busts
- * the `CacheFirst` "model-cache" so returning visitors download the new weights
- * instead of being served the old cached copy forever.
+ * Hugging Face revision tag the shipping model's URLs pin to. Read from the
+ * registry rather than declared here, so the registry entry stays the single
+ * place a model is described.
  */
-export const MODEL_REVISION = "v3.5";
+export const MODEL_REVISION = DEFAULT_MODEL.revision;
 
-/**
- * Hugging Face repo name the weights are published under. Paired with
- * MODEL_REVISION it names exactly which model a build runs, which is why both
- * are reported with the model-download analytics event. Also the name shown
- * verbatim in the settings Model row, so keep it readable to someone who has
- * never seen the training side: no run numbers or export suffixes.
- */
-export const MODEL_SLUG = "las-vegas-metro-rfdetr-small";
+/** Hugging Face repo name the shipping model's weights are published under. */
+export const MODEL_SLUG = DEFAULT_MODEL.slug;
 
-/** Hugging Face model page the weights are downloaded from. */
-export const MODEL_REPO_URL = `https://huggingface.co/tuxracer/${MODEL_SLUG}`;
+/** Hugging Face model page the shipping model's weights come from. */
+export const MODEL_REPO_URL = modelRepoUrl(DEFAULT_MODEL);
 
-/** Revision-pinned URL of the weights every session downloads. */
-export const MODEL_URL = `${MODEL_REPO_URL}/resolve/${MODEL_REVISION}/onnx/model_fp16.onnx`;
+/** Revision-pinned URL of the shipping model's weights. */
+export const MODEL_URL = modelWeightsUrl(DEFAULT_MODEL);
 
 /**
  * CacheStorage cache the worker writes downloaded weights into on the dev
@@ -140,34 +133,6 @@ export const IMAGENET_MEAN: readonly [number, number, number] = [
 /** ImageNet channel standard deviations (R, G, B) used to normalize the input. */
 export const IMAGENET_STD: readonly [number, number, number] = [
   0.229, 0.224, 0.225,
-];
-
-/** One class the model's head can emit, with how the HUD names and colors it. */
-export type DetectionClass = {
-  label: string;
-  displayLabel: string;
-  category: RoadCategory;
-};
-
-/**
- * Every class this checkpoint's head emits, in head-index order: entry i here
- * is class logit i + 1 in the model's output, since logit 0 is an unused
- * background slot. This is the one place a class is defined. The decode reads
- * it to name a box, and the HUD reads it for the display label and the box
- * color, so the two can never disagree about what the model detects.
- *
- * The table ships with the checkpoint. A new checkpoint that detects more
- * classes changes this array and MODEL_REVISION together. That is not the
- * whole cost of adding a class, though: hudSignal takes the max score across
- * every detection regardless of class, so a new class immediately drives the
- * dial, the alert ring, and the beeper, with no per-class alert concept to
- * opt it out. MIN_BOX_EDGE_PX is also a single global threshold, tuned for
- * vehicles; a class with a smaller on-screen footprint may need a different
- * one. This array's length also has to match the model's head width, which
- * decodeDetections checks on every frame.
- */
-export const MODEL_CLASSES: readonly DetectionClass[] = [
-  { label: "police", displayLabel: "POLICE", category: "vehicle" },
 ];
 
 /**

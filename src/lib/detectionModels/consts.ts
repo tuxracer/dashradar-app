@@ -1,0 +1,40 @@
+import type { DetectionModel } from "./types";
+
+/** Hugging Face account every model repo is published under. */
+export const MODEL_OWNER = "tuxracer";
+
+/**
+ * Every model the detector can be pointed at, in the order the picker lists
+ * them. The first entry is what a build ships with and what an unrecognized
+ * stored selection falls back to.
+ *
+ * Adding an entry is not free. `hudSignal` takes the max score across every
+ * detection regardless of class, so a class a new model adds immediately drives
+ * the dial, the alert ring, and the beeper, with no per-class alert concept to
+ * opt it out. MIN_BOX_EDGE_PX is a single global threshold tuned for vehicles,
+ * and INPUT_SIZE is fixed at 512 across the whole capture path, so a checkpoint
+ * that disagrees with either needs more than an entry here.
+ */
+export const DETECTION_MODELS: readonly DetectionModel[] = [
+  {
+    id: "las-vegas-metro",
+    slug: "las-vegas-metro-rfdetr-small",
+    revision: "v3.5",
+    file: "model_fp16.onnx",
+    classes: [{ label: "police", displayLabel: "POLICE", category: "vehicle" }],
+  },
+];
+
+/**
+ * The model a build runs unless a developer picked otherwise, and the fallback
+ * for a stored selection this build no longer recognizes.
+ */
+export const DEFAULT_MODEL: DetectionModel = DETECTION_MODELS[0];
+
+/**
+ * How many models may be selected at once. One today: the worker loads a single
+ * session and the load message names a single model. Raising this is the one
+ * edit the picker needs to become multi-select, but it is not sufficient on its
+ * own, since the worker protocol would have to carry more than one id.
+ */
+export const MAX_SELECTED_MODELS = 1;

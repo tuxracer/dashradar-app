@@ -16,7 +16,6 @@ import {
   IMAGENET_STD,
   INPUT_SIZE,
   MIN_BOX_EDGE_PX,
-  MODEL_CLASSES,
   ZOOM_2X,
 } from "@/workers/detection/consts";
 import {
@@ -24,6 +23,7 @@ import {
   isWorkerRequest,
   isWorkerResponse,
 } from "@/workers/detection/types";
+import { DEFAULT_MODEL } from "@/lib/detectionModels";
 import type { RawDetection } from "@/types";
 
 /** Build a `[1,queries,C]` logits buffer from per-query score rows. */
@@ -507,7 +507,7 @@ describe("decodeDetections", () => {
 
     let thrown: unknown;
     try {
-      decodeDetections(boxes, labels, 0.5, MODEL_CLASSES);
+      decodeDetections(boxes, labels, 0.5, DEFAULT_MODEL.classes);
     } catch (error) {
       thrown = error;
     }

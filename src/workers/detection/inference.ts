@@ -1,16 +1,16 @@
 import type { NormalizedBox, RawDetection } from "@/types";
+import { DEFAULT_MODEL } from "@/lib/detectionModels";
+import type { DetectionClass } from "@/lib/detectionModels";
 import {
   BRIGHT_FRACTION_STRIDE,
   BRIGHT_LUMA_THRESHOLD,
   CROP_MAX_EDGE,
   CROP_PADDING,
-  type DetectionClass,
   FINGERPRINT_STRIDE,
   IMAGENET_MEAN,
   IMAGENET_STD,
   INPUT_SIZE,
   MIN_BOX_EDGE_PX,
-  MODEL_CLASSES,
 } from "./consts";
 import { DetectionError } from "./types";
 
@@ -162,7 +162,7 @@ export const decodeDetections = (
   dets: Float32Array,
   labels: Float32Array,
   threshold: number,
-  classes: readonly DetectionClass[] = MODEL_CLASSES,
+  classes: readonly DetectionClass[] = DEFAULT_MODEL.classes,
 ): RawDetection[] => {
   const queryCount = Math.floor(dets.length / 4);
   if (queryCount === 0) {
