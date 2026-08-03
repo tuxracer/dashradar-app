@@ -45,9 +45,9 @@ export type DetectionModel = {
   /**
    * Width of this checkpoint's classification head, background slot included.
    * Declared rather than inferred, because a sparse class table no longer
-   * implies it, and it is what pins a table to its checkpoint: a two-entry
-   * police table read against an accidentally loaded 91-wide COCO head would
-   * otherwise find `person` at logit 1 and report it as POLICE on every frame.
+   * implies it, and it is what pins a table to its checkpoint: a police table
+   * naming logit 1, read against an accidentally loaded 91-wide COCO head,
+   * would otherwise find `person` there and report it as POLICE on every frame.
    * Comes from the export's actual output shape.
    */
   headWidth: number;
