@@ -95,6 +95,24 @@ describe("createWakeLockManager", () => {
     expect(request).toHaveBeenCalledTimes(1);
   });
 
+  it("releases a lock granted after release was already called", async () => {
+    const sentinel: FakeSentinel = { release: vi.fn(() => Promise.resolve()) };
+    let grant: (granted: FakeSentinel) => void = () => {};
+    const request = vi.fn(
+      () =>
+        new Promise<FakeSentinel>((resolve) => {
+          grant = resolve;
+        }),
+    );
+    vi.stubGlobal("navigator", { wakeLock: { request } });
+    const manager = createWakeLockManager();
+    const acquiring = manager.acquire();
+    await manager.release();
+    grant(sentinel);
+    await acquiring;
+    expect(sentinel.release).toHaveBeenCalled();
+  });
+
   it("is a no-op without wake lock support", async () => {
     vi.stubGlobal("navigator", {});
     const manager = createWakeLockManager();

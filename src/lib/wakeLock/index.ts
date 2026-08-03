@@ -51,7 +51,19 @@ export const createWakeLockManager = () => {
       return;
     }
     try {
-      sentinel = await navigator.wakeLock.request("screen");
+      const next = await navigator.wakeLock.request("screen");
+      if (!acquired) {
+        // release() ran while this request was pending. Storing the sentinel
+        // now would keep the screen awake after scanning stopped, so let the
+        // fresh lock go instead.
+        try {
+          await next.release();
+        } catch {
+          // Already released by the platform.
+        }
+        return;
+      }
+      sentinel = next;
     } catch (error) {
       // Low battery or platform policy: not fatal, the app just may sleep.
       // The rejection name (NotAllowedError, AbortError) is the whole payload:
