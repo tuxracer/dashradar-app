@@ -93,4 +93,30 @@ describe("the shipping registry", () => {
       expect(new Set(indices).size).toBe(indices.length);
     }
   });
+
+  it("gives every model at least one class to detect", () => {
+    for (const model of DETECTION_MODELS) {
+      expect(model.classes.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("points every class at a real logit in its model's head", () => {
+    for (const model of DETECTION_MODELS) {
+      for (const entry of model.classes) {
+        expect(Number.isInteger(entry.index)).toBe(true);
+        expect(entry.index).toBeGreaterThanOrEqual(1);
+        expect(entry.index).toBeLessThan(model.headWidth);
+      }
+    }
+  });
+
+  it("never repeats a class label within a model", () => {
+    // enrichDetections joins a raw detection back to its class on the label, so
+    // a repeated label hands every box of that class the first entry's display
+    // label and category.
+    for (const model of DETECTION_MODELS) {
+      const labels = model.classes.map((entry) => entry.label);
+      expect(new Set(labels).size).toBe(labels.length);
+    }
+  });
 });
