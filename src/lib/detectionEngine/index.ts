@@ -244,7 +244,8 @@ export const createDetectionEngine = ({
    * new frame first, so inference never runs twice on the same frame when
    * detection outpaces the camera. Cancellation-aware: teardown mid-wait
    * abandons the capture, and a bitmap that resolves after teardown is closed
-   * instead of leaked (the one resource the old generation counter guarded).
+   * instead of leaked, which is what the `cancelled` flag exists to protect
+   * against.
    */
   const captureFrame = (video: HTMLVideoElement) =>
     new Observable<ImageBitmap>((subscriber) => {
@@ -481,7 +482,7 @@ export const createDetectionEngine = ({
    * the edge (cleared by `resultLanded$` below, which stays subscribed
    * through a pause) so a stop/start that outraces the worker's reply
    * re-primes at depth one instead of posting a second frame while the first
-   * is still out, the rxjs shape of the old inFlight guard.
+   * is still out, keeping at most one frame in flight at a time.
    */
   const pumpFor = (session: WorkerSession) => {
     let awaitingResult = false;
@@ -510,6 +511,10 @@ export const createDetectionEngine = ({
           return of(undefined);
         }
         const video = inputs$.value.video;
+        // running$ implies a video is attached, so this branch is believed
+        // unreachable. The timer is a belt-and-braces guard: if that
+        // coupling ever breaks, it stops repeat() from spinning
+        // synchronously on a missing video instead of retrying quietly.
         return video
           ? captureFrame(video).pipe(
               tap((frame) => {
@@ -534,7 +539,7 @@ export const createDetectionEngine = ({
                 );
               }),
             )
-          : EMPTY;
+          : timer(FRAME_RETRY_MS).pipe(ignoreElements());
       }).pipe(
         switchMap(() =>
           session.messages$.pipe(

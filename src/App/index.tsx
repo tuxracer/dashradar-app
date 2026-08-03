@@ -254,8 +254,9 @@ const RadarScreen = () => {
         />
       )}
 
-      {/* The zoom mirrors sendFrame's mapping, so the preview always narrows
-          to the region the next capture actually scans. */}
+      {/* The zoom mirrors the zoom field the engine posts on each detect
+          message, so the preview always narrows to the region the next
+          capture actually scans. */}
       {/* Not in the detection view: the full feed is already on screen behind
           it, so the inset would be a second live video surface cropping from
           the one underneath it. */}

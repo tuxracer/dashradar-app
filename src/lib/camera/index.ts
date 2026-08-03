@@ -30,7 +30,8 @@ const toCameraError = (error: unknown): CameraError => {
  * capture-whatever-is-displayed. Note rVFC does not fire while the page is
  * hidden or the video is stalled, so a caller awaiting this can stay pending
  * indefinitely; callers must tolerate never resuming (the detection pump's
- * generation guard discards the stale continuation).
+ * capture observable is torn down by unsubscription when scanning stops,
+ * abandoning the wait).
  */
 export const waitForNextVideoFrame = (video: HTMLVideoElement): Promise<void> =>
   new Promise((resolve) => {
