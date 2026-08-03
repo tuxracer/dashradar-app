@@ -1,4 +1,6 @@
 import { isBoolean, isNumber, isPlainObject, isString } from "remeda";
+import { isDetectionClass, isDetectionModel } from "@/lib/detectionModels";
+import type { DetectionClass, DetectionModel } from "@/lib/detectionModels";
 import { isOnnxMetadata } from "@/lib/onnxMetadata";
 import type { OnnxMetadata } from "@/lib/onnxMetadata";
 import type { RawDetection } from "@/types";
@@ -72,13 +74,13 @@ export type WorkerRequest =
    */
   | { type: "probe" }
   /**
-   * Build a session for the model this names, downloading its weights if they
-   * are not already cached. The id comes from the developer model selection and
-   * is resolved against the registry in src/lib/detectionModels; an omitted or
-   * unrecognized id loads the shipping model. It travels on the message because
-   * a worker has no localStorage of its own to read the selection from.
+   * Build a session for this model entry, downloading its weights if they are
+   * not already cached. The entry itself travels on the message because a
+   * worker has no localStorage to read the selection or the stored models
+   * from. An omitted entry loads DEFAULT_MODEL, which keeps a recycle safe
+   * whatever happens to storage underneath it.
    */
-  | { type: "load"; modelId?: string }
+  | { type: "load"; model?: DetectionModel }
   | {
       type: "detect";
       frame: ImageBitmap;
@@ -126,7 +128,7 @@ export const isWorkerRequest = (value: unknown): value is WorkerRequest => {
     return true;
   }
   if (value.type === "load") {
-    return value.modelId === undefined || isString(value.modelId);
+    return value.model === undefined || isDetectionModel(value.model);
   }
   return (
     value.type === "detect" &&
@@ -247,6 +249,23 @@ const isBackendProbe = (value: unknown): value is BackendProbe => {
   );
 };
 
+/**
+ * What the load actually produced, read off the built session: the head width
+ * its labels output reported and the classes its own metadata named. Reported
+ * on `ready` so the add flow can show what a candidate checkpoint detects
+ * before anyone commits to running it.
+ */
+export type LoadedSummary = {
+  headWidth: number;
+  classes: readonly DetectionClass[];
+};
+
+const isLoadedSummary = (value: unknown): value is LoadedSummary =>
+  isPlainObject(value) &&
+  isNumber(value.headWidth) &&
+  Array.isArray(value.classes) &&
+  value.classes.every(isDetectionClass);
+
 export type WorkerResponse =
   | { type: "model-load-start"; fromCache: boolean }
   | { type: "model-progress"; progress: ModelFileProgress }
@@ -258,7 +277,7 @@ export type WorkerResponse =
    */
   | { type: "model-downloaded"; durationMs: number }
   | { type: "backend-probe"; probe: BackendProbe }
-  | { type: "ready" }
+  | { type: "ready"; loaded?: LoadedSummary }
   | {
       type: "detections";
       detections: RawDetection[];
@@ -324,7 +343,7 @@ export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
     case "backend-probe":
       return isBackendProbe(value.probe);
     case "ready":
-      return true;
+      return value.loaded === undefined || isLoadedSummary(value.loaded);
     case "detections":
       return (
         Array.isArray(value.detections) &&

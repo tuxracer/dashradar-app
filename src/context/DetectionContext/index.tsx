@@ -550,7 +550,7 @@ export const DetectionProvider = ({
         if (cancelled) {
           return;
         }
-        worker.postMessage({ type: "load", modelId: activeModel.id });
+        worker.postMessage({ type: "load", model: activeModel });
       });
     };
 

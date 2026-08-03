@@ -342,9 +342,12 @@ describe("DetectionProvider", () => {
     // The load message is deferred to a microtask (Promise.resolve in tests),
     // so wait for it rather than asserting synchronously.
     await waitFor(() => {
-      expect(worker.posted).toContainEqual({
+      const loadMessage = worker.posted.find(
+        (message) => message.type === "load",
+      );
+      expect(loadMessage).toMatchObject({
         type: "load",
-        modelId: DEFAULT_MODEL.id,
+        model: { id: DEFAULT_MODEL.id },
       });
     });
   });
@@ -2591,7 +2594,7 @@ describe("worker recycle", () => {
     });
     expect(workers[1].posted).toEqual([
       { type: "probe" },
-      { type: "load", modelId: DEFAULT_MODEL.id },
+      { type: "load", model: DEFAULT_MODEL },
     ]);
     // The old worker was mid-run at recycle, so no paced frame was scheduled on
     // it: the pump only resumes once the new worker reports ready.
@@ -2661,9 +2664,12 @@ describe("worker recycle", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(workers[1].posted).toContainEqual({
+    const loadMessage = workers[1].posted.find(
+      (message) => message.type === "load",
+    );
+    expect(loadMessage).toMatchObject({
       type: "load",
-      modelId: SECOND_MODEL_ID,
+      model: { id: SECOND_MODEL_ID },
     });
   });
 

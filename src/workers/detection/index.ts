@@ -6,11 +6,7 @@
 import { env, InferenceSession, Tensor } from "onnxruntime-web/webgpu";
 import { isWebKitUa } from "@/lib/browserEngine";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
-import {
-  DETECTION_MODELS,
-  modelWeightsUrl,
-  resolveModels,
-} from "@/lib/detectionModels";
+import { DEFAULT_MODEL, modelWeightsUrl } from "@/lib/detectionModels";
 import type { DetectionModel, LoadedModel } from "@/lib/detectionModels";
 import { readOnnxMetadata } from "@/lib/onnxMetadata";
 import type { OnnxMetadata } from "@/lib/onnxMetadata";
@@ -265,9 +261,9 @@ const fetchModel = async (url: string): Promise<Uint8Array<ArrayBuffer>> => {
  * megabytes per reload.
  *
  * The entry is keyed on the revision-pinned URL, so a revision bump misses and
- * re-downloads. Entries that no registered model names any more (old revisions)
- * are evicted, while a model a developer is switching between keeps its
- * weights, so flipping back does not pay for the download twice.
+ * re-downloads. Entries evicted are anything that is neither the default's
+ * weights nor the weights being loaded, so flipping between two added models
+ * in dev re-downloads one of them, a dev-only cost.
  *
  * No-op in production builds and best-effort in dev: any failure just means a
  * re-download on the next launch.
@@ -281,9 +277,9 @@ const cacheModelInDev = async (
   }
   try {
     const cache = await caches.open(DEV_MODEL_CACHE_NAME);
-    const current = new Set(DETECTION_MODELS.map(modelWeightsUrl));
+    const keep = new Set([modelWeightsUrl(DEFAULT_MODEL), url]);
     for (const request of await cache.keys()) {
-      if (!current.has(request.url)) {
+      if (!keep.has(request.url)) {
         await cache.delete(request);
       }
     }
@@ -554,16 +550,14 @@ const watchDeviceLoss = async () => {
   }
 };
 
-const loadModel = async (modelId: string | undefined) => {
+const loadModel = async (requested: DetectionModel | undefined) => {
   if (!(await gpuProbe())) {
     reportUnsupported();
     return;
   }
-  // An omitted or unrecognized id resolves to the shipping model, so a stale
-  // selection loads something rather than failing.
-  const [detectionModel] = resolveModels(
-    modelId === undefined ? [] : [modelId],
-  );
+  // An omitted entry means the build's default, so a recycle or a stale
+  // caller loads something rather than failing.
+  const detectionModel = requested ?? DEFAULT_MODEL;
   try {
     model = await createModel(detectionModel);
     // Watch only once the session exists, so the device being resolved is the
@@ -578,7 +572,13 @@ const loadModel = async (modelId: string | undefined) => {
         modelFile: model.fileMetadata,
       },
     });
-    post({ type: "ready" });
+    post({
+      type: "ready",
+      loaded: {
+        headWidth: model.detectionModel.headWidth,
+        classes: model.detectionModel.classes,
+      },
+    });
   } catch (error) {
     // The probe acquired a device but the session still failed to build (a
     // blocklisted adapter, an OOM on the weights, a corrupt download). There
@@ -821,7 +821,7 @@ self.onmessage = (event: MessageEvent<unknown>) => {
     return;
   }
   if (request.type === "load") {
-    void loadModel(request.modelId);
+    void loadModel(request.model);
     return;
   }
   void detect({

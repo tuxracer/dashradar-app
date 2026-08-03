@@ -4,6 +4,7 @@ import {
   classesFromMetadata,
   DEFAULT_MODEL,
   DETECTION_MODELS,
+  isDetectionClass,
   isDetectionModel,
   knownModels,
   loadStoredModels,
@@ -73,6 +74,15 @@ describe("isDetectionModel", () => {
 
   it("rejects non-objects", () => {
     expect(isDetectionModel("weights/model.onnx")).toBe(false);
+  });
+});
+
+describe("isDetectionClass", () => {
+  it("accepts an index/label pair and rejects other shapes", () => {
+    expect(isDetectionClass({ index: 1, label: "police" })).toBe(true);
+    expect(isDetectionClass({ index: 1 })).toBe(false);
+    expect(isDetectionClass({ index: "1", label: "police" })).toBe(false);
+    expect(isDetectionClass(undefined)).toBe(false);
   });
 });
 

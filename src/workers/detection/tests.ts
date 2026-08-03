@@ -45,23 +45,30 @@ class FakeImageBitmap {
   close = vi.fn();
 }
 
+const entry = {
+  id: "url-id",
+  owner: "someone",
+  slug: "some-repo",
+  revision: "abc123",
+  file: "onnx/model.onnx",
+};
+
 describe("isWorkerRequest", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("accepts a load with no model id, which means the shipping model", () => {
+  it("accepts load without a model entry", () => {
     expect(isWorkerRequest({ type: "load" })).toBe(true);
   });
 
-  it("accepts a load naming a model", () => {
-    expect(isWorkerRequest({ type: "load", modelId: "las-vegas-metro" })).toBe(
-      true,
-    );
+  it("accepts load with a valid model entry", () => {
+    expect(isWorkerRequest({ type: "load", model: entry })).toBe(true);
   });
 
-  it("rejects a load whose model id is not a string", () => {
-    expect(isWorkerRequest({ type: "load", modelId: 3 })).toBe(false);
+  it("rejects load with a malformed model entry", () => {
+    expect(isWorkerRequest({ type: "load", model: { id: "x" } })).toBe(false);
+    expect(isWorkerRequest({ type: "load", model: "url" })).toBe(false);
   });
 
   it("accepts detect with and without the includeFrame flag", () => {
@@ -173,6 +180,19 @@ describe("isWorkerResponse", () => {
         detail: "unknown: the GPU process exited",
       }),
     ).toBe(true);
+  });
+
+  it("accepts ready with and without a loaded summary", () => {
+    expect(isWorkerResponse({ type: "ready" })).toBe(true);
+    expect(
+      isWorkerResponse({
+        type: "ready",
+        loaded: { headWidth: 2, classes: [{ index: 1, label: "police" }] },
+      }),
+    ).toBe(true);
+    expect(
+      isWorkerResponse({ type: "ready", loaded: { headWidth: "2" } }),
+    ).toBe(false);
   });
 
   it("rejects malformed messages", () => {

@@ -1,4 +1,4 @@
-import { isPlainObject, isString } from "remeda";
+import { isNumber, isPlainObject, isString } from "remeda";
 
 /**
  * One class the loaded checkpoint names. Derived at load from the `names` map
@@ -15,6 +15,10 @@ export type DetectionClass = {
   index: number;
   label: string;
 };
+
+/** Whether a runtime-unknown value is one class entry (see DetectionClass). */
+export const isDetectionClass = (value: unknown): value is DetectionClass =>
+  isPlainObject(value) && isNumber(value.index) && isString(value.label);
 
 /**
  * One selectable detection model: everything that ships with a checkpoint.
