@@ -58,7 +58,6 @@ import {
   MIN_FRAME_INTERVAL_MS,
   OBSCURED_FRAME_THRESHOLD,
   PACING_REST_RATIO,
-  POLICE_EVENT_DEBOUNCE_MS,
   RECOVERY_HEALTHY_FRAMES,
   STALE_FRAME_THRESHOLD,
   SW_CONTROL_TIMEOUT_MS,
@@ -405,12 +404,6 @@ export const DetectionProvider = ({
   // posted, paired with the next detections result for the debug snapshot.
   const lastCaptureMsRef = useRef(0);
   const postTimeRef = useRef(0);
-  // performance.now() of the last frame police were detected in, for the
-  // debounced `police_detected` analytics event. Negative infinity (not 0,
-  // which is only ~page-load and would swallow a sighting in the first 30 s)
-  // means never seen this session, so the first sighting always reads as a
-  // fresh encounter and fires the event.
-  const lastPoliceSeenAtRef = useRef(Number.NEGATIVE_INFINITY);
   // Holds the latest `sendFrame` so the retry timeout can call it without
   // closing over the `const` before its own initializer finishes (which
   // `react-hooks/immutability` flags as a before-declaration access).
@@ -762,25 +755,6 @@ export const DetectionProvider = ({
             } else {
               message.frameThumbnail.close();
             }
-          }
-          // Report an anonymous sighting to analytics on the leading edge
-          // only: fire when a detection appears, then stay quiet until the
-          // frame has been clear for POLICE_EVENT_DEBOUNCE_MS, so following a
-          // car continuously collapses into one event. The event name predates
-          // multi-class detection and now means any detection, not police
-          // specifically; it keeps its name so the existing series stays
-          // continuous. Nothing identifying the sighting leaves the device,
-          // only the event count. Read the fresh per-frame detections (not the
-          // coasting `tracked` set) so a briefly held stale box does not keep
-          // the debounce alive. Kept out of the setHud updater above:
-          // StrictMode double-invokes updaters, which would double-count the
-          // sighting.
-          if (detections.length > 0) {
-            const now = performance.now();
-            if (now - lastPoliceSeenAtRef.current >= POLICE_EVENT_DEBOUNCE_MS) {
-              track("police_detected");
-            }
-            lastPoliceSeenAtRef.current = now;
           }
           const { preprocessMs, inferenceMs, decodeMs } = message.timing;
           const roundTripMs = performance.now() - postTimeRef.current;
@@ -1188,12 +1162,11 @@ export const DetectionProvider = ({
     };
   }, [status]);
 
-  // Report how long this drive actually scanned, when it goes away. Without it
-  // the event stream has no denominator: `police_detected` counts are
-  // uninterpretable when nothing says whether the fleet scanned five hours or
-  // five hundred, and nothing else answers whether a session survives a drive
-  // or dies minutes in, which for a detector meant to run for hours on a dash
-  // mount is the question. Both listeners are the same report, because neither
+  // Report how long this drive actually scanned, when it goes away. Nothing
+  // else answers whether a session survives a drive or dies minutes in, which
+  // for a detector meant to run for hours on a dash mount is the question, and
+  // it is the only measure of how much the fleet actually scans. Both
+  // listeners are the same report, because neither
   // alone covers the ways a drive ends: `pagehide` catches a navigation or
   // reload, and a page going hidden catches the far more common one, the phone
   // backgrounded or locked at the end of a trip. Draining the clock is what

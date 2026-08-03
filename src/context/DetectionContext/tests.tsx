@@ -9,7 +9,6 @@ import {
   MAX_RECONNECT_ATTEMPTS,
   MIN_FRAME_INTERVAL_MS,
   OBSCURED_FRAME_THRESHOLD,
-  POLICE_EVENT_DEBOUNCE_MS,
   RECOVERY_HEALTHY_FRAMES,
   STALE_FRAME_THRESHOLD,
   useDetection,
@@ -771,94 +770,6 @@ describe("DetectionProvider", () => {
     expect(
       worker.posted.filter((message) => message.type === "detect"),
     ).toHaveLength(2);
-  });
-
-  it("reports a police sighting once per encounter", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const worker = renderWithProvider(<StartOnReady />);
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    // Ready emits model_ready; drop that so the assertions
-    // below count only the police event.
-    vi.mocked(track).mockClear();
-    // Count police sightings specifically, not every track call: the long
-    // debounce-window advance below outlasts the watchdog, which fires its own
-    // camera_stall event that is irrelevant to this test.
-    const policeSightings = () =>
-      vi
-        .mocked(track)
-        .mock.calls.filter(([event]) => event === "police_detected");
-
-    const police = {
-      label: "police",
-      score: 0.9,
-      box: { xmin: 0.4, ymin: 0.5, xmax: 0.6, ymax: 0.8 },
-    };
-    const timing = { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 };
-
-    // First sighting fires the event.
-    act(() => {
-      worker.emit({ type: "detections", detections: [police], timing });
-    });
-    expect(policeSightings()).toHaveLength(1);
-
-    // A second sighting within the debounce window is the same encounter.
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1_000);
-    });
-    act(() => {
-      worker.emit({ type: "detections", detections: [police], timing });
-    });
-    expect(policeSightings()).toHaveLength(1);
-
-    // After police are absent past the debounce window, a sighting re-fires.
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(POLICE_EVENT_DEBOUNCE_MS);
-    });
-    act(() => {
-      worker.emit({ type: "detections", detections: [police], timing });
-    });
-    expect(policeSightings()).toHaveLength(2);
-  });
-
-  it("does not report an event when no police are detected", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn(() => Promise.resolve(fakeBitmap())),
-    );
-    const worker = renderWithProvider(<StartOnReady />);
-    act(() => {
-      worker.emit({ type: "ready" });
-    });
-    act(() => {
-      screen.getByTestId("start").click();
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    // Ready emits model_ready and the first result emits
-    // first_inference; only the police event is under test here.
-    vi.mocked(track).mockClear();
-    act(() => {
-      worker.emit({
-        type: "detections",
-        detections: [],
-        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
-      });
-    });
-    expect(track).not.toHaveBeenCalledWith("police_detected");
   });
 
   it("does not pump a paced frame scheduled before stop()", async () => {
