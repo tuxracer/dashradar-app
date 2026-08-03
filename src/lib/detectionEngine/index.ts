@@ -122,6 +122,12 @@ export const createDetectionEngine = ({
   /**
    * The derived running state. Everything scoped to a running span hangs off
    * this stream, so a falling edge tears it all down by unsubscription.
+   *
+   * Cold by design, not an oversight to fix with shareReplay: each subscriber
+   * (a session's pump, the edge watcher below) runs its own cheap
+   * combineLatest over the BehaviorSubject sources, which is what hands a
+   * late subscriber, like a recycled session's pump, the current value the
+   * moment it subscribes.
    */
   const running$ = combineLatest([active$, inputs$]).pipe(
     map(([isActive, inputs]) => wantsToRun(isActive, inputs)),
@@ -673,9 +679,10 @@ export const createDetectionEngine = ({
     )
     .subscribe();
 
-  // Act on the edges of the derived running state. The BehaviorSubject
-  // replays the initial false at subscribe; its "falling edge" actions are
-  // all no-ops against fresh state, so no skip is needed.
+  // Act on the edges of the derived running state. running$'s BehaviorSubject
+  // sources emit at subscribe, so this fires immediately with the initial
+  // false; those "falling edge" actions are all no-ops against fresh state,
+  // so no skip is needed.
   running$.subscribe((isRunning) => {
     if (isRunning) {
       if (snapshot$.value.status === "ready") {
