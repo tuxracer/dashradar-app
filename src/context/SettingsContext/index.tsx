@@ -1,26 +1,13 @@
 import {
   createContext,
-  useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
 } from "react";
 import type { ReactNode } from "react";
-import { isPlainObject } from "remeda";
-import {
-  DEFAULT_SETTINGS,
-  DEVELOPER_OPTIONS_OFF,
-  SETTINGS_VERSION,
-  STORAGE_KEY,
-} from "./consts";
-import type {
-  PersistedSettings,
-  Settings,
-  SettingsContextValue,
-  ZoomMode,
-} from "./types";
-import { isPersistedSettings, snapConfidence } from "./types";
+import { createSettingsStore } from "@/lib/settingsStore";
+import type { SettingsContextValue } from "./types";
 
 export * from "./consts";
 export * from "./types";
@@ -39,338 +26,41 @@ export const useSettings = (): SettingsContextValue => {
   return value;
 };
 
-/**
- * Turns off the developer options that used to default on: the debug overlay
- * and the two status pills. A blob written before SETTINGS_VERSION 1 stores
- * those as true whether or not anyone asked for them, because they were the
- * defaults, so turning Developer options on would light them up on a device
- * that never chose any of them. The other developer options are left alone:
- * they already defaulted to their off value, so a stored value there could
- * only have come from someone setting it.
- */
-const clearLegacyDefaultOnOptions = (settings: Settings): Settings => ({
-  ...settings,
-  showDebug: DEVELOPER_OPTIONS_OFF.showDebug,
-  zoomIndicator: DEVELOPER_OPTIONS_OFF.zoomIndicator,
-  roundTripIndicator: DEVELOPER_OPTIONS_OFF.roundTripIndicator,
-});
-
-/**
- * Reads and validates settings from localStorage, falling back to defaults when
- * storage is empty, corrupt, or unavailable (private mode / quota). A valid but
- * partial blob (for example one stored before showDebug existed) is merged over
- * DEFAULT_SETTINGS, so missing fields take their default instead of resetting
- * everything. A blob older than SETTINGS_VERSION runs through the migration
- * above before anything reads it; the next persist stamps the current version,
- * so that happens exactly once.
- */
-const loadSettings = (): Settings => {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return DEFAULT_SETTINGS;
-    }
-    const rawParsed: unknown = JSON.parse(raw);
-    // Migrate the retired "auto" zoom mode (every pre-removal blob stores it,
-    // since it was the default) to the plain 1x scan before validation, so it
-    // reads as the new default instead of invalidating the whole blob.
-    const parsed: unknown =
-      isPlainObject(rawParsed) && rawParsed.zoomMode === "auto"
-        ? { ...rawParsed, zoomMode: "1x" }
-        : rawParsed;
-    // Migrate the legacy zoom2x boolean (which zoomMode replaced): a stored
-    // true carries over as the 2x mode so the tweak survives the rename. Read
-    // off the raw blob, since zoom2x is no longer part of the Settings shape.
-    const legacyZoom2x = isPlainObject(parsed) && parsed.zoom2x === true;
-    if (!isPersistedSettings(parsed)) {
-      return DEFAULT_SETTINGS;
-    }
-    const { settingsVersion, ...stored } = parsed;
-    const zoomMode =
-      stored.zoomMode ?? (legacyZoom2x ? "2x" : DEFAULT_SETTINGS.zoomMode);
-    const merged = { ...DEFAULT_SETTINGS, ...stored, zoomMode };
-    const settings: Settings = {
-      ...merged,
-      confidenceThreshold: snapConfidence(merged.confidenceThreshold),
-    };
-    return (settingsVersion ?? 0) < SETTINGS_VERSION
-      ? clearLegacyDefaultOnOptions(settings)
-      : settings;
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
-};
-
-/**
- * Persists a settings blob, reporting whether the write landed. Storage can be
- * unavailable (private mode) or full, and the two callers want different things
- * from that: the persist effect keeps the in-memory value and moves on, while a
- * commit that is about to reload the page has to know it failed.
- */
-const writeSettings = (next: PersistedSettings): boolean => {
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    return true;
-  } catch {
-    return false;
-  }
-};
-
 /** Props for SettingsProvider component. */
 type SettingsProviderProps = {
   children: ReactNode;
 };
 
-/** Provider component for settings state management and persistence. */
+/**
+ * Thin React adapter over the settings store (src/lib/settingsStore), which
+ * owns loading, migrations, persistence, and the developer-options gating.
+ * This provider mirrors the store's snapshots into React and binds the named
+ * actions the screens call.
+ */
 export const SettingsProvider = ({ children }: SettingsProviderProps) => {
-  const [developerOptions, setDeveloperOptions] = useState(
-    () => loadSettings().developerOptions,
-  );
-  const [storedShowDebug, setShowDebug] = useState(
-    () => loadSettings().showDebug,
-  );
-  const [radarAudio, setRadarAudio] = useState(() => loadSettings().radarAudio);
-  const [detectionImage, setDetectionImage] = useState(
-    () => loadSettings().detectionImage,
-  );
-  const [storedThrottleInference, setThrottleInference] = useState(
-    () => loadSettings().throttleInference,
-  );
-  const [storedZoomMode, setStoredZoomMode] = useState(
-    () => loadSettings().zoomMode,
-  );
-  const [storedConfidenceThreshold, setStoredConfidenceThreshold] = useState(
-    () => loadSettings().confidenceThreshold,
-  );
-  const [storedModelIds, setStoredModelIds] = useState(
-    () => loadSettings().modelIds,
-  );
-  const [storedZoomIndicator, setZoomIndicator] = useState(
-    () => loadSettings().zoomIndicator,
-  );
-  const [storedRoundTripIndicator, setRoundTripIndicator] = useState(
-    () => loadSettings().roundTripIndicator,
-  );
-  const [storedCameraPreview, setCameraPreview] = useState(
-    () => loadSettings().cameraPreview,
-  );
-  const [storedDetectionView, setDetectionView] = useState(
-    () => loadSettings().detectionView,
-  );
-  const [storedRawConfidence, setRawConfidence] = useState(
-    () => loadSettings().rawConfidence,
-  );
+  const [store] = useState(createSettingsStore);
+  const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
 
-  // The developer options report their DEVELOPER_OPTIONS_OFF value whenever
-  // developerOptions is off, so a tweak left enabled (the debug overlay, the
-  // live camera preview, unthrottled inference, a zoomed-in crop, a lowered
-  // confidence floor) stops taking effect the moment the master switch goes
-  // off. The stored value is untouched, so turning it back on restores the
-  // tweak.
-  const showDebug = developerOptions
-    ? storedShowDebug
-    : DEVELOPER_OPTIONS_OFF.showDebug;
-  const throttleInference = developerOptions
-    ? storedThrottleInference
-    : DEVELOPER_OPTIONS_OFF.throttleInference;
-  const zoomMode = developerOptions
-    ? storedZoomMode
-    : DEVELOPER_OPTIONS_OFF.zoomMode;
-  const confidenceThreshold = developerOptions
-    ? storedConfidenceThreshold
-    : DEVELOPER_OPTIONS_OFF.confidenceThreshold;
-  const modelIds = developerOptions
-    ? storedModelIds
-    : DEVELOPER_OPTIONS_OFF.modelIds;
-  const zoomIndicator = developerOptions
-    ? storedZoomIndicator
-    : DEVELOPER_OPTIONS_OFF.zoomIndicator;
-  const roundTripIndicator = developerOptions
-    ? storedRoundTripIndicator
-    : DEVELOPER_OPTIONS_OFF.roundTripIndicator;
-  const cameraPreview = developerOptions
-    ? storedCameraPreview
-    : DEVELOPER_OPTIONS_OFF.cameraPreview;
-  const detectionView = developerOptions
-    ? storedDetectionView
-    : DEVELOPER_OPTIONS_OFF.detectionView;
-  const rawConfidence = developerOptions
-    ? storedRawConfidence
-    : DEVELOPER_OPTIONS_OFF.rawConfidence;
-
-  const persisted: PersistedSettings = useMemo(
+  const value = useMemo<SettingsContextValue>(
     () => ({
-      settingsVersion: SETTINGS_VERSION,
-      developerOptions,
-      showDebug: storedShowDebug,
-      radarAudio,
-      detectionImage,
-      throttleInference: storedThrottleInference,
-      zoomMode: storedZoomMode,
-      confidenceThreshold: storedConfidenceThreshold,
-      modelIds: storedModelIds,
-      zoomIndicator: storedZoomIndicator,
-      roundTripIndicator: storedRoundTripIndicator,
-      cameraPreview: storedCameraPreview,
-      detectionView: storedDetectionView,
-      rawConfidence: storedRawConfidence,
+      ...snapshot,
+      toggleDeveloperOptions: () => store.toggle("developerOptions"),
+      toggleShowDebug: () => store.toggle("showDebug"),
+      toggleRadarAudio: () => store.toggle("radarAudio"),
+      toggleDetectionImage: () => store.toggle("detectionImage"),
+      toggleThrottleInference: () => store.toggle("throttleInference"),
+      setZoomMode: store.setZoomMode,
+      commitModelIds: store.commitModelIds,
+      setConfidenceThreshold: store.setConfidenceThreshold,
+      toggleZoomIndicator: () => store.toggle("zoomIndicator"),
+      toggleRoundTripIndicator: () => store.toggle("roundTripIndicator"),
+      toggleCameraPreview: () => store.toggle("cameraPreview"),
+      toggleDetectionView: () => store.toggle("detectionView"),
+      toggleRawConfidence: () => store.toggle("rawConfidence"),
+      openSettings: () => store.setSettingsOpen(true),
+      closeSettings: () => store.setSettingsOpen(false),
     }),
-    [
-      developerOptions,
-      storedShowDebug,
-      radarAudio,
-      detectionImage,
-      storedThrottleInference,
-      storedZoomMode,
-      storedConfidenceThreshold,
-      storedModelIds,
-      storedZoomIndicator,
-      storedRoundTripIndicator,
-      storedCameraPreview,
-      storedDetectionView,
-      storedRawConfidence,
-    ],
-  );
-
-  useEffect(() => {
-    writeSettings(persisted);
-  }, [persisted]);
-
-  const commitModelIds = useCallback(
-    (ids: readonly string[]) => {
-      // Written straight through rather than left to the persist effect: the
-      // caller reloads on the next line, and the effect would not have run by
-      // then.
-      const wrote = writeSettings({ ...persisted, modelIds: ids });
-      if (wrote) {
-        setStoredModelIds(ids);
-      }
-      return wrote;
-    },
-    [persisted],
-  );
-
-  const toggleDeveloperOptions = useCallback(() => {
-    setDeveloperOptions((prev) => !prev);
-  }, []);
-
-  const toggleShowDebug = useCallback(() => {
-    setShowDebug((prev) => !prev);
-  }, []);
-
-  const toggleRadarAudio = useCallback(() => {
-    setRadarAudio((prev) => !prev);
-  }, []);
-
-  const toggleDetectionImage = useCallback(() => {
-    setDetectionImage((prev) => !prev);
-  }, []);
-
-  const toggleThrottleInference = useCallback(() => {
-    setThrottleInference((prev) => !prev);
-  }, []);
-
-  const setZoomMode = useCallback((mode: ZoomMode) => {
-    setStoredZoomMode(mode);
-  }, []);
-
-  const setConfidenceThreshold = useCallback((level: number) => {
-    setStoredConfidenceThreshold(snapConfidence(level));
-  }, []);
-
-  const toggleZoomIndicator = useCallback(() => {
-    setZoomIndicator((prev) => !prev);
-  }, []);
-
-  const toggleRoundTripIndicator = useCallback(() => {
-    setRoundTripIndicator((prev) => !prev);
-  }, []);
-
-  const toggleCameraPreview = useCallback(() => {
-    setCameraPreview((prev) => !prev);
-  }, []);
-
-  const toggleDetectionView = useCallback(() => {
-    setDetectionView((prev) => !prev);
-  }, []);
-
-  const toggleRawConfidence = useCallback(() => {
-    setRawConfidence((prev) => !prev);
-  }, []);
-
-  const [settingsOpen, setSettingsOpen] = useState(false);
-
-  const openSettings = useCallback(() => {
-    setSettingsOpen(true);
-  }, []);
-
-  const closeSettings = useCallback(() => {
-    setSettingsOpen(false);
-  }, []);
-
-  const value = useMemo(
-    () => ({
-      developerOptions,
-      toggleDeveloperOptions,
-      showDebug,
-      toggleShowDebug,
-      radarAudio,
-      toggleRadarAudio,
-      detectionImage,
-      toggleDetectionImage,
-      throttleInference,
-      toggleThrottleInference,
-      zoomMode,
-      setZoomMode,
-      modelIds,
-      commitModelIds,
-      confidenceThreshold,
-      setConfidenceThreshold,
-      zoomIndicator,
-      toggleZoomIndicator,
-      roundTripIndicator,
-      toggleRoundTripIndicator,
-      cameraPreview,
-      toggleCameraPreview,
-      detectionView,
-      toggleDetectionView,
-      rawConfidence,
-      toggleRawConfidence,
-      settingsOpen,
-      openSettings,
-      closeSettings,
-    }),
-    [
-      developerOptions,
-      toggleDeveloperOptions,
-      showDebug,
-      toggleShowDebug,
-      radarAudio,
-      toggleRadarAudio,
-      detectionImage,
-      toggleDetectionImage,
-      throttleInference,
-      toggleThrottleInference,
-      zoomMode,
-      setZoomMode,
-      modelIds,
-      commitModelIds,
-      confidenceThreshold,
-      setConfidenceThreshold,
-      zoomIndicator,
-      toggleZoomIndicator,
-      roundTripIndicator,
-      toggleRoundTripIndicator,
-      cameraPreview,
-      toggleCameraPreview,
-      detectionView,
-      toggleDetectionView,
-      rawConfidence,
-      toggleRawConfidence,
-      settingsOpen,
-      openSettings,
-      closeSettings,
-    ],
+    [snapshot, store],
   );
 
   return (

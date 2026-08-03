@@ -154,24 +154,24 @@ describe("SettingsContext", () => {
     const { result } = mount();
     act(() => result.current.openSettings());
     // The open state is session-only and must stay out of the stored blob.
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({
-        settingsVersion: SETTINGS_VERSION,
-        developerOptions: false,
-        showDebug: false,
-        radarAudio: true,
-        detectionImage: false,
-        throttleInference: true,
-        zoomMode: "1x",
-        confidenceThreshold: DEVELOPER_OPTIONS_OFF.confidenceThreshold,
-        modelIds: [DEFAULT_MODEL.id],
-        zoomIndicator: false,
-        roundTripIndicator: false,
-        cameraPreview: false,
-        detectionView: false,
-        rawConfidence: false,
-      }),
-    );
+    expect(
+      JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null"),
+    ).toEqual({
+      settingsVersion: SETTINGS_VERSION,
+      developerOptions: false,
+      showDebug: false,
+      radarAudio: true,
+      detectionImage: false,
+      throttleInference: true,
+      zoomMode: "1x",
+      confidenceThreshold: DEVELOPER_OPTIONS_OFF.confidenceThreshold,
+      modelIds: [DEFAULT_MODEL.id],
+      zoomIndicator: false,
+      roundTripIndicator: false,
+      cameraPreview: false,
+      detectionView: false,
+      rawConfidence: false,
+    });
   });
 
   it("reports every developer option at its off-switch value while developerOptions is off", () => {
