@@ -198,7 +198,8 @@ const pwa = () =>
           handler: "CacheFirst",
           options: {
             cacheName: "model-cache",
-            expiration: { maxEntries: 4 },
+            // Headroom for added models: each revision-pinned URL is its own entry.
+            expiration: { maxEntries: 8 },
             cacheableResponse: { statuses: [0, 200] },
           },
         },

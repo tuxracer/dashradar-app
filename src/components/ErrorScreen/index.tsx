@@ -39,6 +39,12 @@ const ErrorPointRow = ({ label, text }: ErrorPoint) => (
 
 type ErrorScreenProps = {
   code: AppErrorCode;
+  /**
+   * Optional recovery action beside TRY AGAIN, for failures that have a
+   * better answer than reloading into the same state (today: a selected
+   * model that will not load, revertable to the default).
+   */
+  action?: { label: string; onClick: () => void };
 };
 
 /**
@@ -50,7 +56,7 @@ type ErrorScreenProps = {
  * permission ask (scope first, then copy, then the button), so the whole
  * panel family enters the same way.
  */
-export const ErrorScreen = ({ code }: ErrorScreenProps) => {
+export const ErrorScreen = ({ code, action }: ErrorScreenProps) => {
   const { title, body, points } = ERROR_COPY[code];
   return (
     <main className="fixed inset-0 overflow-y-auto bg-surface">
@@ -76,6 +82,14 @@ export const ErrorScreen = ({ code }: ErrorScreenProps) => {
                 <ErrorPointRow key={point.label} {...point} />
               ))}
             </div>
+          )}
+          {action && (
+            <button
+              className="mt-1 animate-rise-in rounded-full border border-white/25 px-12 py-3.5 text-lg font-bold tracking-[0.24em] text-white/85 [animation-delay:440ms] [animation-duration:0.6s] active:scale-95 motion-reduce:animate-none"
+              onClick={action.onClick}
+            >
+              {action.label}
+            </button>
           )}
           <button
             className="mt-1 animate-rise-in rounded-full bg-hud-amber px-12 py-3.5 text-lg font-bold tracking-[0.24em] text-surface [animation-delay:440ms] [animation-duration:0.6s] active:scale-95 motion-reduce:animate-none"

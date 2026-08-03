@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 import { ErrorScreen } from "@/components/ErrorScreen";
 
 describe("ErrorScreen", () => {
@@ -24,5 +25,26 @@ describe("ErrorScreen", () => {
       expect(container.querySelector("svg")).toBeInTheDocument();
       unmount();
     }
+  });
+
+  it("renders a secondary action when one is passed", async () => {
+    const onClick = vi.fn();
+    render(
+      <ErrorScreen
+        code="MODEL_LOAD_FAILED"
+        action={{ label: "USE DEFAULT MODEL", onClick }}
+      />,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "USE DEFAULT MODEL" }),
+    );
+    expect(onClick).toHaveBeenCalled();
+  });
+
+  it("renders no secondary action by default", () => {
+    render(<ErrorScreen code="MODEL_LOAD_FAILED" />);
+    expect(
+      screen.queryByRole("button", { name: "USE DEFAULT MODEL" }),
+    ).not.toBeInTheDocument();
   });
 });

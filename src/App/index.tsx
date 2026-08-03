@@ -31,6 +31,7 @@ import { DevVideoProvider, useDevVideo } from "@/context/DevVideoContext";
 import { SettingsProvider, useSettings } from "@/context/SettingsContext";
 import type { CameraError } from "@/lib/camera";
 import type { Size } from "@/lib/detection";
+import { DEFAULT_MODEL } from "@/lib/detectionModels";
 import { hudScore, hudSignal } from "@/lib/radarSignal";
 import {
   UPDATE_CHECK_TIMEOUT_MS,
@@ -73,6 +74,7 @@ const RadarScreen = () => {
     cameraEpoch,
     clearCameraStall,
     swapVideoSource,
+    activeModel,
   } = useDetection();
   const {
     radarAudio,
@@ -84,6 +86,7 @@ const RadarScreen = () => {
     cameraPreview,
     rawConfidence,
     detectionView,
+    commitModelIds,
   } = useSettings();
   const { source } = useDevVideo();
   // No check on `source` in either initializer: a session always starts on the
@@ -239,7 +242,22 @@ const RadarScreen = () => {
     return <ErrorScreen code={cameraError.code} />;
   }
   if (status === "error" && error) {
-    return <ErrorScreen code={error} />;
+    // A selected model that will not load has a better recovery than retrying
+    // it: run the default. Committed synchronously for the same reason the
+    // model screen does it; the reload on the next line outruns the persist
+    // effect.
+    const revertAction =
+      error === "MODEL_LOAD_FAILED" && activeModel.id !== DEFAULT_MODEL.id
+        ? {
+            label: "USE DEFAULT MODEL",
+            onClick: () => {
+              if (commitModelIds([DEFAULT_MODEL.id])) {
+                window.location.reload();
+              }
+            },
+          }
+        : undefined;
+    return <ErrorScreen code={error} action={revertAction} />;
   }
   // Automatic camera recovery gave up on a frozen or black feed: ask the driver
   // to clear the lens and reload rather than looping silent remounts/reloads.
