@@ -1,3 +1,9 @@
+import {
+  BehaviorSubject,
+  combineLatest,
+  distinctUntilChanged,
+  map,
+} from "rxjs";
 import { APP_RELEASE } from "@/lib/appRelease";
 import { waitForNextVideoFrame } from "@/lib/camera";
 import {
@@ -81,23 +87,38 @@ export const createDetectionEngine = ({
   };
 
   // ---- world state pushed in by the owner ----
-  let inputs: EngineInputs = {
+  const inputs$ = new BehaviorSubject<EngineInputs>({
     video: undefined,
     visible: true,
     settingsOpen: false,
-  };
-  let settings: EngineSettings = {
+  });
+  const settings$ = new BehaviorSubject<EngineSettings>({
     includeContact: false,
     throttled: true,
     zoom: ZOOM_OFF,
     confidenceThreshold: CONFIDENCE_THRESHOLD,
-  };
+  });
+  const active$ = new BehaviorSubject(false);
+
+  /** Whether this world state wants the pump running. */
+  const wantsToRun = (
+    isActive: boolean,
+    { video, visible, settingsOpen }: EngineInputs,
+  ) => isActive && video !== undefined && visible && !settingsOpen;
+
+  /**
+   * The derived running state. Everything scoped to a running span hangs off
+   * this stream, so a falling edge tears it all down by unsubscription.
+   */
+  const running$ = combineLatest([active$, inputs$]).pipe(
+    map(([isActive, inputs]) => wantsToRun(isActive, inputs)),
+    distinctUntilChanged(),
+  );
 
   // ---- pump state ----
   // Bumped per activation so a pending model-load continuation from a
   // deactivated span can never post onto a later worker.
   let activation = 0;
-  let active = false;
   // The derived running state's current value; compared against the fresh
   // derivation on every input change to find the edges.
   let running = false;
@@ -233,7 +254,7 @@ export const createDetectionEngine = ({
   };
 
   const sendFrame = async () => {
-    const video = inputs.video;
+    const video = inputs$.value.video;
     if (!running || !video || !worker) {
       return;
     }
@@ -268,16 +289,16 @@ export const createDetectionEngine = ({
       lastCaptureMs = performance.now() - captureStart;
       postTime = performance.now();
       inFlight += 1;
-      const zoom = settings.zoom;
+      const zoom = settings$.value.zoom;
       // Recorded before the transfer detaches the bitmap.
       lastFrameInfo = { zoom, width: frame.width, height: frame.height };
       worker.postMessage(
         {
           type: "detect",
           frame,
-          includeCrop: settings.includeContact,
+          includeCrop: settings$.value.includeContact,
           zoom,
-          confidenceThreshold: settings.confidenceThreshold,
+          confidenceThreshold: settings$.value.confidenceThreshold,
         },
         [frame],
       );
@@ -304,7 +325,9 @@ export const createDetectionEngine = ({
     const floorDelay = Math.max(0, MIN_FRAME_INTERVAL_MS - elapsedSincePostMs);
     const restDelay = PACING_REST_RATIO * elapsedSincePostMs;
     // Unthrottled (debug-only escape hatch): re-prime immediately, no floor.
-    const delay = settings.throttled ? Math.max(floorDelay, restDelay) : 0;
+    const delay = settings$.value.throttled
+      ? Math.max(floorDelay, restDelay)
+      : 0;
     // Record the decision for the debug overlay's pacing row. The result
     // handler has already written this frame's snapshot, so merge onto it.
     debug = {
@@ -398,9 +421,9 @@ export const createDetectionEngine = ({
         const result = processDetectionResult({
           detections: message.detections,
           crop: message.crop,
-          confidenceThreshold: settings.confidenceThreshold,
+          confidenceThreshold: settings$.value.confidenceThreshold,
           updateTracks: (detections) => tracker.update(detections),
-          includeContact: settings.includeContact,
+          includeContact: settings$.value.includeContact,
           at: performance.now(),
         });
         const frameInfo = lastFrameInfo;
@@ -510,38 +533,25 @@ export const createDetectionEngine = ({
     next.postMessage({ type: "probe" });
   };
 
-  /** Whether the world the inputs describe wants the pump running. */
-  const shouldRun = () =>
-    inputs.video !== undefined && inputs.visible && !inputs.settingsOpen;
-
-  /**
-   * Re-derive the running state and act on its edges. A falling edge is the
-   * old stop(): invalidate in-flight work, reset the tracker (a resumed
-   * session must re-earn track confirmation), and step status back. A rising
-   * edge is the old start(): prime the pump if the model is ready, or let the
-   * `ready` handler prime it when the load lands.
-   */
-  const evaluate = () => {
-    const desired = active && shouldRun();
-    if (desired === running) {
-      return;
-    }
-    if (desired) {
-      running = true;
+  // The old evaluate(): act on the edges of the derived running state. The
+  // BehaviorSubject replays the initial false at subscribe; its "falling edge"
+  // actions are all no-ops against fresh state, so no skip is needed.
+  running$.subscribe((isRunning) => {
+    running = isRunning;
+    if (isRunning) {
       if (snapshot.status === "ready") {
         setStatus("running");
         void sendFrame();
       }
       return;
     }
-    running = false;
     generation += 1;
     clearTimers();
     tracker = createDetectionTracker();
     if (snapshot.status === "running") {
       setStatus("ready");
     }
-  };
+  });
 
   return {
     getSnapshot: () => snapshot,
@@ -552,18 +562,16 @@ export const createDetectionEngine = ({
       };
     },
     setInputs: (next) => {
-      inputs = { ...inputs, ...next };
-      evaluate();
+      inputs$.next({ ...inputs$.value, ...next });
     },
     updateSettings: (next) => {
-      settings = next;
+      settings$.next(next);
     },
     getDebugSnapshot: () => debug,
     activate: () => {
-      if (active) {
+      if (active$.value) {
         return;
       }
-      active = true;
       activation += 1;
       // A fresh activation behaves like a fresh mount: published state and
       // per-load counters reset before the new worker reports anything.
@@ -579,15 +587,14 @@ export const createDetectionEngine = ({
       if (worker) {
         requestLoad(worker);
       }
-      evaluate();
+      active$.next(true);
     },
     deactivate: () => {
-      if (!active) {
+      if (!active$.value) {
         return;
       }
-      active = false;
+      active$.next(false);
       activation += 1;
-      evaluate();
       clearTimers();
       replaceContact(undefined);
       // Terminate whichever worker is current, which is the recycled one if
