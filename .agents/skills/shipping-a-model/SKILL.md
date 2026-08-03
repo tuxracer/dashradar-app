@@ -11,21 +11,21 @@ Mobile WebGPU is the only target and the only execution path. There is no CPU fa
 
 ## Signature the worker expects
 
-Every selectable checkpoint is one entry in `src/lib/detectionModels/consts.ts`, naming the repo, revision, weights file, and classes. The shipping entry streams `model_fp16.onnx`, about 57 MB, mixed precision.
+Every selectable checkpoint is one entry in `src/lib/detectionModels/consts.ts`, naming the repo, revision, weights file, head width, and classes. The shipping entry streams `model_fp16.onnx`, about 57 MB, mixed precision. The shapes below are that entry's.
 
 | Tensor   | Shape           | Notes                                            |
 | -------- | --------------- | ------------------------------------------------ |
 | input    | `[1,3,512,512]` | fp32 NCHW                                        |
 | `dets`   | `[1,300,4]`     | cxcywh, normalized                               |
-| `labels` | `[1,300,2]`     | raw logits, per-query sigmoid, police at index 1 |
+| `labels` | `[1,300,2]`     | raw logits, per-query sigmoid; police at index 1 |
 
-No NMS. A replacement that changes any of this needs matching changes in `preprocess`/`decodeDetections` in `src/workers/detection/inference.ts`.
+No NMS. The `labels` width and each class's index are the checkpoint's, declared by its entry rather than baked into the decode, so a wider head with its classes elsewhere is just a different entry. Changes to the input shape, the box encoding, or the unused background slot are a different matter: those need matching changes in `preprocess`/`decodeDetections` in `src/workers/detection/inference.ts`.
 
 ## Export requirements
 
 - **Keep GridSample fp32.** The WebGPU fp16 build is mixed precision with its three GridSample nodes kept fp32, because pure-fp16 GridSample generated invalid WGSL under JSEP. If an export changes GridSample precision, or the WebGPU URL moves to a different build, re-verify before shipping.
 - **fp16 tensors require the `shader-f16` GPU feature.** `probeWebGpu()` gates on it, along with actually acquiring an adapter and device, so unsupported devices are turned away before any download. An export that needs a different feature has to move that gate with it.
-- **Decode stays hand-rolled.** Never reach for the Transformers.js `pipeline()`. The head is a 2-wide sigmoid with the real class at index 1; the pipeline's softmax-with-background DETR decode drops every real detection, and `RfDetrImageProcessor` isn't a registered JS processor.
+- **Decode stays hand-rolled.** Never reach for the Transformers.js `pipeline()`. The head is a sigmoid scored per class, index 0 an unused background slot (2-wide for the shipping entry); the pipeline's softmax-with-background DETR decode drops every real detection, and `RfDetrImageProcessor` isn't a registered JS processor.
 
 ## Release runbook
 
@@ -33,7 +33,7 @@ The `"model-cache"` Workbox route is `CacheFirst` keyed on URL, so the URL is th
 
 1. Push a new tag on the Hugging Face repo.
 2. Verify the new weights URL returns 200: `curl -sIL -o /dev/null -w '%{http_code}' <url>`
-3. Bump the entry's `revision` in `src/lib/detectionModels/consts.ts`. A genuinely different checkpoint is a new entry with a new `id` rather than an edit to an existing one, so a stored selection is never silently repointed at a different detector. Either way the entry's `classes` has to match the head width, or every frame throws `MODEL_LOAD_FAILED`.
+3. Bump the entry's `revision` in `src/lib/detectionModels/consts.ts`. A genuinely different checkpoint is a new entry with a new `id` rather than an edit to an existing one, so a stored selection is never silently repointed at a different detector. Read the entry's `headWidth` off the export's actual `labels` width rather than guessing: a wrong guess throws `MODEL_LOAD_FAILED` every frame, which is loud; a guess that happens to match the head actually loaded passes the check and points the table's indices at another checkpoint's classes, silently. `classes` picks which of those logits this build surfaces, by index; an unnamed logit is never read.
 4. Verify end-to-end on WebGPU in a real browser (see the `verifying-in-browser` skill): zero GridSample or WGSL errors in the console, and a reference-image score match against the previous model.
 5. Verify on a real device before calling it done. Round-trip time and thermals are the numbers that matter, and neither shows up in a desktop browser.
 
