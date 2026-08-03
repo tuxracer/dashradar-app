@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  cameraFeed,
   getCameraStream,
   isCameraError,
   waitForNextVideoFrame,
@@ -85,5 +86,163 @@ describe("waitForNextVideoFrame", () => {
     // jsdom's video element has no requestVideoFrameCallback.
     const video = document.createElement("video");
     await expect(waitForNextVideoFrame(video)).resolves.toBeUndefined();
+  });
+});
+
+describe("cameraFeed", () => {
+  type FakeTrack = { stop: ReturnType<typeof vi.fn> };
+
+  const fakeStreamWithTrack = () => {
+    const track: FakeTrack = { stop: vi.fn() };
+    const stream = {
+      getTracks: () => [track],
+    } as unknown as MediaStream;
+    return { stream, track };
+  };
+
+  const stubGetUserMedia = (result: Promise<MediaStream>) => {
+    const getUserMedia = vi.fn(() => result);
+    vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+    return getUserMedia;
+  };
+
+  it("emits active with the video once the stream attaches and plays", async () => {
+    const { stream } = fakeStreamWithTrack();
+    stubGetUserMedia(Promise.resolve(stream));
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    const video = document.createElement("video");
+    const events: unknown[] = [];
+    const subscription = cameraFeed(video).subscribe((event) => {
+      events.push(event);
+    });
+    await vi.waitFor(() => {
+      expect(events).toEqual([{ type: "active", video }]);
+    });
+    expect(video.srcObject).toBe(stream);
+    subscription.unsubscribe();
+  });
+
+  it("emits a resize event per DOM resize after active", async () => {
+    const { stream } = fakeStreamWithTrack();
+    stubGetUserMedia(Promise.resolve(stream));
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    const video = document.createElement("video");
+    const events: Array<{ type: string }> = [];
+    const subscription = cameraFeed(video).subscribe((event) => {
+      events.push(event);
+    });
+    await vi.waitFor(() => {
+      expect(events).toHaveLength(1);
+    });
+    video.dispatchEvent(new Event("resize"));
+    expect(events).toEqual([
+      { type: "active", video },
+      { type: "resize", video },
+    ]);
+    subscription.unsubscribe();
+  });
+
+  it("errors with the typed CameraError from acquisition", async () => {
+    stubGetUserMedia(
+      Promise.reject(new DOMException("denied", "NotAllowedError")),
+    );
+    const video = document.createElement("video");
+    const errors: unknown[] = [];
+    cameraFeed(video).subscribe({
+      next: () => {},
+      error: (error: unknown) => {
+        errors.push(error);
+      },
+    });
+    await vi.waitFor(() => {
+      expect(errors).toHaveLength(1);
+    });
+    const error = errors[0];
+    expect(isCameraError(error) && error.code).toBe("PERMISSION_DENIED");
+  });
+
+  it("maps a play() rejection to a CameraError", async () => {
+    const { stream } = fakeStreamWithTrack();
+    stubGetUserMedia(Promise.resolve(stream));
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockRejectedValue(
+      new Error("interrupted"),
+    );
+    const video = document.createElement("video");
+    const errors: unknown[] = [];
+    cameraFeed(video).subscribe({
+      next: () => {},
+      error: (error: unknown) => {
+        errors.push(error);
+      },
+    });
+    await vi.waitFor(() => {
+      expect(errors).toHaveLength(1);
+    });
+    const error = errors[0];
+    expect(isCameraError(error) && error.code).toBe("NO_CAMERA");
+  });
+
+  it("stops tracks and silences resize on unsubscribe", async () => {
+    const { stream, track } = fakeStreamWithTrack();
+    stubGetUserMedia(Promise.resolve(stream));
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    const video = document.createElement("video");
+    const events: unknown[] = [];
+    const subscription = cameraFeed(video).subscribe((event) => {
+      events.push(event);
+    });
+    await vi.waitFor(() => {
+      expect(events).toHaveLength(1);
+    });
+    subscription.unsubscribe();
+    expect(track.stop).toHaveBeenCalled();
+    video.dispatchEvent(new Event("resize"));
+    expect(events).toHaveLength(1);
+  });
+
+  it("stops the tracks of a stream granted after unsubscribe", async () => {
+    const { stream, track } = fakeStreamWithTrack();
+    let grant: (granted: MediaStream) => void = () => {};
+    stubGetUserMedia(
+      new Promise<MediaStream>((resolve) => {
+        grant = resolve;
+      }),
+    );
+    const video = document.createElement("video");
+    const events: unknown[] = [];
+    const subscription = cameraFeed(video).subscribe((event) => {
+      events.push(event);
+    });
+    subscription.unsubscribe();
+    grant(stream);
+    await vi.waitFor(() => {
+      expect(track.stop).toHaveBeenCalled();
+    });
+    expect(events).toHaveLength(0);
+    expect(video.srcObject).toBeUndefined();
+  });
+
+  it("emits nothing when play resolves after unsubscribe", async () => {
+    const { stream } = fakeStreamWithTrack();
+    stubGetUserMedia(Promise.resolve(stream));
+    let finishPlay = () => {};
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishPlay = resolve;
+        }),
+    );
+    const video = document.createElement("video");
+    const events: unknown[] = [];
+    const subscription = cameraFeed(video).subscribe((event) => {
+      events.push(event);
+    });
+    await vi.waitFor(() => {
+      expect(video.srcObject).toBe(stream);
+    });
+    subscription.unsubscribe();
+    finishPlay();
+    await Promise.resolve();
+    expect(events).toHaveLength(0);
   });
 });

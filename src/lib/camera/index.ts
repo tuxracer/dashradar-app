@@ -1,5 +1,6 @@
+import { Observable } from "rxjs";
 import { CAMERA_CONSTRAINTS } from "./consts";
-import { CameraError } from "./types";
+import { CameraError, CameraFeedEvent, isCameraError } from "./types";
 
 export * from "./consts";
 export * from "./types";
@@ -55,3 +56,56 @@ export const getCameraStream = async (): Promise<MediaStream> => {
     throw toCameraError(error);
   }
 };
+
+/**
+ * The camera acquisition lifecycle as a stream: subscribing opens the rear
+ * camera, attaches it to the element, starts playback, emits `active`, and
+ * then a `resize` event per intrinsic-dimension change. Unsubscribing is
+ * the whole teardown: tracks stop and the listener detaches, and a
+ * getUserMedia grant or play() that resolves after unsubscription is
+ * disposed instead of committed (every await re-checks cancellation). The
+ * stream never completes on its own; it ends by unsubscription or by a
+ * terminal typed CameraError on the error channel.
+ */
+export const cameraFeed = (
+  video: HTMLVideoElement,
+): Observable<CameraFeedEvent> =>
+  new Observable<CameraFeedEvent>((subscriber) => {
+    let cancelled = false;
+    let stream: MediaStream | undefined;
+    const handleResize = () => {
+      subscriber.next({ type: "resize", video });
+    };
+    void (async () => {
+      try {
+        const acquired = await getCameraStream();
+        if (cancelled) {
+          for (const track of acquired.getTracks()) {
+            track.stop();
+          }
+          return;
+        }
+        stream = acquired;
+        video.srcObject = acquired;
+        await video.play();
+        if (cancelled) {
+          return;
+        }
+        subscriber.next({ type: "active", video });
+        video.addEventListener("resize", handleResize);
+      } catch (error) {
+        if (!cancelled) {
+          subscriber.error(
+            isCameraError(error) ? error : new CameraError("NO_CAMERA"),
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+      stream?.getTracks().forEach((track) => {
+        track.stop();
+      });
+      video.removeEventListener("resize", handleResize);
+    };
+  });
