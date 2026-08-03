@@ -107,6 +107,16 @@ export const SW_CONTROL_TIMEOUT_MS = 3_000;
  * the primary crash mitigation for the long scanning sessions this app is built
  * for (hours on a dash-mounted phone). The weights are cached, so a recycle
  * re-loads from CacheStorage without a network download or visible loading UI.
+ *
+ * A recycle is cheap enough that this interval is not a thermal question.
+ * Measured in desktop Chrome with the weights cached and graph capture on, a
+ * terminate to the next session reporting ready takes about 250 ms, and the gap
+ * between the last result of one session and the first of the next is about
+ * 320 ms, which is shorter than a normal scan interval because the fresh pump
+ * fires immediately instead of pacing. Rebuilding the session evidently reuses
+ * the browser's compiled shaders rather than paying for them again. A phone is
+ * slower and WebKit runs no graph capture, so treat those figures as a floor,
+ * but the shape of the answer is that recycling costs about one scan.
  */
 export const WORKER_RECYCLE_AFTER_MS = 900_000;
 
