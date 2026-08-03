@@ -76,7 +76,7 @@ Both directions are validated by type guards; a malformed message is ignored rat
 | → main | `model-load-start` | Whether weights came from cache; drives whether the download screen shows |
 | → main | `model-progress` | Byte counts while streaming; not sent on a cache hit |
 | → main | `model-downloaded` | Weights done, before session build, so download success is counted apart from session failure |
-| → main | `backend-probe` | Session error, graph-capture state, isolation, thread count; feeds the debug overlay |
+| → main | `backend-probe` | Session error, graph-capture state, isolation, thread count, and what the loaded weights say about themselves; feeds the debug overlay |
 | → main | `ready` | Session is live |
 | → main | `detections` | Decoded boxes, per-stage timing, optional extras |
 | → main | `worker-error` | A typed `DetectionErrorCode` plus optional detail |
@@ -90,6 +90,8 @@ The `detections` extras: the **cutout** (top detection's box, padded, clamped, d
 A custom **RF-DETR Small** checkpoint fine-tuned on Las Vegas Metro police vehicles, published at [`tuxracer/las-vegas-metro-rfdetr-small`](https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small) and exported from a sibling training repo. Signature: input `[1,3,512,512]` fp32 NCHW, ImageNet-normalized; outputs `dets [1,300,4]` (cxcywh, normalized) and `labels [1,300,2]` (raw logits). No NMS; RF-DETR is set-based.
 
 **One registry, one selection.** `src/lib/detectionModels` is the only place a checkpoint is described: one entry per selectable model, holding its Hugging Face repo, pinned revision, ONNX file (`model_fp16.onnx`, ~57 MB, for the shipping entry), and class table. The selection is a developer option, stored as a list of ids so multi-model selection later needs no settings migration. Resolving that list never yields nothing: an id left by a build that had a model this one does not falls back to the shipping entry instead of asking for weights that do not exist.
+
+**What the file says about itself.** An export can stamp provenance into the ONNX file (release tag, source model id, class names), and onnxruntime-web's JS API surfaces none of it: all a session exposes is its input and output names, types and shapes. `src/lib/onnxMetadata` reads those top-level fields out of the downloaded bytes instead, stepping over the graph by its declared length rather than parsing it, which keeps the read at a fraction of a millisecond on a 57 MB file. The result rides to the debug overlay on `backend-probe` and is the only way to tell which build a device is really running, since the URL says which revision was asked for and not which bytes a cache returned. A build exported before stamping reads fine and reports nothing.
 
 The worker is told which entry to load on the `load` message, because a worker has no `localStorage` of its own to read the selection from. `DetectionContext` resolves it once at mount and exposes it as `activeModel`, so a session and the worker it rebuilds every 15 minutes stay on one model for the whole drive. A new choice applies on the reload the model screen performs when it saves.
 

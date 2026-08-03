@@ -1,4 +1,6 @@
 import { isBoolean, isNumber, isPlainObject, isString } from "remeda";
+import { isOnnxMetadata } from "@/lib/onnxMetadata";
+import type { OnnxMetadata } from "@/lib/onnxMetadata";
 import type { RawDetection } from "@/types";
 import { isRawDetection } from "@/types";
 
@@ -188,10 +190,11 @@ const isDetectionCrop = (value: unknown): value is DetectionCrop => {
 };
 
 /**
- * How the detector's backend came up, reported once per worker after `load`.
- * The GPU probe's own verdict is not in here: a device that fails it never
- * reaches this message, it gets WEBGPU_UNSUPPORTED and the unsupported-device
- * screen, so anything reading this probe is already running on WebGPU.
+ * How the detector's backend came up, and what the weights it came up on say
+ * about themselves. Reported once per worker after `load`. The GPU probe's own
+ * verdict is not in here: a device that fails it never reaches this message, it
+ * gets WEBGPU_UNSUPPORTED and the unsupported-device screen, so anything
+ * reading this probe is already running on WebGPU.
  */
 export type BackendProbe = {
   /** InferenceSession.create failure message for the WebGPU attempt, if any. */
@@ -219,6 +222,16 @@ export type BackendProbe = {
    * node the provider cannot take.
    */
   threads: number;
+  /**
+   * What the loaded `.onnx` file says about itself, read out of the downloaded
+   * bytes by src/lib/onnxMetadata. This is the one way to tell which weights a
+   * device is actually running: the URL only says which entry asked for them,
+   * while a `props.release_tag` disagreeing with the registry entry's pinned
+   * revision means a cache is serving something else. Absent when the bytes did
+   * not parse, and `props` is empty for any build exported before the
+   * checkpoint repo started stamping provenance in v3.7.
+   */
+  modelFile?: OnnxMetadata;
 };
 
 const isBackendProbe = (value: unknown): value is BackendProbe => {
@@ -229,7 +242,8 @@ const isBackendProbe = (value: unknown): value is BackendProbe => {
     (value.graphCaptureError === undefined ||
       isString(value.graphCaptureError)) &&
     isBoolean(value.crossOriginIsolated) &&
-    isNumber(value.threads)
+    isNumber(value.threads) &&
+    (value.modelFile === undefined || isOnnxMetadata(value.modelFile))
   );
 };
 

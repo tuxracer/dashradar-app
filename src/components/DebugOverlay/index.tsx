@@ -33,6 +33,25 @@ const captureSupport = (probe: BackendProbe | undefined): string => {
   return probe.graphCaptureError ? "failed" : "disabled";
 };
 
+/**
+ * Which weights the session actually came up on, from the provenance the export
+ * stamps into the `.onnx` file itself. The registry entry only says which file
+ * was asked for, so this is what catches a cache serving a different build than
+ * the pinned revision. "unstamped" is a file that parsed but carries no
+ * provenance (any build exported before v3.7); "unreadable" is one whose bytes
+ * did not parse as a model at all, which a working session makes unlikely.
+ */
+const modelFile = (probe: BackendProbe | undefined): string => {
+  if (!probe) {
+    return "probing";
+  }
+  if (!probe.modelFile) {
+    return "unreadable";
+  }
+  const { release_tag, roboflow_model_id } = probe.modelFile.props;
+  return release_tag ?? roboflow_model_id ?? "unstamped";
+};
+
 /** Milliseconds to one decimal place, e.g. "5.6 ms". */
 const ms = (value: number): string => `${value.toFixed(1)} ms`;
 
@@ -156,6 +175,7 @@ export const DebugOverlay = ({
       <Row label="video" value={videoLabel} />
       <Row label="dpr" value={`${window.devicePixelRatio}`} />
       <Row label="model" value={modelPercent} />
+      <Row label="weights" value={modelFile(backendProbe)} />
     </div>
   );
 };

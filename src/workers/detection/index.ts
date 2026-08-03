@@ -12,6 +12,8 @@ import {
   resolveModels,
 } from "@/lib/detectionModels";
 import type { DetectionModel, LoadedModel } from "@/lib/detectionModels";
+import { readOnnxMetadata } from "@/lib/onnxMetadata";
+import type { OnnxMetadata } from "@/lib/onnxMetadata";
 import {
   CROP_MAX_EDGE,
   DEV_MODEL_CACHE_NAME,
@@ -93,6 +95,12 @@ type ModelIo = Omit<SessionIo, "labelsDims"> & {
    * reconciled with the head width the session reported.
    */
   detectionModel: LoadedModel;
+  /**
+   * What the weights file said about itself, for the backend probe. Undefined
+   * when the bytes did not parse as a model, which nothing here treats as a
+   * failure: a session that runs is a session that runs.
+   */
+  fileMetadata?: OnnxMetadata;
 };
 
 let model: ModelIo | undefined;
@@ -453,6 +461,11 @@ const createModel = async (
     });
     await cacheModelInDev(url, weights);
   }
+  // Read the file's own metadata before a session is built from it, because
+  // the capture path hands the buffer back the moment ORT has copied it.
+  // Costs a few dozen varint reads: the graph is stepped over by length, never
+  // parsed, so file size does not enter into it.
+  const fileMetadata = readOnnxMetadata(weights);
   const releaseWeights = () => {
     if (cached) {
       weights = undefined;
@@ -496,6 +509,7 @@ const createModel = async (
   const { labelsDims, ...rest } = io;
   return {
     ...rest,
+    fileMetadata,
     detectionModel: resolveLoadedModel(labelsDims, detectionModel),
   };
 };
@@ -557,6 +571,7 @@ const loadModel = async (modelId: string | undefined) => {
         ...wasmRuntime,
         graphCapture: model.capture !== undefined,
         graphCaptureError: model.captureError,
+        modelFile: model.fileMetadata,
       },
     });
     post({ type: "ready" });
