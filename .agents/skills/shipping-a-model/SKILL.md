@@ -33,6 +33,8 @@ The `"model-cache"` Workbox route is `CacheFirst` keyed on URL, so the URL is th
 
 1. Push a new tag on the Hugging Face repo.
 2. Verify the new weights URL returns 200: `curl -sIL -o /dev/null -w '%{http_code}' <url>`
-3. Bump the entry's `revision` in `src/lib/detectionModels/consts.ts`. Never point at `main`. A genuinely different checkpoint is a new entry with a new `id` rather than an edit to an existing one, so a stored selection is never silently repointed at a different detector. Either way the entry's `classes` has to match the head width, or every frame throws `MODEL_LOAD_FAILED`.
+3. Bump the entry's `revision` in `src/lib/detectionModels/consts.ts`. A genuinely different checkpoint is a new entry with a new `id` rather than an edit to an existing one, so a stored selection is never silently repointed at a different detector. Either way the entry's `classes` has to match the head width, or every frame throws `MODEL_LOAD_FAILED`.
 4. Verify end-to-end on WebGPU in a real browser (see the `verifying-in-browser` skill): zero GridSample or WGSL errors in the console, and a reference-image score match against the previous model.
 5. Verify on a real device before calling it done. Round-trip time and thermals are the numbers that matter, and neither shows up in a desktop browser.
+
+Only one model has ever been registered, so the change that adds the second entry is the first time two paths run outside a test: the model screen's save, confirm, and reload, and a second model earning its own `"model-cache"` entry. Give both a real-browser pass on that change.

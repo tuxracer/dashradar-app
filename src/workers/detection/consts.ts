@@ -1,5 +1,6 @@
 /**
- * RF-DETR small, fine-tuned to detect Las Vegas Metro police vehicles.
+ * How this file's constants relate to the checkpoint that ships, an RF-DETR
+ * small fine-tuned to detect Las Vegas Metro police vehicles.
  *
  * We run this ONNX model through raw onnxruntime-web rather than the
  * Transformers.js `pipeline("object-detection")` path. The pipeline's built-in
@@ -14,14 +15,15 @@
  * selectable checkpoint: its repo, revision, weights file, and classes. The
  * constants here cover the parts of running one that every checkpoint shares.
  *
- * One build is shipped: the mixed-precision fp16 model (~57 MB: fp16 weights
- * and compute, the three GridSample nodes kept fp32 behind boundary Casts),
- * run on WebGPU. It requires the `shader-f16` GPU feature, which `probeWebGpu`
- * gates on, and became usable when the worker moved to the native C++ WebGPU
- * EP ("onnxruntime-web/webgpu"): under the old JSEP path, a pure-fp16
- * GridSample produced garbage from a broken WGSL shader, which is why the
- * mixed-precision export keeps those nodes fp32 (see the GridSample gotcha in
- * CLAUDE.md). Inputs and outputs are fp32, so preprocess/decode are unchanged.
+ * That entry names one build: the mixed-precision fp16 model (~57 MB: fp16
+ * weights and compute, the three GridSample nodes kept fp32 behind boundary
+ * Casts), run on WebGPU. It requires the `shader-f16` GPU feature, which
+ * `probeWebGpu` gates on, and became usable when the worker moved to the
+ * native C++ WebGPU EP ("onnxruntime-web/webgpu"): under the old JSEP path, a
+ * pure-fp16 GridSample produced garbage from a broken WGSL shader, which is
+ * why the mixed-precision export keeps those nodes fp32 (see the GridSample
+ * gotcha in CLAUDE.md). Inputs and outputs are fp32, so preprocess/decode are
+ * unchanged.
  *
  * There is deliberately no CPU (wasm) build or fallback. The int8 model that
  * used to serve it measured round trips over 10 s on an Android phone where
@@ -30,6 +32,7 @@
  * away with WEBGPU_UNSUPPORTED rather than handed a detector that looks like
  * it works and does not.
  */
+
 /**
  * CacheStorage cache the worker writes downloaded weights into on the dev
  * server, where no service worker (and so no Workbox "model-cache" route)
