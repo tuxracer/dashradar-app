@@ -129,14 +129,26 @@ export const createDetectionEngine = ({
   );
 
   // ---- pump state ----
-  // Crop factor and dimensions of the most recently posted frame. Only one
-  // frame is ever in flight, so when a result arrives this always describes
-  // the frame it came from.
-  let lastFrameInfo:
-    | { zoom: ZoomLevel; width: number; height: number }
+  /**
+   * The most recently posted frame: the crop factor and dimensions a
+   * result's boxes must be mapped against, plus the capture cost and post
+   * time behind the debug snapshot's timings. Worker replies do not echo
+   * the frame they answer, so this record is how a result learns about its
+   * frame; it stays correct because only one frame is ever in flight. Like
+   * the pump's `awaitingResult` flag, it is deliberate imperative state
+   * alongside the streams (the flag covers control flow across a stop/start,
+   * this covers the data riding with the outstanding frame). Never cleared:
+   * a result no post preceded reads it guardedly instead.
+   */
+  let postedFrame:
+    | {
+        zoom: ZoomLevel;
+        width: number;
+        height: number;
+        captureMs: number;
+        postedAt: number;
+      }
     | undefined;
-  let lastCaptureMs = 0;
-  let postTime = 0;
   // Coasting tracker: shows each detection immediately and holds a stale box
   // for a few frames when the model briefly loses it. Recreated on every
   // pump stop, so a resumed session re-earns confirmation from scratch.
@@ -242,7 +254,7 @@ export const createDetectionEngine = ({
    * against.
    */
   const captureFrame = (video: HTMLVideoElement) =>
-    new Observable<ImageBitmap>((subscriber) => {
+    new Observable<{ frame: ImageBitmap; captureMs: number }>((subscriber) => {
       let cancelled = false;
       void (async () => {
         try {
@@ -256,8 +268,10 @@ export const createDetectionEngine = ({
             frame.close();
             return;
           }
-          lastCaptureMs = performance.now() - captureStart;
-          subscriber.next(frame);
+          subscriber.next({
+            frame,
+            captureMs: performance.now() - captureStart,
+          });
           subscriber.complete();
         } catch (error) {
           if (!cancelled) {
@@ -408,18 +422,18 @@ export const createDetectionEngine = ({
           includeContact: settings$.value.includeContact,
           at: performance.now(),
         });
-        const frameInfo = lastFrameInfo;
+        const frame = postedFrame;
         const patch: Partial<DetectionSnapshot> = { hud: result.hud };
         // Publish this scan's own detections for the detection view. Raw
         // per-frame output, not the coasted set, since the view exists to
-        // show what the model saw on each frame. Skipped when no frame info
-        // was recorded (a result no capture preceded), since mapping boxes
+        // show what the model saw on each frame. Skipped when no frame was
+        // recorded (a result no capture preceded), since mapping boxes
         // needs the frame's geometry.
-        if (frameInfo) {
+        if (frame) {
           patch.scan = {
             detections: result.detections,
-            frame: { width: frameInfo.width, height: frameInfo.height },
-            zoom: frameInfo.zoom,
+            frame: { width: frame.width, height: frame.height },
+            zoom: frame.zoom,
             at: performance.now(),
           };
         }
@@ -430,9 +444,9 @@ export const createDetectionEngine = ({
         publish(patch);
         result.discardedCrop?.close();
         const { preprocessMs, inferenceMs, decodeMs } = message.timing;
-        const roundTripMs = performance.now() - postTime;
+        const roundTripMs = performance.now() - (frame?.postedAt ?? 0);
         debug = {
-          captureMs: lastCaptureMs,
+          captureMs: frame?.captureMs ?? 0,
           preprocessMs,
           inferenceMs,
           decodeMs,
@@ -447,7 +461,7 @@ export const createDetectionEngine = ({
           rawCount: message.detections.length,
           filteredCount: result.detections.length,
           shownCount: result.tracked.length,
-          zoom: frameInfo?.zoom ?? ZOOM_OFF,
+          zoom: frame?.zoom ?? ZOOM_OFF,
           // Owned by the pump's capture retry loop; carried through so a
           // result never erases an in-progress failure streak readout.
           captureFailures: debug.captureFailures,
@@ -529,18 +543,19 @@ export const createDetectionEngine = ({
      */
     const postFrame = (video: HTMLVideoElement) =>
       captureFrame(video).pipe(
-        switchMap((frame) =>
+        switchMap(({ frame, captureMs }) =>
           merge(
             nextResult$,
             defer(() => {
               const { zoom, includeContact, confidenceThreshold } =
                 settings$.value;
-              lastFrameInfo = {
+              postedFrame = {
                 zoom,
                 width: frame.width,
                 height: frame.height,
+                captureMs,
+                postedAt: performance.now(),
               };
-              postTime = performance.now();
               awaitingResult = true;
               // A capture made it through, so any failure streak is over.
               debug = { ...debug, captureFailures: 0 };
@@ -594,7 +609,9 @@ export const createDetectionEngine = ({
             recycle$.next();
             return EMPTY;
           }
-          return timer(paceDelay(performance.now() - postTime));
+          return timer(
+            paceDelay(performance.now() - (postedFrame?.postedAt ?? 0)),
+          );
         }),
         // A failed capture retries forever: the expected cause is a video
         // element with no frame data yet (typically mid-attach), which
