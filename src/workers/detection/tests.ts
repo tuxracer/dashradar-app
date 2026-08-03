@@ -374,7 +374,11 @@ describe("frameBrightFraction", () => {
 });
 
 describe("decodeDetections", () => {
-  /** Runs a decode that should be rejected and hands back the thrown error. */
+  /**
+   * Runs a decode that should be rejected and hands back the thrown error, or
+   * undefined when it returned instead. The undefined is what makes these
+   * assertions fail if the guard they cover is ever removed.
+   */
   const decodeError = (
     boxes: Float32Array,
     labels: Float32Array,
@@ -616,6 +620,40 @@ describe("decodeDetections", () => {
     const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
 
     const thrown = decodeError(boxes, labels, past);
+
+    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
+  });
+
+  it("rejects a table that names no class at all", () => {
+    // An empty table skips every query and reports nothing forever, which on
+    // the road is indistinguishable from an empty road.
+    const empty: DetectionModel = { ...TWO_CLASS_MODEL, classes: [] };
+    const labels = makeLabels([[-8, 4, -8]]);
+    const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
+
+    const thrown = decodeError(boxes, labels, empty);
+
+    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
+  });
+
+  it("rejects a class index that is not a whole logit", () => {
+    // A fractional index lands between logits, reads as undefined, and scores
+    // NaN, so that class loses every comparison and never surfaces.
+    const fractional: DetectionModel = {
+      ...TWO_CLASS_MODEL,
+      classes: [
+        {
+          index: 1.5,
+          label: "police",
+          displayLabel: "POLICE",
+          category: "vehicle",
+        },
+      ],
+    };
+    const labels = makeLabels([[-8, 4, -8]]);
+    const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
+
+    const thrown = decodeError(boxes, labels, fractional);
 
     expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
   });

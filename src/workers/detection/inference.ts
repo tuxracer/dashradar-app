@@ -153,12 +153,16 @@ const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
  * checkpoint's classes can be surfaced in part. What the table cannot do is
  * disagree with the checkpoint it describes: a width mismatch means every box
  * would be silently misread, so this throws MODEL_LOAD_FAILED rather than
- * emitting plausible garbage. The class indices are range-checked in the same
- * pass, before the query loop rather than inside it, so the cost is one scan of
- * the table per frame rather than one per query. The query count comes from the
- * tensor lengths rather than their dims, which keeps this function pure and
- * works the same on the graph-capture path, where outputs arrive through
- * getData().
+ * emitting plausible garbage. A table with no classes in it is that same
+ * disagreement at its largest, since it would report an empty road forever,
+ * and every index has to be a whole number inside the head, because a
+ * fractional one reads between logits as undefined and scores NaN, so that
+ * class silently never wins. All of it is checked before the query loop rather
+ * than inside it, so the cost is one scan of the table per frame rather than
+ * one per query. The query count
+ * comes from the tensor lengths rather than their dims, which keeps this
+ * function pure and works the same on the graph-capture path, where outputs
+ * arrive through getData().
  */
 export const decodeDetections = (
   dets: Float32Array,
@@ -171,11 +175,15 @@ export const decodeDetections = (
     return [];
   }
   const { headWidth, classes } = model;
-  if (labels.length / queryCount !== headWidth) {
+  if (labels.length / queryCount !== headWidth || classes.length === 0) {
     throw new DetectionError("MODEL_LOAD_FAILED");
   }
   for (const entry of classes) {
-    if (entry.index < 1 || entry.index >= headWidth) {
+    if (
+      !Number.isInteger(entry.index) ||
+      entry.index < 1 ||
+      entry.index >= headWidth
+    ) {
       throw new DetectionError("MODEL_LOAD_FAILED");
     }
   }
