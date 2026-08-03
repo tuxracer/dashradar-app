@@ -14,11 +14,19 @@ export type ModelProgress = { loadedBytes: number; totalBytes: number };
 
 /**
  * Which pacing rule set the delay before the next capture: the absolute
- * MIN_FRAME_INTERVAL_MS floor ("floor", fast devices) or the proportional
- * PACING_REST_RATIO rest ("rest", devices whose round trip is long enough
- * that resting all of it exceeds the remainder of the floor).
+ * MIN_FRAME_INTERVAL_MS floor ("floor", fast devices), the proportional rest
+ * ("rest", devices whose round trip is long enough that resting it exceeds the
+ * remainder of the floor), or the MAX_FRAME_INTERVAL_MS ceiling ("capped", the
+ * slowest devices, where the ramped rest would space scans further apart than
+ * the detector can stay useful at).
  */
-export type PacingRule = "floor" | "rest";
+export type PacingRule = "floor" | "rest" | "capped";
+
+/** The delay before the next capture, and which rule produced it. */
+export type PacingDecision = {
+  delayMs: number;
+  rule: PacingRule;
+};
 
 /** Per-frame diagnostics surfaced when the debug overlay is enabled. */
 export type DebugSnapshot = {

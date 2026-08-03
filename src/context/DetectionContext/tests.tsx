@@ -11,6 +11,7 @@ import {
   WORKER_RECYCLE_AFTER_MS,
   WORKER_REPLY_TIMEOUT_MS,
 } from "@/context/DetectionContext";
+import { pacingDelay } from "@/lib/detectionEngine";
 
 import {
   DEVELOPER_OPTIONS_OFF,
@@ -800,29 +801,34 @@ describe("DetectionProvider", () => {
     expect(
       worker.posted.filter((message) => message.type === "detect"),
     ).toHaveLength(1);
-    // Simulate a slow device: the result lands 3000 ms after the frame was
-    // posted, well past the pacing floor, so the rest ratio governs instead.
+    // Simulate a slow device: the result lands well past the pacing floor, so
+    // the proportional rest governs instead. The expected wait comes from the
+    // pacing rule itself (unit-tested in src/lib/detectionEngine) rather than
+    // being restated here, so this test covers the pump honoring the decision
+    // and does not have to be edited every time the rule is retuned.
+    const roundTripMs = 1_000;
+    const restMs = pacingDelay(roundTripMs).delayMs;
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(3_000);
+      await vi.advanceTimersByTimeAsync(roundTripMs);
     });
     act(() => {
       worker.emit({
         type: "detections",
         detections: [],
-        timing: { preprocessMs: 5, inferenceMs: 2_990, decodeMs: 5 },
+        timing: { preprocessMs: 5, inferenceMs: 990, decodeMs: 5 },
       });
     });
-    // The pump must not re-prime immediately: it rests a full round trip
-    // (3000 ms here), so 2900 ms in nothing new is posted.
+    // The pump must not re-prime immediately: it rests out the decision, so
+    // just short of it nothing new is posted.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_900);
+      await vi.advanceTimersByTimeAsync(restMs - 100);
     });
     expect(
       worker.posted.filter((message) => message.type === "detect"),
     ).toHaveLength(1);
     // Once the rest elapses, exactly one more frame goes out.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(200);
+      await vi.advanceTimersByTimeAsync(100);
     });
     expect(
       worker.posted.filter((message) => message.type === "detect"),

@@ -44,8 +44,11 @@ import {
   FRAME_RETRY_MS,
   INITIAL_DEBUG,
   INITIAL_SNAPSHOT,
+  MAX_FRAME_INTERVAL_MS,
   MIN_FRAME_INTERVAL_MS,
+  PACING_REST_RAMP_MS,
   PACING_REST_RATIO,
+  PACING_REST_RATIO_MAX,
   SW_CONTROL_TIMEOUT_MS,
   WORKER_RECYCLE_AFTER_MS,
   WORKER_REPLY_TIMEOUT_MS,
@@ -59,10 +62,47 @@ import type {
   EngineInputs,
   EngineSettings,
   ModelProgress,
+  PacingDecision,
 } from "./types";
 
 export * from "./consts";
 export * from "./types";
+
+/**
+ * How long the pump idles after a result before starting the next capture.
+ *
+ * Two rules compete and the longer wins. The floor keeps captures at least
+ * MIN_FRAME_INTERVAL_MS apart, which is what paces a device fast enough that
+ * back-to-back inference would peg its GPU. The rest keeps the GPU idle for a
+ * multiple of the work it just did, which is what paces everything slower.
+ *
+ * The rest's multiple is not fixed. Heat tracks the share of wall time the GPU
+ * spends busy, and a fixed multiple holds that share constant no matter how
+ * slow the device gets: resting one round trip is 50% busy at a 500 ms round
+ * trip and still 50% busy at 4 s. So the multiple climbs with the round trip
+ * past PACING_REST_RAMP_MS, which turns a slower device into a genuinely
+ * lighter load rather than the same load stretched out. A phone that throttles
+ * therefore backs off the work that made it throttle, instead of settling into
+ * the flat 50% duty cycle that got it there.
+ *
+ * MAX_FRAME_INTERVAL_MS bounds the result, because the ramp trades scan rate
+ * away and that trade has a floor of usefulness.
+ */
+export const pacingDelay = (roundTripMs: number): PacingDecision => {
+  const floorDelay = Math.max(0, MIN_FRAME_INTERVAL_MS - roundTripMs);
+  const ratio = Math.min(
+    PACING_REST_RATIO_MAX,
+    Math.max(PACING_REST_RATIO, roundTripMs / PACING_REST_RAMP_MS),
+  );
+  const restDelay = ratio * roundTripMs;
+  if (floorDelay >= restDelay) {
+    return { delayMs: floorDelay, rule: "floor" };
+  }
+  if (restDelay > MAX_FRAME_INTERVAL_MS) {
+    return { delayMs: MAX_FRAME_INTERVAL_MS, rule: "capped" };
+  }
+  return { delayMs: restDelay, rule: "rest" };
+};
 
 /**
  * Build the detection engine: the worker lifecycle and frame-pump stream
@@ -301,24 +341,15 @@ export const createDetectionEngine = ({
     });
 
   /**
-   * Idle delay before the next capture: max(floor, rest) so captures never
-   * start less than MIN_FRAME_INTERVAL_MS apart and the pump always rests at
-   * least PACING_REST_RATIO of the last round trip. On fast devices the floor
-   * dominates; a thermally throttling phone's longer round trips earn it a
-   * longer break. Unthrottled (debug-only) collapses to 0. Records the
-   * decision for the debug overlay.
+   * Apply the pacing rule to this round trip and record the decision for the
+   * debug overlay. Unthrottled (debug-only) collapses the delay to 0 but still
+   * reports the rule that would have applied, so the overlay keeps meaning the
+   * same thing with the option on.
    */
   const paceDelay = (elapsedSincePostMs: number): number => {
-    const floorDelay = Math.max(0, MIN_FRAME_INTERVAL_MS - elapsedSincePostMs);
-    const restDelay = PACING_REST_RATIO * elapsedSincePostMs;
-    const delay = settings$.value.throttled
-      ? Math.max(floorDelay, restDelay)
-      : 0;
-    debug = {
-      ...debug,
-      pacingDelayMs: delay,
-      pacingRule: floorDelay >= restDelay ? "floor" : "rest",
-    };
+    const { delayMs, rule } = pacingDelay(elapsedSincePostMs);
+    const delay = settings$.value.throttled ? delayMs : 0;
+    debug = { ...debug, pacingDelayMs: delay, pacingRule: rule };
     return delay;
   };
 

@@ -19,18 +19,58 @@ export const FRAME_RETRY_MS = 100;
 export const MIN_FRAME_INTERVAL_MS = 1_000;
 
 /**
- * Fraction of a result's round-trip time the pump idles before starting the
- * next capture. Resting a full round trip puts captures 2x the round trip
- * apart, so the GPU is idle at least half the time. The absolute floor above
- * only paces devices whose round trip is under half of it; a device slower
- * than that would otherwise run the GPU back-to-back with little idle, the
- * worst case for heat and battery on a dash-mounted phone, and sustained
- * thermal throttling then makes inference slower still. A round trip that
- * grows because the phone is already throttling therefore buys back more
- * cool-down time on its own, trading a lower detection rate (which was
- * already low on such devices) for the phone staying alive for the drive.
+ * Baseline fraction of a result's round-trip time the pump idles before
+ * starting the next capture. Resting a full round trip puts captures 2x the
+ * round trip apart, so the GPU is idle at least half the time. The absolute
+ * floor above only paces devices whose round trip is under half of it; a
+ * device slower than that would otherwise run the GPU back-to-back with little
+ * idle, the worst case for heat and battery on a dash-mounted phone.
+ *
+ * This ratio alone is not enough, which is what PACING_REST_RAMP_MS below
+ * exists to fix. What heats a phone is the fraction of wall time the GPU spends
+ * busy, not how many milliseconds of idle sit between runs, and a flat ratio
+ * holds that fraction constant: at ratio 1 the duty cycle is round trip over
+ * twice the round trip, or 50%, for every round trip past half the floor. A
+ * phone that is already throttling gets more absolute cool-down but no smaller
+ * share of busy time, so the pacing never actually backs off the load that
+ * caused the throttling.
  */
 export const PACING_REST_RATIO = 1;
+
+/**
+ * Round-trip time at which the rest ratio starts climbing above
+ * PACING_REST_RATIO, rising in proportion to the round trip until
+ * PACING_REST_RATIO_MAX. This is what makes the duty cycle fall as a device
+ * slows down instead of sitting at a flat 50%: at twice this figure the pump
+ * rests twice the round trip (33% busy), at three times it rests three (25%).
+ *
+ * Set to half MIN_FRAME_INTERVAL_MS on purpose. That is exactly where resting
+ * the whole round trip stops leaving the floor in charge, so every device fast
+ * enough for the floor to govern is paced precisely as it was before the ramp
+ * existed and only devices already in the proportional regime see any change.
+ */
+export const PACING_REST_RAMP_MS = MIN_FRAME_INTERVAL_MS / 2;
+
+/**
+ * Ceiling on the ramped rest ratio, bounding the duty cycle at roughly 25%.
+ * Past this the pacing has backed off as far as it usefully can, and letting
+ * the ratio keep climbing would only push the gap between scans out further for
+ * a diminishing thermal return.
+ */
+export const PACING_REST_RATIO_MAX = 3;
+
+/**
+ * Hard ceiling on the delay between captures, whatever the rest ratio asks
+ * for. The ramp above trades detection rate for heat, and without a bound that
+ * trade eventually reaches the outcome this project already rejected once: a
+ * detector scanning so rarely that it misses most of what the car drives past
+ * is worse than no detector, because it still looks like it is working. Five
+ * seconds is the point where backing off further stops being worth having.
+ *
+ * A device slow enough to hit this cap is one where both failure modes are in
+ * play at once and neither can be fully avoided; the cap picks staying useful.
+ */
+export const MAX_FRAME_INTERVAL_MS = 5_000;
 
 /** Zeroed debug snapshot shown before the first detection result arrives. */
 export const INITIAL_DEBUG: DebugSnapshot = {
