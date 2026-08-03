@@ -596,11 +596,13 @@ const detect = async ({
   frame,
   includeCrop,
   zoom,
+  source,
   confidenceThreshold,
 }: {
   frame: ImageBitmap;
   includeCrop: boolean;
   zoom: number;
+  source?: { width: number; height: number };
   confidenceThreshold: number;
 }) => {
   if (!model) {
@@ -612,18 +614,40 @@ const detect = async ({
     if (!inputContext) {
       throw new DetectionError("INFERENCE_FAILED");
     }
-    const region = centerCropRegion(frame.width, frame.height, zoom);
-    inputContext.drawImage(
-      frame,
-      region.sx,
-      region.sy,
-      region.side,
-      region.side,
-      0,
-      0,
-      INPUT_SIZE,
-      INPUT_SIZE,
-    );
+    // The frame the boxes must end up normalized against. A pre-cropped frame
+    // no longer carries those dimensions itself, so its sender supplies them.
+    const frameSize = source ?? { width: frame.width, height: frame.height };
+    if (source) {
+      // Already the centered square, so scale the whole bitmap onto the input
+      // rather than cropping again. Scaled rather than blitted 1:1 on purpose:
+      // createImageBitmap's resize options are a request, and a platform that
+      // ignores them hands back a full-size crop that must still be brought
+      // down to the input size. A honored resize makes this a straight copy.
+      inputContext.drawImage(
+        frame,
+        0,
+        0,
+        frame.width,
+        frame.height,
+        0,
+        0,
+        INPUT_SIZE,
+        INPUT_SIZE,
+      );
+    } else {
+      const region = centerCropRegion(frame.width, frame.height, zoom);
+      inputContext.drawImage(
+        frame,
+        region.sx,
+        region.sy,
+        region.side,
+        region.side,
+        0,
+        0,
+        INPUT_SIZE,
+        INPUT_SIZE,
+      );
+    }
     const imageData = inputContext.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
     const inputData = preprocess(imageData, inputBuffer);
     const preprocessMs = performance.now() - preprocessStart;
@@ -669,7 +693,12 @@ const detect = async ({
     // HUD shaping in the context) keeps one space.
     const detections = decoded.map((detection) => ({
       ...detection,
-      box: mapCropBoxToFrame(detection.box, frame.width, frame.height, zoom),
+      box: mapCropBoxToFrame(
+        detection.box,
+        frameSize.width,
+        frameSize.height,
+        zoom,
+      ),
     }));
     const decodeMs = performance.now() - decodeStart;
 
@@ -677,9 +706,14 @@ const detect = async ({
     // the UI can show what was detected. Best-effort: a failed cutout never
     // blocks the detection result. Skipped entirely when the detection image
     // is turned off, so a card nobody sees costs no bitmap.
+    // Never cut from a pre-cropped frame: the boxes are normalized to the whole
+    // video frame while the bitmap holds only the zoom crop of it, so the rect
+    // would land somewhere else entirely. Senders already withhold the pre-crop
+    // whenever a cutout is wanted; this keeps the two from drifting apart into
+    // a wrong picture rather than a missing one.
     let crop: DetectionCrop | undefined;
     const topIndex = topDetectionIndex(detections);
-    if (includeCrop && topIndex !== undefined) {
+    if (includeCrop && !source && topIndex !== undefined) {
       const rect = cropRect(
         detections[topIndex].box,
         frame.width,
@@ -753,6 +787,7 @@ self.onmessage = (event: MessageEvent<unknown>) => {
     frame: request.frame,
     includeCrop: request.includeCrop ?? true,
     zoom: request.zoom ?? ZOOM_OFF,
+    source: request.source,
     confidenceThreshold: request.confidenceThreshold ?? CONFIDENCE_THRESHOLD,
   });
 };

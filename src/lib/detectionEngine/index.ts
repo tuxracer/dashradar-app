@@ -30,6 +30,7 @@ import {
   writeHeartbeat,
 } from "@/lib/crashSentinel";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
+import type { Size } from "@/lib/detection";
 import type { DetectionModel } from "@/lib/detectionModels";
 import type { DetectionTelemetry } from "@/lib/detectionTelemetry";
 import { createDetectionTracker } from "@/lib/detectionTracker";
@@ -37,7 +38,12 @@ import type { Contact } from "@/lib/processDetectionResult";
 import { processDetectionResult } from "@/lib/processDetectionResult";
 import { waitForServiceWorkerControl } from "@/lib/serviceWorker";
 import { screenWakeLock } from "@/lib/wakeLock";
-import { ZOOM_OFF } from "@/workers/detection/consts";
+import { INPUT_SIZE, ZOOM_OFF } from "@/workers/detection/consts";
+// The one module outside the worker that imports its inference helpers. Safe
+// where the worker's own index is not: this file pulls in no onnxruntime, and
+// the crop geometry has to be identical on both sides of the message or a
+// pre-cropped frame and the boxes mapped back out of it disagree.
+import { centerCropRegion } from "@/workers/detection/inference";
 import type { WorkerResponse, ZoomLevel } from "@/workers/detection/types";
 import { isWorkerResponse } from "@/workers/detection/types";
 import {
@@ -102,6 +108,34 @@ export const pacingDelay = (roundTripMs: number): PacingDecision => {
     return { delayMs: MAX_FRAME_INTERVAL_MS, rule: "capped" };
   }
   return { delayMs: restDelay, rule: "rest" };
+};
+
+/**
+ * Capture the region the model actually reads, already scaled to its input:
+ * the centered square the zoom selects, resized to INPUT_SIZE on the way out.
+ *
+ * Doing the crop and the scale here rather than in the worker is what keeps a
+ * full-resolution frame off the hot path when nothing needs one. The bitmap
+ * that crosses to the worker is the model's input rather than four times it,
+ * and the resample runs in the browser's own scaler instead of a software
+ * downscale into the CPU-backed canvas the worker reads pixels out of.
+ *
+ * The resize is a request the platform may decline, so the worker scales
+ * whatever arrives onto the input rather than trusting the size.
+ */
+const captureModelInput = (
+  video: HTMLVideoElement,
+  source: Size,
+  zoom: ZoomLevel,
+): Promise<ImageBitmap> => {
+  const { sx, sy, side } = centerCropRegion(source.width, source.height, zoom);
+  return createImageBitmap(video, sx, sy, side, side, {
+    resizeWidth: INPUT_SIZE,
+    resizeHeight: INPUT_SIZE,
+    // At least the quality of the canvas downscale this replaces; the frames
+    // the model reads should not get softer to save a copy.
+    resizeQuality: "medium",
+  });
 };
 
 /**
@@ -308,9 +342,25 @@ export const createDetectionEngine = ({
    * abandons the capture, and a bitmap that resolves after teardown is closed
    * instead of leaked, which is what the `cancelled` flag exists to protect
    * against.
+   *
+   * Two shapes come out of here. When a cutout is wanted the whole video frame
+   * is captured, because the contact card is cut from its original pixels.
+   * Otherwise the zoom crop and the scale down to the model's input are asked
+   * of `createImageBitmap` directly, which hands the worker a bitmap a quarter
+   * the size to transfer and leaves it a straight copy onto the input instead
+   * of a software resample of a frame four times larger. The emitted `source`
+   * is the video's own size either way, so a result maps its boxes against the
+   * frame rather than against whatever was captured.
    */
-  const captureFrame = (video: HTMLVideoElement) =>
-    new Observable<{ frame: ImageBitmap; captureMs: number }>((subscriber) => {
+  const captureFrame = (
+    video: HTMLVideoElement,
+    cropTo: ZoomLevel | undefined,
+  ) =>
+    new Observable<{
+      frame: ImageBitmap;
+      captureMs: number;
+      source: Size;
+    }>((subscriber) => {
       let cancelled = false;
       void (async () => {
         try {
@@ -318,8 +368,14 @@ export const createDetectionEngine = ({
           if (cancelled) {
             return;
           }
+          const source = {
+            width: video.videoWidth,
+            height: video.videoHeight,
+          };
           const captureStart = performance.now();
-          const frame = await createImageBitmap(video);
+          const frame = await (cropTo === undefined
+            ? createImageBitmap(video)
+            : captureModelInput(video, source, cropTo));
           if (cancelled) {
             frame.close();
             return;
@@ -327,6 +383,7 @@ export const createDetectionEngine = ({
           subscriber.next({
             frame,
             captureMs: performance.now() - captureStart,
+            source,
           });
           subscriber.complete();
         } catch (error) {
@@ -590,18 +647,25 @@ export const createDetectionEngine = ({
      * synchronously (a test fake, a same-thread worker shim) would emit into
      * nothing and stall the pump forever.
      */
-    const postFrame = (video: HTMLVideoElement) =>
-      captureFrame(video).pipe(
-        switchMap(({ frame, captureMs }) =>
+    const postFrame = (video: HTMLVideoElement) => {
+      // One settings read for the whole scan, taken before the capture rather
+      // than after it. The crop geometry and the zoom the message declares have
+      // to be the same value or the worker maps the boxes back out of a crop it
+      // was never told about, and only a single read can guarantee that across
+      // the capture's await.
+      const { zoom, includeContact, confidenceThreshold } = settings$.value;
+      return captureFrame(video, includeContact ? undefined : zoom).pipe(
+        switchMap(({ frame, captureMs, source }) =>
           merge(
             nextResult$,
             defer(() => {
-              const { zoom, includeContact, confidenceThreshold } =
-                settings$.value;
+              // The video's size, not the bitmap's: a pre-cropped capture is
+              // the model's input, while everything downstream of a result
+              // works against the frame it came from.
               postedFrame = {
                 zoom,
-                width: frame.width,
-                height: frame.height,
+                width: source.width,
+                height: source.height,
                 captureMs,
                 postedAt: performance.now(),
               };
@@ -614,6 +678,7 @@ export const createDetectionEngine = ({
                   frame,
                   includeCrop: includeContact,
                   zoom,
+                  source: includeContact ? undefined : source,
                   confidenceThreshold,
                 },
                 [frame],
@@ -623,6 +688,7 @@ export const createDetectionEngine = ({
           ),
         ),
       );
+    };
 
     /**
      * One pump iteration: capture and post, then await the reply (a frame

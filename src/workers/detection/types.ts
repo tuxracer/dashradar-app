@@ -100,6 +100,19 @@ export type WorkerRequest =
        */
       zoom?: number;
       /**
+       * Intrinsic size of the video frame `frame` was cut from, present only
+       * when the sender already applied the zoom crop and scaled the result to
+       * the model's input size. The worker then scales the bitmap straight onto
+       * the input instead of cropping it again, and maps boxes back through
+       * these dimensions rather than the bitmap's, so detections stay in
+       * full-frame coordinates either way.
+       *
+       * The sender pre-crops only when no cutout is wanted, because the cutout
+       * is the one consumer that needs the frame's original pixels. Omitting
+       * this means `frame` is the whole video frame and the worker crops it.
+       */
+      source?: { width: number; height: number };
+      /**
        * Minimum detection confidence for this frame's decode. When omitted the
        * worker uses the CONFIDENCE_THRESHOLD default (the production floor).
        * Set from the developer confidence-threshold setting so a lowered value
@@ -108,6 +121,16 @@ export type WorkerRequest =
        */
       confidenceThreshold?: number;
     };
+
+/** Whether a value carries usable pixel dimensions for a captured frame. */
+const isFrameSize = (
+  value: unknown,
+): value is { width: number; height: number } =>
+  isPlainObject(value) &&
+  isNumber(value.width) &&
+  isNumber(value.height) &&
+  value.width > 0 &&
+  value.height > 0;
 
 export const isWorkerRequest = (value: unknown): value is WorkerRequest => {
   if (!isPlainObject(value)) {
@@ -125,6 +148,7 @@ export const isWorkerRequest = (value: unknown): value is WorkerRequest => {
     value.frame instanceof ImageBitmap &&
     (value.includeCrop === undefined || isBoolean(value.includeCrop)) &&
     (value.zoom === undefined || isNumber(value.zoom)) &&
+    (value.source === undefined || isFrameSize(value.source)) &&
     (value.confidenceThreshold === undefined ||
       isNumber(value.confidenceThreshold))
   );

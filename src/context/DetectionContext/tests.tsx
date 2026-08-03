@@ -32,7 +32,7 @@ import {
   readTimingHistory,
   TIMING_HISTORY_LIMIT,
 } from "@/lib/timingHistory";
-import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
+import { INPUT_SIZE, ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 
 /** Id of the extra stored model seeded for the tests that need a second
  * selectable model to exist. */
@@ -117,7 +117,7 @@ const StartOnReady = () => {
   const { status, attachVideo: start } = useDetection();
   return (
     <button
-      onClick={() => start(document.createElement("video"))}
+      onClick={() => start(fakeVideo())}
       data-testid="start"
       data-status={status}
     >
@@ -130,10 +130,7 @@ const StartStop = () => {
   const { attachVideo: start, detachVideo: stop } = useDetection();
   return (
     <>
-      <button
-        onClick={() => start(document.createElement("video"))}
-        data-testid="start"
-      >
+      <button onClick={() => start(fakeVideo())} data-testid="start">
         start
       </button>
       <button onClick={() => stop()} data-testid="stop">
@@ -201,6 +198,19 @@ const fakeBitmap = () => {
 };
 
 /**
+ * A video element that reports an intrinsic size, the way a playing camera
+ * stream does. The engine reads these to decide the region it captures and to
+ * tell a result which frame its boxes belong to, so jsdom's zero-sized default
+ * would leave both untested.
+ */
+const fakeVideo = (width = 1280, height = 720): HTMLVideoElement => {
+  const video = document.createElement("video");
+  Object.defineProperty(video, "videoWidth", { value: width });
+  Object.defineProperty(video, "videoHeight", { value: height });
+  return video;
+};
+
+/**
  * A video element whose requestVideoFrameCallback is under test control:
  * callbacks queue up until presentFrame() fires them, simulating the camera
  * presenting a new frame. jsdom's video element has no rVFC of its own, so
@@ -208,7 +218,7 @@ const fakeBitmap = () => {
  */
 const videoWithControlledFrames = () => {
   const callbacks: VideoFrameRequestCallback[] = [];
-  const video = document.createElement("video");
+  const video = fakeVideo();
   video.requestVideoFrameCallback = (callback) => {
     callbacks.push(callback);
     return callbacks.length;
@@ -1493,6 +1503,113 @@ describe("DetectionProvider", () => {
     expect(
       worker.posted.find((message) => message.type === "detect"),
     ).toMatchObject({ includeCrop: true });
+  });
+
+  // With no cutout to cut, the full-resolution frame has no consumer, so the
+  // capture asks for the model's input directly instead of handing the worker
+  // four times the pixels to shrink itself.
+  it("captures only the model's input while the detection image is off", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ detectionImage: false }),
+    );
+    const capture = vi.fn(() => Promise.resolve(fakeBitmap()));
+    vi.stubGlobal("createImageBitmap", capture);
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    // The centered square of a 1280x720 frame, resized to the model's input.
+    expect(capture).toHaveBeenCalledWith(
+      expect.anything(),
+      280,
+      0,
+      720,
+      720,
+      expect.objectContaining({
+        resizeWidth: INPUT_SIZE,
+        resizeHeight: INPUT_SIZE,
+      }),
+    );
+    // The worker is told which frame the crop came from, so the boxes it maps
+    // back out still describe the whole frame rather than the crop.
+    expect(
+      worker.posted.find((message) => message.type === "detect"),
+    ).toMatchObject({ source: { width: 1280, height: 720 } });
+  });
+
+  it("captures the whole frame while the detection image is on", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ detectionImage: true }),
+    );
+    const capture = vi.fn(() => Promise.resolve(fakeBitmap()));
+    vi.stubGlobal("createImageBitmap", capture);
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    // The cutout is cut from the frame's own pixels, so nothing may be cropped
+    // or thrown away before the worker sees it, and the worker must be left to
+    // do the cropping itself.
+    expect(capture).toHaveBeenCalledWith(expect.anything());
+    expect(
+      worker.posted.find((message) => message.type === "detect")?.source,
+    ).toBeUndefined();
+  });
+
+  it("captures the region the zoom it declares selects", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        detectionImage: false,
+        developerOptions: true,
+        zoomMode: "2x",
+      }),
+    );
+    const capture = vi.fn(() => Promise.resolve(fakeBitmap()));
+    vi.stubGlobal("createImageBitmap", capture);
+    const worker = renderWithProvider(<StartOnReady />);
+    act(() => {
+      worker.emit({ type: "ready" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await waitFor(() => {
+      expect(
+        worker.posted.filter((message) => message.type === "detect"),
+      ).toHaveLength(1);
+    });
+    const posted = worker.posted.find((message) => message.type === "detect");
+    expect(posted).toMatchObject({ zoom: ZOOM_2X });
+    // Half the short edge, centered: the crop the declared zoom describes. A
+    // capture cropped at one zoom and labelled with another would have the
+    // worker map every box back through the wrong region.
+    expect(capture).toHaveBeenCalledWith(
+      expect.anything(),
+      460,
+      180,
+      360,
+      360,
+      expect.anything(),
+    );
   });
 
   it("posts the unzoomed crop factor by default", async () => {
