@@ -21,6 +21,18 @@ Drive it with the chrome-devtools MCP tools. What to look for:
 
 Cross-origin isolation has to hold for the runtime to load, so a blocked cross-origin request in the network panel is a real failure, not noise.
 
+## Driving it with a synthetic camera
+
+Reaching the real camera is in scope here, but a canvas stream is easier to control when the camera itself is not what is being checked: it fixes the frame size, so capture geometry can be asserted rather than eyeballed. Pass the setup as `navigate_page`'s `initScript`, which runs before any page script, and use it to write `introSeen`, `cameraPromptAccepted`, and `settings` into localStorage so the run lands straight on the meter.
+
+Three traps, each of which looks like a broken app rather than broken instrumentation:
+
+- **Mint a fresh MediaStream per `getUserMedia` call.** Returning one shared stream dies under StrictMode: the first mount's teardown stops the tracks, and the remount gets the same dead stream back. The symptom is a video stuck at 2x2 with an `ended` track and a pump that never captures.
+- **Instrument the worker passively.** `addEventListener("message")` on the worker and a wrapper around `postMessage` both leave the app alone. Replacing `onmessage` does not: the engine assigns its own handler, and an interceptor that stores it without forwarding to the real worker silently cuts every reply, so the model loads and nothing ever scans.
+- **`initScript` only applies to the navigation it is passed with.** A later `reload` runs without it, and anything the script defined is gone.
+
+Instrumenting `createImageBitmap` and the outgoing `detect` messages is the cheap way to check capture geometry: the crop rect, the resize options, the bitmap that actually crosses the wire, and the frame size the worker is told to map boxes against.
+
 ## First-visit model caching
 
 `DetectionContext` defers the worker's `load` until `navigator.serviceWorker.controller` is set, so the model fetch goes through the service worker and lands in the `"model-cache"` route. This is production only, bounded by `SW_CONTROL_TIMEOUT_MS`; dev has no service worker at all, and `cacheModelInDev` covers dev instead.

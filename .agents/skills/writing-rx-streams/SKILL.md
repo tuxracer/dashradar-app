@@ -21,6 +21,8 @@ The stream modules (`src/lib/detectionEngine`, `src/lib/camera`, `src/lib/wakeLo
 
 **Bound every wait on an external responder.** A worker or platform API can go silent without erroring, and an unbounded wait turns that into a permanent, invisible stall. Give the wait a `timeout` routed to a recovery path (the pump's reply watchdog recycles the worker and reports `worker_hung` once per page load), or a comment saying why unbounded is safe here.
 
+**Read the inputs a multi-step operation depends on once, before the first await.** The teardown-window rule says to re-check whether the work is still wanted; this is the other half, and it points the opposite way. When two steps derive from the same input, they have to derive from the same _reading_ of it, or an await between them lets the value change and the halves disagree. The pump reads `settings$` once at the top of `postFrame` because the zoom it crops the capture to and the zoom it declares on the message must match: read separately, a zoom change mid-capture has the worker map boxes back out of a crop it was never told about, which produces confidently wrong boxes rather than an error. Re-check what may cancel; snapshot what must stay consistent.
+
 ## Failure
 
 **A retry must observe what it caught.** Never keep a loop alive with a bare `catchError` that discards the error: count it, write it to the debug snapshot, or report it, so a persistent failure looks different from health. The capture retry's `captureFailures` streak (reset on the next success, shown in the debug overlay only while nonzero) is the pattern.
