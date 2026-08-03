@@ -25,7 +25,7 @@ import { UnsupportedScreen } from "@/components/UnsupportedScreen";
 import { ZoomIndicator } from "@/components/ZoomIndicator";
 import { DetectionProvider, useDetection } from "@/context/DetectionContext";
 import { SettingsProvider, useSettings } from "@/context/SettingsContext";
-import type { CameraError } from "@/lib/camera";
+import type { CameraError, CameraFeedEvent } from "@/lib/camera";
 import type { Size } from "@/lib/detection";
 import { DEFAULT_MODEL } from "@/lib/detectionModels";
 import { hudScore, hudSignal } from "@/lib/radarSignal";
@@ -127,11 +127,13 @@ const RadarScreen = () => {
     setVideoSize({ width: video.videoWidth, height: video.videoHeight });
   }, []);
 
-  const handleStream = useCallback(
-    (video: HTMLVideoElement) => {
-      updateVideoSize(video);
-      setCameraVideo(video);
-      attachVideo(video);
+  const handleCameraEvent = useCallback(
+    (event: CameraFeedEvent) => {
+      updateVideoSize(event.video);
+      if (event.type === "active") {
+        setCameraVideo(event.video);
+        attachVideo(event.video);
+      }
     },
     [attachVideo, updateVideoSize],
   );
@@ -224,9 +226,8 @@ const RadarScreen = () => {
       {!modelLoading && updateSettled && (
         <CameraView
           visible={detectionView}
-          onStream={handleStream}
+          onEvent={handleCameraEvent}
           onError={setCameraError}
-          onVideoResize={updateVideoSize}
         />
       )}
       {/* In the radar-meter branch below, the meter mounts immediately so the

@@ -1,21 +1,19 @@
 import { useEffect, useRef } from "react";
-import type { CameraError } from "@/lib/camera";
+import type { CameraError, CameraFeedEvent } from "@/lib/camera";
 import {
-  getCameraStream,
+  cameraFeed,
   isCameraError,
   CameraError as CameraErrorClass,
 } from "@/lib/camera";
 
 type CameraViewProps = {
-  onStream: (video: HTMLVideoElement) => void;
-  onError: (error: CameraError) => void;
   /**
-   * Fires whenever the video element's intrinsic dimensions change (the
-   * `resize` event) — e.g. a phone rotates and the camera track swaps its
-   * width/height. Lets callers keep aspect-ratio-dependent layout in sync
-   * without a reload.
+   * Feed lifecycle events: `active` once the stream plays (the element is
+   * ready to capture from), `resize` on intrinsic-dimension changes.
    */
-  onVideoResize?: (video: HTMLVideoElement) => void;
+  onEvent: (event: CameraFeedEvent) => void;
+  /** Terminal acquisition failure; the feed reports nothing after it. */
+  onError: (error: CameraError) => void;
   /**
    * Shows the feed instead of keeping the element transparent. Only the
    * detection view developer option sets it: the app otherwise never puts the
@@ -24,10 +22,15 @@ type CameraViewProps = {
   visible?: boolean;
 };
 
+/**
+ * Owns the hidden `<video>` element and subscribes it to the camera feed
+ * stream (src/lib/camera's cameraFeed). All acquisition, cancellation, and
+ * teardown logic lives in the stream; this component only forwards its
+ * events to React, and the effect cleanup's unsubscribe is the teardown.
+ */
 export const CameraView = ({
-  onStream,
+  onEvent,
   onError,
-  onVideoResize,
   visible = false,
 }: CameraViewProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -37,47 +40,18 @@ export const CameraView = ({
     if (!video) {
       return;
     }
-    let stream: MediaStream | undefined;
-    let cancelled = false;
-
-    const handleVideoResize = () => {
-      onVideoResize?.(video);
-    };
-
-    const startCamera = async () => {
-      try {
-        stream = await getCameraStream();
-        if (cancelled) {
-          stream.getTracks().forEach((track) => track.stop());
-          return;
-        }
-        video.srcObject = stream;
-        await video.play();
-        // A feed swap (or a recovery remount) can unmount this component while
-        // play() is still pending. Reporting the element afterwards would hand
-        // the pump a detached video that never produces another frame, so the
-        // late resolution is dropped the same way the one above it is.
-        if (cancelled) {
-          return;
-        }
-        onStream(video);
-        video.addEventListener("resize", handleVideoResize);
-      } catch (error) {
-        if (!cancelled) {
-          onError(
-            isCameraError(error) ? error : new CameraErrorClass("NO_CAMERA"),
-          );
-        }
-      }
-    };
-
-    void startCamera();
+    const subscription = cameraFeed(video).subscribe({
+      next: onEvent,
+      error: (error: unknown) => {
+        onError(
+          isCameraError(error) ? error : new CameraErrorClass("NO_CAMERA"),
+        );
+      },
+    });
     return () => {
-      cancelled = true;
-      stream?.getTracks().forEach((track) => track.stop());
-      video.removeEventListener("resize", handleVideoResize);
+      subscription.unsubscribe();
     };
-  }, [onStream, onError, onVideoResize]);
+  }, [onEvent, onError]);
 
   return (
     <video

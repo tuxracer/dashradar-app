@@ -2,6 +2,7 @@ import { act, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CameraView } from "@/components/CameraView";
 import { isCameraError } from "@/lib/camera";
+import type { CameraFeedEvent } from "@/lib/camera";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -9,7 +10,7 @@ afterEach(() => {
 });
 
 describe("CameraView", () => {
-  it("attaches the stream and reports the video element", async () => {
+  it("reports active with the video element once the stream attaches", async () => {
     const stop = vi.fn();
     const fakeStream = {
       getTracks: () => [{ stop }],
@@ -19,20 +20,20 @@ describe("CameraView", () => {
     });
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
 
-    const onStream = vi.fn();
+    const onEvent = vi.fn();
     const { container, unmount } = render(
-      <CameraView onStream={onStream} onError={() => {}} />,
+      <CameraView onEvent={onEvent} onError={() => {}} />,
     );
-    await waitFor(() => expect(onStream).toHaveBeenCalled());
+    await waitFor(() => expect(onEvent).toHaveBeenCalled());
     const video = container.querySelector("video");
-    expect(onStream).toHaveBeenCalledWith(video);
+    expect(onEvent).toHaveBeenCalledWith({ type: "active", video });
     expect(video?.muted).toBe(true);
 
     unmount();
     expect(stop).toHaveBeenCalled();
   });
 
-  it("reports updated dimensions when the video element fires resize", async () => {
+  it("reports a resize event when the video element fires resize", async () => {
     const fakeStream = {
       getTracks: () => [{ stop: () => {} }],
     } as unknown as MediaStream;
@@ -41,16 +42,16 @@ describe("CameraView", () => {
     });
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
 
-    const onStream = vi.fn();
-    const onVideoResize = vi.fn();
+    const events: CameraFeedEvent[] = [];
     const { container } = render(
       <CameraView
-        onStream={onStream}
+        onEvent={(event) => {
+          events.push(event);
+        }}
         onError={() => {}}
-        onVideoResize={onVideoResize}
       />,
     );
-    await waitFor(() => expect(onStream).toHaveBeenCalled());
+    await waitFor(() => expect(events).toHaveLength(1));
     const video = container.querySelector("video");
     if (!video) {
       throw new Error("video element not found");
@@ -62,16 +63,14 @@ describe("CameraView", () => {
     Object.defineProperty(video, "videoHeight", { value: 1920 });
     video.dispatchEvent(new Event("resize"));
 
-    expect(onVideoResize).toHaveBeenCalledWith(video);
+    expect(events[1]).toEqual({ type: "resize", video });
     expect(video.videoWidth).toBe(1080);
-    expect(video.videoHeight).toBe(1920);
   });
 
   // A feed swap unmounts this component while play() is still pending. If the
   // late resolution still reported the element, the pump would be handed a
-  // detached video whose frames never arrive, and with the stall watchdog off
-  // for a file feed nothing would ever recover it.
-  it("does not report the video element when it unmounts mid-play", async () => {
+  // detached video whose frames never arrive.
+  it("reports nothing when it unmounts mid-play", async () => {
     const fakeStream = {
       getTracks: () => [{ stop: () => {} }],
     } as unknown as MediaStream;
@@ -88,18 +87,18 @@ describe("CameraView", () => {
           }),
       );
 
-    const onStream = vi.fn();
+    const onEvent = vi.fn();
     const { unmount } = render(
-      <CameraView onStream={onStream} onError={() => {}} />,
+      <CameraView onEvent={onEvent} onError={() => {}} />,
     );
     await waitFor(() => expect(playSpy).toHaveBeenCalled());
-    expect(onStream).not.toHaveBeenCalled();
+    expect(onEvent).not.toHaveBeenCalled();
 
     unmount();
     await act(async () => {
       finishPlay();
     });
-    expect(onStream).not.toHaveBeenCalled();
+    expect(onEvent).not.toHaveBeenCalled();
   });
 
   it("reports a typed camera error", async () => {
@@ -111,7 +110,7 @@ describe("CameraView", () => {
       },
     });
     const onError = vi.fn();
-    render(<CameraView onStream={() => {}} onError={onError} />);
+    render(<CameraView onEvent={() => {}} onError={onError} />);
     await waitFor(() => expect(onError).toHaveBeenCalled());
     const error: unknown = onError.mock.calls[0][0];
     expect(isCameraError(error) && error.code).toBe("PERMISSION_DENIED");
@@ -126,11 +125,11 @@ describe("CameraView", () => {
     });
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
 
-    const onStream = vi.fn();
+    const onEvent = vi.fn();
     const { container } = render(
-      <CameraView onStream={onStream} onError={() => {}} />,
+      <CameraView onEvent={onEvent} onError={() => {}} />,
     );
-    await waitFor(() => expect(onStream).toHaveBeenCalled());
+    await waitFor(() => expect(onEvent).toHaveBeenCalled());
     const video = container.querySelector("video");
     expect(video).not.toBeNull();
     expect(video).toHaveClass("opacity-0");
