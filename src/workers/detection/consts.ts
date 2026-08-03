@@ -4,10 +4,11 @@
  * We run this ONNX model through raw onnxruntime-web rather than the
  * Transformers.js `pipeline("object-detection")` path. The pipeline's built-in
  * DETR post-processor assumes a softmax multi-class head with a background
- * class and picks the arg-max label per query. This model's head is a single
- * real class scored with a per-query sigmoid (index 1 = police, index 0 is an
- * unused slot), so the pipeline decoder reads the logits wrong and drops every
- * detection. Bypassing it lets us apply the correct sigmoid + cxcywh decode.
+ * class and picks the arg-max label per query. This model's head is a sigmoid
+ * head scored per class per query, real classes starting at index 1 (index 0
+ * is an unused background slot), so the pipeline decoder reads the logits
+ * wrong and drops every detection. Bypassing it lets us apply the correct
+ * sigmoid + cxcywh decode.
  *
  * The URLs pin a specific Hugging Face revision tag (not `main`) on purpose.
  * The service worker caches the weights `CacheFirst` keyed on the URL, and the
@@ -33,6 +34,8 @@
  * away with WEBGPU_UNSUPPORTED rather than handed a detector that looks like
  * it works and does not.
  */
+import type { RoadCategory } from "@/types";
+
 /**
  * Hugging Face revision tag the model URLs pin to. Bump this (and push the
  * matching tag on the model repo) to ship a new model: the changed URL busts
@@ -139,8 +142,28 @@ export const IMAGENET_STD: readonly [number, number, number] = [
   0.229, 0.224, 0.225,
 ];
 
-/** Label emitted for every detection this single-class model produces. */
-export const POLICE_LABEL = "police";
+/** One class the model's head can emit, with how the HUD names and colors it. */
+export type DetectionClass = {
+  label: string;
+  displayLabel: string;
+  category: RoadCategory;
+};
+
+/**
+ * Every class this checkpoint's head emits, in head-index order: entry i here
+ * is class logit i + 1 in the model's output, since logit 0 is an unused
+ * background slot. This is the one place a class is defined. The decode reads
+ * it to name a box, and the HUD reads it for the display label and the box
+ * color, so the two can never disagree about what the model detects.
+ *
+ * The table ships with the checkpoint. A new checkpoint that detects more
+ * classes changes this array and MODEL_REVISION together, and nothing else.
+ * Its length also has to match the model's head width, which decodeDetections
+ * checks on every frame.
+ */
+export const MODEL_CLASSES: readonly DetectionClass[] = [
+  { label: "police", displayLabel: "POLICE", category: "vehicle" },
+];
 
 /**
  * Ceiling on onnxruntime-web's wasm runtime threads. Inference runs on the GPU,

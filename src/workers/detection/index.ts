@@ -28,7 +28,7 @@ import {
   topDetectionIndex,
 } from "./inference";
 import type { DetectionCrop, WorkerResponse } from "./types";
-import { DetectionError, isWorkerRequest } from "./types";
+import { DetectionError, isDetectionError, isWorkerRequest } from "./types";
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -700,8 +700,15 @@ const detect = async ({
       },
       transfer,
     );
-  } catch {
-    post({ type: "worker-error", code: "INFERENCE_FAILED" });
+  } catch (error) {
+    // A DetectionError carries the real cause (a head-width mismatch reports
+    // MODEL_LOAD_FAILED, since the loaded model is wrong for this build rather
+    // than the inference having failed). Anything else is a genuine inference
+    // fault.
+    post({
+      type: "worker-error",
+      code: isDetectionError(error) ? error.code : "INFERENCE_FAILED",
+    });
   } finally {
     frame.close();
   }

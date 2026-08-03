@@ -41,7 +41,6 @@ import {
 import {
   MODEL_REVISION,
   MODEL_SLUG,
-  POLICE_LABEL,
   ZOOM_2X,
   ZOOM_OFF,
 } from "@/workers/detection/consts";
@@ -763,16 +762,19 @@ export const DetectionProvider = ({
               message.frameThumbnail.close();
             }
           }
-          // Report an anonymous police sighting to analytics on the leading
-          // edge only: fire when police appear, then stay quiet until they have
-          // been absent for POLICE_EVENT_DEBOUNCE_MS, so following a car
-          // continuously collapses into one event. Nothing identifying the
-          // sighting leaves the device, only the event count. Read the fresh
-          // per-frame detections (not the coasting `tracked` set) so a briefly
-          // held stale box does not keep the debounce alive. Kept out of the
-          // setHud updater above: StrictMode double-invokes updaters, which
-          // would double-count the sighting.
-          if (roadDetections.some((d) => d.label === POLICE_LABEL)) {
+          // Report an anonymous sighting to analytics on the leading edge
+          // only: fire when a detection appears, then stay quiet until the
+          // frame has been clear for POLICE_EVENT_DEBOUNCE_MS, so following a
+          // car continuously collapses into one event. The event name predates
+          // multi-class detection and now means any detection, not police
+          // specifically; it keeps its name so the existing series stays
+          // continuous. Nothing identifying the sighting leaves the device,
+          // only the event count. Read the fresh per-frame detections (not the
+          // coasting `tracked` set) so a briefly held stale box does not keep
+          // the debounce alive. Kept out of the setHud updater above:
+          // StrictMode double-invokes updaters, which would double-count the
+          // sighting.
+          if (roadDetections.length > 0) {
             const now = performance.now();
             if (now - lastPoliceSeenAtRef.current >= POLICE_EVENT_DEBOUNCE_MS) {
               track("police_detected");

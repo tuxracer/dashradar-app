@@ -4,13 +4,15 @@ import {
   BRIGHT_LUMA_THRESHOLD,
   CROP_MAX_EDGE,
   CROP_PADDING,
+  type DetectionClass,
   FINGERPRINT_STRIDE,
   IMAGENET_MEAN,
   IMAGENET_STD,
   INPUT_SIZE,
   MIN_BOX_EDGE_PX,
-  POLICE_LABEL,
+  MODEL_CLASSES,
 } from "./consts";
+import { DetectionError } from "./types";
 
 /**
  * The centered square source region of a frame: the region the worker draws
@@ -140,22 +142,48 @@ const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
 /**
  * Decode the model's raw outputs into normalized detections.
  *
- * `dets` is `[1,N,4]` cxcywh boxes (normalized 0..1). `labels` is `[1,N,2]` raw
- * class logits; class index 1 is the police vehicle (index 0 is an unused
- * background slot). A query is emitted when `sigmoid(policeLogit) >= threshold`
- * and its box's shorter edge spans at least MIN_BOX_EDGE_PX of the input.
- * RF-DETR is set-based, so no NMS is applied.
+ * `dets` is `[1,N,4]` cxcywh boxes (normalized 0..1). `labels` is
+ * `[1,N,1+C]` raw class logits, where C is the number of entries in `classes`
+ * and slot 0 is an unused background slot. Each query takes the highest-scoring
+ * real class, and is emitted when that class's `sigmoid(logit)` clears
+ * `threshold` and the box's shorter edge spans at least MIN_BOX_EDGE_PX of the
+ * input. One box gets one class: the head is multi-label in principle, but a
+ * HUD box carrying two names is no use to a driver glancing at it. RF-DETR is
+ * set-based, so no NMS is applied.
+ *
+ * A head width that disagrees with `classes` means the loaded checkpoint is not
+ * the one this build was written for. Every box would be silently misread, so
+ * this throws MODEL_LOAD_FAILED rather than emitting plausible garbage. Both
+ * counts come from the tensor lengths rather than their dims, which keeps this
+ * function pure and works the same on the graph-capture path, where outputs
+ * arrive through getData().
  */
 export const decodeDetections = (
   dets: Float32Array,
   labels: Float32Array,
   threshold: number,
+  classes: readonly DetectionClass[] = MODEL_CLASSES,
 ): RawDetection[] => {
-  const queryCount = Math.floor(labels.length / 2);
+  const queryCount = Math.floor(dets.length / 4);
+  if (queryCount === 0) {
+    return [];
+  }
+  const headWidth = labels.length / queryCount;
+  if (headWidth !== 1 + classes.length) {
+    throw new DetectionError("MODEL_LOAD_FAILED");
+  }
   const detections: RawDetection[] = [];
   for (let q = 0; q < queryCount; q += 1) {
-    const score = sigmoid(labels[q * 2 + 1]);
-    if (score < threshold) {
+    let bestScore = -1;
+    let bestIndex = -1;
+    for (let c = 0; c < classes.length; c += 1) {
+      const score = sigmoid(labels[q * headWidth + 1 + c]);
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = c;
+      }
+    }
+    if (bestIndex < 0 || bestScore < threshold) {
       continue;
     }
     const cx = dets[q * 4];
@@ -173,7 +201,7 @@ export const decodeDetections = (
     if (minEdgePx < MIN_BOX_EDGE_PX) {
       continue;
     }
-    detections.push({ label: POLICE_LABEL, score, box });
+    detections.push({ label: classes[bestIndex].label, score: bestScore, box });
   }
   return detections;
 };

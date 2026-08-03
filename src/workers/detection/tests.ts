@@ -16,14 +16,19 @@ import {
   IMAGENET_STD,
   INPUT_SIZE,
   MIN_BOX_EDGE_PX,
+  MODEL_CLASSES,
   ZOOM_2X,
 } from "@/workers/detection/consts";
-import { isWorkerRequest, isWorkerResponse } from "@/workers/detection/types";
+import {
+  isDetectionError,
+  isWorkerRequest,
+  isWorkerResponse,
+} from "@/workers/detection/types";
 import type { RawDetection } from "@/types";
 
-/** Build a `[1,queries,2]` logits buffer with per-query (class0, class1) pairs. */
-const makeLabels = (pairs: readonly [number, number][]): Float32Array =>
-  Float32Array.from(pairs.flat());
+/** Build a `[1,queries,C]` logits buffer from per-query score rows. */
+const makeLabels = (rows: readonly number[][]): Float32Array =>
+  Float32Array.from(rows.flat());
 
 /** Build a `[1,queries,4]` cxcywh box buffer. */
 const makeBoxes = (
@@ -448,6 +453,72 @@ describe("decodeDetections", () => {
     const boxes = makeBoxes([[0.5, 0.5, side, side]]);
 
     expect(decodeDetections(boxes, labels, 0.5)).toHaveLength(1);
+  });
+
+  /** A two-class table, for driving decode past the single class that ships. */
+  const TWO_CLASSES = [
+    { label: "police", displayLabel: "POLICE", category: "vehicle" },
+    { label: "person", displayLabel: "PERSON", category: "person" },
+  ] as const;
+
+  it("labels a query with its highest-scoring class", () => {
+    // One query, 3-wide head: background, weak police, strong person.
+    const labels = makeLabels([[-8, 1, 4]]);
+    const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
+
+    const detections = decodeDetections(boxes, labels, 0.5, TWO_CLASSES);
+
+    expect(detections).toHaveLength(1);
+    expect(detections[0].label).toBe("person");
+    expect(detections[0].score).toBeCloseTo(sigmoid(4), 6);
+  });
+
+  it("reads each query at its own offset in a wider head", () => {
+    // Two queries: the first is police, the second is person. A decode that
+    // kept the 2-wide stride would read the second query's slots off the end
+    // of the first.
+    const labels = makeLabels([
+      [-8, 4, -8],
+      [-8, -8, 4],
+    ]);
+    const boxes = makeBoxes([
+      [0.5, 0.5, 0.4, 0.2],
+      [0.2, 0.2, 0.2, 0.2],
+    ]);
+
+    const detections = decodeDetections(boxes, labels, 0.5, TWO_CLASSES);
+
+    expect(detections.map((d) => d.label)).toEqual(["police", "person"]);
+  });
+
+  it("drops a query whose best class is still below threshold", () => {
+    // sigmoid(-1) ~= 0.269 and sigmoid(-2) ~= 0.119, both under 0.5.
+    const labels = makeLabels([[-8, -1, -2]]);
+    const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
+
+    expect(decodeDetections(boxes, labels, 0.5, TWO_CLASSES)).toHaveLength(0);
+  });
+
+  it("rejects a model whose head does not match the class table", () => {
+    // A 3-wide head decoded against a 1-class table: every box would be
+    // misread, so this must fail loudly rather than emit garbage.
+    const labels = makeLabels([[-8, 4, -8]]);
+    const boxes = makeBoxes([[0.5, 0.5, 0.4, 0.2]]);
+
+    let thrown: unknown;
+    try {
+      decodeDetections(boxes, labels, 0.5, MODEL_CLASSES);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(isDetectionError(thrown)).toBe(true);
+    expect(isDetectionError(thrown) && thrown.code).toBe("MODEL_LOAD_FAILED");
+  });
+
+  it("returns no detections for an empty output rather than failing the guard", () => {
+    expect(
+      decodeDetections(new Float32Array(0), new Float32Array(0), 0.5),
+    ).toEqual([]);
   });
 });
 
