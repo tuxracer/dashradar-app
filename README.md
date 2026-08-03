@@ -1,4 +1,4 @@
-# 🚔 dashradar.app
+# dashradar.app
 
 Turn a dash-mounted phone into an on-device, computer-vision police detector. A custom model watches the road through the camera and drives a signal meter that climbs as a patrol vehicle comes into view, with an optional beep. You read it at a glance; your eyes stay on the road.
 
