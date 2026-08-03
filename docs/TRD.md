@@ -36,7 +36,7 @@ Commands are in the [README](../README.md). `pnpm check` must pass before a comm
 flowchart TB
     App --> DP[DetectionProvider]
     DP --> W["detection worker<br>(RF-DETR on onnxruntime-web, WebGPU)"]
-    W --> F["toRoadDetections<br>(road-class filter, confidence floor)"]
+    W --> F["toRoadDetections<br>(class-table enrich, confidence floor)"]
     F --> T["detectionTracker<br>(coasting flicker smoother)"]
     T --> H[buildHudModel]
     H --> R[RadarDetectorScreen]
@@ -163,7 +163,7 @@ Anonymous, no camera, location, or detection geometry; dev builds emit nothing. 
 | `pwa_installed` | Chromium's install event, or first standalone launch on iOS |
 | `app_updated` | The first launch on a new build, `from` and `to` commit SHA; counts updates that were actually run, not ones downloaded |
 | `error` | Every failure that reaches the user, by code |
-| `police_detected` | Leading edge only, then quiet until police have been absent for a debounce window; no payload |
+| `police_detected` | Leading edge only, then quiet until any detection has been absent for a debounce window; the name predates multi-class detection, kept for series continuity; no payload |
 
 Timing values are bucketed to the nearest half second so jitter collapses and a series reads as a trend. `scan_session` and the late timings read a clock measuring scanning time, not page time: every pause stops it, and reads claim what they report, so stretches sum to the total with nothing double-counted.
 
