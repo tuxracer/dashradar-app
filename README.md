@@ -6,7 +6,7 @@ No account, no recording, no images leave the phone.
 
 ## Why on-device
 
-Crowd-sourced apps like Waze are only as good as the crowd nearby: no alert reaches you until another driver has flagged that patrol car over a live connection. This app looks at the road itself, so it works on the first drive, for the first user, anywhere the camera can see.
+Crowd-sourced apps like Waze are only as good as the crowd nearby: no alert reaches you until another driver has reported that patrol car. This app looks at the road itself, so it works on the first drive, for the first user, anywhere the camera can see.
 
 Sending each frame to a cloud vision model like Claude or ChatGPT doesn't fit either. This isn't take a photo, get an answer: nobody taps anything, and the camera is scanned on its own about once a second for as long as the drive lasts. That's thousands of frames an hour someone would have to pay for and everything the phone's camera sees while the app is open would land on someone else's servers.
 
