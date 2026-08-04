@@ -329,11 +329,21 @@ export const resolveModelFromUrl = async (
     parsed.revision !== undefined &&
     isCommitSha(parsed.revision)
   ) {
-    return withUrlId(parsed.owner, parsed.slug, parsed.revision, parsed.file);
+    return pinnedModel({
+      owner: parsed.owner,
+      slug: parsed.slug,
+      revision: parsed.revision,
+      file: parsed.file,
+    });
   }
   const info = await fetchRevisionInfo(parsed, fetcher);
   if (parsed.file !== undefined) {
-    return withUrlId(parsed.owner, parsed.slug, info.sha, parsed.file);
+    return pinnedModel({
+      owner: parsed.owner,
+      slug: parsed.slug,
+      revision: info.sha,
+      file: parsed.file,
+    });
   }
   if (info.onnxFiles.length === 0) {
     throw new AddModelError("NO_ONNX_FILE");
@@ -341,16 +351,37 @@ export const resolveModelFromUrl = async (
   if (info.onnxFiles.length > 1) {
     throw new AddModelError("AMBIGUOUS_ONNX_FILE", info.onnxFiles.join(", "));
   }
-  return withUrlId(parsed.owner, parsed.slug, info.sha, info.onnxFiles[0]);
+  return pinnedModel({
+    owner: parsed.owner,
+    slug: parsed.slug,
+    revision: info.sha,
+    file: info.onnxFiles[0],
+  });
 };
 
-/** Assemble an entry whose id is its own pinned weights URL. */
-const withUrlId = (
-  owner: string,
-  slug: string,
-  revision: string,
-  file: string,
-): DetectionModel => {
-  const parts = { owner, slug, revision, file };
-  return { ...parts, id: modelWeightsUrl(parts) };
+/**
+ * Assemble an entry whose id is its own pinned weights URL. The revision has to
+ * already be a commit sha; nothing here checks, because both callers get theirs
+ * from the Hugging Face API rather than from the pasted text.
+ */
+export const pinnedModel = (
+  parts: Omit<DetectionModel, "id">,
+): DetectionModel => ({ ...parts, id: modelWeightsUrl(parts) });
+
+/**
+ * The .onnx files a repo revision holds, with the commit sha they live at, so
+ * a caller that hit AMBIGUOUS_ONNX_FILE can offer the choice the resolve could
+ * not make on its own. Sorted, so the same repo always lists the same way.
+ * Throws AddModelError for an unusable URL or a failed lookup.
+ */
+export const listOnnxFiles = async (
+  input: string,
+  fetcher: typeof fetch = fetch,
+): Promise<{ sha: string; files: readonly string[] }> => {
+  const parsed = parseModelUrl(input);
+  if (!parsed) {
+    throw new AddModelError("INVALID_URL");
+  }
+  const info = await fetchRevisionInfo(parsed, fetcher);
+  return { sha: info.sha, files: [...info.onnxFiles].sort() };
 };

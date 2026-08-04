@@ -350,3 +350,94 @@ describe("adding a model from a URL", () => {
     expect(trialLoad).not.toHaveBeenCalled();
   });
 });
+
+describe("choosing between a repo's onnx files", () => {
+  const repoUrl = "https://huggingface.co/someone/some-repo";
+  const sha = "b".repeat(40);
+
+  /** Answers every revision lookup with a repo holding two checkpoints. */
+  const stubAmbiguousRepo = () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          ({
+            ok: true,
+            json: async () => ({
+              sha,
+              siblings: [
+                { rfilename: "onnx/model_fp16.onnx" },
+                { rfilename: "README.md" },
+                { rfilename: "model.onnx" },
+              ],
+            }),
+          }) as Response,
+      ),
+    );
+  };
+
+  const openAndSubmit = async (trialLoad?: typeof trialLoadModel) => {
+    renderModelScreen({ trialLoad });
+    await userEvent.click(screen.getByTestId("model-add-open"));
+    await userEvent.type(screen.getByTestId("model-add-url"), repoUrl);
+    await userEvent.click(screen.getByTestId("model-add-submit"));
+  };
+
+  beforeEach(() => {
+    localStorage.clear();
+    stubAmbiguousRepo();
+  });
+
+  it("offers a row per onnx file instead of failing the add", async () => {
+    const trialLoad = vi.fn();
+    await openAndSubmit(trialLoad);
+    await waitFor(() => {
+      expect(screen.getByTestId("model-file-model.onnx")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByTestId("model-file-onnx/model_fp16.onnx"),
+    ).toBeInTheDocument();
+    // Only the checkpoints; the repo's other files are not offered.
+    expect(
+      screen.queryByTestId("model-file-README.md"),
+    ).not.toBeInTheDocument();
+    // Nothing is downloaded until a file is picked.
+    expect(trialLoad).not.toHaveBeenCalled();
+  });
+
+  it("trials and registers the picked file, pinned to the repo's sha", async () => {
+    const trialLoad = vi.fn(async () => ({ ok: true }) as const);
+    await openAndSubmit(trialLoad);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("model-file-onnx/model_fp16.onnx"),
+      ).toBeInTheDocument();
+    });
+    await userEvent.click(
+      screen.getByTestId("model-file-onnx/model_fp16.onnx"),
+    );
+    await waitFor(() => {
+      expect(loadStoredModels()).toHaveLength(1);
+    });
+    const added = loadStoredModels()[0];
+    expect(added.file).toBe("onnx/model_fp16.onnx");
+    expect(added.revision).toBe(sha);
+    expect(added.id).toBe(
+      `https://huggingface.co/someone/some-repo/resolve/${sha}/onnx/model_fp16.onnx`,
+    );
+    expect(trialLoad).toHaveBeenCalledWith(
+      expect.objectContaining({ file: "onnx/model_fp16.onnx" }),
+      expect.anything(),
+    );
+  });
+
+  it("returns to the pasted URL on cancel, registering nothing", async () => {
+    await openAndSubmit(vi.fn());
+    await waitFor(() => {
+      expect(screen.getByTestId("model-file-cancel")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId("model-file-cancel"));
+    expect(screen.getByTestId("model-add-url")).toHaveValue(repoUrl);
+    expect(loadStoredModels()).toEqual([]);
+  });
+});

@@ -5,10 +5,14 @@ import { useDetection } from "@/context/DetectionContext";
 import { useSettings } from "@/context/SettingsContext";
 import {
   addStoredModel,
+  AddModelError,
   DEFAULT_MODEL,
   isAddModelError,
   knownModels,
+  listOnnxFiles,
   MAX_SELECTED_MODELS,
+  parseModelUrl,
+  pinnedModel,
   removeStoredModel,
   resolveModelFromUrl,
   resolveModels,
@@ -18,6 +22,7 @@ import { trialLoadModel } from "@/lib/modelTrialLoad";
 import {
   ADD_ERROR_COPY,
   ADD_FAILED_MESSAGE,
+  CHOOSE_FILE_MESSAGE,
   COMMIT_FAILED_MESSAGE,
   GENERIC_CLASSES_MESSAGE,
 } from "./consts";
@@ -35,6 +40,14 @@ type AddPhase =
   | { phase: "closed" }
   | { phase: "editing"; url: string }
   | { phase: "busy"; percent: number | undefined }
+  | {
+      phase: "choosing";
+      url: string;
+      owner: string;
+      slug: string;
+      sha: string;
+      files: readonly string[];
+    }
   | { phase: "failed"; url: string; message: string }
   | { phase: "added"; summary: string };
 
@@ -113,6 +126,53 @@ export const ModelScreen = ({
 
   const openAdd = () => setAdd({ phase: "editing", url: "" });
 
+  /** Give up on a paste, leaving it in the field so it can be corrected. */
+  const failAdd = (candidateUrl: string, error: unknown) => {
+    setAdd({
+      phase: "failed",
+      url: candidateUrl,
+      message: isAddModelError(error)
+        ? [ADD_ERROR_COPY[error.code], error.detail].filter(Boolean).join(" ")
+        : ADD_ERROR_COPY.REPO_LOOKUP_FAILED,
+    });
+  };
+
+  /**
+   * Offer the repo's files when the resolve could not pick one. The extra
+   * lookup is a second read of the same revision metadata, which is cheap
+   * next to making someone find and paste the exact file URL themselves.
+   */
+  const openChoice = async (
+    candidateUrl: string,
+    controller: AbortController,
+  ) => {
+    let listed: Awaited<ReturnType<typeof listOnnxFiles>>;
+    try {
+      listed = await listOnnxFiles(candidateUrl);
+    } catch {
+      if (!controller.signal.aborted) {
+        failAdd(candidateUrl, new AddModelError("AMBIGUOUS_ONNX_FILE"));
+      }
+      return;
+    }
+    if (controller.signal.aborted) {
+      return;
+    }
+    const parsed = parseModelUrl(candidateUrl);
+    if (!parsed) {
+      failAdd(candidateUrl, new AddModelError("INVALID_URL"));
+      return;
+    }
+    setAdd({
+      phase: "choosing",
+      url: candidateUrl,
+      owner: parsed.owner,
+      slug: parsed.slug,
+      sha: listed.sha,
+      files: listed.files,
+    });
+  };
+
   const handleAdd = async (candidateUrl: string) => {
     const controller = new AbortController();
     abortRef.current = controller;
@@ -124,18 +184,45 @@ export const ModelScreen = ({
       if (controller.signal.aborted) {
         return;
       }
-      setAdd({
-        phase: "failed",
-        url: candidateUrl,
-        message: isAddModelError(error)
-          ? [ADD_ERROR_COPY[error.code], error.detail].filter(Boolean).join(" ")
-          : ADD_ERROR_COPY.REPO_LOOKUP_FAILED,
-      });
+      if (isAddModelError(error) && error.code === "AMBIGUOUS_ONNX_FILE") {
+        await openChoice(candidateUrl, controller);
+        return;
+      }
+      failAdd(candidateUrl, error);
       return;
     }
     if (controller.signal.aborted) {
       return;
     }
+    await runTrial(entry, candidateUrl, controller);
+  };
+
+  /** Pick one of an ambiguous repo's files and carry on with the add. */
+  const handleChoose = async (
+    choice: Extract<AddPhase, { phase: "choosing" }>,
+    file: string,
+  ) => {
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setAdd({ phase: "busy", percent: undefined });
+    await runTrial(
+      pinnedModel({
+        owner: choice.owner,
+        slug: choice.slug,
+        revision: choice.sha,
+        file,
+      }),
+      choice.url,
+      controller,
+    );
+  };
+
+  /** Download a candidate, and register it if it loads. */
+  const runTrial = async (
+    entry: DetectionModel,
+    candidateUrl: string,
+    controller: AbortController,
+  ) => {
     const result = await trialLoad(entry, {
       signal: controller.signal,
       onProgress: (fraction) => {
@@ -345,6 +432,36 @@ export const ModelScreen = ({
                 </span>
               )}
             </form>
+          )}
+
+          {add.phase === "choosing" && (
+            <div className="flex flex-col gap-3">
+              <span
+                data-testid="model-add-status"
+                className="text-sm font-medium tracking-[0.06em] text-white/60"
+              >
+                {CHOOSE_FILE_MESSAGE}
+              </span>
+              {add.files.map((file) => (
+                <button
+                  key={file}
+                  type="button"
+                  data-testid={`model-file-${file}`}
+                  onClick={() => void handleChoose(add, file)}
+                  className="min-h-20 break-all rounded-xl bg-white/10 px-6 py-4 text-left text-lg font-semibold tracking-[0.04em] text-white/90"
+                >
+                  {file}
+                </button>
+              ))}
+              <button
+                type="button"
+                data-testid="model-file-cancel"
+                onClick={() => setAdd({ phase: "editing", url: add.url })}
+                className="min-h-14 rounded-xl border border-white/25 px-6 text-base font-semibold tracking-[0.12em] text-white/70"
+              >
+                CANCEL
+              </button>
+            </div>
           )}
 
           {add.phase === "busy" && (

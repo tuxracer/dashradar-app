@@ -89,9 +89,10 @@ route matches on.
 For a checkpoint that already meets the contract above, the normal way onto a
 device is the developer model picker (Settings > Detection model > ADD MODEL):
 paste a Hugging Face URL. A bare repo page
-(`https://huggingface.co/<owner>/<repo>`) works if the repo has exactly one
-`.onnx` file; a link to a specific file (a `blob` or `resolve` URL) works
-regardless. Whatever revision the URL names, whether that is `main`, a tag,
+(`https://huggingface.co/<owner>/<repo>`) works whether the repo holds one
+`.onnx` file or several: with one it is used, and with several the picker
+lists them and you tap the one to load. A link to a specific file (a `blob`
+or `resolve` URL) skips the question. Whatever revision the URL names, whether that is `main`, a tag,
 or a branch, is resolved to that revision's commit SHA before anything is
 stored, so what gets registered is pinned the same way a shipped entry is.
 Only a URL that already names a commit SHA skips that lookup, since a commit

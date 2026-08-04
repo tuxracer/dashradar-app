@@ -6,6 +6,7 @@ import {
   isDetectionClass,
   isDetectionModel,
   knownModels,
+  listOnnxFiles,
   loadStoredModels,
   modelRepoUrl,
   modelWeightsUrl,
@@ -480,6 +481,51 @@ describe("resolveModelFromUrl", () => {
     await expect(
       resolveModelFromUrl("https://huggingface.co/someone/some-repo", fetcher),
     ).rejects.toMatchObject({ code: "REPO_LOOKUP_FAILED" });
+  });
+
+  describe("listOnnxFiles", () => {
+    it("lists the revision's onnx files, sorted, with the sha to pin them at", async () => {
+      const fetcher = fakeApi({
+        sha: "abc123",
+        siblings: [
+          { rfilename: "onnx/model_fp16.onnx" },
+          { rfilename: "README.md" },
+          { rfilename: "model.onnx" },
+        ],
+      });
+      const listed = await listOnnxFiles(
+        "https://huggingface.co/someone/some-repo",
+        fetcher,
+      );
+      expect(listed).toEqual({
+        sha: "abc123",
+        files: ["model.onnx", "onnx/model_fp16.onnx"],
+      });
+    });
+
+    it("lists nothing for a repo with no onnx file", async () => {
+      const fetcher = fakeApi({ sha: "abc123", siblings: [] });
+      const listed = await listOnnxFiles(
+        "https://huggingface.co/someone/some-repo",
+        fetcher,
+      );
+      expect(listed.files).toEqual([]);
+    });
+
+    it("rejects an unparseable URL before any request", async () => {
+      const fetcher = fakeApi({});
+      await expect(
+        listOnnxFiles("https://example.com/x/y", fetcher),
+      ).rejects.toMatchObject({ code: "INVALID_URL" });
+      expect(fetcher).not.toHaveBeenCalled();
+    });
+
+    it("rejects an API failure", async () => {
+      const fetcher = fakeApi({}, false);
+      await expect(
+        listOnnxFiles("https://huggingface.co/someone/some-repo", fetcher),
+      ).rejects.toMatchObject({ code: "REPO_LOOKUP_FAILED" });
+    });
   });
 
   it("rejects an unparseable URL before any request", async () => {
