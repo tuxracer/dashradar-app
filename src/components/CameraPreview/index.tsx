@@ -7,7 +7,7 @@ type CameraPreviewProps = {
    * The hidden CameraView element the detector captures frames from. The
    * preview plays that element's MediaStream in a second video element, so
    * the capture path is untouched and the preview can be sized and placed
-   * independently of the full-viewport source.
+   * independently of the source, which is itself only a hidden pixel.
    */
   source: HTMLVideoElement;
   /**

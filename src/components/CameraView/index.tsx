@@ -15,9 +15,9 @@ type CameraViewProps = {
   /** Terminal acquisition failure; the feed reports nothing after it. */
   onError: (error: CameraError) => void;
   /**
-   * Shows the feed instead of keeping the element transparent. Only the
-   * detection view developer option sets it: the app otherwise never puts the
-   * camera on screen.
+   * Shows the feed full-screen instead of keeping the element a transparent
+   * pixel. Only the detection view developer option sets it: the app
+   * otherwise never puts the camera on screen.
    */
   visible?: boolean;
 };
@@ -67,6 +67,15 @@ export const CameraView = ({
     };
   }, []);
 
+  // Hidden, the element is shrunk to a single pixel rather than only made
+  // transparent. A transparent full-screen video is still composited every
+  // frame the camera delivers, scaling a 1024x1024 stream to the whole
+  // viewport for nobody to see, which is GPU work and heat the app spends its
+  // entire idle-scanning life paying for. Capture is unaffected: frames are
+  // read from the element's intrinsic videoWidth/videoHeight, which CSS size
+  // does not touch. It stays rendered (not display:none or visibility:hidden)
+  // because a video that is not rendered stops delivering frames on some
+  // platforms, and opacity-0 stays on so a stray pixel cannot show the feed.
   return (
     <video
       ref={videoRef}
@@ -74,7 +83,11 @@ export const CameraView = ({
       autoPlay
       muted
       playsInline
-      className={`h-full w-full object-cover ${visible ? "" : "opacity-0"}`}
+      className={
+        visible
+          ? "h-full w-full object-cover"
+          : "pointer-events-none absolute left-0 top-0 h-px w-px opacity-0"
+      }
     />
   );
 };
