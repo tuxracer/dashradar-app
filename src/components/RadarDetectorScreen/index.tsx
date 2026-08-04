@@ -10,10 +10,13 @@ import {
   SEGMENT_COUNT,
   SIGNAL_HIGH_COLOR,
 } from "@/lib/radarSignal";
+import { prefersReducedMotion } from "@/utils/prefersReducedMotion";
 import {
   ARC_SWEEP_DEG,
   DIRECTION_DISPLAY,
   RAW_CONFIDENCE_DECIMALS,
+  SWEEP_STEP_DEG,
+  SWEEP_STEP_MS,
 } from "./consts";
 
 export * from "./consts";
@@ -28,10 +31,16 @@ type RadarDetectorScreenProps = {
   contact?: Contact;
   /**
    * Whether detection has not started yet (model loading, session warm-up).
-   * The status word reads INITIALIZING instead of SCANNING and the sweep
-   * animation stays parked until scanning actually begins.
+   * The status word reads INITIALIZING instead of SCANNING.
    */
   initializing?: boolean;
+  /**
+   * performance.now() timestamp of the latest completed scan, empty or not
+   * (the engine's scan.at). Each new value advances the sweep one arc step,
+   * so the dial's sweep cadence is the real scan cadence; undefined before
+   * the first result keeps the sweep dark.
+   */
+  scanAt?: number;
   /**
    * Raw model score in [0, 1] to show in the dial readout in place of the
    * percentage (the raw-confidence developer option). The percentage derives
@@ -61,7 +70,9 @@ const ALERT_RING_COLOR = `rgb(${SIGNAL_HIGH_COLOR.join(", ")})`;
 /**
  * Fullscreen radar-detector instrument. The ladder segments are radial ticks
  * on a tachometer-style arc around a large percentage readout, over a faint
- * radar grid with a slow scanning sweep inside the dial. As the signal climbs
+ * radar grid with a scanning sweep inside the dial that advances one arc
+ * step per completed scan (the scanAt prop), so its cadence is the
+ * detector's real scan rate. As the signal climbs
  * the ticks, readout, and a central glow flood green through amber to red; at
  * ALERT_THRESHOLD a red ring around the dial pulses. The status word under the
  * readout names the class being detected (the detectedLabel prop, which is
@@ -77,8 +88,16 @@ const ALERT_RING_COLOR = `rgb(${SIGNAL_HIGH_COLOR.join(", ")})`;
  * readout, status word, and glow straight to the DOM, off React's render
  * path. Before detection has started (the initializing prop) the instrument
  * still renders in full, but the status word reads INITIALIZING and the
- * sweep stays parked, so the first paint is the dial rather than a blank
- * screen and the sweep's motion signals that scanning is actually live. The
+ * sweep wedge is hidden, so the first paint is the dial rather than a blank
+ * screen and the sweep's arrival signals that scanning is actually live.
+ * The sweep is a one-shot Web Animations step per result rather than a
+ * looping CSS animation on purpose: a session is hours long, a perpetual
+ * spin keeps the compositor producing frames (and the panel refreshing) the
+ * whole time, and stepping only when a scan lands leaves the compositor
+ * idle whenever the pacing rests, exactly when a hot device needs it. Each
+ * step moves at the pace of the 5 s spin it replaced (SWEEP_REVOLUTION_MS),
+ * so at floor pacing the chained steps look like the original rotation and
+ * the wedge simply parks in place when scanning pauses or stops. The
  * rAF loop runs off React's render path, so smoothness does not depend on
  * the detector's frame rate. The loop parks itself once the meter is
  * quiescent (no raw signal and a fully decayed peak) and any prop change
@@ -102,6 +121,7 @@ export const RadarDetectorScreen = ({
   audioEnabled,
   contact,
   initializing,
+  scanAt,
   rawConfidence,
   detectedLabel,
 }: RadarDetectorScreenProps) => {
@@ -118,6 +138,10 @@ export const RadarDetectorScreen = ({
   const readoutRef = useRef<HTMLSpanElement>(null);
   const statusRef = useRef<HTMLSpanElement>(null);
   const glowRef = useRef<HTMLDivElement>(null);
+  const sweepRef = useRef<HTMLDivElement>(null);
+  const sweepAnimationRef = useRef<Animation | undefined>(undefined);
+  // Where the wedge is parked, in degrees; each scan's step starts here.
+  const sweepAngleRef = useRef(0);
   const screenRef = useRef<HTMLDivElement>(null);
   const cropCanvasRef = useRef<HTMLCanvasElement>(null);
   // Restarts the rAF loop when it has parked itself on an idle meter (see the
@@ -158,6 +182,33 @@ export const RadarDetectorScreen = ({
     detectedLabelRef.current = detectedLabel;
     wakeRef.current();
   }, [detectedLabel]);
+
+  // One sweep step per completed scan. Keyed on the scan timestamp, not any
+  // detection state, so empty results sweep too; the sweep reports "the road
+  // was scanned", not "something was found". The step starts where the last
+  // one ended (fill keeps the wedge parked there), so a result landing early
+  // continues the rotation rather than snapping it; the superseded animation
+  // is cancelled only after its replacement starts, in the same task, so no
+  // frame paints the wedge at the unfilled base angle.
+  useEffect(() => {
+    const sweep = sweepRef.current;
+    // jsdom implements no Web Animations API, so the sweep never fires there.
+    if (scanAt === undefined || !sweep || typeof sweep.animate !== "function") {
+      return;
+    }
+    if (prefersReducedMotion()) {
+      return;
+    }
+    const from = sweepAngleRef.current;
+    const to = from + SWEEP_STEP_DEG;
+    sweepAngleRef.current = to % 360;
+    const superseded = sweepAnimationRef.current;
+    sweepAnimationRef.current = sweep.animate(
+      [{ transform: `rotate(${from}deg)` }, { transform: `rotate(${to}deg)` }],
+      { duration: SWEEP_STEP_MS, easing: "linear", fill: "forwards" },
+    );
+    superseded?.cancel();
+  }, [scanAt]);
 
   // Draw the cutout into the card's canvas whenever it changes. The canvas
   // takes the bitmap's intrinsic size; CSS scales it to fit the card.
@@ -363,12 +414,13 @@ export const RadarDetectorScreen = ({
       <div className="relative aspect-square w-[min(84vmin,28rem)] translate-y-[3%]">
         <div ref={glowRef} className="absolute inset-[6%] rounded-full" />
         <div className="absolute inset-[24%] rounded-full border border-hud-amber/15" />
-        {/* The sweep only spins once scanning is live; while initializing it
-            is invisible and unanimated (no compositor work), then fades in as
-            the first scan becomes possible. */}
+        {/* The sweep wedge fades in with the first scan and then parks
+            between the arc steps the scanAt effect above drives; a parked
+            wedge is static and costs the compositor nothing. */}
         <div
-          className={`absolute inset-[24%] rounded-full transition-opacity duration-700 [animation-duration:5s] motion-reduce:animate-none ${
-            initializing ? "opacity-0" : "animate-spin"
+          ref={sweepRef}
+          className={`absolute inset-[24%] rounded-full transition-opacity duration-700 ${
+            scanAt === undefined ? "opacity-0" : "opacity-100"
           }`}
           style={{
             background:

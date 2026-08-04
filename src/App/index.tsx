@@ -232,8 +232,9 @@ const RadarScreen = () => {
       )}
       {/* In the radar-meter branch below, the meter mounts immediately so the
           first paint past the permission flow is the instrument reading
-          INITIALIZING, not a blank backdrop; the sweep starts once detection
-          is running. The detection-view branch has no such instrument, so its
+          INITIALIZING, not a blank backdrop; the sweep advances one arc step
+          per completed scan once detection is running. The
+          detection-view branch has no such instrument, so its
           pre-camera frames are a blank backdrop until the first scan lands. A
           first-visit download is still covered by the opaque ModelLoadScreen
           below. */}
@@ -250,6 +251,7 @@ const RadarScreen = () => {
           audioEnabled={radarAudio}
           contact={contact}
           initializing={status !== "running"}
+          scanAt={scan?.at}
           rawConfidence={rawConfidence ? hudScore(hud) : undefined}
           detectedLabel={hud?.top?.label}
         />

@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CONTACT_THRESHOLD,
   RadarDetectorScreen,
@@ -307,6 +307,104 @@ describe("RadarDetectorScreen rAF loop", () => {
       expect(screen.getByTestId("signal-status")).toHaveTextContent("ALERT"),
     );
     expect(beeperUpdate).toHaveBeenLastCalledWith(0.9, expect.any(Number));
+  });
+});
+
+describe("RadarDetectorScreen scan sweep", () => {
+  // jsdom has no Web Animations API, so the sweep only becomes observable
+  // with animate stubbed onto the element prototype.
+  const animate = vi.fn<HTMLElement["animate"]>(
+    () => ({ cancel: vi.fn() }) as unknown as Animation,
+  );
+  const originalAnimate = HTMLElement.prototype.animate;
+
+  beforeEach(() => {
+    animate.mockClear();
+    HTMLElement.prototype.animate = animate;
+  });
+
+  afterEach(() => {
+    HTMLElement.prototype.animate = originalAnimate;
+    vi.restoreAllMocks();
+  });
+
+  /** The keyframes the nth sweep step was started with. */
+  const stepKeyframes = (call: number): Keyframe[] =>
+    animate.mock.calls[call]?.[0] as Keyframe[];
+
+  it("advances the sweep once per completed scan", () => {
+    const view = render(
+      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
+    );
+    expect(animate).toHaveBeenCalledTimes(1);
+
+    // The next result, detections or not, steps again.
+    view.rerender(
+      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={2050} />,
+    );
+    expect(animate).toHaveBeenCalledTimes(2);
+  });
+
+  it("starts each step where the previous one ended", () => {
+    const view = render(
+      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
+    );
+    view.rerender(
+      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={2050} />,
+    );
+    const first = stepKeyframes(0);
+    const second = stepKeyframes(1);
+    // Continuity, not specific angles: the rotation must accumulate instead
+    // of every step replaying the same arc from zero.
+    expect(second[0]?.transform).toBe(first[first.length - 1]?.transform);
+    expect(second[0]?.transform).not.toBe(first[0]?.transform);
+  });
+
+  it("cancels a superseded step so animations never accumulate", () => {
+    const view = render(
+      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
+    );
+    const first = animate.mock.results[0]?.value as Animation;
+    view.rerender(
+      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={2050} />,
+    );
+    expect(first.cancel).toHaveBeenCalled();
+  });
+
+  it("does not sweep again on a rerender with no new scan", () => {
+    const view = render(
+      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
+    );
+    view.rerender(
+      <RadarDetectorScreen
+        confidence={0.5}
+        audioEnabled={false}
+        scanAt={1000}
+      />,
+    );
+    expect(animate).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the sweep dark before the first scan", () => {
+    render(<RadarDetectorScreen confidence={0} audioEnabled={false} />);
+    expect(animate).not.toHaveBeenCalled();
+  });
+
+  it("skips the sweep under reduced motion", () => {
+    vi.spyOn(window, "matchMedia").mockReturnValue({
+      matches: true,
+      media: "(prefers-reduced-motion: reduce)",
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    } as MediaQueryList);
+    render(
+      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
+    );
+    expect(animate).not.toHaveBeenCalled();
   });
 });
 
