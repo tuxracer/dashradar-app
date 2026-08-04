@@ -204,6 +204,7 @@ describe("removing a stored model", () => {
     );
     addStoredModel(addedModel);
     running = DEFAULT_MODEL;
+    vi.spyOn(window, "confirm").mockReturnValue(true);
   });
 
   it("offers no remove control on the default row", () => {
@@ -223,6 +224,16 @@ describe("removing a stored model", () => {
       screen.queryByTestId(`model-option-${addedModel.id}`),
     ).not.toBeInTheDocument();
     expect(loadStoredModels()).toEqual([]);
+  });
+
+  it("keeps the model when the confirm is declined", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderModelScreen();
+    await userEvent.click(screen.getByTestId(`model-remove-${addedModel.id}`));
+    expect(
+      screen.getByTestId(`model-option-${addedModel.id}`),
+    ).toBeInTheDocument();
+    expect(loadStoredModels()).toEqual([addedModel]);
   });
 
   it("moves a drafted selection back to the default on remove", async () => {

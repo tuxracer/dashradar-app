@@ -171,12 +171,18 @@ export const ModelScreen = ({
     });
   };
 
-  const handleRemove = (id: string) => {
-    removeStoredModel(id);
+  const handleRemove = (model: DetectionModel) => {
+    // Confirmed because the row is a wide touch target next to the one that
+    // selects the model, and getting it back means pasting the URL again and
+    // re-downloading the weights.
+    if (!window.confirm(`Remove ${model.slug} ${model.revision}?`)) {
+      return;
+    }
+    removeStoredModel(model.id);
     // A drafted selection of the removed row has nothing to apply anymore;
     // the default is the one row guaranteed to exist.
     setDraft((previous) =>
-      previous.includes(id) ? [DEFAULT_MODEL.id] : previous,
+      previous.includes(model.id) ? [DEFAULT_MODEL.id] : previous,
     );
     refreshModels();
   };
@@ -269,7 +275,7 @@ export const ModelScreen = ({
                     type="button"
                     data-testid={`model-remove-${model.id}`}
                     aria-label={`Remove ${model.slug}`}
-                    onClick={() => handleRemove(model.id)}
+                    onClick={() => handleRemove(model)}
                     className="flex min-w-14 items-center justify-center rounded-xl border border-white/25 text-white/60"
                   >
                     <X className="h-5 w-5" strokeWidth={2} />
