@@ -19,6 +19,7 @@ import {
 } from "@/lib/detectionModels";
 import type { DetectionModel } from "@/lib/detectionModels";
 import { trialLoadModel } from "@/lib/modelTrialLoad";
+import { prefersReducedMotion } from "@/utils/prefersReducedMotion";
 import {
   ADD_ERROR_COPY,
   ADD_FAILED_MESSAGE,
@@ -52,11 +53,6 @@ type AddPhase =
     }
   | { phase: "failed"; url: string; message: string }
   | { phase: "added"; summary: string };
-
-/** True when the user asked the OS for reduced motion; guarded for jsdom. */
-const prefersReducedMotion = (): boolean =>
-  typeof window.matchMedia === "function" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** Props for ModelScreen. */
 type ModelScreenProps = {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { prefersReducedMotion } from "@/utils/prefersReducedMotion";
 import { STATIC_FRAME_MS } from "./consts";
 import { createIntroScene } from "./scene";
 
@@ -13,11 +14,6 @@ type IntroSceneProps = {
   /** Scene factory seam so jsdom tests can inject a fake (no 2D canvas there). */
   createScene?: typeof createIntroScene;
 };
-
-/** True when the user asked the OS for reduced motion; guarded for jsdom. */
-const prefersReducedMotion = (): boolean =>
-  typeof window.matchMedia === "function" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /**
  * Full-screen Canvas 2D wireframe night-drive scene behind the intro copy,
