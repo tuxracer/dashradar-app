@@ -220,10 +220,14 @@ describe("removing a stored model", () => {
   it("removes the row and unregisters the model", async () => {
     renderModelScreen();
     await userEvent.click(screen.getByTestId(`model-remove-${addedModel.id}`));
-    expect(
-      screen.queryByTestId(`model-option-${addedModel.id}`),
-    ).not.toBeInTheDocument();
+    // Unregistered at once; the row itself outlives the click only as long as
+    // it takes to collapse out of the list.
     expect(loadStoredModels()).toEqual([]);
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId(`model-option-${addedModel.id}`),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("keeps the model when the confirm is declined", async () => {

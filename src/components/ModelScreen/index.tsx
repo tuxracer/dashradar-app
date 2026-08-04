@@ -25,6 +25,8 @@ import {
   CHOOSE_FILE_MESSAGE,
   COMMIT_FAILED_MESSAGE,
   GENERIC_CLASSES_MESSAGE,
+  ROW_ENTER_STAGGER_MS,
+  ROW_EXIT_MS,
 } from "./consts";
 
 export * from "./consts";
@@ -50,6 +52,11 @@ type AddPhase =
     }
   | { phase: "failed"; url: string; message: string }
   | { phase: "added"; summary: string };
+
+/** True when the user asked the OS for reduced motion; guarded for jsdom. */
+const prefersReducedMotion = (): boolean =>
+  typeof window.matchMedia === "function" &&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** Props for ModelScreen. */
 type ModelScreenProps = {
@@ -110,6 +117,9 @@ export const ModelScreen = ({
   const changed = !isDeepEqual([...draft], [activeModel.id]);
 
   const [add, setAdd] = useState<AddPhase>({ phase: "closed" });
+  // The row currently collapsing out. Its model is already gone from storage;
+  // this only keeps the element on screen for the length of the animation.
+  const [leavingId, setLeavingId] = useState<string | undefined>(undefined);
   // Aborts a trial in flight when the screen unmounts, so BACK does not leave
   // a worker downloading tens of megabytes for a screen nobody is on. Created
   // at the very top of handleAdd, before the URL is even resolved, so an
@@ -271,7 +281,17 @@ export const ModelScreen = ({
     setDraft((previous) =>
       previous.includes(model.id) ? [DEFAULT_MODEL.id] : previous,
     );
-    refreshModels();
+    // The row stays mounted long enough to collapse out, so the rows below it
+    // travel into the space instead of jumping. Storage is already updated, so
+    // a screen unmounted mid-collapse loses nothing but the animation.
+    setLeavingId(model.id);
+    window.setTimeout(
+      () => {
+        setLeavingId(undefined);
+        refreshModels();
+      },
+      prefersReducedMotion() ? 0 : ROW_EXIT_MS,
+    );
   };
 
   const toggleModel = (id: string) => {
@@ -305,12 +325,12 @@ export const ModelScreen = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-surface px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))]">
       <div className="mx-auto flex max-w-3xl flex-col gap-6">
-        <div className="flex items-center justify-between gap-6">
+        <div className="flex animate-rise-in items-center justify-between gap-6 motion-reduce:animate-none">
           <button
             type="button"
             data-testid="model-back"
             onClick={onClose}
-            className="flex min-h-14 items-center gap-1 rounded-xl border border-white/25 pl-4 pr-6 text-base font-semibold tracking-[0.12em] text-white/90"
+            className="flex min-h-14 items-center gap-1 rounded-xl border border-white/25 pl-4 pr-6 text-base font-semibold tracking-[0.12em] text-white/90 transition active:scale-[0.97] motion-reduce:transition-none"
           >
             <ChevronLeft className="h-5 w-5 shrink-0" strokeWidth={2} />
             BACK
@@ -323,7 +343,7 @@ export const ModelScreen = ({
             data-testid="model-save"
             onClick={handleSave}
             disabled={!changed}
-            className={`min-h-14 rounded-xl px-6 text-base font-semibold tracking-[0.12em] transition-colors ${
+            className={`min-h-14 rounded-xl px-6 text-base font-semibold tracking-[0.12em] transition duration-200 active:scale-[0.97] motion-reduce:transition-none ${
               changed
                 ? "bg-hud-amber text-surface"
                 : "bg-white/10 text-white/35"
@@ -334,23 +354,45 @@ export const ModelScreen = ({
         </div>
 
         <div className="flex flex-col gap-3">
-          {models.map((model) => {
+          {models.map((model, index) => {
             const selected = draft.includes(model.id);
+            const leaving = model.id === leavingId;
             return (
-              <div key={model.id} className="flex items-stretch gap-2">
+              <div
+                key={model.id}
+                // Every row carries its entrance, so the first render staggers
+                // the whole list in and a row added later arrives on its own.
+                // A leaving row drops the delay: it is racing the timer that
+                // unmounts it, and a staggered start would be cut off.
+                style={{
+                  animationDelay: leaving
+                    ? "0ms"
+                    : `${(index + 1) * ROW_ENTER_STAGGER_MS}ms`,
+                }}
+                className={`flex items-stretch gap-2 motion-reduce:animate-none ${
+                  leaving
+                    ? "animate-row-out overflow-hidden"
+                    : "animate-rise-in"
+                }`}
+              >
                 <button
                   type="button"
                   data-testid={`model-option-${model.id}`}
                   onClick={() => toggleModel(model.id)}
-                  className={`flex min-h-20 flex-1 flex-col gap-1 rounded-xl px-6 py-4 text-left transition-colors ${
-                    selected ? "bg-hud-amber text-surface" : "bg-white/10"
+                  // The amber arrives as a wipe rather than a repaint, so the
+                  // eye is told which row took the selection. Two entries can
+                  // read almost identically at a glance.
+                  className={`relative flex min-h-20 flex-1 flex-col justify-center gap-1 overflow-hidden rounded-xl bg-white/10 px-6 py-4 text-left transition duration-300 before:absolute before:inset-0 before:origin-left before:bg-hud-amber before:transition-transform before:duration-300 before:ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.98] motion-reduce:transition-none motion-reduce:before:transition-none ${
+                    selected
+                      ? "text-surface before:scale-x-100"
+                      : "text-white before:scale-x-0"
                   }`}
                 >
-                  <span className="text-lg font-semibold tracking-[0.04em]">
+                  <span className="relative text-lg font-semibold tracking-[0.04em]">
                     {model.slug}
                   </span>
                   <span
-                    className={`text-sm font-medium tracking-[0.06em] ${
+                    className={`relative text-sm font-medium tracking-[0.06em] transition-colors duration-300 motion-reduce:transition-none ${
                       selected ? "text-surface/70" : "text-white/45"
                     }`}
                   >
@@ -363,7 +405,7 @@ export const ModelScreen = ({
                     data-testid={`model-remove-${model.id}`}
                     aria-label={`Remove ${model.slug}`}
                     onClick={() => handleRemove(model)}
-                    className="flex min-w-14 items-center justify-center rounded-xl border border-white/25 text-white/60"
+                    className="flex min-w-14 items-center justify-center rounded-xl border border-white/25 text-white/60 transition active:scale-[0.94] motion-reduce:transition-none"
                   >
                     <X className="h-5 w-5" strokeWidth={2} />
                   </button>
@@ -372,110 +414,146 @@ export const ModelScreen = ({
             );
           })}
 
-          {(add.phase === "closed" || add.phase === "added") && (
-            <button
-              type="button"
-              data-testid="model-add-open"
-              onClick={openAdd}
-              className="flex min-h-20 items-center justify-center rounded-xl bg-white/10 px-6 text-lg font-semibold tracking-[0.04em] text-white/90"
-            >
-              ADD MODEL
-            </button>
-          )}
-          {add.phase === "added" && (
-            <span
-              data-testid="model-add-status"
-              className="text-sm font-medium tracking-[0.06em] text-white/45"
-            >
-              {add.summary}
-            </span>
-          )}
-
-          {(add.phase === "editing" || add.phase === "failed") && (
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void handleAdd(add.url);
-              }}
-              noValidate
-              className="flex flex-col gap-2"
-            >
-              <input
-                type="url"
-                inputMode="url"
-                data-testid="model-add-url"
-                value={add.url}
-                onChange={(event) =>
-                  setAdd({ phase: "editing", url: event.target.value })
-                }
-                placeholder="https://huggingface.co/owner/repo"
-                className="min-h-14 w-full rounded-xl bg-white/10 px-4 text-base font-medium tracking-[0.04em] text-white/90 placeholder:text-white/35"
-              />
+          {/* Keyed on the phase so each step of the add flow remounts, which
+              is what re-runs its entrance: the content is swapping in place,
+              not arriving from off screen. */}
+          <div
+            key={add.phase}
+            // "closed" is the only phase the screen can mount into, so it is
+            // the only one that waits its turn behind the rows. Every other
+            // phase is the result of a tap and has to answer it immediately.
+            style={{
+              animationDelay:
+                add.phase === "closed"
+                  ? `${(models.length + 1) * ROW_ENTER_STAGGER_MS}ms`
+                  : "0ms",
+            }}
+            className="flex animate-swap-in flex-col gap-3 motion-reduce:animate-none"
+          >
+            {(add.phase === "closed" || add.phase === "added") && (
               <button
-                type="submit"
-                data-testid="model-add-submit"
-                disabled={add.url.trim().length === 0}
-                className={`min-h-14 rounded-xl px-6 text-base font-semibold tracking-[0.12em] transition-colors ${
-                  add.url.trim().length > 0
-                    ? "bg-hud-amber text-surface"
-                    : "bg-white/10 text-white/35"
-                }`}
+                type="button"
+                data-testid="model-add-open"
+                onClick={openAdd}
+                className="flex min-h-20 items-center justify-center rounded-xl bg-white/10 px-6 text-lg font-semibold tracking-[0.04em] text-white/90 transition active:scale-[0.98] motion-reduce:transition-none"
               >
-                ADD
+                ADD MODEL
               </button>
-              {add.phase === "failed" && (
+            )}
+            {add.phase === "added" && (
+              <span
+                data-testid="model-add-status"
+                className="text-sm font-medium tracking-[0.06em] text-white/45"
+              >
+                {add.summary}
+              </span>
+            )}
+
+            {(add.phase === "editing" || add.phase === "failed") && (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleAdd(add.url);
+                }}
+                noValidate
+                className="flex flex-col gap-2"
+              >
+                <input
+                  type="url"
+                  inputMode="url"
+                  data-testid="model-add-url"
+                  value={add.url}
+                  onChange={(event) =>
+                    setAdd({ phase: "editing", url: event.target.value })
+                  }
+                  placeholder="https://huggingface.co/owner/repo"
+                  className="min-h-14 w-full rounded-xl bg-white/10 px-4 text-base font-medium tracking-[0.04em] text-white/90 placeholder:text-white/35"
+                />
+                <button
+                  type="submit"
+                  data-testid="model-add-submit"
+                  disabled={add.url.trim().length === 0}
+                  className={`min-h-14 rounded-xl px-6 text-base font-semibold tracking-[0.12em] transition duration-200 active:scale-[0.97] motion-reduce:transition-none ${
+                    add.url.trim().length > 0
+                      ? "bg-hud-amber text-surface"
+                      : "bg-white/10 text-white/35"
+                  }`}
+                >
+                  ADD
+                </button>
+                {add.phase === "failed" && (
+                  <span
+                    data-testid="model-add-status"
+                    className="text-sm font-medium tracking-[0.06em] text-white/60"
+                  >
+                    {add.message}
+                  </span>
+                )}
+              </form>
+            )}
+
+            {add.phase === "choosing" && (
+              <div className="flex flex-col gap-3">
                 <span
                   data-testid="model-add-status"
                   className="text-sm font-medium tracking-[0.06em] text-white/60"
                 >
-                  {add.message}
+                  {CHOOSE_FILE_MESSAGE}
                 </span>
-              )}
-            </form>
-          )}
-
-          {add.phase === "choosing" && (
-            <div className="flex flex-col gap-3">
-              <span
-                data-testid="model-add-status"
-                className="text-sm font-medium tracking-[0.06em] text-white/60"
-              >
-                {CHOOSE_FILE_MESSAGE}
-              </span>
-              {add.files.map((file) => (
+                {add.files.map((file, index) => (
+                  <button
+                    key={file}
+                    type="button"
+                    data-testid={`model-file-${file}`}
+                    onClick={() => void handleChoose(add, file)}
+                    style={{
+                      animationDelay: `${(index + 1) * ROW_ENTER_STAGGER_MS}ms`,
+                    }}
+                    className="min-h-20 animate-rise-in break-all rounded-xl bg-white/10 px-6 py-4 text-left text-lg font-semibold tracking-[0.04em] text-white/90 transition active:scale-[0.98] motion-reduce:animate-none motion-reduce:transition-none"
+                  >
+                    {file}
+                  </button>
+                ))}
                 <button
-                  key={file}
                   type="button"
-                  data-testid={`model-file-${file}`}
-                  onClick={() => void handleChoose(add, file)}
-                  className="min-h-20 break-all rounded-xl bg-white/10 px-6 py-4 text-left text-lg font-semibold tracking-[0.04em] text-white/90"
+                  data-testid="model-file-cancel"
+                  onClick={() => setAdd({ phase: "editing", url: add.url })}
+                  style={{
+                    animationDelay: `${(add.files.length + 1) * ROW_ENTER_STAGGER_MS}ms`,
+                  }}
+                  className="min-h-14 animate-rise-in rounded-xl border border-white/25 px-6 text-base font-semibold tracking-[0.12em] text-white/70 transition active:scale-[0.97] motion-reduce:animate-none motion-reduce:transition-none"
                 >
-                  {file}
+                  CANCEL
                 </button>
-              ))}
-              <button
-                type="button"
-                data-testid="model-file-cancel"
-                onClick={() => setAdd({ phase: "editing", url: add.url })}
-                className="min-h-14 rounded-xl border border-white/25 px-6 text-base font-semibold tracking-[0.12em] text-white/70"
-              >
-                CANCEL
-              </button>
-            </div>
-          )}
+              </div>
+            )}
 
-          {add.phase === "busy" && (
-            <div className="flex min-h-20 flex-col items-center justify-center gap-1 rounded-xl bg-white/10 px-6 py-4">
-              <span
-                data-testid="model-add-status"
-                className="text-sm font-medium tracking-[0.06em] text-white/60"
-              >
-                {add.percent !== undefined
-                  ? `DOWNLOADING ${add.percent}%`
-                  : "CHECKING MODEL..."}
-              </span>
-            </div>
-          )}
+            {add.phase === "busy" && (
+              <div className="flex min-h-20 flex-col items-center justify-center gap-3 rounded-xl bg-white/10 px-6 py-4">
+                <span
+                  data-testid="model-add-status"
+                  className="text-sm font-medium tracking-[0.06em] text-white/60"
+                >
+                  {add.percent !== undefined
+                    ? `DOWNLOADING ${add.percent}%`
+                    : "CHECKING MODEL..."}
+                </span>
+                {/* Only once there is a real fraction to show. An empty track
+                  during the lookup would read as a download stuck at zero.
+                  The width is driven by progress events, so nothing here
+                  animates on its own. */}
+                {add.percent !== undefined && (
+                  <div className="h-[3px] w-full overflow-hidden rounded-full bg-white/15">
+                    <div
+                      data-testid="model-add-progress"
+                      style={{ width: `${add.percent}%` }}
+                      className="h-full bg-hud-amber transition-[width] duration-200 ease-linear motion-reduce:transition-none"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

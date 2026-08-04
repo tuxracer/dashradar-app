@@ -1,5 +1,19 @@
 import type { AddModelErrorCode } from "@/lib/detectionModels";
 
+/**
+ * How long a removed row is kept mounted so it can collapse out, matched to
+ * the `row-out` keyframes in globals.css. Under reduced motion the row is
+ * dropped immediately instead, since there is no animation to wait for.
+ */
+export const ROW_EXIT_MS = 300;
+
+/**
+ * Gap between one row's entrance and the next, the same staggering the intro
+ * and unsupported screens use. Small enough that a long file list finishes
+ * arriving well before anyone could act on it.
+ */
+export const ROW_ENTER_STAGGER_MS = 45;
+
 /** Shown when a commit could not be written, so nothing was applied. */
 export const COMMIT_FAILED_MESSAGE =
   "Could not save the model selection, so nothing changed.";
