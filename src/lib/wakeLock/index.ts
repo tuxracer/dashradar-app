@@ -2,6 +2,8 @@ import { track } from "@vercel/analytics";
 import { isObjectType, isString } from "remeda";
 import { filter, fromEvent, Observable, startWith, switchMap } from "rxjs";
 import {
+  WAKE_LOCK_FAILED_OUTCOME,
+  WAKE_LOCK_SUCCEEDED_OUTCOME,
   WAKE_LOCK_UNKNOWN_REASON,
   WAKE_LOCK_UNSUPPORTED_REASON,
 } from "./consts";
@@ -31,28 +33,28 @@ const rejectionName = (error: unknown): string => {
  * Wake locks are auto-released when the tab is hidden, so becoming visible
  * again requests a fresh one and drops the previous holder.
  *
- * The once-per-instance failure gate lives in this closure rather than in a
+ * The once-per-instance reporting gate lives in this closure rather than in a
  * subscription, so one stream subscribed and unsubscribed once per scanning
- * window reports a refusing platform once for the page load, not once per
- * window.
+ * window reports a platform once for the page load, not once per window.
  */
 export const screenWakeLock = (): Observable<never> => {
-  let failureReported = false;
+  let outcomeReported = false;
 
   /**
-   * Report the first failure of this stream's life to analytics and stay quiet
+   * Report how this stream's first lock request was answered and stay quiet
    * afterwards. A refused lock is the app's worst silent failure: the screen
    * sleeps mid-drive and the detector stops seeing the road while the driver
-   * has no reason to think anything changed. A platform that refuses once
-   * refuses every time, and a lock is re-requested for the length of a drive,
-   * so reporting every refusal would be one event per app switch.
+   * has no reason to think anything changed, and the grants are the
+   * denominator that makes the refusal count mean something. A platform
+   * answers the same way every time, and a lock is re-requested for the length
+   * of a drive, so reporting every answer would be one event per app switch.
    */
-  const reportFailure = (reason: string) => {
-    if (failureReported) {
+  const reportOutcome = (properties: Record<string, string>) => {
+    if (outcomeReported) {
       return;
     }
-    failureReported = true;
-    track("wake_lock_failed", { reason });
+    outcomeReported = true;
+    track("wake_lock", properties);
   };
 
   /**
@@ -63,13 +65,19 @@ export const screenWakeLock = (): Observable<never> => {
    */
   const heldLock$ = new Observable<never>(() => {
     if (!navigator.wakeLock) {
-      reportFailure(WAKE_LOCK_UNSUPPORTED_REASON);
+      reportOutcome({
+        outcome: WAKE_LOCK_FAILED_OUTCOME,
+        reason: WAKE_LOCK_UNSUPPORTED_REASON,
+      });
       return;
     }
     let sentinel: WakeLockSentinel | undefined;
     let released = false;
     void navigator.wakeLock.request("screen").then(
       (granted) => {
+        // Reported before the teardown check, because the platform granting is
+        // the answer being counted whether or not this stream still wants it.
+        reportOutcome({ outcome: WAKE_LOCK_SUCCEEDED_OUTCOME });
         if (released) {
           void granted.release().catch(() => {
             // Already released by the platform.
@@ -83,7 +91,10 @@ export const screenWakeLock = (): Observable<never> => {
         // The rejection name (NotAllowedError, AbortError) is the whole
         // payload: a handful of values, none of them describing the device or
         // the user.
-        reportFailure(rejectionName(error));
+        reportOutcome({
+          outcome: WAKE_LOCK_FAILED_OUTCOME,
+          reason: rejectionName(error),
+        });
       },
     );
     return () => {

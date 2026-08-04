@@ -105,11 +105,12 @@ describe("screenWakeLock", () => {
   });
 });
 
-describe("wake lock failure reporting", () => {
+describe("wake lock outcome reporting", () => {
   it("reports a platform that has no Wake Lock API", () => {
     vi.stubGlobal("navigator", {});
     screenWakeLock().subscribe().unsubscribe();
-    expect(track).toHaveBeenCalledWith("wake_lock_failed", {
+    expect(track).toHaveBeenCalledWith("wake_lock", {
+      outcome: "failed",
       reason: "unsupported",
     });
   });
@@ -118,24 +119,41 @@ describe("wake lock failure reporting", () => {
     stubRefusedWakeLock("NotAllowedError");
     const subscription = screenWakeLock().subscribe();
     await flush();
-    expect(track).toHaveBeenCalledWith("wake_lock_failed", {
+    expect(track).toHaveBeenCalledWith("wake_lock", {
+      outcome: "failed",
       reason: "NotAllowedError",
     });
     subscription.unsubscribe();
   });
 
-  it("stays quiet when the lock is granted", async () => {
+  it("reports a granted lock", async () => {
     stubWakeLock();
     const subscription = screenWakeLock().subscribe();
     await flush();
-    expect(track).not.toHaveBeenCalled();
+    expect(track).toHaveBeenCalledWith("wake_lock", { outcome: "succeeded" });
     subscription.unsubscribe();
   });
 
+  it("reports a lock granted after unsubscribe", async () => {
+    const sentinel: FakeSentinel = { release: vi.fn(() => Promise.resolve()) };
+    let grant: (granted: FakeSentinel) => void = () => {};
+    const request = vi.fn(
+      () =>
+        new Promise<FakeSentinel>((resolve) => {
+          grant = resolve;
+        }),
+    );
+    vi.stubGlobal("navigator", { wakeLock: { request } });
+    screenWakeLock().subscribe().unsubscribe();
+    grant(sentinel);
+    await flush();
+    expect(track).toHaveBeenCalledWith("wake_lock", { outcome: "succeeded" });
+  });
+
   // A lock is re-requested for the length of a drive, and a scanning window
-  // opens and closes many times over one, so without the gate a platform that
-  // refuses emits an event per app switch.
-  it("reports only the first failure of a stream's life", async () => {
+  // opens and closes many times over one, so without the gate a platform emits
+  // an event per app switch.
+  it("reports only the first outcome of a stream's life", async () => {
     stubRefusedWakeLock("NotAllowedError");
     const wakeLock$ = screenWakeLock();
     const first = wakeLock$.subscribe();
@@ -146,6 +164,17 @@ describe("wake lock failure reporting", () => {
     const second = wakeLock$.subscribe();
     await flush();
     second.unsubscribe();
+    expect(track).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports only the first outcome when the lock is granted", async () => {
+    stubWakeLock();
+    const wakeLock$ = screenWakeLock();
+    const subscription = wakeLock$.subscribe();
+    await flush();
+    document.dispatchEvent(new Event("visibilitychange"));
+    await flush();
+    subscription.unsubscribe();
     expect(track).toHaveBeenCalledTimes(1);
   });
 });

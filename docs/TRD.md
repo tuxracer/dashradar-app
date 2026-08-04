@@ -166,7 +166,7 @@ Anonymous, no camera, location, or detection geometry; dev builds emit nothing. 
 | `timing_round_trip`, `timing_inference` | Medians once a rolling window fills; what the pacing floor is argued against |
 | `timing_*_late` | The same pair after 15 minutes of scanning; the gap is thermal drift on real dash mounts |
 | `scan_session` | Actual scan time per drive, bucketed, plus installed-PWA state; the denominator for everything else |
-| `wake_lock_failed` | The screen sleeping mid-drive is the app's worst silent failure |
+| `wake_lock` | Whether the platform granted the lock (`succeeded`/`failed`, with a reason on a failure); the screen sleeping mid-drive is the app's worst silent failure, and the grants are what the refusals are read against. First request of the page load only |
 | `worker_hung` | A worker went silent mid-scan and was recycled to recover; once per page load |
 | `pwa_installed` | Chromium's install event, or first standalone launch on iOS |
 | `app_updated` | The first launch on a new build, `from` and `to` commit SHA; counts updates that were actually run, not ones downloaded |
