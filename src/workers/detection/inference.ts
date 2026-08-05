@@ -185,6 +185,19 @@ export const decodeDetections = (
     const cy = dets[q * 4 + 1];
     const w = dets[q * 4 + 2];
     const h = dets[q * 4 + 3];
+    // A non-finite box is dropped here, at the one place that knows it came
+    // off the tensor. `dets` and `labels` are independent outputs, so an fp16
+    // pathology can hand a valid above-threshold score a NaN box; clamp01
+    // passes NaN through, and the resulting detection reads as the frame's
+    // strongest while carrying geometry no consumer can draw, crop, or match.
+    if (
+      !Number.isFinite(cx) ||
+      !Number.isFinite(cy) ||
+      !Number.isFinite(w) ||
+      !Number.isFinite(h)
+    ) {
+      continue;
+    }
     detections.push({
       label: best.label,
       score: bestScore,

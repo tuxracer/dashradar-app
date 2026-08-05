@@ -369,6 +369,26 @@ describe("decodeDetections", () => {
     ]);
   });
 
+  it("drops a query whose box is not finite instead of emitting NaN geometry", () => {
+    // dets and labels are independent tensors, so an fp16 pathology can pair
+    // a valid above-threshold score with a NaN box. clamp01 passes NaN
+    // through, and an emitted NaN box would ride a possibly frame-strongest
+    // score into geometry nothing downstream can draw, crop, or match.
+    const labels = makeLabels([
+      [-8, 4],
+      [-8, 5],
+    ]);
+    const boxes = makeBoxes([
+      [0.5, 0.5, 0.4, 0.2],
+      [NaN, 0.5, 0.4, 0.2],
+    ]);
+
+    const detections = decodeDetections(boxes, labels, 0.5, POLICE_MODEL);
+
+    expect(detections).toHaveLength(1);
+    expect(detections[0].score).toBeCloseTo(sigmoid(4), 6);
+  });
+
   it("keeps a confident detection however small its box", () => {
     const labels = makeLabels([[-8, 4]]);
     // Two input pixels on a side. The old decode dropped anything under 15,
