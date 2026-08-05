@@ -86,3 +86,38 @@ describe("view mode", () => {
     expect(store.getSnapshot().radarAudio).toBe(false);
   });
 });
+
+describe("validating a stored blob", () => {
+  it("rejects a blob whose field is the wrong type", () => {
+    // A value of the wrong shape reaching a consumer is worse than losing the
+    // stored tweaks, so a bad field takes the whole blob down to defaults
+    // rather than being merged in and read as settings.
+    const store = mountStore({
+      settingsVersion: SETTINGS_VERSION,
+      radarAudio: "yes",
+      detectionImage: true,
+    });
+    expect(store.getSnapshot().radarAudio).toBe(true);
+    expect(store.getSnapshot().detectionImage).toBe(false);
+  });
+
+  it("rejects a modelIds list holding anything but strings", () => {
+    const store = mountStore({
+      settingsVersion: SETTINGS_VERSION,
+      developerOptions: true,
+      modelIds: ["fine", 7],
+    });
+    expect(store.getSnapshot().developerOptions).toBe(false);
+  });
+
+  it("keeps a blob carrying a key this build does not know", () => {
+    // A blob written by a newer build, or by one that has since dropped a
+    // setting, still has to load: the fields both builds share are good.
+    const store = mountStore({
+      settingsVersion: SETTINGS_VERSION,
+      radarAudio: false,
+      settingFromTheFuture: { nested: true },
+    });
+    expect(store.getSnapshot().radarAudio).toBe(false);
+  });
+});

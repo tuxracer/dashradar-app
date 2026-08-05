@@ -1,5 +1,6 @@
 import {
   clamp,
+  entries,
   isArray,
   isBoolean,
   isNumber,
@@ -278,44 +279,58 @@ export type SettingsStore = {
   setSettingsOpen: (open: boolean) => void;
 };
 
+/** Validates a persisted value as the stored list of model ids. */
+const isModelIds = (value: unknown): value is readonly string[] =>
+  isArray(value) && value.every(isString);
+
+/**
+ * How each field of the persisted blob is checked, one entry per key.
+ *
+ * The mapped type is the whole point: a new setting with no entry here is a
+ * compile error. The hand-written chain this replaced could not say that, so
+ * forgetting a line let the new field through unvalidated and into app state,
+ * which is a silent failure a person has to notice.
+ */
+const FIELD_VALIDATORS: {
+  [K in keyof PersistedSettings]: (
+    value: unknown,
+  ) => value is PersistedSettings[K];
+} = {
+  settingsVersion: isNumber,
+  developerOptions: isBoolean,
+  showDebug: isBoolean,
+  radarAudio: isBoolean,
+  detectionImage: isBoolean,
+  viewMode: isViewMode,
+  throttleInference: isBoolean,
+  sceneChangeGate: isBoolean,
+  zoomMode: isZoomMode,
+  confidenceThreshold: isNumber,
+  sceneFov: isNumber,
+  sceneTestObjects: isBoolean,
+  modelIds: isModelIds,
+  zoomIndicator: isBoolean,
+  roundTripIndicator: isBoolean,
+  cameraPreview: isBoolean,
+  detectionView: isBoolean,
+  rawConfidence: isBoolean,
+};
+
 /**
  * Validates a value parsed from localStorage before it is trusted as settings.
  * Each known field is optional-but-typed so a blob written by an older or newer
  * build (for example one predating showDebug) still validates; loadSettings
- * fills any missing field from DEFAULT_SETTINGS. Corrupt or wrongly-typed
- * fields fall back to defaults instead of poisoning app state.
+ * fills any missing field from DEFAULT_SETTINGS. A field that is present and
+ * the wrong type rejects the whole blob, which falls back to defaults, rather
+ * than poisoning app state. Keys this build does not know about are ignored.
  */
 export const isPersistedSettings = (
   value: unknown,
-): value is Partial<PersistedSettings> => {
-  return (
-    isPlainObject(value) &&
-    (value.settingsVersion === undefined || isNumber(value.settingsVersion)) &&
-    (value.developerOptions === undefined ||
-      isBoolean(value.developerOptions)) &&
-    (value.showDebug === undefined || isBoolean(value.showDebug)) &&
-    (value.radarAudio === undefined || isBoolean(value.radarAudio)) &&
-    (value.detectionImage === undefined || isBoolean(value.detectionImage)) &&
-    (value.viewMode === undefined || isViewMode(value.viewMode)) &&
-    (value.throttleInference === undefined ||
-      isBoolean(value.throttleInference)) &&
-    (value.sceneChangeGate === undefined || isBoolean(value.sceneChangeGate)) &&
-    (value.zoomMode === undefined || isZoomMode(value.zoomMode)) &&
-    (value.confidenceThreshold === undefined ||
-      isNumber(value.confidenceThreshold)) &&
-    (value.sceneFov === undefined || isNumber(value.sceneFov)) &&
-    (value.sceneTestObjects === undefined ||
-      isBoolean(value.sceneTestObjects)) &&
-    (value.modelIds === undefined ||
-      (isArray(value.modelIds) && value.modelIds.every(isString))) &&
-    (value.zoomIndicator === undefined || isBoolean(value.zoomIndicator)) &&
-    (value.roundTripIndicator === undefined ||
-      isBoolean(value.roundTripIndicator)) &&
-    (value.cameraPreview === undefined || isBoolean(value.cameraPreview)) &&
-    (value.detectionView === undefined || isBoolean(value.detectionView)) &&
-    (value.rawConfidence === undefined || isBoolean(value.rawConfidence))
+): value is Partial<PersistedSettings> =>
+  isPlainObject(value) &&
+  entries(FIELD_VALIDATORS).every(
+    ([key, isValid]) => value[key] === undefined || isValid(value[key]),
   );
-};
 
 /**
  * Normalizes any number to the nearest allowed confidence step. A non-finite
