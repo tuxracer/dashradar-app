@@ -1,10 +1,12 @@
+import { UNIT_SPHERE } from "../consts";
+import { GlyphBox } from "../GlyphBox";
+import { GlyphMaterial } from "../GlyphMaterial";
 import {
   TRAFFIC_LIGHT_HOUSING_COLOR,
   TRAFFIC_LIGHT_LAMP_COLORS,
-  UNIT_SPHERE,
-} from "../consts";
-import { GlyphBox } from "../GlyphBox";
-import { GlyphMaterial } from "../GlyphMaterial";
+} from "./consts";
+
+export * from "./consts";
 
 /**
  * A traffic-light glyph: the signal head alone, floating at its mounted

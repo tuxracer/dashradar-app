@@ -1,4 +1,6 @@
-import { GLYPH_OPACITY } from "../consts";
+import { GLYPH_OPACITY } from "./consts";
+
+export * from "./consts";
 
 /**
  * The material every glyph mesh draws with: flat, unlit, and translucent. The

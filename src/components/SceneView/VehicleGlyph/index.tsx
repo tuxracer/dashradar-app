@@ -1,6 +1,9 @@
 import type { PlacedKind } from "@/lib/scenePlacement";
-import { KIND_COLORS, POLICE_LIGHTBAR_COLOR } from "../consts";
+import { KIND_COLORS } from "../consts";
 import { GlyphBox } from "../GlyphBox";
+import { POLICE_LIGHTBAR_COLOR } from "./consts";
+
+export * from "./consts";
 
 /** A vehicle glyph: one body box, and for police a lightbar on the roof. */
 export const VehicleGlyph = ({

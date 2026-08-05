@@ -114,28 +114,13 @@ export const SURFACE_COLOR = "#0b0a10";
 /** Grid line color, a dim amber matching the radar backdrop's grid. */
 export const GRID_COLOR = "#8a6a33";
 
-/** Roof lightbar color on the police glyph: near-white, so it reads as a lamp. */
-export const POLICE_LIGHTBAR_COLOR = "#f2effa";
-
-/** Traffic-light housing color: dark, so the lamps carry the glyph. */
-export const TRAFFIC_LIGHT_HOUSING_COLOR = "#2f2d38";
-
-/**
- * Traffic-light lamp colors, top to bottom: the meter's full-signal red, the
- * amber accent, and the meter's low-signal green.
- */
-export const TRAFFIC_LIGHT_LAMP_COLORS: readonly [string, string, string] = [
-  "#ff5a3c",
-  "#ffb340",
-  "#4ade40",
-];
-
 /**
  * Glyph color per placed kind. Police takes the meter's full-signal red so
  * the class the app exists for is the one that reads as the alert; people
  * and riders take the amber accent; other traffic stays dim so it shapes the
  * scene without competing. The trafficLight entry keeps the record total,
- * but its glyph is drawn from the housing and lamp colors above instead.
+ * but its glyph is drawn from its own housing and lamp colors instead (see
+ * the TrafficLightGlyph component).
  */
 export const KIND_COLORS: Record<PlacedKind, string> = {
   police: "#ff5a3c",
@@ -147,9 +132,6 @@ export const KIND_COLORS: Record<PlacedKind, string> = {
   motorcycle: "#ffb340",
   trafficLight: "#4ade40",
 };
-
-/** Base opacity of glyph bodies (fades multiply against it). */
-export const GLYPH_OPACITY = 0.92;
 
 /** Farthest the orientation rig may pan the camera left or right, radians. */
 export const RIG_YAW_CLAMP_RAD = 0.35;
