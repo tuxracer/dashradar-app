@@ -228,11 +228,20 @@ const SENTRY_SOURCE_MAPS_ENABLED: boolean = !!process.env.SENTRY_AUTH_TOKEN;
 
 /**
  * Upload source maps to Sentry so production (minified) stack traces resolve to
- * original source, and annotate React component names while at it. Runs only
- * when SENTRY_SOURCE_MAPS_ENABLED, and must come after every other plugin. The
- * org auth token embeds its own region (the org is in Sentry's EU region), so
- * no url is set here. The token is a secret read from the environment, never
- * committed.
+ * original source. Runs only when SENTRY_SOURCE_MAPS_ENABLED, and must come
+ * after every other plugin. The org auth token embeds its own region (the org
+ * is in Sentry's EU region), so no url is set here. The token is a secret read
+ * from the environment, never committed.
+ *
+ * reactComponentAnnotation must stay off. It stamps data-sentry-* attributes
+ * on JSX elements, and react-three-fiber reads dashed props as nested object
+ * paths (the same mechanism as material-opacity), so an annotated element
+ * inside the scene view's Canvas throws at mount and the scene renders black.
+ * Its ignoredComponents option does not help: it suppresses only each
+ * component's root annotation while nested elements keep theirs. The breakage
+ * exists only in builds where this token is set, so a local build looks fine
+ * while the deployed one is broken; re-enabling this means proving the scene
+ * view renders in a build made with SENTRY_AUTH_TOKEN present.
  */
 const sentrySourceMaps = (): Plugin[] =>
   SENTRY_SOURCE_MAPS_ENABLED
@@ -241,7 +250,6 @@ const sentrySourceMaps = (): Plugin[] =>
         project: "dashradar",
         authToken: process.env.SENTRY_AUTH_TOKEN,
         release: { name: SENTRY_RELEASE },
-        reactComponentAnnotation: { enabled: true },
         sourcemaps: { filesToDeleteAfterUpload: ["./dist/**/*.map"] },
       })
     : [];
