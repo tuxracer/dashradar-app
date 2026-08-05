@@ -285,14 +285,19 @@ describe("RadarDetectorScreen rAF loop", () => {
     ).toHaveAttribute("data-contact", "false");
   });
 
-  it("parks the rAF loop once the meter is idle", async () => {
-    beeperUpdate.mockClear();
+  // Idle scanning is the dominant state of a drive, so the screen must
+  // schedule no animation frames at all once its meter has settled. Counted
+  // off requestAnimationFrame rather than through the beeper, which runs its
+  // own loop and would go quiet whether or not the meter's did.
+  it("schedules no animation frames once the meter is idle", async () => {
+    const scheduled = vi.spyOn(window, "requestAnimationFrame");
     render(<RadarDetectorScreen confidence={0} audioEnabled={true} />);
-    // The loop always runs one tick to flush the initial state (which also
-    // feeds the beeper), then parks on the quiescent meter: no further ticks.
-    await waitFor(() => expect(beeperUpdate).toHaveBeenCalledTimes(1));
+    // Each loop runs one tick to flush its initial state, then parks.
+    await waitFor(() => expect(scheduled).toHaveBeenCalled());
     await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(beeperUpdate).toHaveBeenCalledTimes(1);
+    const settled = scheduled.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(scheduled.mock.calls.length).toBe(settled);
   });
 
   it("wakes the parked loop when a signal arrives", async () => {

@@ -6,10 +6,10 @@ import type { Group, Mesh, Object3D } from "three";
 import type { Track } from "@/context/DetectionContext";
 import type { Size } from "@/lib/detection";
 import { tracksSeenAt } from "@/lib/detectionTracker";
-import { createRadarBeeper } from "@/lib/radarAudio";
 import { placeTracks } from "@/lib/scenePlacement";
 import type { ScenePlacement } from "@/lib/scenePlacement";
 import { prefersReducedMotion } from "@/utils/prefersReducedMotion";
+import { useRadarBeeper } from "@/utils/useRadarBeeper";
 import {
   CAMERA_FAR_M,
   CAMERA_NEAR_M,
@@ -474,11 +474,10 @@ export const SceneView = ({
   const remountedRef = useRef(false);
   const lossTimerRef = useRef<number | undefined>(undefined);
   const onRenderFailureRef = useRef(onRenderFailure);
-  const confidenceRef = useRef(confidence);
-  const audioEnabledRef = useRef(audioEnabled);
-  // Restarts the beeper loop when it has parked itself on silence; a no-op
-  // while the loop is already running, so the mirror effects call it freely.
-  const wakeRef = useRef<() => void>(() => {});
+
+  // The beeper lives exactly as long as this view: leaving scene mode (or
+  // unmounting for any reason) tears the audio graph down.
+  useRadarBeeper(confidence, audioEnabled);
 
   // Read once at mount: flipping the OS setting mid-session re-evaluates on
   // the next mount, same as the intro scene.
@@ -542,54 +541,6 @@ export const SceneView = ({
       window.removeEventListener("unhandledrejection", handleRejection);
     };
   }, [debug]);
-
-  // Mirror the beeper's inputs into refs and wake its parked loop on change,
-  // the radar screen's pattern (refs may not be written during render).
-  useEffect(() => {
-    confidenceRef.current = confidence;
-    wakeRef.current();
-  }, [confidence]);
-
-  useEffect(() => {
-    audioEnabledRef.current = audioEnabled;
-    wakeRef.current();
-  }, [audioEnabled]);
-
-  // The beeper and its driver live exactly as long as this view. The loop
-  // exists because beep cadence is paced by repeated update calls at a steady
-  // level; it parks the moment it feeds silence (which also arms the beeper's
-  // own idle suspend) and the mirrors above wake it, so quiet scanning, the
-  // dominant state of a drive, schedules no frames.
-  useEffect(() => {
-    const beeper = createRadarBeeper();
-    let disposed = false;
-    let running = false;
-    let frame = 0;
-    const tick = (now: number) => {
-      const level = audioEnabledRef.current ? confidenceRef.current : 0;
-      beeper.update(level, now);
-      if (level === 0) {
-        running = false;
-        return;
-      }
-      frame = window.requestAnimationFrame(tick);
-    };
-    const wake = () => {
-      if (disposed || running) {
-        return;
-      }
-      running = true;
-      frame = window.requestAnimationFrame(tick);
-    };
-    wakeRef.current = wake;
-    wake();
-    return () => {
-      disposed = true;
-      window.cancelAnimationFrame(frame);
-      wakeRef.current = () => {};
-      beeper.dispose();
-    };
-  }, []);
 
   useEffect(
     () => () => {

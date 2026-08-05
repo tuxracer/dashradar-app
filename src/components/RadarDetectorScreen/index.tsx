@@ -1,7 +1,5 @@
 import { useEffect, useRef } from "react";
 import type { Contact } from "@/context/DetectionContext";
-import { createRadarBeeper } from "@/lib/radarAudio";
-import type { RadarBeeper } from "@/lib/radarAudio";
 import {
   initialMeterState,
   litSegments,
@@ -10,6 +8,7 @@ import {
   SEGMENT_COUNT,
   SIGNAL_HIGH_COLOR,
 } from "@/lib/radarSignal";
+import { useRadarBeeper } from "@/utils/useRadarBeeper";
 import {
   ARC_SWEEP_DEG,
   DIRECTION_DISPLAY,
@@ -112,12 +111,10 @@ export const RadarDetectorScreen = ({
   detectedLabel,
 }: RadarDetectorScreenProps) => {
   const confidenceRef = useRef(confidence);
-  const audioEnabledRef = useRef(audioEnabled);
   const contactRef = useRef(contact);
   const initializingRef = useRef(initializing);
   const rawConfidenceRef = useRef(rawConfidence);
   const detectedLabelRef = useRef(detectedLabel);
-  const beeperRef = useRef<RadarBeeper | undefined>(undefined);
   const meterRef = useRef(initialMeterState());
   const lastTimeRef = useRef<number | undefined>(undefined);
   const segmentRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -131,6 +128,12 @@ export const RadarDetectorScreen = ({
   // mirror effects can call it unconditionally on every prop change.
   const wakeRef = useRef<() => void>(() => {});
 
+  // The beeper lives exactly as long as this screen: leaving radar detector
+  // mode (or unmounting for any reason) tears the audio graph down. It is fed
+  // the raw signal rather than the peak-held meter level below, so the beeps
+  // cut off as soon as the detection is gone while the dial decays behind them.
+  useRadarBeeper(confidence, audioEnabled);
+
   // Refs may not be written during render; mirror the latest prop in via an
   // effect so the persistent rAF loop reads the current value without
   // re-subscribing. Each mirror also wakes the parked loop so the change is
@@ -139,11 +142,6 @@ export const RadarDetectorScreen = ({
     confidenceRef.current = confidence;
     wakeRef.current();
   }, [confidence]);
-
-  useEffect(() => {
-    audioEnabledRef.current = audioEnabled;
-    wakeRef.current();
-  }, [audioEnabled]);
 
   useEffect(() => {
     contactRef.current = contact;
@@ -185,17 +183,6 @@ export const RadarDetectorScreen = ({
     context.drawImage(contact.image, 0, 0);
   }, [contact]);
 
-  // The beeper lives exactly as long as this screen: leaving radar detector
-  // mode (or unmounting for any reason) tears the audio graph down.
-  useEffect(() => {
-    const beeper = createRadarBeeper();
-    beeperRef.current = beeper;
-    return () => {
-      beeper.dispose();
-      beeperRef.current = undefined;
-    };
-  }, []);
-
   useEffect(() => {
     let disposed = false;
     let running = false;
@@ -229,16 +216,6 @@ export const RadarDetectorScreen = ({
       );
       meterRef.current = state;
       const { level, hasSignal, contactShown } = display;
-
-      // Feed the audio the raw signal, not the peak-held meter level: the
-      // beeps stop the instant the detection is gone instead of winding down
-      // with the dial's decay tail. A disabled toggle feeds silence instead.
-      // Runs every awake tick, outside the changed-values gate, because the
-      // beep cadence is paced by repeated calls at a steady level.
-      beeperRef.current?.update(
-        audioEnabledRef.current ? confidenceRef.current : 0,
-        now,
-      );
 
       // The status word flips between INITIALIZING and SCANNING at a zero
       // meter, so the initializing flag gates the flush alongside the level.
