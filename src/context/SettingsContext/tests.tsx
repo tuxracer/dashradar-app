@@ -161,11 +161,13 @@ describe("SettingsContext", () => {
       developerOptions: false,
       showDebug: false,
       radarAudio: true,
+      viewMode: "radar",
       detectionImage: false,
       throttleInference: true,
       sceneChangeGate: true,
       zoomMode: "1x",
       confidenceThreshold: DEVELOPER_OPTIONS_OFF.confidenceThreshold,
+      sceneFov: DEVELOPER_OPTIONS_OFF.sceneFov,
       modelIds: [DEFAULT_MODEL.id],
       zoomIndicator: false,
       roundTripIndicator: false,
@@ -206,6 +208,24 @@ describe("SettingsContext", () => {
     expect(result.current.developerOptions).toBe(false);
     expect(result.current.radarAudio).toBe(false);
     expect(result.current.detectionImage).toBe(true);
+  });
+
+  // Driver-facing like radarAudio: the status-bar button is its only control,
+  // so it works with the master switch off.
+  it("setViewMode flips and persists the main view", () => {
+    const { result } = mount();
+    expect(result.current.viewMode).toBe("radar");
+    act(() => result.current.setViewMode("scene"));
+    expect(result.current.viewMode).toBe("scene");
+    expect(stored("viewMode")).toBe("scene");
+  });
+
+  it("snaps an off-degree value handed to setSceneFov", () => {
+    const { result } = mount();
+    act(() => result.current.toggleDeveloperOptions());
+    act(() => result.current.setSceneFov(72.6));
+    expect(result.current.sceneFov).toBe(73);
+    expect(stored("sceneFov")).toBe(73);
   });
 
   it("restores the stored developer options when developerOptions comes back on", () => {

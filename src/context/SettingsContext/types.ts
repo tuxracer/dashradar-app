@@ -1,4 +1,4 @@
-import type { SettingsSnapshot, ZoomMode } from "@/lib/settingsStore";
+import type { SettingsSnapshot, ViewMode, ZoomMode } from "@/lib/settingsStore";
 
 /**
  * The settings domain types live with the store (src/lib/settingsStore);
@@ -9,12 +9,15 @@ export type {
   PersistedSettings,
   Settings,
   SettingsSnapshot,
+  ViewMode,
   ZoomMode,
 } from "@/lib/settingsStore";
 export {
   isPersistedSettings,
+  isViewMode,
   isZoomMode,
   snapConfidence,
+  snapSceneFov,
 } from "@/lib/settingsStore";
 
 /**
@@ -31,6 +34,8 @@ export type SettingsContextValue = SettingsSnapshot & {
   toggleSceneChangeGate: () => void;
   /** Sets the zoom mode (1x or 2x). */
   setZoomMode: (mode: ZoomMode) => void;
+  /** Sets the main view (radar dial or 3D scene). */
+  setViewMode: (mode: ViewMode) => void;
   /**
    * Writes a model selection straight to localStorage and reports whether the
    * write landed. Deliberately synchronous: the caller reloads the page
@@ -40,6 +45,8 @@ export type SettingsContextValue = SettingsSnapshot & {
   commitModelIds: (ids: readonly string[]) => boolean;
   /** Sets the minimum-confidence level, snapping to the nearest allowed step. */
   setConfidenceThreshold: (level: number) => void;
+  /** Sets the scene field of view in degrees, snapped to the allowed range. */
+  setSceneFov: (deg: number) => void;
   toggleZoomIndicator: () => void;
   toggleRoundTripIndicator: () => void;
   toggleCameraPreview: () => void;

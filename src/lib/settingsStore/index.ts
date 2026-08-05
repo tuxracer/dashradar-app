@@ -12,7 +12,7 @@ import type {
   SettingsSnapshot,
   SettingsStore,
 } from "./types";
-import { isPersistedSettings, snapConfidence } from "./types";
+import { isPersistedSettings, snapConfidence, snapSceneFov } from "./types";
 
 export * from "./consts";
 export * from "./types";
@@ -70,6 +70,7 @@ export const loadSettings = (): Settings => {
     const settings: Settings = {
       ...merged,
       confidenceThreshold: snapConfidence(merged.confidenceThreshold),
+      sceneFov: snapSceneFov(merged.sceneFov),
     };
     return (settingsVersion ?? 0) < SETTINGS_VERSION
       ? clearLegacyDefaultOnOptions(settings)
@@ -117,6 +118,7 @@ export const createSettingsStore = (): SettingsStore => {
           sceneChangeGate: stored.sceneChangeGate,
           zoomMode: stored.zoomMode,
           confidenceThreshold: stored.confidenceThreshold,
+          sceneFov: stored.sceneFov,
           modelIds: stored.modelIds,
           zoomIndicator: stored.zoomIndicator,
           roundTripIndicator: stored.roundTripIndicator,
@@ -127,6 +129,7 @@ export const createSettingsStore = (): SettingsStore => {
       : DEVELOPER_OPTIONS_OFF),
     developerOptions: stored.developerOptions,
     radarAudio: stored.radarAudio,
+    viewMode: stored.viewMode,
     detectionImage: stored.detectionImage,
     settingsOpen,
   });
@@ -166,8 +169,14 @@ export const createSettingsStore = (): SettingsStore => {
     setZoomMode: (mode) => {
       update({ zoomMode: mode });
     },
+    setViewMode: (mode) => {
+      update({ viewMode: mode });
+    },
     setConfidenceThreshold: (level) => {
       update({ confidenceThreshold: snapConfidence(level) });
+    },
+    setSceneFov: (deg) => {
+      update({ sceneFov: snapSceneFov(deg) });
     },
     commitModelIds: (ids) => {
       const wrote = writeSettings({ ...persisted(), modelIds: ids });

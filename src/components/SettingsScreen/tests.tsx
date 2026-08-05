@@ -147,6 +147,7 @@ describe("SettingsScreen", () => {
     }
     expect(screen.queryByText("Zoom")).not.toBeInTheDocument();
     expect(screen.queryByText("Min confidence")).not.toBeInTheDocument();
+    expect(screen.queryByText("Scene FoV")).not.toBeInTheDocument();
     expect(screen.queryByTestId("open-model-screen")).toBeNull();
     // The two driver-facing rows are not developer rows and stay put.
     expect(screen.getByText("Audio alerts")).toBeInTheDocument();
@@ -160,6 +161,7 @@ describe("SettingsScreen", () => {
     }
     expect(screen.getByText("Zoom")).toBeInTheDocument();
     expect(screen.getByText("Min confidence")).toBeInTheDocument();
+    expect(screen.getByText("Scene FoV")).toBeInTheDocument();
   });
 
   it("closes on the close button", async () => {
@@ -204,6 +206,14 @@ describe("SettingsScreen", () => {
     );
     fireEvent.change(slider, { target: { value: "0.3" } });
     expect(stored("confidenceThreshold")).toBe(0.3);
+  });
+
+  it("persists a lens picked from the Scene FoV slider", async () => {
+    await renderOpenSettingsWithDeveloperOptions();
+    const slider = screen.getByRole("slider", { name: /scene fov/i });
+    expect(slider).toHaveValue(String(DEVELOPER_OPTIONS_OFF.sceneFov));
+    fireEvent.change(slider, { target: { value: "75" } });
+    expect(stored("sceneFov")).toBe(75);
   });
 
   it("opens the model screen from the developer row", async () => {

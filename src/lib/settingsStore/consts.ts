@@ -1,5 +1,6 @@
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 import { DEFAULT_MODEL } from "@/lib/detectionModels";
+import { SCENE_FOV_DEG_DEFAULT } from "@/lib/scenePlacement";
 import type { DeveloperOptions, Settings } from "./types";
 
 /** localStorage key holding the JSON-serialized Settings. */
@@ -25,7 +26,8 @@ export const CONFIDENCE_LEVELS = [
  * no zoom or round-trip pill, no camera preview, no detection view), the
  * thermal pacing floor and the scene-change gate in place, the full 1x scan,
  * the production confidence
- * floor, the percentage readout, and the shipping detection model. The floor is
+ * floor, the default lens FoV, the percentage readout, and the shipping
+ * detection model. The floor is
  * CONFIDENCE_THRESHOLD itself rather than a copy of its value, so the state
  * every driver runs in cannot quietly disagree with the one the detector
  * filters at. These are also the
@@ -38,6 +40,7 @@ export const DEVELOPER_OPTIONS_OFF: DeveloperOptions = {
   sceneChangeGate: true,
   zoomMode: "1x",
   confidenceThreshold: CONFIDENCE_THRESHOLD,
+  sceneFov: SCENE_FOV_DEG_DEFAULT,
   modelIds: [DEFAULT_MODEL.id],
   zoomIndicator: false,
   roundTripIndicator: false,
@@ -56,6 +59,7 @@ export const DEVELOPER_OPTIONS_OFF: DeveloperOptions = {
 export const DEFAULT_SETTINGS: Settings = {
   developerOptions: false,
   radarAudio: true,
+  viewMode: "radar",
   detectionImage: false,
   ...DEVELOPER_OPTIONS_OFF,
 };

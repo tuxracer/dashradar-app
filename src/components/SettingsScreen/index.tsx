@@ -7,6 +7,7 @@ import { useDetection } from "@/context/DetectionContext";
 import { useSettings } from "@/context/SettingsContext";
 import { modelRepoUrl, resolveModels } from "@/lib/detectionModels";
 import { resetAppData } from "@/lib/resetAppData";
+import { SCENE_FOV_DEG_MAX, SCENE_FOV_DEG_MIN } from "@/lib/scenePlacement";
 import { REPO_URL, RESET_CONFIRM_MESSAGE, ZOOM_MODE_OPTIONS } from "./consts";
 
 export * from "./consts";
@@ -52,8 +53,8 @@ const handleReset = () => {
  * options toggles, the development-only controls Developer options reveals
  * (Debug overlay, Zoom indicator, Round-trip, Raw confidence, Camera preview,
  * Detection view, Throttle inference,
- * Detection model, the segmented Zoom mode picker, Min confidence, Reset app
- * data), plus read-only Model and About rows.
+ * Detection model, the segmented Zoom mode picker, Min confidence, Scene FoV,
+ * Reset app data), plus read-only Model and About rows.
  * Detection model is the one row that leads somewhere: it opens ModelScreen in
  * place of this panel, which owns picking the model and applying the choice.
  * Closes on the large close button or Escape, and Escape backs out of the model
@@ -82,6 +83,8 @@ export const SettingsScreen = () => {
     modelIds,
     confidenceThreshold,
     setConfidenceThreshold,
+    sceneFov,
+    setSceneFov,
     zoomIndicator,
     toggleZoomIndicator,
     roundTripIndicator,
@@ -397,6 +400,34 @@ export const SettingsScreen = () => {
                   />
                   <span className="text-sm font-medium text-white/45">
                     Lowers the bar for what counts as a detection.
+                  </span>
+                </span>
+              </div>
+
+              <div className="flex min-h-16 items-center py-4">
+                <span className="flex flex-1 flex-col gap-2">
+                  <span className="flex items-center justify-between gap-6">
+                    <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                      Scene FoV
+                    </span>
+                    <span className="text-base font-semibold tabular-nums tracking-[0.12em] text-white/60">
+                      {`${sceneFov}°`}
+                    </span>
+                  </span>
+                  <input
+                    type="range"
+                    min={SCENE_FOV_DEG_MIN}
+                    max={SCENE_FOV_DEG_MAX}
+                    step={1}
+                    value={sceneFov}
+                    onChange={(event) =>
+                      setSceneFov(Number(event.target.value))
+                    }
+                    aria-label="Scene FoV"
+                    className="h-3 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-hud-amber"
+                  />
+                  <span className="text-sm font-medium text-white/45">
+                    Calibrates scene distances to the camera lens.
                   </span>
                 </span>
               </div>

@@ -1,5 +1,17 @@
-import { isArray, isBoolean, isNumber, isPlainObject, isString } from "remeda";
+import {
+  clamp,
+  isArray,
+  isBoolean,
+  isNumber,
+  isPlainObject,
+  isString,
+} from "remeda";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
+import {
+  SCENE_FOV_DEG_DEFAULT,
+  SCENE_FOV_DEG_MAX,
+  SCENE_FOV_DEG_MIN,
+} from "@/lib/scenePlacement";
 import { CONFIDENCE_LEVELS } from "./consts";
 
 /**
@@ -15,13 +27,25 @@ export const isZoomMode = (value: unknown): value is ZoomMode => {
   return isString(value) && ZOOM_MODES.includes(value as ZoomMode);
 };
 
+/**
+ * Main views the driver can put on the glass: the radar dial or the 3D scene.
+ */
+export type ViewMode = "radar" | "scene";
+
+const VIEW_MODES: readonly ViewMode[] = ["radar", "scene"];
+
+/** Validates a persisted or otherwise untrusted value as a ViewMode. */
+export const isViewMode = (value: unknown): value is ViewMode => {
+  return isString(value) && VIEW_MODES.includes(value as ViewMode);
+};
+
 /** User-controlled display options for the HUD. Serialized to localStorage. */
 export type Settings = {
   /**
    * Master switch for the development-only settings (showDebug,
-   * throttleInference, sceneChangeGate, zoomMode, confidenceThreshold, modelIds,
-   * zoomIndicator, roundTripIndicator, cameraPreview, detectionView,
-   * rawConfidence). Off by default. While it is off, SettingsProvider
+   * throttleInference, sceneChangeGate, zoomMode, confidenceThreshold,
+   * sceneFov, modelIds, zoomIndicator, roundTripIndicator, cameraPreview,
+   * detectionView, rawConfidence). Off by default. While it is off, SettingsProvider
    * reports each of those at its DEVELOPER_OPTIONS_OFF value no matter what is
    * stored, so a development tweak left enabled cannot alter a normal drive.
    * Their stored values survive, so turning this back on restores the tweaks
@@ -51,6 +75,11 @@ export type Settings = {
    * was detected is ever produced.
    */
   detectionImage: boolean;
+  /**
+   * Which main view the driver sees: the radar dial or the 3D scene. The
+   * status-bar view button is its only control; there is no settings row.
+   */
+  viewMode: ViewMode;
   /**
    * When false, the detection pump runs inference flat-out with no pacing
    * floor. A developer option, so it only takes effect while developerOptions
@@ -97,6 +126,14 @@ export type Settings = {
    * CONFIDENCE_LEVELS (0.1 to 0.9).
    */
   confidenceThreshold: number;
+  /**
+   * The camera's full-frame horizontal field of view in degrees, which
+   * calibrates how far away the scene view places what it detects. A developer
+   * option, so it only takes effect while developerOptions is on and reports
+   * SCENE_FOV_DEG_DEFAULT otherwise. Constrained to whole degrees in
+   * [SCENE_FOV_DEG_MIN, SCENE_FOV_DEG_MAX].
+   */
+  sceneFov: number;
   /**
    * When true, an amber pill on the status bar line shows the crop factor the
    * detector is scanning at. A developer option, so it only takes effect
@@ -166,6 +203,7 @@ export type DeveloperOptions = Pick<
   | "sceneChangeGate"
   | "zoomMode"
   | "confidenceThreshold"
+  | "sceneFov"
   | "modelIds"
   | "zoomIndicator"
   | "roundTripIndicator"
@@ -191,6 +229,7 @@ export type BooleanSettingKey = {
 export type SettingsSnapshot = DeveloperOptions & {
   developerOptions: boolean;
   radarAudio: boolean;
+  viewMode: ViewMode;
   detectionImage: boolean;
   /** Whether the full-screen settings panel is open. Ephemeral, not persisted. */
   settingsOpen: boolean;
@@ -210,8 +249,12 @@ export type SettingsStore = {
   toggle: (key: BooleanSettingKey) => void;
   /** Sets the zoom mode (1x or 2x). */
   setZoomMode: (mode: ZoomMode) => void;
+  /** Sets the main view (radar dial or 3D scene). */
+  setViewMode: (mode: ViewMode) => void;
   /** Sets the minimum-confidence level, snapping to the nearest allowed step. */
   setConfidenceThreshold: (level: number) => void;
+  /** Sets the scene field of view in degrees, snapped to the allowed range. */
+  setSceneFov: (deg: number) => void;
   /**
    * Writes a model selection straight to localStorage and reports whether the
    * write landed. Deliberately synchronous: the caller reloads the page
@@ -243,12 +286,14 @@ export const isPersistedSettings = (
     (value.showDebug === undefined || isBoolean(value.showDebug)) &&
     (value.radarAudio === undefined || isBoolean(value.radarAudio)) &&
     (value.detectionImage === undefined || isBoolean(value.detectionImage)) &&
+    (value.viewMode === undefined || isViewMode(value.viewMode)) &&
     (value.throttleInference === undefined ||
       isBoolean(value.throttleInference)) &&
     (value.sceneChangeGate === undefined || isBoolean(value.sceneChangeGate)) &&
     (value.zoomMode === undefined || isZoomMode(value.zoomMode)) &&
     (value.confidenceThreshold === undefined ||
       isNumber(value.confidenceThreshold)) &&
+    (value.sceneFov === undefined || isNumber(value.sceneFov)) &&
     (value.modelIds === undefined ||
       (isArray(value.modelIds) && value.modelIds.every(isString))) &&
     (value.zoomIndicator === undefined || isBoolean(value.zoomIndicator)) &&
@@ -273,4 +318,20 @@ export const snapConfidence = (value: number): number => {
   return CONFIDENCE_LEVELS.reduce((best, level) =>
     Math.abs(level - value) < Math.abs(best - value) ? level : best,
   );
+};
+
+/**
+ * Normalizes any number to a whole degree inside the scene FoV range. A
+ * non-finite input (NaN, Infinity) resolves to SCENE_FOV_DEG_DEFAULT, so a
+ * corrupt stored value lands on the lens a normal drive assumes instead of an
+ * arbitrary end of the range.
+ */
+export const snapSceneFov = (value: number): number => {
+  if (!Number.isFinite(value)) {
+    return SCENE_FOV_DEG_DEFAULT;
+  }
+  return clamp(Math.round(value), {
+    min: SCENE_FOV_DEG_MIN,
+    max: SCENE_FOV_DEG_MAX,
+  });
 };
