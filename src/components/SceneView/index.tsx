@@ -30,7 +30,7 @@ import {
   TEST_PLACEMENTS,
   TWEEN_MS,
 } from "./consts";
-import { EgoMarker, SceneGlyph } from "./glyphs";
+import { SceneGlyph } from "./glyphs";
 
 export * from "./consts";
 
@@ -638,7 +638,6 @@ export const SceneView = ({
             material-transparent
             material-opacity={GRID_OPACITY}
           />
-          <EgoMarker />
           <SceneGlyphs placements={placements} reducedMotion={reducedMotion} />
           {debug && <DebugFrameProbe target={framesSpanRef} />}
         </Canvas>

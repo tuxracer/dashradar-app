@@ -92,9 +92,6 @@ export const DPR_MAX = 1.5;
  */
 export const CONTEXT_RESTORE_TIMEOUT_MS = 4_000;
 
-/** Scene color of the ego marker and glyph accents (the HUD amber). */
-export const EGO_COLOR = "#ffb340";
-
 /** Scene backdrop and fog color (the app surface color). */
 export const SURFACE_COLOR = "#0b0a10";
 

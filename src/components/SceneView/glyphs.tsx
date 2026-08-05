@@ -1,12 +1,6 @@
-import {
-  BoxGeometry,
-  ConeGeometry,
-  CylinderGeometry,
-  SphereGeometry,
-} from "three";
+import { BoxGeometry, CylinderGeometry, SphereGeometry } from "three";
 import type { PlacedKind } from "@/lib/scenePlacement";
 import {
-  EGO_COLOR,
   GLYPH_OPACITY,
   KIND_COLORS,
   TRAFFIC_LIGHT_HOUSING_COLOR,
@@ -23,7 +17,6 @@ import {
 const UNIT_BOX = new BoxGeometry(1, 1, 1);
 const UNIT_CYLINDER = new CylinderGeometry(0.5, 0.5, 1, 10);
 const UNIT_SPHERE = new SphereGeometry(0.5, 10, 8);
-const UNIT_PYRAMID = new ConeGeometry(0.5, 1, 4);
 
 /** One box of a glyph: position and scale in meters, sharing UNIT_BOX. */
 const GlyphBox = ({
@@ -171,23 +164,3 @@ export const SceneGlyph = ({
       return <TrafficLightGlyph elevationM={elevationM} />;
   }
 };
-
-/**
- * The ego marker: a flat four-sided pyramid at the origin pointing ahead
- * (negative z), standing in for the phone's own car.
- */
-export const EgoMarker = () => (
-  <mesh
-    geometry={UNIT_PYRAMID}
-    position={[0, 0.12, 0]}
-    rotation={[-Math.PI / 2, 0, 0]}
-    scale={[1.1, 2, 0.24]}
-  >
-    <meshBasicMaterial
-      color={EGO_COLOR}
-      transparent
-      opacity={GLYPH_OPACITY}
-      userData={{ baseOpacity: GLYPH_OPACITY }}
-    />
-  </mesh>
-);
