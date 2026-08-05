@@ -122,6 +122,20 @@ export const SURFACE_COLOR = "#0b0a10";
 /** Grid line color, a dim amber matching the radar backdrop's grid. */
 export const GRID_COLOR = "#8a6a33";
 
+/**
+ * Tire color, shared by every vehicle glyph so a truck's wheels read as the
+ * same object as a car's. Dark enough to separate them from any body color,
+ * but deliberately well clear of the backdrop: a true black would sink into it
+ * and leave the bodies looking like they float.
+ */
+export const TIRE_COLOR = "#3b3946";
+
+/**
+ * Window-glass color, shared by every vehicle glyph. Always drawn against a
+ * body color rather than the backdrop, so it can go darker than the tires.
+ */
+export const GLASS_COLOR = "#23222c";
+
 /** Farthest the orientation rig may pan the camera left or right, radians. */
 export const RIG_YAW_CLAMP_RAD = 0.35;
 
@@ -165,5 +179,5 @@ export const TEST_PLACEMENTS: readonly ScenePlacement[] = [
   test(-5, "person", 2, 12),
   test(-6, "bicycle", -2.5, 16),
   test(-7, "motorcycle", 5.5, 26),
-  test(-8, "trafficLight", 0, 30, 4.5),
+  test(-8, "trafficLight", 0, 26, 4.5),
 ];
