@@ -19,6 +19,7 @@ So one of the challenges this app takes on is doing the detection on-device: in 
 - **Fully on-device**: inference runs in the browser through onnxruntime-web on WebGPU, finishing each scan in under a second. Devices without WebGPU are told so up front instead of handed a detector too slow to be useful.
 - **Offline PWA**: install it to the home screen and it works with no connection after the first launch.
 - **Screen wake lock** so the phone doesn't sleep mid-drive.
+- **Runs on a recorded drive too**: drop a video file onto the window, or pick one in settings, and the detector scans that instead of the camera. Handy for trying it without leaving the desk.
 
 ## Getting started
 

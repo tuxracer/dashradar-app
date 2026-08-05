@@ -23,9 +23,15 @@ import { SceneView } from "@/components/SceneView";
 import { SettingsScreen } from "@/components/SettingsScreen";
 import { StatusBar } from "@/components/StatusBar";
 import { UnsupportedScreen } from "@/components/UnsupportedScreen";
+import { VideoDropTarget } from "@/components/VideoDropTarget";
+import { VideoFileView } from "@/components/VideoFileView";
 import { ZoomIndicator } from "@/components/ZoomIndicator";
 import { DetectionProvider, useDetection } from "@/context/DetectionContext";
 import { SettingsProvider, useSettings } from "@/context/SettingsContext";
+import {
+  useVideoSource,
+  VideoSourceProvider,
+} from "@/context/VideoSourceContext";
 import type { CameraError, CameraFeedEvent } from "@/lib/camera";
 import type { Size } from "@/lib/detection";
 import { DEFAULT_MODEL } from "@/lib/detectionModels";
@@ -35,6 +41,7 @@ import {
   UPDATE_PENDING_TIMEOUT_MS,
   waitForUpdateSettled,
 } from "@/lib/serviceWorker";
+import type { VideoFileFeedEvent } from "@/lib/videoFileFeed";
 import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 
 const useViewportSize = (): Size => {
@@ -82,6 +89,11 @@ const RadarScreen = () => {
     showDebug,
     commitModelIds,
   } = useSettings();
+  // A dropped or picked clip outranks every screen below that exists because
+  // of the camera. No check on it in the initializers, though: a session
+  // always starts on the camera, since both ways to reach a file need the app
+  // running first.
+  const { source, feedId, clearVideoFile } = useVideoSource();
   const [showIntro, setShowIntro] = useState(shouldShowIntro);
   // The in-app permission ask sits between the intro and the first
   // getUserMedia call, so the browser's own prompt never lands unexplained.
@@ -89,12 +101,37 @@ const RadarScreen = () => {
     shouldShowCameraPrompt,
   );
   const [cameraPromptDeclined, setCameraPromptDeclined] = useState(false);
-  const [cameraError, setCameraError] = useState<CameraError>();
   const [videoSize, setVideoSize] = useState<Size>();
-  // The camera's video element, kept so the developer camera preview can play
-  // the same MediaStream. Refreshed on every stream (re)start.
-  const [cameraVideo, setCameraVideo] = useState<HTMLVideoElement>();
   const viewportSize = useViewportSize();
+
+  // Both of these belong to one feed rather than to the session, so both are
+  // stamped with the feed that produced them and read back only while that
+  // feed is still the one on screen. The camera failure is why: a clip
+  // standing in for a camera that would not open unmounts CameraView, and
+  // clearing the clip mounts a fresh one whose getUserMedia call has to get
+  // to answer for itself. Carrying the old refusal over would put the error
+  // screen back up without ever asking the camera again.
+  const [feedFailure, setFeedFailure] = useState<{
+    feedId: number;
+    error: CameraError;
+  }>();
+  const cameraError =
+    feedFailure?.feedId === feedId ? feedFailure.error : undefined;
+  // The element the detector is capturing from, kept so the developer camera
+  // preview can mirror it.
+  const [feedElement, setFeedElement] = useState<{
+    feedId: number;
+    video: HTMLVideoElement;
+  }>();
+  const feedVideo =
+    feedElement?.feedId === feedId ? feedElement.video : undefined;
+
+  const handleCameraError = useCallback(
+    (error: CameraError) => {
+      setFeedFailure({ feedId, error });
+    },
+    [feedId],
+  );
 
   // iOS forgets camera permission between launches of an installed web app,
   // so every launch re-prompts. When an app update is found at launch, the
@@ -134,18 +171,21 @@ const RadarScreen = () => {
     setVideoSize({ width: video.videoWidth, height: video.videoHeight });
   }, []);
 
-  const handleCameraEvent = useCallback(
-    (event: CameraFeedEvent) => {
+  // Both feeds report the same events, so one handler covers whichever of them
+  // is on: the pump only ever learns that some element is live and how big its
+  // frames are.
+  const handleFeedEvent = useCallback(
+    (event: CameraFeedEvent | VideoFileFeedEvent) => {
       updateVideoSize(event.video);
       if (event.type === "active") {
-        setCameraVideo(event.video);
+        setFeedElement({ feedId, video: event.video });
         attachVideo(event.video);
       }
     },
-    [attachVideo, updateVideoSize],
+    [attachVideo, feedId, updateVideoSize],
   );
 
-  if (showIntro) {
+  if (showIntro && !source) {
     return (
       <IntroScreen
         onStart={() => {
@@ -171,10 +211,10 @@ const RadarScreen = () => {
   }
   // Declining the in-app permission ask lands on the same screen as a real
   // browser-level denial; its reload button restarts the flow at the ask.
-  if (cameraPromptDeclined) {
+  if (cameraPromptDeclined && !source) {
     return <ErrorScreen code="PERMISSION_DENIED" />;
   }
-  if (showCameraPrompt) {
+  if (showCameraPrompt && !source) {
     return (
       <CameraPermissionScreen
         onAllow={() => {
@@ -189,7 +229,7 @@ const RadarScreen = () => {
       />
     );
   }
-  if (cameraError) {
+  if (cameraError && !source) {
     return <ErrorScreen code={cameraError.code} />;
   }
   if (status === "error" && error) {
@@ -229,18 +269,34 @@ const RadarScreen = () => {
   return (
     <main className="fixed inset-0 bg-surface">
       {!detectionView && !sceneMode && <RadarBackdrop />}
-      {/* Held back until the model is ready (see modelLoading above) and the
-          launch update check settles (see updateSettled above). The "ready"
-          handler parks at status "ready" when no camera has started, and this
-          mount's start() is what advances it to "running", so the ordering
-          has no deadlock. A worker recycle never returns status to
-          "loading-model", so it cannot tear the camera back down mid-drive. */}
-      {!modelLoading && updateSettled && (
-        <CameraView
-          visible={detectionView}
-          onEvent={handleCameraEvent}
-          onError={setCameraError}
+      {source ? (
+        // Not held back the way the camera below is: that gate is about the
+        // permission prompt and the buffers a live 1024px stream holds through
+        // the model's compile, and a local file the user just handed over has
+        // neither. Gating it would also strand the sessions this feed exists
+        // for, the ones with no camera to fall back to.
+        <VideoFileView
+          key={source.url}
+          src={source.url}
+          fullScreen={detectionView}
+          onEvent={handleFeedEvent}
+          onError={clearVideoFile}
         />
+      ) : (
+        /* Held back until the model is ready (see modelLoading above) and the
+           launch update check settles (see updateSettled above). The "ready"
+           handler parks at status "ready" when no camera has started, and this
+           mount's start() is what advances it to "running", so the ordering
+           has no deadlock. A worker recycle never returns status to
+           "loading-model", so it cannot tear the camera back down mid-drive. */
+        !modelLoading &&
+        updateSettled && (
+          <CameraView
+            visible={detectionView}
+            onEvent={handleFeedEvent}
+            onError={handleCameraError}
+          />
+        )
       )}
       {/* In the radar-meter branch below, the meter mounts immediately so the
           first paint past the permission flow is the instrument reading
@@ -292,9 +348,9 @@ const RadarScreen = () => {
       {/* Not in the detection view: the full feed is already on screen behind
           it, so the inset would be a second live video surface cropping from
           the one underneath it. */}
-      {!modelLoading && cameraPreview && !detectionView && cameraVideo && (
+      {!modelLoading && cameraPreview && !detectionView && feedVideo && (
         <CameraPreview
-          source={cameraVideo}
+          source={feedVideo}
           zoom={zoomMode === "2x" ? ZOOM_2X : ZOOM_OFF}
         />
       )}
@@ -329,7 +385,13 @@ const App = () => {
   return (
     <SettingsProvider>
       <DetectionProvider>
-        <RadarScreen />
+        {/* VideoSourceProvider sits inside DetectionProvider, which it
+            consumes: a feed swap detaches the engine's video before the
+            element it was capturing from unmounts. */}
+        <VideoSourceProvider>
+          <VideoDropTarget />
+          <RadarScreen />
+        </VideoSourceProvider>
       </DetectionProvider>
     </SettingsProvider>
   );

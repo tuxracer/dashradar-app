@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { track } from "@vercel/analytics";
 import { ChevronRight, X } from "lucide-react";
 import { ModelScreen } from "@/components/ModelScreen";
 import { ShareCard } from "@/components/ShareCard";
 import { useDetection } from "@/context/DetectionContext";
 import { useSettings } from "@/context/SettingsContext";
+import { useVideoSource } from "@/context/VideoSourceContext";
 import { modelRepoUrl, resolveModels } from "@/lib/detectionModels";
 import { resetAppData } from "@/lib/resetAppData";
 import { SCENE_FOV_DEG_MAX, SCENE_FOV_DEG_MIN } from "@/lib/scenePlacement";
@@ -54,7 +55,8 @@ const handleReset = () => {
  * (Debug overlay, Zoom indicator, Round-trip, Raw confidence, Camera preview,
  * Detection view, Throttle inference,
  * Detection model, the segmented Zoom mode picker, Min confidence, Scene FoV,
- * Scene test objects, Reset app data), plus read-only Model and About rows.
+ * Scene test objects, Reset app data), the Video file row, plus read-only
+ * Model and About rows.
  * Detection model is the one row that leads somewhere: it opens ModelScreen in
  * place of this panel, which owns picking the model and applying the choice.
  * Closes on the large close button or Escape, and Escape backs out of the model
@@ -99,6 +101,8 @@ export const SettingsScreen = () => {
     toggleRawConfidence,
   } = useSettings();
   const { activeModel } = useDetection();
+  const { source, setVideoFile, clearVideoFile } = useVideoSource();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [modelScreenOpen, setModelScreenOpen] = useState(false);
 
   useEffect(() => {
@@ -472,6 +476,60 @@ export const SettingsScreen = () => {
               </div>
             </>
           )}
+
+          {/* Outside the developer block: dropping a clip onto the window
+              needs no developer options, so the row holding the only CLEAR
+              button cannot need them either, or a drop with the master switch
+              off would strand the session on canned footage with a reload as
+              the only exit. It is also the whole feature on a phone, which
+              has no drag gesture to offer. */}
+          <div className="flex min-h-16 items-center justify-between gap-6 py-4">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex flex-1 flex-col gap-1 text-left"
+            >
+              <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                Video file
+              </span>
+              <span className="text-sm font-medium text-white/45">
+                Scans a local video instead of the camera.
+              </span>
+            </button>
+            <span className="flex items-center gap-4">
+              <span
+                data-testid="video-file-value"
+                className="max-w-40 truncate text-sm font-medium text-white/70"
+              >
+                {source ? source.name : "Camera"}
+              </span>
+              {source && (
+                <button
+                  type="button"
+                  onClick={clearVideoFile}
+                  className="min-h-12 shrink-0 rounded-lg border border-white/25 px-4 text-sm font-semibold tracking-[0.06em] text-white/90"
+                >
+                  CLEAR
+                </button>
+              )}
+            </span>
+            <input
+              ref={fileInputRef}
+              data-testid="video-file-input"
+              type="file"
+              accept="video/*"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  setVideoFile(file);
+                }
+                // Clear the input so picking the same file twice still fires
+                // change.
+                event.target.value = "";
+              }}
+            />
+          </div>
 
           <a
             href={modelRepoUrl(activeModel)}

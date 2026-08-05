@@ -1,5 +1,21 @@
 import { useEffect, useRef } from "react";
+import { isFunction } from "remeda";
 import type { ZoomLevel } from "@/workers/detection/types";
+
+/**
+ * A video element that can mirror its playback into a MediaStream.
+ * captureStream lives on HTMLMediaElement in Chromium but not in TypeScript's
+ * DOM lib, and not in WebKit at all, so the video file feed narrows to it
+ * through this guard.
+ */
+type CaptureStreamVideo = HTMLVideoElement & {
+  captureStream: () => MediaStream;
+};
+
+const hasCaptureStream = (
+  video: HTMLVideoElement,
+): video is CaptureStreamVideo =>
+  isFunction((video as Partial<CaptureStreamVideo>).captureStream);
 
 /** Props for CameraPreview. */
 type CameraPreviewProps = {
@@ -28,15 +44,22 @@ type CameraPreviewProps = {
  * landscape, mirroring the contact card on the right, and top center under
  * the status-bar pills in portrait, clear of the portrait contact card at the
  * bottom. pointer-events are disabled so the meter underneath stays
- * interactive. The preview plays the source element's own MediaStream, so the
- * capture path is untouched.
+ * interactive. On the camera path the preview plays the source's own
+ * MediaStream; with a video file as the feed the source plays a file instead
+ * of a stream, so the preview mirrors it via captureStream. That is Chromium
+ * only: on iOS Safari captureStream does not exist, the null guard below
+ * leaves the preview without a stream, and it renders an empty box. The file
+ * player shows the whole clip anyway, so the preview still earns its place on
+ * the browsers where it works by showing the crop.
  */
 export const CameraPreview = ({ source, zoom }: CameraPreviewProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     const video = videoRef.current;
-    const stream = source.srcObject;
+    const stream =
+      source.srcObject ??
+      (hasCaptureStream(source) ? source.captureStream() : null);
     if (!video || !stream) {
       return;
     }

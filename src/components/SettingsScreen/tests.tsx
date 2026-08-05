@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsButton } from "@/components/SettingsButton";
 import { SettingsScreen } from "@/components/SettingsScreen";
 import {
@@ -9,11 +9,23 @@ import {
   STORAGE_KEY,
 } from "@/context/SettingsContext";
 import type { PersistedSettings } from "@/context/SettingsContext";
+import { VideoSourceProvider } from "@/context/VideoSourceContext";
 import { DEFAULT_MODEL } from "@/lib/detectionModels";
 
+/**
+ * The panel reads the active model from DetectionContext and the video source
+ * provider detaches the engine's video on a swap; neither needs a worker here.
+ */
+const detachVideo = vi.fn();
 vi.mock("@/context/DetectionContext", () => ({
-  useDetection: () => ({ activeModel: DEFAULT_MODEL }),
+  useDetection: () => ({ activeModel: DEFAULT_MODEL, detachVideo }),
 }));
+
+beforeEach(() => {
+  // jsdom implements neither, and a picked clip is played from an object URL.
+  URL.createObjectURL = vi.fn(() => "blob:mock/clip");
+  URL.revokeObjectURL = vi.fn();
+});
 
 afterEach(() => {
   window.localStorage.clear();
@@ -27,8 +39,10 @@ const stored = <K extends keyof PersistedSettings>(key: K) =>
 const renderScreen = () =>
   render(
     <SettingsProvider>
-      <SettingsButton />
-      <SettingsScreen />
+      <VideoSourceProvider>
+        <SettingsButton />
+        <SettingsScreen />
+      </VideoSourceProvider>
     </SettingsProvider>,
   );
 
@@ -155,9 +169,12 @@ describe("SettingsScreen", () => {
     expect(screen.queryByText("Min confidence")).not.toBeInTheDocument();
     expect(screen.queryByText("Scene FoV")).not.toBeInTheDocument();
     expect(screen.queryByTestId("open-model-screen")).toBeNull();
-    // The two driver-facing rows are not developer rows and stay put.
+    // The driver-facing rows are not developer rows and stay put. Video file
+    // is among them: a clip can arrive by drop with the master switch off, and
+    // this row holds the only way back to the camera.
     expect(screen.getByText("Audio alerts")).toBeInTheDocument();
     expect(screen.getByText("Detection image")).toBeInTheDocument();
+    expect(screen.getByText("Video file")).toBeInTheDocument();
   });
 
   it("reveals every developer row once developer options are on", async () => {
@@ -226,5 +243,26 @@ describe("SettingsScreen", () => {
     const user = await renderOpenSettingsWithDeveloperOptions();
     await user.click(screen.getByTestId("open-model-screen"));
     expect(screen.getByTestId("model-back")).toBeInTheDocument();
+  });
+
+  it("names the camera as the feed until a clip is picked", async () => {
+    await renderOpenSettings();
+    expect(screen.getByTestId("video-file-value")).toHaveTextContent("Camera");
+    expect(
+      screen.queryByRole("button", { name: "CLEAR" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("scans a picked clip and names it, with a way back to the camera", async () => {
+    const user = await renderOpenSettings();
+    await user.upload(
+      screen.getByTestId("video-file-input"),
+      new File(["x"], "drive.mp4", { type: "video/mp4" }),
+    );
+    expect(screen.getByTestId("video-file-value")).toHaveTextContent(
+      "drive.mp4",
+    );
+    await user.click(screen.getByRole("button", { name: "CLEAR" }));
+    expect(screen.getByTestId("video-file-value")).toHaveTextContent("Camera");
   });
 });

@@ -8,7 +8,27 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
 import { STORAGE_KEY } from "@/context/SettingsContext";
+import type { VideoSourceContextValue } from "@/context/VideoSourceContext";
 import { STORED_MODELS_KEY } from "@/lib/detectionModels";
+
+/**
+ * The live VideoSourceContext value, published by the passthrough hook below
+ * so a test can clear a clip the way the settings panel's CLEAR button does.
+ * The provider itself stays real: only the hook is wrapped.
+ */
+let videoSource: VideoSourceContextValue;
+
+vi.mock("@/context/VideoSourceContext", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/context/VideoSourceContext")>();
+  return {
+    ...actual,
+    useVideoSource: () => {
+      videoSource = actual.useVideoSource();
+      return videoSource;
+    },
+  };
+});
 
 afterEach(() => {
   workerOnMessage = null;
@@ -18,9 +38,14 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-  // jsdom has no media playback at all; without this the camera feed logs to
-  // the console on its first play() attempt.
+  // jsdom implements neither, and a dropped clip is played from an object URL.
+  URL.createObjectURL = vi.fn(() => "blob:mock/clip");
+  URL.revokeObjectURL = vi.fn();
+  // jsdom has no media playback at all; without these both feeds log to the
+  // console as they start and stop.
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
 });
 
 /**
@@ -43,10 +68,9 @@ class FakeWorker {
 }
 
 /**
- * Drives the worker to ready. This is the edge that starts a dropped clip
- * playing, and it is also the precondition for the camera existing at all: the
- * app holds getUserMedia back until the model is loaded and warmed, so no
- * camera-view element is in the tree before this resolves.
+ * Drives the worker to ready. This is the precondition for the camera existing
+ * at all: the app holds getUserMedia back until the model is loaded and
+ * warmed, so no camera-view element is in the tree before this resolves.
  */
 const reachModelReady = async () => {
   await waitFor(() => expect(workerOnMessage).not.toBeNull());
@@ -60,6 +84,22 @@ const grantedCamera = () =>
   Promise.resolve({
     getTracks: () => [{ stop: () => {} }],
   } as unknown as MediaStream);
+
+/** getUserMedia stand-in rejecting the way a denied browser prompt does. */
+const deniedCamera = () =>
+  Promise.reject(new DOMException("denied", "NotAllowedError"));
+
+/** getUserMedia stand-in that denies the first ask and grants every later one. */
+const deniedThenGrantedCamera = () => {
+  let asked = false;
+  return vi.fn(() => {
+    if (asked) {
+      return grantedCamera();
+    }
+    asked = true;
+    return deniedCamera();
+  });
+};
 
 /**
  * Stubs the two globals the app reaches for on startup. Omitting the camera
@@ -78,6 +118,14 @@ const stubBrowser = (getUserMedia?: () => Promise<MediaStream>) => {
 const acceptFirstRunScreens = () => {
   fireEvent.click(screen.getByRole("button", { name: "START" }));
   fireEvent.click(screen.getByRole("button", { name: "ALLOW CAMERA" }));
+};
+
+/** Dispatches a window drop carrying a single video file, as a drag does. */
+const dropClipOnWindow = () => {
+  const file = new File(["x"], "clip.mp4", { type: "video/mp4" });
+  const event = new Event("drop", { cancelable: true });
+  Object.defineProperty(event, "dataTransfer", { value: { files: [file] } });
+  window.dispatchEvent(event);
 };
 
 describe("App", () => {
@@ -220,6 +268,87 @@ describe("App", () => {
     expect(
       screen.queryByRole("button", { name: "ALLOW CAMERA" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("scans a dropped clip instead of the camera", async () => {
+    stubBrowser(grantedCamera);
+    render(<App />);
+    acceptFirstRunScreens();
+    await reachModelReady();
+    await screen.findByTestId("camera-view");
+    act(() => dropClipOnWindow());
+    expect(await screen.findByTestId("video-file-view")).toBeInTheDocument();
+    expect(screen.queryByTestId("camera-view")).not.toBeInTheDocument();
+  });
+
+  it("plays a clip dropped before the model is ready", async () => {
+    stubBrowser(grantedCamera);
+    render(<App />);
+    acceptFirstRunScreens();
+    // The camera is held back until the model is warm, but a clip is not: the
+    // gate is about the permission prompt and the buffers a live stream holds
+    // through the compile, and a local file has neither.
+    act(() => dropClipOnWindow());
+    expect(await screen.findByTestId("video-file-view")).toBeInTheDocument();
+  });
+
+  it("returns to the camera when the clip is cleared", async () => {
+    stubBrowser(grantedCamera);
+    render(<App />);
+    acceptFirstRunScreens();
+    await reachModelReady();
+    act(() => dropClipOnWindow());
+    await screen.findByTestId("video-file-view");
+    act(() => videoSource.clearVideoFile());
+    expect(await screen.findByTestId("camera-view")).toBeInTheDocument();
+    expect(screen.queryByTestId("video-file-view")).not.toBeInTheDocument();
+  });
+
+  it("skips the camera error screen while a clip is playing", async () => {
+    stubBrowser(deniedCamera);
+    render(<App />);
+    acceptFirstRunScreens();
+    await reachModelReady();
+    await screen.findByText(/camera access needed/i);
+    act(() => dropClipOnWindow());
+    expect(await screen.findByTestId("video-file-view")).toBeInTheDocument();
+  });
+
+  it("asks the camera again after a clip stood in for a failed one", async () => {
+    const getUserMedia = deniedThenGrantedCamera();
+    stubBrowser(getUserMedia);
+    render(<App />);
+    acceptFirstRunScreens();
+    await reachModelReady();
+    await screen.findByText(/camera access needed/i);
+    act(() => dropClipOnWindow());
+    await screen.findByTestId("video-file-view");
+    act(() => videoSource.clearVideoFile());
+    // The refusal belonged to the camera session the clip replaced. Carrying
+    // it over would put the error screen back without ever asking again.
+    expect(await screen.findByTestId("camera-view")).toBeInTheDocument();
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+  });
+
+  // A video/* file the browser cannot decode (ProRes .mov, H.265 .mp4, .mkv)
+  // passes the drop filter, and the pump would then wait forever on a frame
+  // callback that never fires while the meter reads SCANNING.
+  it("returns to the camera when the dropped clip cannot be decoded", async () => {
+    stubBrowser(grantedCamera);
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(<App />);
+    acceptFirstRunScreens();
+    await reachModelReady();
+    act(() => dropClipOnWindow());
+    const player = await screen.findByTestId("video-file-view");
+
+    act(() => {
+      fireEvent.error(player);
+    });
+
+    expect(await screen.findByTestId("camera-view")).toBeInTheDocument();
+    expect(screen.queryByTestId("video-file-view")).not.toBeInTheDocument();
+    expect(logged).toHaveBeenCalled();
   });
 
   it("swaps the meter for the detection view when the setting is on", async () => {
