@@ -3128,37 +3128,6 @@ describe("the scene-change gate", () => {
     );
   });
 
-  it("publishes a scan heartbeat on skips and results alike, so the sweep keeps stepping", async () => {
-    // The sweep steps on completed scans, and the pump defines a gate skip as
-    // a completed scan. If skips published no heartbeat, a session parked at
-    // a light would freeze the sweep for up to SCENE_GATE_MAX_SKIP_MS while
-    // the detector is perfectly healthy, which is exactly the
-    // looks-dead-while-working presentation the gate must never produce.
-    const BeatProbe = () => {
-      const { scanCompletedAt } = useDetection();
-      return <span data-testid="beat">{scanCompletedAt ?? "none"}</span>;
-    };
-    const worker = renderWithProvider(
-      <>
-        <BeatProbe />
-        <StartOnReady />
-      </>,
-    );
-    await startScanning(worker);
-    expect(screen.getByTestId("beat").textContent).toBe("none");
-    await skipAndAdvance(worker);
-    const afterSkip = screen.getByTestId("beat").textContent;
-    expect(afterSkip).not.toBe("none");
-    act(() => {
-      worker.emit({
-        type: "detections",
-        detections: [],
-        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
-      });
-    });
-    expect(screen.getByTestId("beat").textContent).not.toBe(afterSkip);
-  });
-
   it("keeps pumping after a skip instead of waiting on a frame already answered", async () => {
     // A skip is a reply, so the pump has to treat it as one. If it waited for a
     // detections message that is never coming, the reply watchdog would recycle

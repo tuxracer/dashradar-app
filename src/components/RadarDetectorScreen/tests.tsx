@@ -1,9 +1,8 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CONTACT_THRESHOLD,
   RadarDetectorScreen,
-  SWEEP_IDLE_HIDE_MS,
 } from "@/components/RadarDetectorScreen";
 import type { Contact } from "@/context/DetectionContext";
 import { isAudible } from "@/lib/radarAudio";
@@ -312,91 +311,23 @@ describe("RadarDetectorScreen rAF loop", () => {
 });
 
 describe("RadarDetectorScreen scan sweep", () => {
-  beforeEach(() => {
-    // Only the timers: the meter's rAF loop and its performance.now clock are
-    // not what these tests drive, and faking them would stall it mid-render.
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.restoreAllMocks();
-  });
-
-  /** Whether the wedge is on screen and turning. */
-  const sweeping = (): boolean => {
-    const wedge = screen.getByTestId("sweep-wedge");
-    return (
-      wedge.style.opacity === "1" &&
-      wedge.style.animationPlayState === "running"
-    );
-  };
-
-  it("sweeps while scans keep landing", () => {
-    const view = render(
-      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
-    );
-    expect(sweeping()).toBe(true);
-
-    // A scan arriving before the wedge would have hidden keeps it turning,
-    // detections or not, which is the steady state at floor pacing.
-    vi.advanceTimersByTime(SWEEP_IDLE_HIDE_MS - 100);
-    view.rerender(
-      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={2050} />,
-    );
-    vi.advanceTimersByTime(SWEEP_IDLE_HIDE_MS - 100);
-    expect(sweeping()).toBe(true);
-  });
-
-  it("pauses and hides the wedge once a scan is overdue", () => {
-    render(
-      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
-    );
-    vi.advanceTimersByTime(SWEEP_IDLE_HIDE_MS);
-    const wedge = screen.getByTestId("sweep-wedge");
-    // Hidden so a stopped sweep is not read as a broken one, and paused so a
-    // detector resting between scans composites nothing.
-    expect(wedge).toHaveStyle({ opacity: "0" });
-    expect(wedge.style.animationPlayState).toBe("paused");
-  });
-
-  it("keeps the sweep dark before the first scan", () => {
+  it("turns the sweep once the detector is scanning", () => {
     render(<RadarDetectorScreen confidence={0} audioEnabled={false} />);
-    expect(sweeping()).toBe(false);
+    expect(screen.getByTestId("sweep-wedge")).toBeInTheDocument();
   });
 
-  it("does not restart the wedge on a rerender with no new scan", () => {
-    const view = render(
-      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
-    );
-    vi.advanceTimersByTime(SWEEP_IDLE_HIDE_MS);
-    // An unrelated prop change must not read as a scan; only scanAt says the
-    // detector is still running.
-    view.rerender(
+  it("leaves the sweep off screen while initializing", () => {
+    // The wedge's arrival is what says scanning is live, so it must not turn
+    // over a detector that has not started. Unmounted rather than hidden,
+    // since a hidden element still runs its animation.
+    render(
       <RadarDetectorScreen
-        confidence={0.5}
+        confidence={0}
         audioEnabled={false}
-        scanAt={1000}
+        initializing={true}
       />,
     );
-    expect(sweeping()).toBe(false);
-  });
-
-  it("skips the sweep under reduced motion", () => {
-    vi.spyOn(window, "matchMedia").mockReturnValue({
-      matches: true,
-      media: "(prefers-reduced-motion: reduce)",
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    } as MediaQueryList);
-    render(
-      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
-    );
-    expect(sweeping()).toBe(false);
+    expect(screen.queryByTestId("sweep-wedge")).not.toBeInTheDocument();
   });
 });
 

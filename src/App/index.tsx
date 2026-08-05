@@ -72,7 +72,6 @@ const RadarScreen = () => {
     getDebugSnapshot,
     error,
     scan,
-    scanCompletedAt,
     attachVideo,
     activeModel,
     allowModelLoad,
@@ -368,7 +367,6 @@ const RadarScreen = () => {
           audioEnabled={radarAudio}
           contact={contact}
           initializing={status !== "running"}
-          scanAt={scanCompletedAt}
           rawConfidence={rawConfidence ? hudScore(hud) : undefined}
           detectedLabel={hud?.top?.label}
         />

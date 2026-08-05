@@ -181,7 +181,6 @@ export const INITIAL_SNAPSHOT: DetectionSnapshot = {
   modelProgress: { loadedBytes: 0, totalBytes: 0 },
   hud: undefined,
   scan: undefined,
-  scanCompletedAt: undefined,
   error: undefined,
   contact: undefined,
 };

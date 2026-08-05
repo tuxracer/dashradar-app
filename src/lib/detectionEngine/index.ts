@@ -584,16 +584,11 @@ export const createDetectionEngine = ({
       }
       case "scan-skipped": {
         framesTotal += 1;
-        // The one piece of state a skip publishes: the pump completed a scan,
-        // which is what the radar sweep runs on. Without it a gated session
-        // parked at a light freezes the sweep for the whole skip run, the
-        // looks-dead-while-working presentation the gate must never produce.
-        publish({ scanCompletedAt: performance.now() });
-        // Everything else is left exactly as the last real scan published it.
-        // A frame that did not change cannot have lost what the last one found,
-        // so the tracker is not advanced (which would coast the detection
-        // toward being dropped), the HUD is not rebuilt, and the contact card
-        // keeps the picture it is showing.
+        // A skip publishes nothing. Everything is left exactly as the last
+        // real scan published it: a frame that did not change cannot have lost
+        // what the last one found, so the tracker is not advanced (which would
+        // coast the detection toward being dropped), the HUD is not rebuilt,
+        // and the contact card keeps the picture it is showing.
         debug = {
           ...debug,
           sceneDelta: message.delta,
@@ -617,7 +612,6 @@ export const createDetectionEngine = ({
         const frame = postedFrame;
         const patch: Partial<DetectionSnapshot> = {
           hud: result.hud,
-          scanCompletedAt: at,
         };
         // Publish this scan's own detections for the detection view. Raw
         // per-frame output, not the coasted set, since the view exists to
