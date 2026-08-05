@@ -2,7 +2,7 @@ import { BoxGeometry, CylinderGeometry, SphereGeometry } from "three";
 import type { PlacedKind, ScenePlacement } from "@/lib/scenePlacement";
 
 /**
- * Shared unit geometries, scaled per mesh. Three of them cover every glyph,
+ * Shared unit geometries, scaled per mesh. Four of them cover every glyph,
  * so the whole scene uploads a handful of vertex buffers once at module load
  * regardless of how many objects are on the ground plane. Deliberately
  * low-poly: the placement math is good to tens of percent in range, and a
@@ -12,6 +12,14 @@ export const UNIT_BOX = new BoxGeometry(1, 1, 1);
 
 /** Shared unit cylinder, scaled per mesh (see UNIT_BOX). */
 export const UNIT_CYLINDER = new CylinderGeometry(0.5, 0.5, 1, 10);
+
+/**
+ * Shared unit cylinder narrowed toward its base, scaled per mesh (see
+ * UNIT_BOX). The one shape a straight cylinder cannot give the person glyph:
+ * shoulders wider than the waist, which is most of what separates a human
+ * torso from a post at the range these glyphs are read at.
+ */
+export const UNIT_TAPERED_CYLINDER = new CylinderGeometry(0.5, 0.34, 1, 10);
 
 /** Shared unit sphere, scaled per mesh (see UNIT_BOX). */
 export const UNIT_SPHERE = new SphereGeometry(0.5, 10, 8);
