@@ -15,6 +15,8 @@ import {
   ARC_SWEEP_DEG,
   DIRECTION_DISPLAY,
   RAW_CONFIDENCE_DECIMALS,
+  SWEEP_FADE_IN_MS,
+  SWEEP_FADE_OUT_MS,
   SWEEP_STEP_DEG,
   SWEEP_STEP_MS,
 } from "./consts";
@@ -70,6 +72,17 @@ const segmentAngleDeg = (index: number): number =>
 const ALERT_RING_COLOR = `rgb(${SIGNAL_HIGH_COLOR.join(", ")})`;
 
 /**
+ * Opacity an element is showing right now, animated value included, so a new
+ * sweep step can start from wherever the previous step's fade-out had got to.
+ * jsdom reports no value, which reads as fully faded and is right for the
+ * only state it can be in there.
+ */
+const currentOpacity = (element: HTMLElement): number => {
+  const value = Number.parseFloat(getComputedStyle(element).opacity);
+  return Number.isNaN(value) ? 0 : value;
+};
+
+/**
  * Fullscreen radar-detector instrument. The ladder segments are radial ticks
  * on a tachometer-style arc around a large percentage readout, over a faint
  * radar grid with a scanning sweep inside the dial that advances one arc
@@ -98,8 +111,13 @@ const ALERT_RING_COLOR = `rgb(${SIGNAL_HIGH_COLOR.join(", ")})`;
  * whole time, and stepping only when a scan lands leaves the compositor
  * idle whenever the pacing rests, exactly when a hot device needs it. Each
  * step moves at the pace of the 5 s spin it replaced (SWEEP_REVOLUTION_MS),
- * so at floor pacing the chained steps look like the original rotation and
- * the wedge simply parks in place when scanning pauses or stops. The
+ * so at floor pacing the chained steps look like the original rotation.
+ * Every step ends by fading the wedge away rather than leaving it lit where
+ * it stopped: a sweep that is not sweeping should not be on screen, since a
+ * bright wedge frozen at an angle is what a broken sweep looks like, and the
+ * dial's own decay tail is the wrong thing for a driver to read that off.
+ * Under reduced motion no step ever runs, so the wedge stays dark for the
+ * whole session and the status word carries the liveness signal alone. The
  * rAF loop runs off React's render path, so smoothness does not depend on
  * the detector's frame rate. The loop parks itself once the meter is
  * quiescent (no raw signal and a fully decayed peak) and any prop change
@@ -188,10 +206,14 @@ export const RadarDetectorScreen = ({
   // One sweep step per completed scan. Keyed on the scan timestamp, not any
   // detection state, so empty results sweep too; the sweep reports "the road
   // was scanned", not "something was found". The step starts where the last
-  // one ended (fill keeps the wedge parked there), so a result landing early
+  // one ended (fill keeps the wedge at that angle), so a result landing early
   // continues the rotation rather than snapping it; the superseded animation
   // is cancelled only after its replacement starts, in the same task, so no
-  // frame paints the wedge at the unfilled base angle.
+  // frame paints the wedge at the unfilled base angle. Rotating and fading
+  // are one animation so that a step arriving mid-fade simply replaces the
+  // whole thing: it picks the opacity up where the fade left it (the element
+  // reports the animated value) and ramps back to full, which at floor pacing
+  // is imperceptible and at slower pacing avoids a one-frame flash.
   useEffect(() => {
     const sweep = sweepRef.current;
     // jsdom implements no Web Animations API, so the sweep never fires there.
@@ -204,10 +226,24 @@ export const RadarDetectorScreen = ({
     const from = sweepAngleRef.current;
     const to = from + SWEEP_STEP_DEG;
     sweepAngleRef.current = to % 360;
+    const total = SWEEP_STEP_MS + SWEEP_FADE_OUT_MS;
     const superseded = sweepAnimationRef.current;
     sweepAnimationRef.current = sweep.animate(
-      [{ transform: `rotate(${from}deg)` }, { transform: `rotate(${to}deg)` }],
-      { duration: SWEEP_STEP_MS, easing: "linear", fill: "forwards" },
+      [
+        {
+          offset: 0,
+          transform: `rotate(${from}deg)`,
+          opacity: currentOpacity(sweep),
+        },
+        { offset: SWEEP_FADE_IN_MS / total, opacity: 1 },
+        {
+          offset: SWEEP_STEP_MS / total,
+          transform: `rotate(${to}deg)`,
+          opacity: 1,
+        },
+        { offset: 1, transform: `rotate(${to}deg)`, opacity: 0 },
+      ],
+      { duration: total, easing: "linear", fill: "forwards" },
     );
     superseded?.cancel();
   }, [scanAt]);
@@ -416,14 +452,12 @@ export const RadarDetectorScreen = ({
       <div className="relative aspect-square w-[min(84vmin,28rem)] translate-y-[3%]">
         <div ref={glowRef} className="absolute inset-[6%] rounded-full" />
         <div className="absolute inset-[24%] rounded-full border border-hud-amber/15" />
-        {/* The sweep wedge fades in with the first scan and then parks
-            between the arc steps the scanAt effect above drives; a parked
-            wedge is static and costs the compositor nothing. */}
+        {/* The sweep wedge is dark by default and lit only by the arc step
+            the scanAt effect above drives, which fades it back out when it
+            finishes. Between steps there is nothing to composite. */}
         <div
           ref={sweepRef}
-          className={`absolute inset-[24%] rounded-full transition-opacity duration-700 ${
-            scanAt === undefined ? "opacity-0" : "opacity-100"
-          }`}
+          className="absolute inset-[24%] rounded-full opacity-0"
           style={{
             background:
               "conic-gradient(from 0deg, rgba(255,179,64,0.28) 0deg, rgba(255,179,64,0.04) 60deg, transparent 70deg)",

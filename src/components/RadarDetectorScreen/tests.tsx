@@ -385,6 +385,19 @@ describe("RadarDetectorScreen scan sweep", () => {
     expect(animate).toHaveBeenCalledTimes(1);
   });
 
+  it("fades the wedge out at the end of a step instead of leaving it lit", () => {
+    render(
+      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
+    );
+    const keyframes = stepKeyframes(0);
+    const last = keyframes[keyframes.length - 1];
+    expect(last?.opacity).toBe(0);
+    // The wedge holds its angle through the fade rather than drifting on.
+    const lit = keyframes.findLast((keyframe) => keyframe.opacity === 1);
+    expect(lit).toBeDefined();
+    expect(last?.transform).toBe(lit?.transform);
+  });
+
   it("keeps the sweep dark before the first scan", () => {
     render(<RadarDetectorScreen confidence={0} audioEnabled={false} />);
     expect(animate).not.toHaveBeenCalled();
