@@ -87,7 +87,6 @@ const RadarScreen = () => {
     viewMode,
     setViewMode,
     sceneFov,
-    sceneTestObjects,
     showDebug,
     commitModelIds,
   } = useSettings();
@@ -354,7 +353,6 @@ const RadarScreen = () => {
           confidence={hudSignal(hud)}
           audioEnabled={radarAudio}
           initializing={status !== "running"}
-          testObjects={sceneTestObjects}
           debug={showDebug}
           // Falling back mutates the persisted setting on purpose: leaving it
           // on "scene" while the radar renders would show a toggle claiming a

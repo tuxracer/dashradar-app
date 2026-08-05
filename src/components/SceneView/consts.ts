@@ -1,5 +1,4 @@
 import { BoxGeometry, CylinderGeometry, SphereGeometry } from "three";
-import type { PlacedKind, ScenePlacement } from "@/lib/scenePlacement";
 
 /**
  * Shared unit geometries, scaled per mesh. Four of them cover every glyph,
@@ -23,25 +22,6 @@ export const UNIT_TAPERED_CYLINDER = new CylinderGeometry(0.5, 0.34, 1, 10);
 
 /** Shared unit sphere, scaled per mesh (see UNIT_BOX). */
 export const UNIT_SPHERE = new SphereGeometry(0.5, 10, 8);
-
-/** Builds one sample placement for TEST_PLACEMENTS below. */
-const test = (
-  id: number,
-  kind: PlacedKind,
-  xM: number,
-  zM: number,
-  elevationM = 0,
-): ScenePlacement => ({
-  id,
-  kind,
-  label: kind,
-  score: 1,
-  xM,
-  zM,
-  elevationM,
-  rangeM: Math.hypot(xM, zM),
-  bearingRad: Math.atan2(xM, zM),
-});
 
 /**
  * Chase-camera position in scene meters: slightly above and behind the ego
@@ -183,21 +163,3 @@ export const RIG_BASELINE_ADAPT = 0.004;
  * really move to cost a frame.
  */
 export const RIG_DEADBAND_RAD = 0.003;
-
-/**
- * The sample placements the Scene test objects developer option renders: one
- * of every placed kind at a known position, spread across bearing and range so
- * glyph rendering, placement geometry, and the FoV calibration can all be
- * judged on a device without live detections. Negative ids so they can never
- * collide with real track ids.
- */
-export const TEST_PLACEMENTS: readonly ScenePlacement[] = [
-  test(-1, "police", -4, 20),
-  test(-2, "car", 3, 35),
-  test(-3, "truck", -8, 60),
-  test(-4, "bus", 10, 90),
-  test(-5, "person", 2, 12),
-  test(-6, "bicycle", -2.5, 16),
-  test(-7, "motorcycle", 5.5, 26),
-  test(-8, "trafficLight", 0, 26, 4.5),
-];

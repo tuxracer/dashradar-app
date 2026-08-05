@@ -25,7 +25,6 @@ import {
   GRID_CENTER,
   GRID_DIVISIONS,
   GRID_SIZE_M,
-  TEST_PLACEMENTS,
   TWEEN_MS,
 } from "./consts";
 import { CameraRig } from "./cameraRig";
@@ -65,12 +64,6 @@ type SceneViewProps = {
   audioEnabled: boolean;
   /** Whether detection has not started yet (model loading, session warm-up). */
   initializing?: boolean;
-  /**
-   * Whether to render the fixed sample objects (the Scene test objects
-   * developer option), one of each kind at known positions, alongside
-   * anything really detected.
-   */
-  testObjects?: boolean;
   /**
    * Whether to show the scene diagnostics panel (the Debug overlay developer
    * option): the WebGL probe verdict and GPU name, the framebuffer size, a
@@ -451,7 +444,6 @@ export const SceneView = ({
   confidence,
   audioEnabled,
   initializing,
-  testObjects,
   debug,
   onRenderFailure,
 }: SceneViewProps) => {
@@ -493,14 +485,12 @@ export const SceneView = ({
     [tracks, scanAt],
   );
 
-  // Test objects render even before the first scan (no frame yet), so glyph
-  // rendering can be judged on a device ahead of the camera and model.
-  const placements = useMemo(() => {
-    const placed = frame
-      ? placeTracks({ tracks: liveTracks, frame, fovDeg })
-      : [];
-    return testObjects ? [...placed, ...TEST_PLACEMENTS] : placed;
-  }, [liveTracks, frame, fovDeg, testObjects]);
+  // Nothing to place until a scan has reported the frame the boxes describe,
+  // which the pinhole math needs to turn a box into a range.
+  const placements = useMemo(
+    () => (frame ? placeTracks({ tracks: liveTracks, frame, fovDeg }) : []),
+    [liveTracks, frame, fovDeg],
+  );
 
   useEffect(() => {
     onRenderFailureRef.current = onRenderFailure;

@@ -53,10 +53,9 @@ const handleReset = () => {
  * with big tap targets: the Audio alerts, Detection image, and Developer
  * options toggles, the development-only controls Developer options reveals
  * (Debug overlay, Zoom indicator, Round-trip, Raw confidence, Camera preview,
- * Detection view, Throttle inference,
- * Detection model, the segmented Zoom mode picker, Min confidence, Scene FoV,
- * Scene test objects, Video file, Reset app data), plus read-only Model and
- * About rows.
+ * Detection view, Throttle inference, Detection model, the segmented Zoom mode
+ * picker, Min confidence, Scene FoV, Video file, Reset app data), plus
+ * read-only Model and About rows.
  * Detection model is the one row that leads somewhere: it opens ModelScreen in
  * place of this panel, which owns picking the model and applying the choice.
  * Closes on the large close button or Escape, and Escape backs out of the model
@@ -87,8 +86,6 @@ export const SettingsScreen = () => {
     setConfidenceThreshold,
     sceneFov,
     setSceneFov,
-    sceneTestObjects,
-    toggleSceneTestObjects,
     zoomIndicator,
     toggleZoomIndicator,
     roundTripIndicator,
@@ -446,22 +443,6 @@ export const SettingsScreen = () => {
                   </span>
                 </span>
               </div>
-
-              <button
-                type="button"
-                onClick={toggleSceneTestObjects}
-                className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
-              >
-                <span className="flex flex-col gap-1">
-                  <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-                    Scene test objects
-                  </span>
-                  <span className="text-sm font-medium text-white/45">
-                    Places sample objects in the scene view.
-                  </span>
-                </span>
-                <Toggle on={sceneTestObjects} />
-              </button>
 
               {/* Sits with the developer rows, and so does the drop gesture it
                   mirrors: this row holds the only way back to the camera, so a

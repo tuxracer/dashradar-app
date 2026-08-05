@@ -45,10 +45,11 @@ export type Settings = {
   /**
    * Master switch for the development-only settings (showDebug,
    * throttleInference, sceneChangeGate, zoomMode, confidenceThreshold,
-   * sceneFov, sceneTestObjects, modelIds, zoomIndicator, roundTripIndicator,
-   * cameraPreview, detectionView, rawConfidence). Off by default. While it is off, SettingsProvider
-   * reports each of those at its DEVELOPER_OPTIONS_OFF value no matter what is
-   * stored, so a development tweak left enabled cannot alter a normal drive.
+   * sceneFov, modelIds, zoomIndicator, roundTripIndicator, cameraPreview,
+   * detectionView, rawConfidence). Off by default. While it is off,
+   * SettingsProvider reports each of those at its DEVELOPER_OPTIONS_OFF value
+   * no matter what is stored, so a development tweak left enabled cannot alter
+   * a normal drive.
    * Their stored values survive, so turning this back on restores the tweaks
    * rather than resetting them. Turning it on has no other effect: every
    * developer option starts at its off value, so the switch reveals the rows
@@ -136,15 +137,6 @@ export type Settings = {
    */
   sceneFov: number;
   /**
-   * When true, the scene view renders a fixed set of sample objects, one of
-   * each placed kind at known positions, alongside anything really detected.
-   * For checking glyph rendering, placement geometry, and the FoV calibration
-   * on a device without needing live detections. A developer option, so it
-   * only takes effect while developerOptions is on, and off until asked for
-   * there.
-   */
-  sceneTestObjects: boolean;
-  /**
    * When true, an amber pill on the status bar line shows the crop factor the
    * detector is scanning at. A developer option, so it only takes effect
    * while developerOptions is on, and off until asked for there: it is the
@@ -214,7 +206,6 @@ export type DeveloperOptions = Pick<
   | "zoomMode"
   | "confidenceThreshold"
   | "sceneFov"
-  | "sceneTestObjects"
   | "modelIds"
   | "zoomIndicator"
   | "roundTripIndicator"
@@ -307,7 +298,6 @@ const FIELD_VALIDATORS: {
   zoomMode: isZoomMode,
   confidenceThreshold: isNumber,
   sceneFov: isNumber,
-  sceneTestObjects: isBoolean,
   modelIds: isModelIds,
   zoomIndicator: isBoolean,
   roundTripIndicator: isBoolean,

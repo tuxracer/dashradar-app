@@ -119,7 +119,6 @@ export const createSettingsStore = (): SettingsStore => {
           zoomMode: stored.zoomMode,
           confidenceThreshold: stored.confidenceThreshold,
           sceneFov: stored.sceneFov,
-          sceneTestObjects: stored.sceneTestObjects,
           modelIds: stored.modelIds,
           zoomIndicator: stored.zoomIndicator,
           roundTripIndicator: stored.roundTripIndicator,
