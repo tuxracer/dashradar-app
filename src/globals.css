@@ -25,6 +25,19 @@
      unmounts the row. */
   --animate-row-out: row-out 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
 
+  /* The radar dial's sweep. The only looping animation in the app, and it
+     starts paused: RadarDetectorScreen runs it while scans are landing and
+     pauses it once one is overdue, so a throttled detector waiting on its
+     next scan composites nothing. Five seconds a turn reads as a scanning
+     instrument without pulling the eye. */
+  --animate-radar-sweep: radar-sweep 5s linear infinite paused;
+
+  @keyframes radar-sweep {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
   @keyframes rise-in {
     from {
       opacity: 0;

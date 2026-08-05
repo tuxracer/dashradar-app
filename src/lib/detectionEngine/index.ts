@@ -560,7 +560,7 @@ export const createDetectionEngine = ({
       case "scan-skipped": {
         framesTotal += 1;
         // The one piece of state a skip publishes: the pump completed a scan,
-        // which is what the radar sweep steps on. Without it a gated session
+        // which is what the radar sweep runs on. Without it a gated session
         // parked at a light freezes the sweep for the whole skip run, the
         // looks-dead-while-working presentation the gate must never produce.
         publish({ scanCompletedAt: performance.now() });

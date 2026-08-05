@@ -128,10 +128,10 @@ export type DetectionSnapshot = {
   /**
    * performance.now() when the pump last completed a scan, whether the model
    * ran or the scene-change gate answered the frame without it. The liveness
-   * signal the radar sweep steps on: `scan.at` above only moves when the model
-   * runs, so a gated session parked at a light would freeze a sweep keyed on
-   * it for up to SCENE_GATE_MAX_SKIP_MS while the detector is perfectly
-   * healthy. Undefined until the first scan of a page load completes.
+   * signal the radar sweep runs on: `scan.at` above only moves when the model
+   * runs, so a gated session parked at a light would stop a sweep keyed on it
+   * for up to SCENE_GATE_MAX_SKIP_MS while the detector is perfectly healthy.
+   * Undefined until the first scan of a page load completes.
    */
   scanCompletedAt: number | undefined;
   error: DetectionErrorCode | undefined;

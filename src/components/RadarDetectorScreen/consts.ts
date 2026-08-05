@@ -1,3 +1,4 @@
+import { MIN_FRAME_INTERVAL_MS } from "@/lib/detectionEngine";
 import type { ContactDirection } from "@/lib/radarSignal";
 
 /**
@@ -20,39 +21,18 @@ export const ARC_SWEEP_DEG = 240;
 export const RAW_CONFIDENCE_DECIMALS = 2;
 
 /**
- * Milliseconds per full revolution of the sweep, kept at the pace of the
- * continuous 5 s spin the per-scan stepping replaced. A full turn per scan
- * was tried first and rejected: at the 1 s scan floor it span the dial more
- * than five times faster than this, which read as frantic and pulled the
- * eye. The wedge only ever moves at this angular velocity; scans just
- * decide when it moves.
- */
-export const SWEEP_REVOLUTION_MS = 5_000;
-
-/**
- * Duration of the arc step one completed scan advances the sweep by. Equal
- * to the engine's 1 s pacing floor so that at floor pacing each step ends
- * about when the next result lands and the steps chain into a seamless
- * rotation; when the pacing backs off, the wedge is off between steps and the
- * dial shows the true scan cadence.
- */
-export const SWEEP_STEP_MS = 1_000;
-
-/** Degrees one scan advances the sweep: the revolution pace times the step. */
-export const SWEEP_STEP_DEG = 360 * (SWEEP_STEP_MS / SWEEP_REVOLUTION_MS);
-
-/**
- * How long the wedge stays lit after its step finishes before it is cut.
+ * How long after the last completed scan the sweep keeps spinning before it
+ * pauses and hides, waiting for the next one.
  *
- * At floor pacing scans land about SWEEP_STEP_MS apart, so a step ends right
- * as the next is due and the small change left over (the capture, the result's
- * trip through React) is enough to blank the wedge and relight it a frame or
- * two later. That reads as a flicker rather than as a scan cadence. Holding
- * for a fraction of a step absorbs that gap and the jitter around it, while
- * the gaps a real backoff opens up, hundreds of milliseconds at rest pacing
- * and seconds at the cap, still park the wedge dark for most of the wait.
+ * The wedge's job is to say the detector is scanning, not to reproduce the
+ * cadence: it turns at a fixed pace (see the radar-sweep animation in
+ * globals.css) whenever scans are arriving. Half again the pacing floor is
+ * enough slack that a device scanning as fast as it is allowed to never
+ * pauses, while a device that has backed off, which is where a spin nobody
+ * asked for costs something, goes dark for the whole second or more it spends
+ * waiting.
  */
-export const SWEEP_HOLD_MS = 400;
+export const SWEEP_IDLE_HIDE_MS = MIN_FRAME_INTERVAL_MS * 1.5;
 
 /** Display strings for the contact card's direction row. */
 export const DIRECTION_DISPLAY: Readonly<Record<ContactDirection, string>> = {

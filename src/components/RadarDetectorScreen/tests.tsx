@@ -3,8 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CONTACT_THRESHOLD,
   RadarDetectorScreen,
-  SWEEP_HOLD_MS,
-  SWEEP_STEP_MS,
+  SWEEP_IDLE_HIDE_MS,
 } from "@/components/RadarDetectorScreen";
 import type { Contact } from "@/context/DetectionContext";
 import { isAudible } from "@/lib/radarAudio";
@@ -313,16 +312,7 @@ describe("RadarDetectorScreen rAF loop", () => {
 });
 
 describe("RadarDetectorScreen scan sweep", () => {
-  // jsdom has no Web Animations API, so the sweep only becomes observable
-  // with animate stubbed onto the element prototype.
-  const animate = vi.fn<HTMLElement["animate"]>(
-    () => ({ cancel: vi.fn() }) as unknown as Animation,
-  );
-  const originalAnimate = HTMLElement.prototype.animate;
-
   beforeEach(() => {
-    animate.mockClear();
-    HTMLElement.prototype.animate = animate;
     // Only the timers: the meter's rAF loop and its performance.now clock are
     // not what these tests drive, and faking them would stall it mid-render.
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -330,72 +320,58 @@ describe("RadarDetectorScreen scan sweep", () => {
 
   afterEach(() => {
     vi.useRealTimers();
-    HTMLElement.prototype.animate = originalAnimate;
     vi.restoreAllMocks();
   });
 
-  /** The keyframes the nth sweep step was started with. */
-  const stepKeyframes = (call: number): Keyframe[] =>
-    animate.mock.calls[call]?.[0] as Keyframe[];
-
-  /** The nth sweep step's stub animation. */
-  const stepAnimation = (call: number): Animation =>
-    animate.mock.results[call]?.value as Animation;
-
-  /** Report the nth sweep step as having run to completion. */
-  const finishStep = (call: number): void => {
-    stepAnimation(call).onfinish?.(
-      new Event("finish") as AnimationPlaybackEvent,
+  /** Whether the wedge is on screen and turning. */
+  const sweeping = (): boolean => {
+    const wedge = screen.getByTestId("sweep-wedge");
+    return (
+      wedge.style.opacity === "1" &&
+      wedge.style.animationPlayState === "running"
     );
   };
 
-  /** The rotation, in degrees, a keyframe puts the wedge at. */
-  const frameDeg = (frame: Keyframe | undefined): number =>
-    Number(/-?[\d.]+/.exec(String(frame?.transform))?.[0]);
-
-  it("advances the sweep once per completed scan", () => {
+  it("sweeps while scans keep landing", () => {
     const view = render(
       <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
     );
-    expect(animate).toHaveBeenCalledTimes(1);
+    expect(sweeping()).toBe(true);
 
-    // The next result, detections or not, steps again.
+    // A scan arriving before the wedge would have hidden keeps it turning,
+    // detections or not, which is the steady state at floor pacing.
+    vi.advanceTimersByTime(SWEEP_IDLE_HIDE_MS - 100);
     view.rerender(
       <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={2050} />,
     );
-    expect(animate).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(SWEEP_IDLE_HIDE_MS - 100);
+    expect(sweeping()).toBe(true);
   });
 
-  it("starts each step where the previous one ended", () => {
+  it("pauses and hides the wedge once a scan is overdue", () => {
+    render(
+      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
+    );
+    vi.advanceTimersByTime(SWEEP_IDLE_HIDE_MS);
+    const wedge = screen.getByTestId("sweep-wedge");
+    // Hidden so a stopped sweep is not read as a broken one, and paused so a
+    // detector resting between scans composites nothing.
+    expect(wedge).toHaveStyle({ opacity: "0" });
+    expect(wedge.style.animationPlayState).toBe("paused");
+  });
+
+  it("keeps the sweep dark before the first scan", () => {
+    render(<RadarDetectorScreen confidence={0} audioEnabled={false} />);
+    expect(sweeping()).toBe(false);
+  });
+
+  it("does not restart the wedge on a rerender with no new scan", () => {
     const view = render(
       <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
     );
-    view.rerender(
-      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={2050} />,
-    );
-    const first = stepKeyframes(0);
-    const second = stepKeyframes(1);
-    // Continuity, not specific angles: the rotation must accumulate instead
-    // of every step replaying the same arc from zero.
-    expect(second[0]?.transform).toBe(first[first.length - 1]?.transform);
-    expect(second[0]?.transform).not.toBe(first[0]?.transform);
-  });
-
-  it("cancels a superseded step so animations never accumulate", () => {
-    const view = render(
-      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
-    );
-    const first = animate.mock.results[0]?.value as Animation;
-    view.rerender(
-      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={2050} />,
-    );
-    expect(first.cancel).toHaveBeenCalled();
-  });
-
-  it("does not sweep again on a rerender with no new scan", () => {
-    const view = render(
-      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
-    );
+    vi.advanceTimersByTime(SWEEP_IDLE_HIDE_MS);
+    // An unrelated prop change must not read as a scan; only scanAt says the
+    // detector is still running.
     view.rerender(
       <RadarDetectorScreen
         confidence={0.5}
@@ -403,75 +379,7 @@ describe("RadarDetectorScreen scan sweep", () => {
         scanAt={1000}
       />,
     );
-    expect(animate).toHaveBeenCalledTimes(1);
-  });
-
-  it("resumes a superseded step from where the wedge actually is", () => {
-    const view = render(
-      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
-    );
-    // A result landing a quarter of the way through the step: the wedge has
-    // only travelled a quarter of the arc, wherever the step was headed.
-    (stepAnimation(0) as unknown as { currentTime: number }).currentTime =
-      SWEEP_STEP_MS / 4;
-    view.rerender(
-      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1250} />,
-    );
-    const first = stepKeyframes(0);
-    const resumed = frameDeg(stepKeyframes(1)[0]);
-    expect(resumed).toBeGreaterThan(frameDeg(first[0]));
-    expect(resumed).toBeLessThan(frameDeg(first[1]));
-  });
-
-  it("holds the wedge lit for a moment after its step finishes", () => {
-    render(
-      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
-    );
-    const wedge = screen.getByTestId("sweep-wedge");
-    expect(wedge).toHaveStyle({ opacity: "1" });
-    finishStep(0);
-    // The next scan is due about now; cutting on the instant is the flicker.
-    expect(wedge).toHaveStyle({ opacity: "1" });
-  });
-
-  it("cuts the wedge once the hold passes with no further scan", () => {
-    render(
-      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
-    );
-    finishStep(0);
-    vi.advanceTimersByTime(SWEEP_HOLD_MS);
-    expect(screen.getByTestId("sweep-wedge")).toHaveStyle({ opacity: "0" });
-  });
-
-  it("keeps the wedge lit when the next scan lands inside the hold", () => {
-    const view = render(
-      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
-    );
-    finishStep(0);
-    vi.advanceTimersByTime(SWEEP_HOLD_MS / 2);
-    view.rerender(
-      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={2050} />,
-    );
-    vi.advanceTimersByTime(SWEEP_HOLD_MS);
-    expect(screen.getByTestId("sweep-wedge")).toHaveStyle({ opacity: "1" });
-  });
-
-  it("keeps the wedge lit when a superseded step reports finishing", () => {
-    const view = render(
-      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
-    );
-    view.rerender(
-      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={2050} />,
-    );
-    // The replaced step's finish can land after its replacement started; the
-    // wedge belongs to the step that is running now.
-    finishStep(0);
-    expect(screen.getByTestId("sweep-wedge")).toHaveStyle({ opacity: "1" });
-  });
-
-  it("keeps the sweep dark before the first scan", () => {
-    render(<RadarDetectorScreen confidence={0} audioEnabled={false} />);
-    expect(animate).not.toHaveBeenCalled();
+    expect(sweeping()).toBe(false);
   });
 
   it("skips the sweep under reduced motion", () => {
@@ -488,7 +396,7 @@ describe("RadarDetectorScreen scan sweep", () => {
     render(
       <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
     );
-    expect(animate).not.toHaveBeenCalled();
+    expect(sweeping()).toBe(false);
   });
 });
 
