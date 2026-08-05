@@ -120,6 +120,17 @@ const acceptFirstRunScreens = () => {
   fireEvent.click(screen.getByRole("button", { name: "ALLOW CAMERA" }));
 };
 
+/**
+ * Turns Developer options on before the app mounts, which is what a dropped
+ * clip needs: the drop and the settings row that clears it are gated together.
+ */
+const enableDeveloperOptions = () => {
+  window.localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({ developerOptions: true }),
+  );
+};
+
 /** Dispatches a window drop carrying a single video file, as a drag does. */
 const dropClipOnWindow = () => {
   const file = new File(["x"], "clip.mp4", { type: "video/mp4" });
@@ -271,6 +282,7 @@ describe("App", () => {
   });
 
   it("scans a dropped clip instead of the camera", async () => {
+    enableDeveloperOptions();
     stubBrowser(grantedCamera);
     render(<App />);
     acceptFirstRunScreens();
@@ -282,6 +294,7 @@ describe("App", () => {
   });
 
   it("plays a clip dropped before the model is ready", async () => {
+    enableDeveloperOptions();
     stubBrowser(grantedCamera);
     render(<App />);
     acceptFirstRunScreens();
@@ -293,6 +306,7 @@ describe("App", () => {
   });
 
   it("returns to the camera when the clip is cleared", async () => {
+    enableDeveloperOptions();
     stubBrowser(grantedCamera);
     render(<App />);
     acceptFirstRunScreens();
@@ -305,6 +319,7 @@ describe("App", () => {
   });
 
   it("skips the camera error screen while a clip is playing", async () => {
+    enableDeveloperOptions();
     stubBrowser(deniedCamera);
     render(<App />);
     acceptFirstRunScreens();
@@ -315,6 +330,7 @@ describe("App", () => {
   });
 
   it("asks the camera again after a clip stood in for a failed one", async () => {
+    enableDeveloperOptions();
     const getUserMedia = deniedThenGrantedCamera();
     stubBrowser(getUserMedia);
     render(<App />);
@@ -334,6 +350,7 @@ describe("App", () => {
   // passes the drop filter, and the pump would then wait forever on a frame
   // callback that never fires while the meter reads SCANNING.
   it("returns to the camera when the dropped clip cannot be decoded", async () => {
+    enableDeveloperOptions();
     stubBrowser(grantedCamera);
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     render(<App />);

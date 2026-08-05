@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useSettings } from "@/context/SettingsContext";
 import { useVideoSource } from "@/context/VideoSourceContext";
 import { videoFileDrops } from "@/lib/videoFileDrop";
 
@@ -9,25 +10,31 @@ import { videoFileDrops } from "@/lib/videoFileDrop";
  * clip on those is exactly how a machine with no camera, or a denied one, gets
  * a working session.
  *
- * Ungated: dropping a clip works without Developer options. Dragging a file
- * onto the window is a deliberate desktop gesture that no phone can perform,
- * so it cannot happen by accident on a dash mount.
+ * A dropped clip is taken only while Developer options are on, matching the
+ * settings row that names the clip and holds the only way back to the camera.
+ * The drag is still claimed and cancelled with the switch off, though, because
+ * refusing it hands the drop to the browser, which navigates away from the app.
  */
 export const VideoDropTarget = () => {
   const { setVideoFile } = useVideoSource();
+  const { developerOptions } = useSettings();
 
-  // The window is subscribed once per mount and the setter is read through a
+  // The window is subscribed once per mount and both values are read through a
   // ref, so a parent render cannot detach and reattach the listeners; a drop
   // landing in that gap would navigate the browser to the file and end the
-  // session.
-  const setVideoFileRef = useRef(setVideoFile);
+  // session. That is also why the gate lives inside the handler rather than on
+  // the subscription: unsubscribing would release the drag claim.
+  const latest = useRef({ setVideoFile, developerOptions });
   useEffect(() => {
-    setVideoFileRef.current = setVideoFile;
+    latest.current = { setVideoFile, developerOptions };
   });
 
   useEffect(() => {
     const subscription = videoFileDrops(window).subscribe((file) => {
-      setVideoFileRef.current(file);
+      if (!latest.current.developerOptions) {
+        return;
+      }
+      latest.current.setVideoFile(file);
     });
     return () => {
       subscription.unsubscribe();

@@ -169,12 +169,10 @@ describe("SettingsScreen", () => {
     expect(screen.queryByText("Min confidence")).not.toBeInTheDocument();
     expect(screen.queryByText("Scene FoV")).not.toBeInTheDocument();
     expect(screen.queryByTestId("open-model-screen")).toBeNull();
-    // The driver-facing rows are not developer rows and stay put. Video file
-    // is among them: a clip can arrive by drop with the master switch off, and
-    // this row holds the only way back to the camera.
+    expect(screen.queryByText("Video file")).not.toBeInTheDocument();
+    // The driver-facing rows are not developer rows and stay put.
     expect(screen.getByText("Audio alerts")).toBeInTheDocument();
     expect(screen.getByText("Detection image")).toBeInTheDocument();
-    expect(screen.getByText("Video file")).toBeInTheDocument();
   });
 
   it("reveals every developer row once developer options are on", async () => {
@@ -185,6 +183,7 @@ describe("SettingsScreen", () => {
     expect(screen.getByText("Zoom")).toBeInTheDocument();
     expect(screen.getByText("Min confidence")).toBeInTheDocument();
     expect(screen.getByText("Scene FoV")).toBeInTheDocument();
+    expect(screen.getByText("Video file")).toBeInTheDocument();
   });
 
   it("closes on the close button", async () => {
@@ -246,7 +245,7 @@ describe("SettingsScreen", () => {
   });
 
   it("names the camera as the feed until a clip is picked", async () => {
-    await renderOpenSettings();
+    await renderOpenSettingsWithDeveloperOptions();
     expect(screen.getByTestId("video-file-value")).toHaveTextContent("Camera");
     expect(
       screen.queryByRole("button", { name: "CLEAR" }),
@@ -254,7 +253,7 @@ describe("SettingsScreen", () => {
   });
 
   it("scans a picked clip and names it, with a way back to the camera", async () => {
-    const user = await renderOpenSettings();
+    const user = await renderOpenSettingsWithDeveloperOptions();
     await user.upload(
       screen.getByTestId("video-file-input"),
       new File(["x"], "drive.mp4", { type: "video/mp4" }),
@@ -264,5 +263,29 @@ describe("SettingsScreen", () => {
     );
     await user.click(screen.getByRole("button", { name: "CLEAR" }));
     expect(screen.getByTestId("video-file-value")).toHaveTextContent("Camera");
+  });
+
+  // The CLEAR button goes with the developer rows, so a clip left running
+  // would strand the session on canned footage with a reload as the way out.
+  it("returns a picked clip to the camera when developer options go off", async () => {
+    const user = await renderOpenSettingsWithDeveloperOptions();
+    await user.upload(
+      screen.getByTestId("video-file-input"),
+      new File(["x"], "drive.mp4", { type: "video/mp4" }),
+    );
+    await user.click(screen.getByText("Developer options"));
+    expect(screen.queryByText("Video file")).not.toBeInTheDocument();
+    await user.click(screen.getByText("Developer options"));
+    expect(screen.getByTestId("video-file-value")).toHaveTextContent("Camera");
+  });
+
+  // Turning the switch off on the camera must not churn the feed: a swap
+  // detaches the engine's video and mints a new feed id, which drops the
+  // camera failure and preview element the current session is holding.
+  it("leaves the camera feed alone when developer options go off", async () => {
+    const user = await renderOpenSettingsWithDeveloperOptions();
+    detachVideo.mockClear();
+    await user.click(screen.getByText("Developer options"));
+    expect(detachVideo).not.toHaveBeenCalled();
   });
 });
