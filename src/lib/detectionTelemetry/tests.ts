@@ -42,4 +42,44 @@ describe("createDetectionTelemetry", () => {
       ["model_ready", { fromCache: true }],
     ]);
   });
+
+  // Which weights actually reached the device is the only signal that makes a
+  // bad rollout visible before it starts erroring.
+  it("names the model and revision the weights came from", () => {
+    const telemetry = createDetectionTelemetry(DEFAULT_MODEL);
+    telemetry.modelDownloaded(8_400);
+    expect(eventsNamed("model_downloaded")).toEqual([
+      [
+        "model_downloaded",
+        {
+          model: DEFAULT_MODEL.slug,
+          revision: DEFAULT_MODEL.revision,
+          seconds: 8,
+        },
+      ],
+    ]);
+  });
+
+  // The events mark a session reaching inference at all, not each frame.
+  it("reports the first result's timings and then goes quiet", () => {
+    const telemetry = createDetectionTelemetry(DEFAULT_MODEL);
+    const timing = { inferenceMs: 400, roundTripMs: 600 };
+    telemetry.result(timing);
+    expect(eventsNamed("first_inference")).toHaveLength(1);
+    expect(eventsNamed("first_round_trip")).toHaveLength(1);
+    telemetry.result(timing);
+    telemetry.result(timing);
+    expect(eventsNamed("first_inference")).toHaveLength(1);
+    expect(eventsNamed("first_round_trip")).toHaveLength(1);
+  });
+
+  it("carries a platform cause on an error that has one, truncated", () => {
+    const telemetry = createDetectionTelemetry(DEFAULT_MODEL);
+    telemetry.error("MODEL_LOAD_FAILED");
+    telemetry.error("INFERENCE_FAILED", "x".repeat(500));
+    const [plain, detailed] = eventsNamed("error");
+    expect(plain).toEqual(["error", { code: "MODEL_LOAD_FAILED" }]);
+    const detail = (detailed[1] as { detail: string }).detail;
+    expect(detail.length).toBeLessThan(500);
+  });
 });

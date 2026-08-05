@@ -776,3 +776,107 @@ describe("the scene-change gate", () => {
     expect(detects(worker).every((message) => message.forceScan)).toBe(true);
   });
 });
+
+describe("model load", () => {
+  it("asks whether the device is supported before waiting to load", async () => {
+    // The GPU verdict decides whether the app is usable at all, so it must not
+    // sit behind the load's wait for service-worker control: the probe goes out
+    // synchronously on activation, while `load` is still a pending microtask.
+    const { worker } = testEngine();
+    expect(worker.posted).toEqual([{ type: "probe" }]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(loadMessage(worker)).toMatchObject({
+      type: "load",
+      model: { id: DEFAULT_MODEL.id },
+    });
+  });
+
+  it("holds the model download until the owner allows it", async () => {
+    const { engine, worker } = testEngine({ deferModelLoad: true });
+    // A microtask is all the un-deferred load waits for, so letting one pass is
+    // what makes the absence below mean something.
+    await vi.advanceTimersByTimeAsync(0);
+    // The GPU verdict is not part of the deal: a device that cannot run the
+    // detector still has to be turned away, whether or not anything downloads.
+    expect(worker.posted).toEqual([{ type: "probe" }]);
+    engine.allowModelLoad();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(loadMessage(worker)).toMatchObject({
+      type: "load",
+      model: { id: DEFAULT_MODEL.id },
+    });
+  });
+
+  it("moves to ready when the worker reports ready", () => {
+    const { engine, worker } = testEngine();
+    expect(engine.getSnapshot().status).toBe("loading-model");
+    worker.emit({ type: "ready" });
+    expect(engine.getSnapshot().status).toBe("ready");
+  });
+
+  it("surfaces an unsupported device as a terminal error", () => {
+    const { engine, worker } = testEngine();
+    worker.emit({ type: "worker-error", code: "WEBGPU_UNSUPPORTED" });
+    expect(engine.getSnapshot()).toMatchObject({
+      status: "error",
+      error: "WEBGPU_UNSUPPORTED",
+    });
+  });
+
+  it("surfaces worker errors", () => {
+    const { engine, worker, telemetry } = testEngine();
+    worker.emit({ type: "worker-error", code: "MODEL_LOAD_FAILED" });
+    expect(engine.getSnapshot()).toMatchObject({
+      status: "error",
+      error: "MODEL_LOAD_FAILED",
+    });
+    expect(telemetry.error).toHaveBeenCalledWith(
+      "MODEL_LOAD_FAILED",
+      undefined,
+    );
+  });
+
+  it("treats a worker that dies without a message as a crash", () => {
+    const { worker, telemetry } = testEngine();
+    worker.onerror?.(new ErrorEvent("error"));
+    expect(telemetry.error).toHaveBeenCalledWith("WORKER_CRASHED");
+  });
+
+  it("flags a network download, but not a load served from cache", () => {
+    const fresh = testEngine();
+    expect(fresh.engine.getSnapshot().downloadingModel).toBe(false);
+    fresh.worker.emit({ type: "model-load-start", fromCache: false });
+    expect(fresh.engine.getSnapshot().downloadingModel).toBe(true);
+
+    const cached = testEngine();
+    cached.worker.emit({ type: "model-load-start", fromCache: true });
+    expect(cached.engine.getSnapshot().downloadingModel).toBe(false);
+  });
+
+  it("accumulates per-file model progress", () => {
+    const { engine, worker } = testEngine();
+    worker.emit({
+      type: "model-progress",
+      progress: { file: "model.onnx", loaded: 50, total: 100 },
+    });
+    worker.emit({
+      type: "model-progress",
+      progress: { file: "model.onnx", loaded: 80, total: 100 },
+    });
+    worker.emit({
+      type: "model-progress",
+      progress: { file: "config.json", loaded: 10, total: 10 },
+    });
+    expect(engine.getSnapshot().modelProgress.loadedBytes).toBe(90);
+  });
+
+  it("tells the telemetry sink how the weights arrived", () => {
+    const { worker, telemetry } = testEngine();
+    worker.emit({ type: "model-load-start", fromCache: false });
+    worker.emit({ type: "model-downloaded", durationMs: 8_400 });
+    worker.emit({ type: "ready" });
+    expect(telemetry.modelLoadStart).toHaveBeenCalledWith(false);
+    expect(telemetry.modelDownloaded).toHaveBeenCalledWith(8_400);
+    expect(telemetry.modelReady).toHaveBeenCalled();
+  });
+});
