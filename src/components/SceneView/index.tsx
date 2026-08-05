@@ -644,7 +644,9 @@ export const SceneView = ({
         </Canvas>
       </SceneErrorBoundary>
       {debug && (
-        <div className="pointer-events-none absolute left-3 top-16 z-10 flex flex-col gap-0.5 text-left font-mono text-[10px] leading-tight text-white/70">
+        // Bottom-left, clear of the debug overlay panel top-left: both are
+        // gated on the same showDebug setting, so they are always up together.
+        <div className="pointer-events-none absolute bottom-14 left-3 z-10 flex flex-col gap-0.5 text-left font-mono text-[10px] leading-tight text-white/70">
           <span>{`gl: ${probe.ok ? "ok" : "FAIL"} · ${probe.detail}`}</span>
           <span>{`canvas: ${createdInfo ?? "-"} · dpr ${window.devicePixelRatio}`}</span>
           <span>
