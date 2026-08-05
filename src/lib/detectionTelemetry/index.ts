@@ -6,16 +6,18 @@ import {
   SCAN_REPORT_MIN_MS,
   toBucketedMinutes,
 } from "@/lib/scanClock";
-import {
-  recordTimings,
-  takeLateTimingReport,
-  takeTimingReport,
-  toBucketedSeconds,
-} from "@/lib/timingHistory";
 import type { DetectionErrorCode } from "@/workers/detection/types";
-import { ERROR_DETAIL_MAX_LENGTH } from "./consts";
+import { ERROR_DETAIL_MAX_LENGTH, TIMING_BUCKET_MS } from "./consts";
 
 export * from "./consts";
+
+/**
+ * Milliseconds to seconds, rounded to the nearest half second: 1488 ms reads
+ * as 1.5, 1986 ms as 2. Coarse on purpose, so a reported timing says how fast
+ * a device is without the noise of an exact per-frame number.
+ */
+const toBucketedSeconds = (ms: number): number =>
+  Math.round(ms / TIMING_BUCKET_MS) / 2;
 
 /**
  * The detection pipeline's analytics sink, extracted from the frame-pump code
@@ -73,8 +75,7 @@ export const createDetectionTelemetry = (
   let modelFromCache = false;
   // Scanning time this page load, which is not page time: the pump reports
   // its running window, so the settings panel and a hidden page are excluded.
-  // Read by the late timing report (drift under sustained load is what the
-  // thermal budget turns on) and drained by reportScanSession.
+  // Drained by reportScanSession.
   const scanClock = createScanClock();
 
   return {
@@ -111,26 +112,6 @@ export const createDetectionTelemetry = (
         track("first_inference", { seconds: toBucketedSeconds(inferenceMs) });
         track("first_round_trip", { seconds: toBucketedSeconds(roundTripMs) });
       });
-      // Roll the same two numbers into the sessionStorage window, so a
-      // drive's recent pacing can be read back off the device afterwards.
-      // Once the window first fills, report its medians: five scans in is
-      // past the first-run costs and early enough that even a short session
-      // reaches it. takeTimingReport is its own once-per-session guard.
-      const timings = recordTimings({ roundTripMs, inferenceMs });
-      const report = takeTimingReport(timings);
-      if (report) {
-        track("timing_round_trip", { seconds: report.roundTrip });
-        track("timing_inference", { seconds: report.inference });
-      }
-      // The same window again, a quarter hour of scanning later. The early
-      // report is by construction the coldest reading of the drive; the gap
-      // between the two is the fleet-wide view of thermal drift on real dash
-      // mounts. Also once per session, guarded by takeLateTimingReport.
-      const lateReport = takeLateTimingReport(timings, scanClock.elapsedMs());
-      if (lateReport) {
-        track("timing_round_trip_late", { seconds: lateReport.roundTrip });
-        track("timing_inference_late", { seconds: lateReport.inference });
-      }
     },
     workerHung: () => {
       // Once per page load: a device whose GPU wedges again after the recycle

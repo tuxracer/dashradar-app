@@ -199,7 +199,6 @@ afterEach(() => {
   // A seeded showDebug (or any other persisted setting) must not leak between
   // tests: SettingsProvider persists its state to localStorage on mount.
   window.localStorage.clear();
-  // Every detection result appends to the rolling timing window.
   window.sessionStorage.clear();
 });
 

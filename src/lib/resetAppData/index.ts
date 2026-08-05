@@ -1,9 +1,11 @@
 /**
- * Empties localStorage and sessionStorage: the settings blob, the intro and
- * camera-prompt flags, the PWA-install analytics guard, the last-run build
- * record, the crash-sentinel record, and the session's timing history. Each
- * store is cleared on its own
- * so an unavailable one (private mode / quota) still lets the other go.
+ * Empties both web storages. localStorage is where the app's own state lives:
+ * the settings blob, the intro and camera-prompt flags, the PWA-install
+ * analytics guard, the last-run build record, and the crash-sentinel record.
+ * The app writes nothing to sessionStorage today, but it is cleared anyway,
+ * since a reset that leaves a dependency's key behind is not a reset. Each
+ * store is cleared on its own, so an unavailable one (private mode / quota)
+ * still lets the other go.
  */
 const clearWebStorage = (): void => {
   try {

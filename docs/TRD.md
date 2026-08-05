@@ -182,8 +182,6 @@ Anonymous, no camera, location, or detection geometry; dev builds emit nothing. 
 | `model_downloaded` | Weights finished streaming (slug, revision, duration); real downloads only |
 | `model_ready` | Session up, and whether from cache; first `ready` of the page load only, so recycles do not re-fire it |
 | `first_inference`, `first_round_trip` | End of the funnel: one frame scored, cold |
-| `timing_round_trip`, `timing_inference` | Medians once a rolling window fills; what the pacing floor is argued against |
-| `timing_*_late` | The same pair after 15 minutes of scanning; the gap is thermal drift on real dash mounts |
 | `scan_session` | Actual scan time per drive, bucketed, plus installed-PWA state; the denominator for everything else |
 | `wake_lock` | Whether the platform granted the lock (`succeeded`/`failed`, with a reason on a failure and `source: gesture` on a grant the tap retry won); the screen sleeping mid-drive is the app's worst silent failure, and the grants are what the refusals are read against. One refusal and at most one grant per page load |
 | `worker_hung` | A worker went silent (mid-scan or mid-load) and was recycled to recover; once per page load |
@@ -191,7 +189,7 @@ Anonymous, no camera, location, or detection geometry; dev builds emit nothing. 
 | `app_updated` | The first launch on a new build, `from` and `to` commit SHA; counts updates that were actually run, not ones downloaded |
 | `error` | Every failure that reaches the user, by code |
 
-Timing values are bucketed to the nearest half second so jitter collapses and a series reads as a trend. `scan_session` and the late timings read a clock measuring scanning time, not page time: every pause stops it, and reads claim what they report, so stretches sum to the total with nothing double-counted.
+Timing values are bucketed to the nearest half second, so jitter collapses and a reading says how fast a device is rather than carrying noise. `scan_session` reads a clock measuring scanning time, not page time: every pause stops it, and reads claim what they report, so stretches sum to the total with nothing double-counted.
 
 **Crash sentinel.** iOS sometimes kills the page mid-scan with no JS running at kill time, so Sentry never sees it. While scanning, the app writes a heartbeat to localStorage and clears it on every clean exit, including a synchronous `pagehide` path (React never flushes effect cleanups during unload, and the auto-updating service worker reloads sessions routinely). Only a real OS kill leaves a stale record; the next launch classifies it by gap length (short: crash, since iOS relaunches a killed foreground tab within seconds; long: unclean shutdown). The heartbeat runs fast for the first 30 s of scanning and slow after, because every field kill so far landed within ~21 s of the pump starting and a flat slow cadence could not resolve where in startup the page died.
 

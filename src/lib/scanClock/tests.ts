@@ -41,14 +41,14 @@ describe("createScanClock", () => {
     advance(60 * MINUTE);
     clock.start();
     advance(5 * MINUTE);
-    expect(clock.elapsedMs()).toBe(15 * MINUTE);
+    expect(clock.takeUnreportedMs()).toBe(15 * MINUTE);
   });
 
   it("includes the stretch in progress", () => {
     const { clock, advance } = controlledClock();
     clock.start();
     advance(3 * MINUTE);
-    expect(clock.elapsedMs()).toBe(3 * MINUTE);
+    expect(clock.takeUnreportedMs()).toBe(3 * MINUTE);
   });
 
   // The running-window effect can re-run without an intervening cleanup under
@@ -59,7 +59,7 @@ describe("createScanClock", () => {
     advance(2 * MINUTE);
     clock.start();
     advance(MINUTE);
-    expect(clock.elapsedMs()).toBe(3 * MINUTE);
+    expect(clock.takeUnreportedMs()).toBe(3 * MINUTE);
   });
 
   it("ignores a stop with nothing running", () => {
@@ -69,7 +69,7 @@ describe("createScanClock", () => {
     clock.stop();
     clock.stop();
     advance(MINUTE);
-    expect(clock.elapsedMs()).toBe(MINUTE);
+    expect(clock.takeUnreportedMs()).toBe(MINUTE);
   });
 
   it("hands out each stretch once, so the reports sum to the total", () => {
@@ -79,7 +79,6 @@ describe("createScanClock", () => {
     expect(clock.takeUnreportedMs()).toBe(4 * MINUTE);
     advance(6 * MINUTE);
     expect(clock.takeUnreportedMs()).toBe(6 * MINUTE);
-    expect(clock.elapsedMs()).toBe(10 * MINUTE);
   });
 
   it("reports nothing when nothing has been scanned since the last report", () => {

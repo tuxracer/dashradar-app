@@ -6,3 +6,11 @@
  * the failure, which always comes first.
  */
 export const ERROR_DETAIL_MAX_LENGTH = 200;
+
+/**
+ * Bucket width the reported first-scan timings are rounded to, in
+ * milliseconds. Half a second is coarse enough that ordinary frame-to-frame
+ * jitter collapses into one value, so a reading means "about this fast"
+ * rather than carrying noise nobody can act on.
+ */
+export const TIMING_BUCKET_MS = 500;

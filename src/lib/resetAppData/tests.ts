@@ -50,7 +50,7 @@ afterEach(() => {
 describe("resetAppData", () => {
   it("empties both web storages", async () => {
     window.localStorage.setItem("settings", "{}");
-    window.sessionStorage.setItem("timingHistory", "[]");
+    window.sessionStorage.setItem("scratch", "[]");
 
     await resetAppData();
 

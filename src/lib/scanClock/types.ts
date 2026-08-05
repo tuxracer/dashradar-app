@@ -5,6 +5,5 @@
 export type ScanClock = {
   start: () => void;
   stop: () => void;
-  elapsedMs: () => number;
   takeUnreportedMs: (minimumMs?: number) => number;
 };

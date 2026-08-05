@@ -41,6 +41,7 @@ export const createScanClock = (now = () => performance.now()): ScanClock => {
   /** Scanning time already covered by a `scan_session` event. */
   let reportedMs = 0;
 
+  /** Scanning time so far, including the stretch in progress. */
   const elapsedMs = () =>
     completedMs + (startedAt === undefined ? 0 : now() - startedAt);
 
@@ -57,9 +58,6 @@ export const createScanClock = (now = () => performance.now()): ScanClock => {
         startedAt = undefined;
       }
     },
-
-    /** Total scanning time this page load, including the stretch in progress. */
-    elapsedMs,
 
     /**
      * Scanning time not yet reported, claiming it as reported in the same
