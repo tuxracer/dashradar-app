@@ -8,7 +8,13 @@ import { DEFAULT_MODEL } from "@/lib/detectionModels";
 import type { DetectionTelemetry } from "@/lib/detectionTelemetry";
 import type { WorkerRequest, WorkerResponse } from "@/workers/detection/types";
 import { createDetectionEngine, pacingDelay } from "./index";
-import { MAX_FRAME_INTERVAL_MS, MIN_FRAME_INTERVAL_MS } from "./consts";
+import {
+  MAX_FRAME_INTERVAL_MS,
+  MIN_FRAME_INTERVAL_MS,
+  WORKER_LOAD_TIMEOUT_MS,
+  WORKER_RECYCLE_AFTER_MS,
+  WORKER_REPLY_TIMEOUT_MS,
+} from "./consts";
 import type { DetectionEngine, DetectionWorkerLike } from "./types";
 
 /**
@@ -65,22 +71,35 @@ const fakeTelemetry = (): DetectionTelemetry => ({
 const built: DetectionEngine[] = [];
 
 /**
- * An activated engine on a fake worker. `worker` is the one it spawned, so a
- * test emits worker messages through it and reads what the pump posted.
+ * An activated engine on fake workers. `workers` collects every one it spawns,
+ * so a recycle is observable; `worker` is the first, which is all a test that
+ * never recycles needs.
  */
 const testEngine = ({ deferModelLoad = false } = {}) => {
-  const worker = new FakeWorker();
+  const workers: FakeWorker[] = [];
   const telemetry = fakeTelemetry();
   const engine = createDetectionEngine({
     model: DEFAULT_MODEL,
-    createWorker: () => worker,
+    createWorker: () => {
+      const worker = new FakeWorker();
+      workers.push(worker);
+      return worker;
+    },
     telemetry,
     deferModelLoad,
   });
   built.push(engine);
   engine.activate();
-  return { engine, worker, telemetry };
+  return { engine, workers, worker: workers[0], telemetry };
 };
+
+/** Detect requests a worker has been handed. */
+const detectCount = (worker: FakeWorker) =>
+  worker.posted.filter((message) => message.type === "detect").length;
+
+/** The load request a worker has been sent, if it has been sent one. */
+const loadMessage = (worker: FakeWorker) =>
+  worker.posted.find((message) => message.type === "load");
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -289,5 +308,193 @@ describe("crash sentinel heartbeat", () => {
     });
     await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
     expect(readSentinel()).toMatchObject({ startedAt, framesProcessed: 1 });
+  });
+});
+
+describe("worker recycle", () => {
+  const emptyResult = {
+    type: "detections" as const,
+    detections: [],
+    timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+  };
+
+  /**
+   * Recycling is keyed on a worker's age, so these tests drive the clock by
+   * hand: `setNow` moves it, and a worker is born at 0.
+   */
+  const controlledClock = () => {
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    return (value: number) => {
+      now = value;
+    };
+  };
+
+  /** An engine whose first worker is loaded and pumping. */
+  const scanning = async () => {
+    const built = testEngine();
+    built.workers[0].emit({ type: "ready" });
+    built.engine.setInputs({ video: fakeVideo() });
+    await vi.advanceTimersByTimeAsync(0);
+    return built;
+  };
+
+  it("does not recycle a worker younger than the threshold", async () => {
+    const setNow = controlledClock();
+    const { engine, workers } = testEngine();
+    workers[0].emit({ type: "ready" });
+    engine.setInputs({ video: fakeVideo() });
+    // Age the worker to just under the threshold before the first frame posts,
+    // so its round trip stays near zero (age is measured from creation at 0).
+    setNow(WORKER_RECYCLE_AFTER_MS - 1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(detectCount(workers[0])).toBe(1);
+    // The result lands with the worker still under the recycle age.
+    workers[0].emit(emptyResult);
+    expect(workers).toHaveLength(1);
+    expect(workers[0].terminate).not.toHaveBeenCalled();
+    // The same worker is re-primed by the pacing timer, not recycled.
+    await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    expect(detectCount(workers[0])).toBe(2);
+  });
+
+  it("recycles a worker past the threshold and resumes the pump", async () => {
+    const setNow = controlledClock();
+    const { engine, workers } = await scanning();
+    expect(detectCount(workers[0])).toBe(1);
+    // The worker crosses the recycle age; its next result triggers a recycle.
+    setNow(WORKER_RECYCLE_AFTER_MS);
+    workers[0].emit(emptyResult);
+    // The old worker is terminated and a fresh one created and told to load.
+    expect(workers).toHaveLength(2);
+    expect(workers[0].terminate).toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(workers[1].posted).toEqual([
+      { type: "probe" },
+      { type: "load", model: DEFAULT_MODEL },
+    ]);
+    // The old worker was mid-run at recycle, so no paced frame was scheduled on
+    // it: the pump only resumes once the new worker reports ready.
+    expect(detectCount(workers[1])).toBe(0);
+    workers[1].emit({ type: "ready" });
+    await vi.advanceTimersByTimeAsync(0);
+    // The running state never lapsed, so the new worker's ready re-primes it.
+    expect(engine.getSnapshot().status).toBe("running");
+    expect(detectCount(workers[1])).toBe(1);
+  });
+
+  it("recycles a worker whose reply never arrives", async () => {
+    const { workers, telemetry } = await scanning();
+    expect(detectCount(workers[0])).toBe(1);
+    // The worker never answers: no result, no worker-error, no crash. The
+    // reply watchdog is the only signal left, and it recycles the worker.
+    await vi.advanceTimersByTimeAsync(WORKER_REPLY_TIMEOUT_MS);
+    expect(workers).toHaveLength(2);
+    expect(workers[0].terminate).toHaveBeenCalled();
+    expect(telemetry.workerHung).toHaveBeenCalled();
+    // The fresh worker's ready re-primes the pump and scanning resumes.
+    workers[1].emit({ type: "ready" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(detectCount(workers[1])).toBe(1);
+    // A second hang recycles again (the report is gated downstream, in the
+    // telemetry sink, so the engine keeps reporting each one).
+    await vi.advanceTimersByTimeAsync(WORKER_REPLY_TIMEOUT_MS);
+    expect(workers).toHaveLength(3);
+  });
+
+  it("recycles a worker whose model load goes silent", async () => {
+    const { engine, workers, telemetry } = testEngine();
+    // The worker posts nothing at all: no probe verdict, no load progress, no
+    // ready, no worker-error. The reply watchdog cannot see this (no frame is
+    // ever posted to a session that never loads), so without its own bound
+    // the pump would wait on this worker's ready for the rest of the drive.
+    await vi.advanceTimersByTimeAsync(WORKER_LOAD_TIMEOUT_MS);
+    expect(workers).toHaveLength(2);
+    expect(workers[0].terminate).toHaveBeenCalled();
+    expect(telemetry.workerHung).toHaveBeenCalled();
+    // The fresh worker loads normally and the app recovers.
+    workers[1].emit({ type: "ready" });
+    expect(engine.getSnapshot().status).toBe("ready");
+  });
+
+  it("does not recycle a worker whose download is being held back", async () => {
+    // Guard for the watchdog's starting line. A held-back load is silent by
+    // design, and a watch armed at session creation would read that as a wedged
+    // worker and recycle a healthy one every minute for as long as the intro is
+    // up, spawning workers nobody asked for.
+    const { engine, workers } = testEngine({ deferModelLoad: true });
+    await vi.advanceTimersByTimeAsync(WORKER_LOAD_TIMEOUT_MS * 3);
+    expect(workers).toHaveLength(1);
+    expect(workers[0].terminate).not.toHaveBeenCalled();
+    // Allowing the download arms the watch: the load goes out, and the same
+    // silence that was fine a moment ago is now a wedged load.
+    engine.allowModelLoad();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(loadMessage(workers[0])).toBeDefined();
+    await vi.advanceTimersByTimeAsync(WORKER_LOAD_TIMEOUT_MS);
+    expect(workers).toHaveLength(2);
+    expect(workers[0].terminate).toHaveBeenCalled();
+  });
+
+  it("does not recycle a load that is still reporting progress", async () => {
+    // The watchdog bounds silence, not load time. A slow network streams the
+    // weights far past the timeout in total but posts a progress message with
+    // every chunk; recycling that load would restart the download from
+    // scratch, forever.
+    const { workers } = testEngine();
+    for (let chunk = 0; chunk < 3; chunk += 1) {
+      await vi.advanceTimersByTimeAsync(WORKER_LOAD_TIMEOUT_MS - 1_000);
+      workers[0].emit({
+        type: "model-progress",
+        progress: { file: "model.onnx", loaded: chunk + 1, total: 4 },
+      });
+    }
+    expect(workers).toHaveLength(1);
+    workers[0].emit({ type: "ready" });
+    // Ready ends the watch: silence from here is normal idling, owned by the
+    // reply watchdog once a frame is posted.
+    await vi.advanceTimersByTimeAsync(WORKER_LOAD_TIMEOUT_MS * 2);
+    expect(workers).toHaveLength(1);
+    expect(workers[0].terminate).not.toHaveBeenCalled();
+  });
+
+  it("leaves the pump stopped when a stop lands between recycle and ready", async () => {
+    const setNow = controlledClock();
+    const { engine, workers } = await scanning();
+    expect(detectCount(workers[0])).toBe(1);
+    setNow(WORKER_RECYCLE_AFTER_MS);
+    workers[0].emit(emptyResult);
+    expect(workers).toHaveLength(2);
+    // The video detaches before the recycled worker finishes loading.
+    engine.setInputs({ video: undefined });
+    workers[1].emit({ type: "ready" });
+    await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    // Nothing wants the pump running, so the new worker's ready must not
+    // re-prime it.
+    expect(detectCount(workers[1])).toBe(0);
+  });
+
+  it("re-primes exactly once when a stop then a start land during the recycle-load window", async () => {
+    const setNow = controlledClock();
+    const { engine, workers } = await scanning();
+    expect(detectCount(workers[0])).toBe(1);
+    // The worker crosses the recycle age; its next result recycles it, leaving
+    // a fresh worker that has not reported ready yet.
+    setNow(WORKER_RECYCLE_AFTER_MS);
+    workers[0].emit(emptyResult);
+    expect(workers).toHaveLength(2);
+    // A stop and a start both land inside the recycle-load window (settings
+    // opening and closing, or a visibility bounce). The still-loading worker
+    // must not receive a frame: it would silently drop it and strand the
+    // in-flight count.
+    engine.setInputs({ video: undefined });
+    engine.setInputs({ video: fakeVideo() });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(detectCount(workers[1])).toBe(0);
+    // The new worker finishes loading: its ready re-primes the pump exactly
+    // once (not zero: the pump would otherwise be dead; not two).
+    workers[1].emit({ type: "ready" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(detectCount(workers[1])).toBe(1);
   });
 });
