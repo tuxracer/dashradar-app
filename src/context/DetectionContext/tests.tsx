@@ -196,15 +196,34 @@ const DeveloperOptionsToggle = () => {
   );
 };
 
-const renderWithProvider = (ui: ReactNode) => {
+/** Opens a download the provider was told to hold back. */
+const AllowLoad = () => {
+  const { allowModelLoad } = useDetection();
+  return (
+    <button data-testid="allow-load" onClick={() => allowModelLoad()}>
+      allow load
+    </button>
+  );
+};
+
+const renderWithProvider = (ui: ReactNode, deferModelLoad = false) => {
   const worker = new FakeWorker();
   render(
     <SettingsProvider>
-      <DetectionProvider createWorker={() => worker}>{ui}</DetectionProvider>
+      <DetectionProvider
+        createWorker={() => worker}
+        deferModelLoad={deferModelLoad}
+      >
+        {ui}
+      </DetectionProvider>
     </SettingsProvider>,
   );
   return worker;
 };
+
+/** The load request a worker has been sent, if it has been sent one. */
+const loadMessage = (worker: FakeWorker) =>
+  worker.posted.find((message) => message.type === "load");
 
 const fakeBitmap = () => {
   return {
@@ -332,6 +351,27 @@ describe("DetectionProvider", () => {
     // synchronously on mount, while `load` is still a pending microtask.
     const worker = renderWithProvider(<Probe />);
     expect(worker.posted).toEqual([{ type: "probe" }]);
+  });
+
+  it("holds the model download until the owner allows it", async () => {
+    const worker = renderWithProvider(<AllowLoad />, true);
+    // A microtask is all the un-deferred load waits for, so letting one pass is
+    // what makes the absence below mean something.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    // The GPU verdict is not part of the deal: a device that cannot run the
+    // detector still has to be turned away, whether or not anything downloads.
+    expect(worker.posted).toEqual([{ type: "probe" }]);
+    act(() => {
+      screen.getByTestId("allow-load").click();
+    });
+    await waitFor(() => {
+      expect(loadMessage(worker)).toMatchObject({
+        type: "load",
+        model: { id: DEFAULT_MODEL.id },
+      });
+    });
   });
 
   it("surfaces an unsupported device as a terminal error", () => {
@@ -2405,7 +2445,7 @@ describe("worker recycle", () => {
 
   /** Render with a createWorker spy that returns fresh fakes, exposing every
    * worker it hands out so the recycle can be observed. */
-  const renderWithWorkerFactory = (ui: ReactNode) => {
+  const renderWithWorkerFactory = (ui: ReactNode, deferModelLoad = false) => {
     const workers: FakeWorker[] = [];
     render(
       <SettingsProvider>
@@ -2415,6 +2455,7 @@ describe("worker recycle", () => {
             workers.push(worker);
             return worker;
           }}
+          deferModelLoad={deferModelLoad}
         >
           {ui}
         </DetectionProvider>
@@ -2572,6 +2613,34 @@ describe("worker recycle", () => {
     expect(screen.getByTestId("start").getAttribute("data-status")).toBe(
       "ready",
     );
+  });
+
+  it("does not recycle a worker whose download is being held back", async () => {
+    // Guard for the watchdog's new starting line. A held-back load is silent by
+    // design, and a watch armed at session creation would read that as a wedged
+    // worker and recycle a healthy one every minute for as long as the intro is
+    // up, spawning workers nobody asked for.
+    vi.useFakeTimers();
+    const workers = renderWithWorkerFactory(<AllowLoad />, true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WORKER_LOAD_TIMEOUT_MS * 3);
+    });
+    expect(workers).toHaveLength(1);
+    expect(workers[0].terminate).not.toHaveBeenCalled();
+    // Allowing the download arms the watch: the load goes out, and the same
+    // silence that was fine a moment ago is now a wedged load.
+    act(() => {
+      screen.getByTestId("allow-load").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(loadMessage(workers[0])).toBeDefined();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WORKER_LOAD_TIMEOUT_MS);
+    });
+    expect(workers).toHaveLength(2);
+    expect(workers[0].terminate).toHaveBeenCalled();
   });
 
   it("does not recycle a load that is still reporting progress", async () => {

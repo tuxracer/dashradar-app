@@ -199,6 +199,12 @@ export type DetectionEngine = {
   /** Latest per-frame diagnostics, read on demand (never published). */
   getDebugSnapshot: () => DebugSnapshot;
   /**
+   * Let the worker fetch the weights, for an engine built with the download
+   * held back (`deferModelLoad`). Idempotent, and a no-op on an engine that was
+   * never holding them: the gate only ever opens.
+   */
+  allowModelLoad: () => void;
+  /**
    * Spawn the worker and start loading the model. Resets published state, so
    * a deactivate/activate pair behaves like a fresh mount (which is what
    * StrictMode's double-invoked effects do to the owner).

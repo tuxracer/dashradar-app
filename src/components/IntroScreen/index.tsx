@@ -44,8 +44,9 @@ type IntroScreenProps = {
 /**
  * Full-screen first-open intro. Rendered instead of the radar screen until
  * dismissed, so the camera permission prompt fires right after the START tap
- * instead of cold on page load. The model download proceeds underneath in
- * DetectionProvider while the user reads. The copy powers on in the same
+ * instead of cold on page load. On a phone the model download proceeds
+ * underneath in DetectionProvider while the user reads; on a desktop it waits
+ * for the screen to be dismissed. The copy powers on in the same
  * one-shot staggered cascade as the permission ask and error screens, so the
  * whole panel family enters the same way. On a desktop the START button is
  * replaced by the `ShareTarget` handoff, since the app is built for a phone on

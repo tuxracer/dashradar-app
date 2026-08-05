@@ -164,10 +164,13 @@ export const createDetectionEngine = ({
   model,
   createWorker,
   telemetry,
+  deferModelLoad = false,
 }: {
   model: DetectionModel;
   createWorker: () => DetectionWorkerLike;
   telemetry: DetectionTelemetry;
+  /** Start with the weights held back; see `modelLoadAllowed$` below. */
+  deferModelLoad?: boolean;
 }): DetectionEngine => {
   // ---- published state ----
   const snapshot$ = new BehaviorSubject<DetectionSnapshot>(INITIAL_SNAPSHOT);
@@ -189,6 +192,21 @@ export const createDetectionEngine = ({
     confidenceThreshold: CONFIDENCE_THRESHOLD,
   });
   const active$ = new BehaviorSubject(false);
+
+  /**
+   * Whether the worker may fetch the weights yet. Open from the start unless
+   * the owner asked otherwise, because the download is the longest part of a
+   * first visit and the app has a screen of its own to show while it runs.
+   *
+   * An owner holds it shut when the bytes are not wanted yet, and opens it with
+   * `allowModelLoad`. The GPU probe deliberately stays outside the gate, so a
+   * device that cannot run the detector is still turned away immediately rather
+   * than behind a wait for something the answer does not depend on.
+   *
+   * Monotonic: once open it stays open for the life of the engine, so a worker
+   * recycle never waits on it a second time.
+   */
+  const modelLoadAllowed$ = new BehaviorSubject(!deferModelLoad);
 
   /** Whether this world state wants the pump running. */
   const wantsToRun = (
@@ -475,10 +493,9 @@ export const createDetectionEngine = ({
   /**
    * One worker lifetime as an Observable: subscribing spawns the worker,
    * posts the probe synchronously (the GPU verdict must not wait on anything),
-   * and requests the model load once a service worker controls the page so a
-   * first visit's fetch lands in the runtime cache (dev has none, load
-   * immediately). Unsubscribing terminates the worker and abandons a pending
-   * load wait, which is what retires the old activation-counter guard.
+   * and requests the model load once both of the load's gates are open.
+   * Unsubscribing terminates the worker and abandons a pending load wait, which
+   * is what retires the old activation-counter guard.
    */
   const workerSession$ = new Observable<WorkerSession>((subscriber) => {
     const target = createWorker();
@@ -497,15 +514,23 @@ export const createDetectionEngine = ({
       haltForError();
     };
     target.postMessage({ type: "probe" });
-    let cancelled = false;
-    const startLoad = import.meta.env.PROD
-      ? waitForServiceWorkerControl(SW_CONTROL_TIMEOUT_MS)
-      : Promise.resolve();
-    void startLoad.then(() => {
-      if (!cancelled) {
+    // Two independent waits, run side by side rather than in sequence: the
+    // owner's go-ahead, and in production a service worker controlling the page
+    // so a first visit's fetch lands in the runtime cache (dev has none, so it
+    // resolves at once). Unsubscribing on teardown is what stops a terminated
+    // worker from being posted to, which a cancelled flag used to cover.
+    const loadRequest = combineLatest([
+      modelLoadAllowed$.pipe(filter(Boolean)),
+      defer(() =>
+        import.meta.env.PROD
+          ? waitForServiceWorkerControl(SW_CONTROL_TIMEOUT_MS)
+          : Promise.resolve(),
+      ),
+    ])
+      .pipe(take(1))
+      .subscribe(() => {
         target.postMessage({ type: "load", model });
-      }
-    });
+      });
     subscriber.next({
       post: (message, transfer) => {
         target.postMessage(message, transfer);
@@ -515,7 +540,7 @@ export const createDetectionEngine = ({
       createdAt: performance.now(),
     });
     return () => {
-      cancelled = true;
+      loadRequest.unsubscribe();
       target.terminate();
     };
   });
@@ -856,19 +881,30 @@ export const createDetectionEngine = ({
    * because it only arms once a frame is posted, and a frame is never posted
    * to a session that never reports ready. Ready ends the watch; from there
    * silence is normal idling and the reply watchdog owns wedge detection.
+   *
+   * The watch starts when the download is allowed rather than when the session
+   * is created, because a load the owner is deliberately holding back is not a
+   * load that has gone silent: watching it from creation would recycle a
+   * perfectly healthy worker every minute for as long as it is held.
    */
   const loadWatchdogFor = (session: WorkerSession) =>
-    session.messages$.pipe(
-      timeout({
-        first: WORKER_LOAD_TIMEOUT_MS,
-        each: WORKER_LOAD_TIMEOUT_MS,
-        with: () =>
-          defer(() => {
-            telemetry.workerHung();
-            recycle$.next();
-            return EMPTY;
+    modelLoadAllowed$.pipe(
+      filter(Boolean),
+      take(1),
+      switchMap(() =>
+        session.messages$.pipe(
+          timeout({
+            first: WORKER_LOAD_TIMEOUT_MS,
+            each: WORKER_LOAD_TIMEOUT_MS,
+            with: () =>
+              defer(() => {
+                telemetry.workerHung();
+                recycle$.next();
+                return EMPTY;
+              }),
           }),
-      }),
+        ),
+      ),
       takeUntil(session.loaded$.pipe(filter(Boolean))),
       ignoreElements(),
     );
@@ -942,6 +978,9 @@ export const createDetectionEngine = ({
       settings$.next(next);
     },
     getDebugSnapshot: () => debug,
+    allowModelLoad: () => {
+      modelLoadAllowed$.next(true);
+    },
     activate: () => {
       if (active$.value) {
         return;

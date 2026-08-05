@@ -32,6 +32,13 @@ export type DetectionContextValue = DetectionSnapshot & {
    */
   getDebugSnapshot: () => DebugSnapshot;
   /**
+   * Release a download the provider was told to hold back
+   * (`deferModelLoad`), and a no-op when it was not. Called by whatever screen
+   * knows the bytes are now worth fetching, so the decision lives with the UI
+   * rather than in the engine.
+   */
+  allowModelLoad: () => void;
+  /**
    * The model this session is running. Pinned at mount, so it answers "what
    * is detecting right now", which is not necessarily what is selected: a
    * change made on the model screen applies on the reload that screen

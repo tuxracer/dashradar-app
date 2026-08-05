@@ -35,6 +35,7 @@ import {
 import type { CameraError, CameraFeedEvent } from "@/lib/camera";
 import type { Size } from "@/lib/detection";
 import { DEFAULT_MODEL } from "@/lib/detectionModels";
+import { isDesktopDevice } from "@/lib/deviceType";
 import { hudScore, hudSignal } from "@/lib/radarSignal";
 import {
   UPDATE_CHECK_TIMEOUT_MS,
@@ -74,6 +75,7 @@ const RadarScreen = () => {
     scanCompletedAt,
     attachVideo,
     activeModel,
+    allowModelLoad,
   } = useDetection();
   const {
     radarAudio,
@@ -134,6 +136,22 @@ const RadarScreen = () => {
     [feedId],
   );
 
+  // Whether the first-open intro is what this render shows; see the matching
+  // return below.
+  const introVisible = showIntro && !source;
+
+  // On a desktop the model download waits for this, because the intro there is
+  // a handoff to a phone rather than a way in: tens of megabytes of weights are
+  // worth fetching once someone has decided to run the detector on this
+  // machine, not while they are being offered the QR code. A phone never defers
+  // (see the DetectionProvider below), so this is a no-op there, and a
+  // returning visitor, who is shown no intro at all, releases it at mount.
+  useEffect(() => {
+    if (!introVisible) {
+      allowModelLoad();
+    }
+  }, [allowModelLoad, introVisible]);
+
   // iOS forgets camera permission between launches of an installed web app,
   // so every launch re-prompts. When an app update is found at launch, the
   // silent auto-update reload lands right after the driver taps Allow and
@@ -186,7 +204,7 @@ const RadarScreen = () => {
     [attachVideo, feedId, updateVideoSize],
   );
 
-  if (showIntro && !source) {
+  if (introVisible) {
     return (
       <IntroScreen
         onStart={() => {
@@ -398,7 +416,11 @@ const RadarScreen = () => {
 const App = () => {
   return (
     <SettingsProvider>
-      <DetectionProvider>
+      {/* A phone starts downloading the weights the moment the app loads, under
+          the intro someone is still reading, since that download is the longest
+          part of a first visit. A desktop holds them until RadarScreen says the
+          intro is behind it. */}
+      <DetectionProvider deferModelLoad={isDesktopDevice()}>
         {/* VideoSourceProvider sits inside DetectionProvider, which it
             consumes: a feed swap detaches the engine's video before the
             element it was capturing from unmounts. */}

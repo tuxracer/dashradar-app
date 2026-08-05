@@ -40,6 +40,13 @@ const createDetectionWorker = (): DetectionWorkerLike => {
 
 type DetectionProviderProps = {
   children: ReactNode;
+  /**
+   * Hold the weights back at mount instead of downloading them straight away;
+   * the download then starts on the first `allowModelLoad()`. The GPU probe
+   * goes out immediately either way, so an unsupported device is still turned
+   * away at once.
+   */
+  deferModelLoad?: boolean;
   /** Test seam: defaults to the real detection worker. */
   createWorker?: () => DetectionWorkerLike;
 };
@@ -55,6 +62,7 @@ type DetectionProviderProps = {
  */
 export const DetectionProvider = ({
   children,
+  deferModelLoad = false,
   createWorker = createDetectionWorker,
 }: DetectionProviderProps) => {
   const {
@@ -77,7 +85,15 @@ export const DetectionProvider = ({
   // is inert until the activation effect below spawns its worker.
   const [telemetry] = useState(() => createDetectionTelemetry(activeModel));
   const [engine] = useState(() =>
-    createDetectionEngine({ model: activeModel, createWorker, telemetry }),
+    // deferModelLoad is read here and never again: the download has to be
+    // withheld before the first worker exists, which is earlier than any effect
+    // runs. Releasing it later is what allowModelLoad below is for.
+    createDetectionEngine({
+      model: activeModel,
+      createWorker,
+      telemetry,
+      deferModelLoad,
+    }),
   );
 
   // Mount and unmount the engine with the provider. StrictMode runs this
@@ -177,6 +193,7 @@ export const DetectionProvider = ({
       ...snapshot,
       contact: shownContact,
       getDebugSnapshot: engine.getDebugSnapshot,
+      allowModelLoad: engine.allowModelLoad,
       activeModel,
       attachVideo,
       detachVideo,

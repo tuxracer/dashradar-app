@@ -32,6 +32,7 @@ vi.mock("@/context/VideoSourceContext", async (importOriginal) => {
 
 afterEach(() => {
   workerOnMessage = null;
+  postedToWorker.length = 0;
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   window.localStorage.clear();
@@ -54,6 +55,13 @@ beforeEach(() => {
  */
 let workerOnMessage: ((event: { data: unknown }) => void) | null = null;
 
+/** Every request the app has posted to its worker, newest last. */
+const postedToWorker: { type: string }[] = [];
+
+/** Whether the app has asked the worker to download the weights yet. */
+const modelLoadRequested = () =>
+  postedToWorker.some((message) => message.type === "load");
+
 /** Worker stub: the real detection worker cannot run under jsdom. */
 class FakeWorker {
   onerror = null;
@@ -63,7 +71,9 @@ class FakeWorker {
   get onmessage() {
     return workerOnMessage;
   }
-  postMessage() {}
+  postMessage(message: { type: string }) {
+    postedToWorker.push(message);
+  }
   terminate() {}
 }
 
@@ -114,6 +124,22 @@ const stubBrowser = (getUserMedia?: () => Promise<MediaStream>) => {
   );
 };
 
+/**
+ * Makes isDesktopDevice report a desktop, leaving every other media query
+ * unmatched: a blanket match would also claim reduced motion and an installed
+ * standalone window.
+ */
+const stubDesktopPointer = () => {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn((query: string) => ({
+      matches: query.includes("pointer: fine"),
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })),
+  );
+};
+
 /** Walks the first-open intro and the in-app permission ask. */
 const acceptFirstRunScreens = () => {
   fireEvent.click(screen.getByRole("button", { name: "START" }));
@@ -150,6 +176,43 @@ describe("App", () => {
         screen.getByText(/browser can't access the camera/i),
       ).toBeInTheDocument(),
     );
+  });
+
+  it("downloads the model under the intro on a phone", async () => {
+    // The weights are the longest part of a first visit and the intro is the
+    // only stretch of the app with nothing else to do, so the two overlap
+    // rather than run one after the other.
+    stubBrowser(grantedCamera);
+    render(<App />);
+    await waitFor(() => expect(modelLoadRequested()).toBe(true));
+    expect(screen.getByRole("button", { name: "START" })).toBeInTheDocument();
+  });
+
+  it("holds the model download on a desktop until the intro is dismissed", async () => {
+    // A desktop meets the QR handoff instead of a START button, so the intro is
+    // an invitation to open the app somewhere else. Downloading tens of
+    // megabytes of weights for a machine that is about to hand the app to a
+    // phone spends the visitor's bandwidth on nothing.
+    stubBrowser(grantedCamera);
+    stubDesktopPointer();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<App />);
+    // The GPU probe still goes out at once: nothing about turning an
+    // unsupported device away depends on the weights.
+    await waitFor(() =>
+      expect(postedToWorker).toContainEqual({
+        type: "probe",
+      }),
+    );
+    // The load rides a microtask, so let one pass before believing it absent.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(modelLoadRequested()).toBe(false);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Continue on this device" }),
+    );
+    await waitFor(() => expect(modelLoadRequested()).toBe(true));
   });
 
   it("leaves the camera alone until the model is ready", async () => {
