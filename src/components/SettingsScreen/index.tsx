@@ -39,7 +39,7 @@ const handleReset = () => {
     return;
   }
   // Sent before the clearing pass rather than after it: the reload can cut an
-  // in-flight request, so the pass (deleting the ~57 MB weights among the rest)
+  // in-flight request, so the pass (deleting the ~54 MB weights among the rest)
   // is the widest window this event will get. It is also the only signal that
   // separates a fresh install from a wiped one, which otherwise look
   // identical in the funnel.

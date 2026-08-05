@@ -41,7 +41,7 @@ pnpm format      # Auto-fix formatting (prettier --write)
 
 ## The model
 
-A custom **RF-DETR Small** checkpoint, published as ONNX at [`tuxracer/las-vegas-metro-rfdetr-small`](https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-small). It recognizes Las Vegas Metro patrol vehicles best today, since they make up most of the training data, and the training set keeps growing toward broader coverage. The app streams the weights from Hugging Face on first launch.
+A custom **RF-DETR Nano** checkpoint, published as ONNX at [`tuxracer/las-vegas-metro-rfdetr-nano`](https://huggingface.co/tuxracer/las-vegas-metro-rfdetr-nano). It recognizes Las Vegas Metro patrol vehicles best today, since they make up most of the training data, and the training set keeps growing toward broader coverage. The app streams the weights from Hugging Face on first launch.
 
 The model is not baked in. [docs/Models.md](docs/Models.md) describes what a checkpoint has to look like to run here: tensor signature, head layout, precision, and how to register it.
 

@@ -62,10 +62,12 @@ describe("processDetectionResult", () => {
     expect(result.contact).toMatchObject({
       image,
       score: midBand,
-      signal: 0.5,
       direction: "left",
       at: 42,
     });
+    // Approximate because midBand is built by dividing the band the floor
+    // leaves, so the round trip through the remap lands a few ulps off exact.
+    expect(result.contact?.signal).toBeCloseTo(0.5);
     expect(result.discardedCrop).toBeUndefined();
   });
 

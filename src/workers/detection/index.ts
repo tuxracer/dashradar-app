@@ -141,7 +141,7 @@ const wasmRuntime = {
  * Decide whether this device can run the detector, by actually acquiring a
  * WebGPU device rather than only checking that the API exists. On some devices
  * `navigator.gpu` is present but no adapter or device can be obtained, so the
- * API check alone would let us download 57 MB of weights only to fail at
+ * API check alone would let us download 54 MB of weights only to fail at
  * session creation.
  *
  * The adapter must also expose `shader-f16`. Any fp16 tensor in a model graph
@@ -435,7 +435,7 @@ const warmUpSession = async (
  * own heap, rather than being held until this function returns. That matters
  * because what follows session creation is the first run (the capture run, or
  * `warmUpSession`), which compiles the model's shaders and allocates every
- * intermediate at once. Keeping the ~57 MB JS buffer reachable across that
+ * intermediate at once. Keeping the ~54 MB JS buffer reachable across that
  * instant stacks a redundant copy onto the highest peak of the whole session,
  * on a platform that kills the page for crossing its budget with no warning.
  *
@@ -443,7 +443,7 @@ const warmUpSession = async (
  * for free: the capture fallback below re-matches the very CacheStorage entry
  * this read came from. A fresh download has no such second source, so it keeps
  * the buffer across the first run exactly as before rather than risk paying for
- * 57 MB twice. That costs nothing in practice for a driving session: a first
+ * 54 MB twice. That costs nothing in practice for a driving session: a first
  * visit loads once, while every worker recycle after it reads from cache and so
  * takes the releasing path.
  */

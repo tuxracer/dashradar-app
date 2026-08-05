@@ -7,10 +7,10 @@ import type { DetectionModel } from "./types";
  * screen's revert action needs a target that always exists.
  */
 export const DEFAULT_MODEL: DetectionModel = {
-  id: "las-vegas-metro",
+  id: "las-vegas-metro-nano",
   owner: "tuxracer",
-  slug: "las-vegas-metro-rfdetr-small",
-  revision: "v3.8",
+  slug: "las-vegas-metro-rfdetr-nano",
+  revision: "v1.0",
   file: "onnx/model_fp16.onnx",
 };
 

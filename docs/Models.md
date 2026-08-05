@@ -49,7 +49,7 @@ onnxruntime-web directly rather than the Transformers.js `pipeline()`.
 ## Precision and WebGPU
 
 The shipping export is mixed precision: fp16 weights and compute, fp32 inputs
-and outputs, and its three GridSample nodes kept fp32 behind boundary casts.
+and outputs, and its GridSample nodes kept fp32 behind boundary casts.
 
 **Keep GridSample fp32.** The WebGPU GridSample kernel emits an `f32 * f16`
 multiply for fp16 tensors, which WGSL forbids. A pure-fp16 export does not fail
@@ -121,6 +121,15 @@ Registering a model in code is still how a build's own default changes:
 That is the whole entry. It says which bytes to fetch and nothing about what
 they contain, because everything else is read from the bytes themselves at load.
 
+### Publish the score you measured at
+
+The app filters on one confidence floor, `CONFIDENCE_THRESHOLD`, shared by every
+model it can load. It is set from the shipping checkpoint's own release notes,
+rounded to the nearest tenth so it stays on the developer confidence slider's
+grid, and it moves whenever `DEFAULT_MODEL` does. Thresholds do not carry across
+checkpoints, so a model meant to become the default has to publish the score its
+precision and recall were measured at, or there is nothing to set the floor from.
+
 ### Name your classes in the file
 
 Stamp a `names` entry into the ONNX `metadata_props`: a map of logit index to
@@ -157,7 +166,7 @@ alternative is plausible-looking garbage.
 
 ## Budget
 
-The shipping model is about 57 MB. Each registered model is a full checkpoint
+The shipping model is about 54 MB. Each registered model is a full checkpoint
 against the origin's storage quota, and the cache route holds eight entries.
 
 Inference runs at most once a second on a phone clamped to a windshield in

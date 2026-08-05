@@ -1,6 +1,6 @@
 /**
  * How this file's constants relate to the checkpoint that ships, an RF-DETR
- * small fine-tuned to detect Las Vegas Metro police vehicles.
+ * nano fine-tuned to detect Las Vegas Metro police vehicles.
  *
  * We run this ONNX model through raw onnxruntime-web rather than the
  * Transformers.js `pipeline("object-detection")` path. The pipeline's built-in
@@ -15,8 +15,8 @@
  * selectable checkpoint: its repo, revision, weights file, and classes. The
  * constants here cover the parts of running one that every checkpoint shares.
  *
- * That entry names one build: the mixed-precision fp16 model (~57 MB: fp16
- * weights and compute, the three GridSample nodes kept fp32 behind boundary
+ * That entry names one build: the mixed-precision fp16 model (~54 MB: fp16
+ * weights and compute, the two GridSample nodes kept fp32 behind boundary
  * Casts), run on WebGPU. It requires the `shader-f16` GPU feature, which
  * `probeWebGpu` gates on, and became usable when the worker moved to the
  * native C++ WebGPU EP ("onnxruntime-web/webgpu"): under the old JSEP path, a

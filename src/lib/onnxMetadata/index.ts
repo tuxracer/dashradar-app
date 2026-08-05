@@ -43,7 +43,7 @@ const decoder = new TextDecoder();
 /**
  * Read one base-128 varint, advancing the cursor past it. Values accumulate by
  * multiplication rather than `<<`, which is a 32-bit operation in JS and would
- * wrap on the byte lengths in a 57 MB file.
+ * wrap on the byte lengths in a 54 MB file.
  */
 const readVarint = (cursor: Cursor, end: number): number => {
   let value = 0;

@@ -96,7 +96,7 @@ export const createDetectionTelemetry = (
     modelReady: () => {
       // Whether the session started from cached bytes or a fresh download.
       // With no backend there is no other view into the runtime cache's hit
-      // rate, which is the difference between an instant start and a 57 MB
+      // rate, which is the difference between an instant start and a 54 MB
       // wait.
       once("model_ready", () => {
         track("model_ready", { fromCache: modelFromCache });

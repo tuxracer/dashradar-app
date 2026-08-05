@@ -1,13 +1,21 @@
 /**
- * Detections below this score are discarded. Set near the shipping
- * checkpoint's own operating point, the score its release reports precision
- * and recall at, so what reaches the HUD sits in the band the model was
- * actually measured in. A false alert costs more than a missed one here: the
- * driver who is shown a patrol car that is not there stops trusting the meter.
+ * Detections below this score are discarded. It comes from the shipping
+ * checkpoint's own release notes, the score its precision and recall were
+ * measured at, rounded to the nearest tenth: the developer confidence slider
+ * moves in tenths, so a floor off that grid cannot be dialed back to by hand
+ * and turning Developer options on would quietly move the threshold. The
+ * rounding is small next to the plateau a recommended threshold sits on. A
+ * false alert costs more than a missed one here: the driver who is shown a
+ * patrol car that is not there stops trusting the meter.
+ *
+ * This value does not survive a checkpoint change. Every release recalibrates
+ * its own score distribution, so swapping DEFAULT_MODEL means reading the new
+ * release's recommended threshold and moving this with it; carrying the old
+ * number across is how a detector ends up quietly deaf or quietly noisy.
  * SIGNAL_FLOOR in src/lib/radarSignal is the same value and moves with it, or
  * the meter spends range on scores that can never arrive.
  */
-export const CONFIDENCE_THRESHOLD = 0.7;
+export const CONFIDENCE_THRESHOLD = 0.6;
 
 /**
  * Box and label color in the detection view, the same for every class. A

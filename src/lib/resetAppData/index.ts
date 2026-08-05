@@ -20,7 +20,7 @@ const clearWebStorage = (): void => {
 
 /**
  * Deletes every Cache Storage bucket: the Workbox precache, the `ort-runtime`
- * and `model-cache` runtime caches (the ~57 MB weights live here), and the dev
+ * and `model-cache` runtime caches (the ~54 MB weights live here), and the dev
  * model cache. Deleting by key rather than by name so a cache this build no
  * longer knows about still goes.
  */
