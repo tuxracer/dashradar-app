@@ -8,7 +8,7 @@ import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 import { DEFAULT_MODEL } from "@/lib/detectionModels";
 import type { DetectionTelemetry } from "@/lib/detectionTelemetry";
 import { SIGNAL_FLOOR } from "@/lib/radarSignal";
-import { ZOOM_OFF } from "@/workers/detection/consts";
+import { INPUT_SIZE, ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 import type { WorkerRequest, WorkerResponse } from "@/workers/detection/types";
 import { createDetectionEngine, pacingDelay } from "./index";
 import {
@@ -1211,5 +1211,112 @@ describe("the frame pump", () => {
     expect(debug.overheadMs).toBeGreaterThanOrEqual(0);
     expect(debug.pacingDelayMs).toBeGreaterThan(0);
     expect(debug.pacingDelayMs).toBeLessThanOrEqual(MIN_FRAME_INTERVAL_MS);
+  });
+});
+
+describe("what the pump captures", () => {
+  const police = {
+    label: "police",
+    score: 0.9,
+    box: { xmin: 0.4, ymin: 0.5, xmax: 0.6, ymax: 0.8 },
+  };
+  const timing = { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 };
+
+  /** An engine scanning with one setting moved off its default. */
+  const scanning = async (settings: Partial<EngineSettings> = {}) => {
+    const capture = vi.fn(() => Promise.resolve(fakeBitmap()));
+    vi.stubGlobal("createImageBitmap", capture);
+    const engineBuilt = testEngine();
+    engineBuilt.engine.updateSettings({
+      ...DEFAULT_ENGINE_SETTINGS,
+      ...settings,
+    });
+    engineBuilt.worker.emit({ type: "ready" });
+    engineBuilt.engine.setInputs({ video: fakeVideo() });
+    await vi.advanceTimersByTimeAsync(0);
+    return { ...engineBuilt, capture };
+  };
+
+  const detect = (worker: FakeWorker) =>
+    worker.posted.find((message) => message.type === "detect");
+
+  it("starts the pump when ready arrives after the video is attached", async () => {
+    const { engine, worker } = testEngine();
+    engine.setInputs({ video: fakeVideo() });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(detectCount(worker)).toBe(0);
+    worker.emit({ type: "ready" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(detectCount(worker)).toBe(1);
+  });
+
+  it("surfaces a detection immediately on its first frame", () => {
+    const { engine, worker } = testEngine();
+    worker.emit({ type: "ready" });
+    worker.emit({ type: "detections", detections: [police], timing });
+    expect(engine.getSnapshot().hud?.top).toBeDefined();
+  });
+
+  it("coasts a detection's box through a frame the model misses it", () => {
+    const { engine, worker } = testEngine();
+    worker.emit({ type: "ready" });
+    worker.emit({ type: "detections", detections: [police], timing });
+    expect(engine.getSnapshot().hud?.top).toBeDefined();
+    // Next frame has no detections: the track coasts, so the box stays shown.
+    worker.emit({ type: "detections", detections: [], timing });
+    expect(engine.getSnapshot().hud?.top).toBeDefined();
+  });
+
+  it("captures only the model's input while cutouts are off", async () => {
+    const { worker, capture } = await scanning({ includeContact: false });
+    // The centered square of a 1280x720 frame, resized to the model's input.
+    expect(capture).toHaveBeenCalledWith(
+      expect.anything(),
+      280,
+      0,
+      720,
+      720,
+      expect.objectContaining({
+        resizeWidth: INPUT_SIZE,
+        resizeHeight: INPUT_SIZE,
+      }),
+    );
+    // The worker is told which frame the crop came from, so the boxes it maps
+    // back out still describe the whole frame rather than the crop.
+    expect(detect(worker)).toMatchObject({
+      source: { width: 1280, height: 720 },
+    });
+  });
+
+  it("captures the whole frame while cutouts are on", async () => {
+    const { worker, capture } = await scanning({ includeContact: true });
+    // The cutout is cut from the frame's own pixels, so nothing may be cropped
+    // or thrown away before the worker sees it, and the worker must be left to
+    // do the cropping itself.
+    expect(capture).toHaveBeenCalledWith(expect.anything());
+    expect(detect(worker)?.source).toBeUndefined();
+  });
+
+  it("captures the region the zoom it declares selects", async () => {
+    const { worker, capture } = await scanning({ zoom: ZOOM_2X });
+    expect(detect(worker)).toMatchObject({ zoom: ZOOM_2X });
+    // Half the short edge, centered: the crop the declared zoom describes. A
+    // capture cropped at one zoom and labelled with another would have the
+    // worker map every box back through the wrong region.
+    expect(capture).toHaveBeenCalledWith(
+      expect.anything(),
+      460,
+      180,
+      360,
+      360,
+      expect.anything(),
+    );
+  });
+
+  it("asks the worker for a cutout only while they are on", async () => {
+    const off = await scanning({ includeContact: false });
+    expect(detect(off.worker)).toMatchObject({ includeCrop: false });
+    const on = await scanning({ includeContact: true });
+    expect(detect(on.worker)).toMatchObject({ includeCrop: true });
   });
 });
