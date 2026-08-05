@@ -14,3 +14,11 @@ export const WAKE_LOCK_UNSUPPORTED_REASON = "unsupported";
 
 /** `wake_lock` failure reason for a rejection that carried no error name. */
 export const WAKE_LOCK_UNKNOWN_REASON = "unknown";
+
+/**
+ * `wake_lock` source tag for a lock won by the retry that rides a user gesture,
+ * after the first request had already been refused and reported. It is what
+ * separates a session that recovered from one that scanned with the screen free
+ * to sleep, which the refusal count alone cannot say once a retry exists.
+ */
+export const WAKE_LOCK_GESTURE_SOURCE = "gesture";

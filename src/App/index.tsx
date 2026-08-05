@@ -42,6 +42,7 @@ import {
   waitForUpdateSettled,
 } from "@/lib/serviceWorker";
 import type { VideoFileFeedEvent } from "@/lib/videoFileFeed";
+import { primeScreenWakeLock } from "@/lib/wakeLock";
 import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 
 const useViewportSize = (): Size => {
@@ -190,6 +191,11 @@ const RadarScreen = () => {
       <IntroScreen
         onStart={() => {
           track("intro_start");
+          // Every tap on the way to scanning primes the wake lock, since any
+          // of them can be the last one of the drive. A returning launch shows
+          // neither this screen nor the permission ask, which is why the lock
+          // itself also retries on the first gesture it sees.
+          primeScreenWakeLock();
           markIntroSeen();
           setShowIntro(false);
         }}
@@ -219,6 +225,8 @@ const RadarScreen = () => {
       <CameraPermissionScreen
         onAllow={() => {
           track("camera_prompt_allow");
+          // The last tap before scanning on a first visit; see the intro's.
+          primeScreenWakeLock();
           markCameraPromptAccepted();
           setShowCameraPrompt(false);
         }}

@@ -1,6 +1,6 @@
 import { track } from "@vercel/analytics";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { screenWakeLock } from "@/lib/wakeLock";
+import { primeScreenWakeLock, screenWakeLock } from "@/lib/wakeLock";
 
 vi.mock("@vercel/analytics", () => ({ track: vi.fn() }));
 
@@ -20,8 +20,30 @@ const stubRefusedWakeLock = (name: string) => {
   return { request };
 };
 
+/**
+ * Stub a wake lock that refuses until a gesture-backed request arrives, the
+ * way WebKit answers a document that has never had one.
+ */
+const stubGestureOnlyWakeLock = () => {
+  const sentinel: FakeSentinel = { release: vi.fn(() => Promise.resolve()) };
+  let gestured = false;
+  const request = vi.fn(() =>
+    gestured
+      ? Promise.resolve(sentinel)
+      : Promise.reject(new DOMException("no", "NotAllowedError")),
+  );
+  vi.stubGlobal("navigator", { wakeLock: { request } });
+  const allow = () => {
+    gestured = true;
+  };
+  return { request, sentinel, allow };
+};
+
 /** Let a settled request's continuation run. */
 const flush = () => Promise.resolve();
+
+/** A tap, which is the only thing WebKit grants a first lock inside. */
+const tap = () => window.dispatchEvent(new Event("click"));
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -91,6 +113,67 @@ describe("screenWakeLock", () => {
     expect(() => {
       subscription.unsubscribe();
     }).not.toThrow();
+  });
+
+  // WebKit refuses a lock requested outside a gesture, so a refused request is
+  // not final: the next tap is the one chance left to hold the screen.
+  it("asks again on the next tap after a refusal", async () => {
+    const { request } = stubRefusedWakeLock("NotAllowedError");
+    const subscription = screenWakeLock().subscribe();
+    await flush();
+    tap();
+    expect(request).toHaveBeenCalledTimes(2);
+    subscription.unsubscribe();
+  });
+
+  it("keeps asking on later taps while it is still refused", async () => {
+    const { request } = stubRefusedWakeLock("NotAllowedError");
+    const subscription = screenWakeLock().subscribe();
+    await flush();
+    tap();
+    await flush();
+    tap();
+    expect(request).toHaveBeenCalledTimes(3);
+    subscription.unsubscribe();
+  });
+
+  it("holds the lock a tap won", async () => {
+    const { sentinel, allow } = stubGestureOnlyWakeLock();
+    const subscription = screenWakeLock().subscribe();
+    await flush();
+    allow();
+    tap();
+    await flush();
+    subscription.unsubscribe();
+    expect(sentinel.release).toHaveBeenCalled();
+  });
+
+  // Taps land constantly on a screen the driver is using, and each one asking
+  // for a lock already held would churn the lock it is holding.
+  it("ignores taps while it holds a lock", async () => {
+    const { request } = stubWakeLock();
+    const subscription = screenWakeLock().subscribe();
+    await flush();
+    tap();
+    expect(request).toHaveBeenCalledTimes(1);
+    subscription.unsubscribe();
+  });
+
+  it("stops asking on taps after unsubscribe", async () => {
+    const { request } = stubRefusedWakeLock("NotAllowedError");
+    const subscription = screenWakeLock().subscribe();
+    await flush();
+    subscription.unsubscribe();
+    tap();
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not ask again on a tap without wake lock support", () => {
+    vi.stubGlobal("navigator", {});
+    const subscription = screenWakeLock().subscribe();
+    tap();
+    expect(track).toHaveBeenCalledTimes(1);
+    subscription.unsubscribe();
   });
 
   it("holds one lock at a time across a re-request", async () => {
@@ -167,6 +250,51 @@ describe("wake lock outcome reporting", () => {
     expect(track).toHaveBeenCalledTimes(1);
   });
 
+  // The refusal is already counted by the time a tap wins the lock, so without
+  // a tag on the recovery the platform reads as refusing every time it is
+  // asked, which is the state this retry exists to leave.
+  it("tags a lock won by a tap as a recovery", async () => {
+    const { allow } = stubGestureOnlyWakeLock();
+    const subscription = screenWakeLock().subscribe();
+    await flush();
+    allow();
+    tap();
+    await flush();
+    expect(track).toHaveBeenCalledWith("wake_lock", {
+      outcome: "succeeded",
+      source: "gesture",
+    });
+    subscription.unsubscribe();
+  });
+
+  it("reports the refusal before a tap recovers it", async () => {
+    const { allow } = stubGestureOnlyWakeLock();
+    const subscription = screenWakeLock().subscribe();
+    await flush();
+    expect(track).toHaveBeenCalledWith("wake_lock", {
+      outcome: "failed",
+      reason: "NotAllowedError",
+    });
+    allow();
+    tap();
+    await flush();
+    expect(track).toHaveBeenCalledTimes(2);
+    subscription.unsubscribe();
+  });
+
+  it("reports a recovery once, not on every later re-request", async () => {
+    const { allow } = stubGestureOnlyWakeLock();
+    const subscription = screenWakeLock().subscribe();
+    await flush();
+    allow();
+    tap();
+    await flush();
+    document.dispatchEvent(new Event("visibilitychange"));
+    await flush();
+    expect(track).toHaveBeenCalledTimes(2);
+    subscription.unsubscribe();
+  });
+
   it("reports only the first outcome when the lock is granted", async () => {
     stubWakeLock();
     const wakeLock$ = screenWakeLock();
@@ -176,5 +304,45 @@ describe("wake lock outcome reporting", () => {
     await flush();
     subscription.unsubscribe();
     expect(track).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("primeScreenWakeLock", () => {
+  it("requests a lock", () => {
+    const { request } = stubWakeLock();
+    primeScreenWakeLock();
+    expect(request).toHaveBeenCalledWith("screen");
+  });
+
+  // Priming buys the permission, not the lock: holding this one would keep the
+  // screen awake from the intro tap onward, with nothing left to release it.
+  it("releases the lock it primed with", async () => {
+    const { sentinel } = stubWakeLock();
+    primeScreenWakeLock();
+    await flush();
+    expect(sentinel.release).toHaveBeenCalled();
+  });
+
+  it("reports nothing, leaving the count to the lock that matters", async () => {
+    stubWakeLock();
+    primeScreenWakeLock();
+    await flush();
+    expect(track).not.toHaveBeenCalled();
+  });
+
+  it("survives a platform that refuses inside a gesture", async () => {
+    stubRefusedWakeLock("NotAllowedError");
+    expect(() => {
+      primeScreenWakeLock();
+    }).not.toThrow();
+    await flush();
+    expect(track).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op without wake lock support", () => {
+    vi.stubGlobal("navigator", {});
+    expect(() => {
+      primeScreenWakeLock();
+    }).not.toThrow();
   });
 });

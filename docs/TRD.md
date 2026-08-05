@@ -72,6 +72,8 @@ A skip leaves the tracker, the HUD, and the contact card exactly as the last rea
 
 **Derived running state.** Whether the pump runs is never commanded, only derived: it runs exactly while a video is attached, the page is visible, and the settings panel is closed (a same-page overlay fires no `visibilitychange`, so it is an explicit input). The provider pushes those inputs; the engine acts on the edges of `running$`. The three resources that should exist only while scanning (the telemetry clock, the crash sentinel, the screen wake lock) are streams subscribed for exactly as long as the published status is `running`: each one's teardown is its own release, so leaving the scanning window cannot leave a heartbeat timer or a wake lock behind, whichever code path publishes the change.
 
+**The wake lock has to be bought with a tap.** WebKit grants one only to a request made from inside a user gesture, and grants gesture-less ones afterwards only because such a request already landed on the document. The engine asks when scanning starts, several awaits past the tap that set the app going, so on iOS the lock was refused and stayed refused for the life of the page while Chrome, which has no such rule, granted it. Two paths cover it now. Each tap on the way to scanning spends a throwaway request to win the permission, and a refused lock waits for the driver's next touch of the screen and asks again, which is the only route left on a returning launch that shows neither the intro nor the permission ask. A grant that follows a refusal is reported under its own tag, so a session that recovered does not read as one that scanned with the screen free to sleep.
+
 ## 6. Worker protocol
 
 Both directions are validated by type guards; a malformed message is ignored rather than crashing either side.
@@ -177,7 +179,7 @@ Anonymous, no camera, location, or detection geometry; dev builds emit nothing. 
 | `timing_round_trip`, `timing_inference` | Medians once a rolling window fills; what the pacing floor is argued against |
 | `timing_*_late` | The same pair after 15 minutes of scanning; the gap is thermal drift on real dash mounts |
 | `scan_session` | Actual scan time per drive, bucketed, plus installed-PWA state; the denominator for everything else |
-| `wake_lock` | Whether the platform granted the lock (`succeeded`/`failed`, with a reason on a failure); the screen sleeping mid-drive is the app's worst silent failure, and the grants are what the refusals are read against. First request of the page load only |
+| `wake_lock` | Whether the platform granted the lock (`succeeded`/`failed`, with a reason on a failure and `source: gesture` on a grant the tap retry won); the screen sleeping mid-drive is the app's worst silent failure, and the grants are what the refusals are read against. One refusal and at most one grant per page load |
 | `worker_hung` | A worker went silent (mid-scan or mid-load) and was recycled to recover; once per page load |
 | `pwa_installed` | Chromium's install event, or first standalone launch on iOS |
 | `app_updated` | The first launch on a new build, `from` and `to` commit SHA; counts updates that were actually run, not ones downloaded |
