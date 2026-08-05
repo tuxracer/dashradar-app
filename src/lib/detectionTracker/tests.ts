@@ -330,4 +330,40 @@ describe("createDetectionTracker", () => {
     // coast would still show the stale track here; the time budget does not.
     expect(tracker.update([], 5_000)).toHaveLength(0);
   });
+
+  it("keeps a matched object's id stable across update calls", () => {
+    const tracker = createDetectionTracker(config);
+    const [first] = tracker.update(
+      [detection({ box: box(0.4, 0.5, 0.6, 0.8) })],
+      0,
+    );
+    // The next frame's box drifts but matches by IoU: same object, same id.
+    const [second] = tracker.update(
+      [detection({ box: box(0.42, 0.52, 0.62, 0.82) })],
+      FLOOR_CADENCE_MS,
+    );
+    expect(second.id).toBe(first.id);
+  });
+
+  it("assigns a new object its own id", () => {
+    const tracker = createDetectionTracker(config);
+    const [first] = tracker.update(
+      [detection({ box: box(0.4, 0.5, 0.6, 0.8) })],
+      0,
+    );
+    // A detection far from the existing track spawns a fresh track; the
+    // established one keeps its id and the newcomer gets a different one.
+    const tracks = tracker.update(
+      [
+        detection({ box: box(0.42, 0.52, 0.62, 0.82) }),
+        detection({ box: box(0.0, 0.0, 0.1, 0.1) }),
+      ],
+      FLOOR_CADENCE_MS,
+    );
+    const matched = tracks.find((track) => track.box.xmin > 0.3);
+    const fresh = tracks.find((track) => track.box.xmin < 0.3);
+    expect(matched?.id).toBe(first.id);
+    expect(fresh?.id).toBeDefined();
+    expect(fresh?.id).not.toBe(first.id);
+  });
 });

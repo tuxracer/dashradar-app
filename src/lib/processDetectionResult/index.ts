@@ -1,5 +1,6 @@
 import type { HudModel } from "@/lib/detection";
 import { buildHudModel, enrichDetections } from "@/lib/detection";
+import type { Track } from "@/lib/detectionTracker";
 import type { ContactDirection } from "@/lib/radarSignal";
 import { contactDirection, signalFromScore } from "@/lib/radarSignal";
 import type { Detection, NormalizedBox, RawDetection } from "@/types";
@@ -29,8 +30,8 @@ export type Contact = {
 export type ProcessedDetectionResult = {
   /** The frame's detections after validation and the confidence filter. */
   detections: Detection[];
-  /** The coasted tracker output (what the HUD renders). */
-  tracked: Detection[];
+  /** The coasted tracker output (what the HUD renders), with stable ids. */
+  tracked: Track[];
   hud: HudModel;
   /** Contact built from the crop, when it survived validation and is wanted. */
   contact: Contact | undefined;
@@ -65,7 +66,7 @@ export const processDetectionResult = ({
   detections: RawDetection[];
   crop: DetectionCrop | undefined;
   confidenceThreshold: number;
-  updateTracks: (detections: Detection[]) => Detection[];
+  updateTracks: (detections: Detection[]) => Track[];
   includeContact: boolean;
   at: number;
 }): ProcessedDetectionResult => {

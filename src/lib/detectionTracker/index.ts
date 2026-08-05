@@ -28,13 +28,6 @@ export const initialTrackerState = (): TrackerState => ({
   nextId: 0,
 });
 
-/** Strip a track's bookkeeping fields back to a plain Detection. */
-const toDetection = (track: Track): Detection => ({
-  label: track.label,
-  score: track.score,
-  box: track.box,
-});
-
 /**
  * One frame of the coasting tracker. Greedily matches this frame's detections
  * to existing tracks by IoU, shows every detection immediately (whether it
@@ -45,14 +38,16 @@ const toDetection = (track: Track): Detection => ({
  * results arrive at whatever cadence the pacing chooses, and a stale track
  * holds its full score while it coasts, so a count would keep a vanished
  * vehicle driving the alert several times longer on a slow device than on a
- * fast one. Pure: all tuning comes in via `config`.
+ * fast one. `visible` is the full Track set, so consumers get a stable id per
+ * object for as long as the tracker holds it. Pure: all tuning comes in via
+ * `config`.
  */
 export const stepTracker = (
   state: TrackerState,
   detections: Detection[],
   config: TrackerConfig,
   atMs: number,
-): { state: TrackerState; visible: Detection[] } => {
+): { state: TrackerState; visible: Track[] } => {
   const { tracks } = state;
   const claimed = new Array<boolean>(tracks.length).fill(false);
   const matchedDetByTrack = new Map<number, Detection>();
@@ -127,22 +122,21 @@ export const stepTracker = (
     nextId += 1;
   }
 
-  const visible = nextTracks.map(toDetection);
-  return { state: { tracks: nextTracks, nextId }, visible };
+  return { state: { tracks: nextTracks, nextId }, visible: nextTracks };
 };
 
 /**
  * Stateful wrapper that holds tracker state across frames. The engine keeps
  * one instance and calls `update` with each result's detections and its
- * timestamp; it returns the detections to render (this frame's, plus any
- * coasting).
+ * timestamp; it returns the tracks to render (this frame's, plus any
+ * coasting), each carrying the stable id it keeps for as long as it lives.
  */
 export const createDetectionTracker = (
   config: TrackerConfig = DEFAULT_TRACKER_CONFIG,
 ) => {
   let state = initialTrackerState();
   return {
-    update: (detections: Detection[], atMs: number): Detection[] => {
+    update: (detections: Detection[], atMs: number): Track[] => {
       const result = stepTracker(state, detections, config, atMs);
       state = result.state;
       return result.visible;

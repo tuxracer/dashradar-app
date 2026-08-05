@@ -15,6 +15,7 @@ export type {
   ScanResult,
 } from "@/lib/detectionEngine";
 export type { Contact } from "@/lib/processDetectionResult";
+export type { Track } from "@/lib/detectionTracker";
 
 /**
  * Value exposed via useDetection(): the engine's published snapshot plus the

@@ -88,6 +88,21 @@ const ScanProbe = () => {
   );
 };
 
+/** Renders each published track as `id@xmin`, so a test can tell which box an
+ * id is attached to across results. */
+const TrackProbe = () => {
+  const { scan } = useDetection();
+  return (
+    <span data-testid="track-ids">
+      {scan
+        ? scan.tracks
+            .map((scanTrack) => `${scanTrack.id}@${scanTrack.box.xmin}`)
+            .join(" ")
+        : "none"}
+    </span>
+  );
+};
+
 // The debug snapshot lives in a ref read through getDebugSnapshot() (results
 // must not re-render the app), so this probe reads it on demand instead of
 // rendering live state.
@@ -673,6 +688,68 @@ describe("DetectionProvider", () => {
     // raw per-frame output, so its box is gone the moment the model loses it.
     expect(screen.getByTestId("objects").textContent).toBe("1");
     expect(screen.getByTestId("scan-count").textContent).toBe("0");
+  });
+
+  it("publishes tracks whose id stays with the same box across results", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+    const worker = renderWithProvider(
+      <>
+        <TrackProbe />
+        <StartOnReady />
+      </>,
+    );
+    act(() => {
+      worker.emit({ type: "ready" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [
+          {
+            label: "police",
+            score: 0.9,
+            box: { xmin: 0.4, ymin: 0.5, xmax: 0.6, ymax: 0.8 },
+          },
+        ],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+      });
+    });
+    expect(screen.getByTestId("track-ids").textContent).toBe("0@0.4");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    });
+    // The next result sees the same object drifted slightly (an IoU match)
+    // plus a brand-new one across the frame: the drifted box keeps id 0, the
+    // newcomer gets its own id.
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [
+          {
+            label: "police",
+            score: 0.9,
+            box: { xmin: 0.42, ymin: 0.52, xmax: 0.62, ymax: 0.82 },
+          },
+          {
+            label: "police",
+            score: 0.9,
+            box: { xmin: 0.05, ymin: 0.05, xmax: 0.15, ymax: 0.15 },
+          },
+        ],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+      });
+    });
+    expect(screen.getByTestId("track-ids").textContent).toBe("0@0.42 1@0.05");
   });
 
   it("retries frame capture after createImageBitmap fails once", async () => {
@@ -3059,6 +3136,39 @@ describe("the scene-change gate", () => {
     await skipAndAdvance(worker);
     await skipAndAdvance(worker);
     expect(screen.getByTestId("objects").textContent).toBe("1");
+  });
+
+  it("leaves the published scan's tracks untouched on a skip", async () => {
+    // A skip publishes only the heartbeat. If it republished the scan, or
+    // advanced the tracker behind it, the ids the scene view keys its objects
+    // on would churn or coast away while the scene is provably unchanged.
+    const worker = renderWithProvider(
+      <>
+        <TrackProbe />
+        <StartOnReady />
+      </>,
+    );
+    await startScanning(worker);
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [
+          {
+            label: "police",
+            score: 0.9,
+            box: { xmin: 0.4, ymin: 0.5, xmax: 0.6, ymax: 0.8 },
+          },
+        ],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+      });
+    });
+    expect(screen.getByTestId("track-ids").textContent).toBe("0@0.4");
+    // More skips than the tracker's coasting tolerance, so a tracker being
+    // advanced would have dropped the track (and its id) by now.
+    await skipAndAdvance(worker);
+    await skipAndAdvance(worker);
+    await skipAndAdvance(worker);
+    expect(screen.getByTestId("track-ids").textContent).toBe("0@0.4");
   });
 
   it("scans the first frame of a span before it trusts the gate", async () => {

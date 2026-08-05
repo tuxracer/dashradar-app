@@ -602,6 +602,7 @@ export const createDetectionEngine = ({
         if (frame) {
           patch.scan = {
             detections: result.detections,
+            tracks: result.tracked,
             frame: { width: frame.width, height: frame.height },
             zoom: frame.zoom,
             at,

@@ -1,4 +1,5 @@
 import type { HudModel, Size } from "@/lib/detection";
+import type { Track } from "@/lib/detectionTracker";
 import type { Contact } from "@/lib/processDetectionResult";
 import type { Detection } from "@/types";
 import type {
@@ -96,6 +97,12 @@ export type DebugSnapshot = {
  */
 export type ScanResult = {
   detections: Detection[];
+  /**
+   * The coasted tracker output with stable per-object ids, what the scene
+   * view places (`detections` above stays the raw per-frame model output the
+   * detection view draws).
+   */
+  tracks: Track[];
   /** Intrinsic size of the captured frame, in pixels. */
   frame: Size;
   /** Crop factor the frame was captured at. */

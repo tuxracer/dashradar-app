@@ -1,10 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
+import type { Track } from "@/lib/detectionTracker";
 import { processDetectionResult } from "@/lib/processDetectionResult";
 import { SIGNAL_FLOOR } from "@/lib/radarSignal";
-import type { RawDetection } from "@/types";
+import type { Detection, RawDetection } from "@/types";
 
 /** Fake bitmap; the function only carries or discards it, never draws it. */
 const bitmap = () => ({ close: vi.fn() }) as unknown as ImageBitmap;
+
+/** Pass-through tracker fake: each detection becomes a track as-is. */
+const asTracks = (detections: Detection[]): Track[] =>
+  detections.map((detection, id) => ({ ...detection, id, lastSeenAt: 0 }));
 
 const police = (
   score: number,
@@ -17,7 +22,7 @@ describe("processDetectionResult", () => {
       detections: [police(0.9), police(0.3)],
       crop: undefined,
       confidenceThreshold: 0.5,
-      updateTracks: (detections) => detections,
+      updateTracks: asTracks,
       includeContact: true,
       at: 0,
     });
@@ -28,7 +33,7 @@ describe("processDetectionResult", () => {
   });
 
   it("hands the HUD the tracker's output, not the raw frame's", () => {
-    const coasted = [police(0.8)];
+    const coasted = asTracks([police(0.8)]);
     const result = processDetectionResult({
       detections: [],
       crop: undefined,
@@ -50,7 +55,7 @@ describe("processDetectionResult", () => {
       detections: [police(midBand)],
       crop: { image, detectionIndex: 0 },
       confidenceThreshold: 0.5,
-      updateTracks: (detections) => detections,
+      updateTracks: asTracks,
       includeContact: true,
       at: 42,
     });
@@ -70,7 +75,7 @@ describe("processDetectionResult", () => {
       detections: [police(0.3)],
       crop: { image, detectionIndex: 0 },
       confidenceThreshold: 0.5,
-      updateTracks: (detections) => detections,
+      updateTracks: asTracks,
       includeContact: true,
       at: 0,
     });
@@ -84,7 +89,7 @@ describe("processDetectionResult", () => {
       detections: [police(0.9)],
       crop: { image, detectionIndex: 5 },
       confidenceThreshold: 0.5,
-      updateTracks: (detections) => detections,
+      updateTracks: asTracks,
       includeContact: true,
       at: 0,
     });
@@ -98,7 +103,7 @@ describe("processDetectionResult", () => {
       detections: [police(0.9)],
       crop: { image, detectionIndex: 0 },
       confidenceThreshold: 0.5,
-      updateTracks: (detections) => detections,
+      updateTracks: asTracks,
       includeContact: false,
       at: 0,
     });
