@@ -15,6 +15,7 @@ So one of the challenges this app takes on is doing the detection on-device: in 
 ## Features
 
 - **Glanceable signal meter** that climbs as a patrol vehicle appears, with an optional beep. No scene to parse, no map to study.
+- **3D scene view**, one tap from the meter: what the detector sees, placed on a ground grid at its estimated distance and direction.
 - **Fully on-device**: inference runs in the browser through onnxruntime-web on WebGPU, finishing each scan in under a second. Devices without WebGPU are told so up front instead of handed a detector too slow to be useful.
 - **Offline PWA**: install it to the home screen and it works with no connection after the first launch.
 - **Screen wake lock** so the phone doesn't sleep mid-drive.
