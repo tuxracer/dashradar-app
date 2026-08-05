@@ -12,6 +12,7 @@ import { ZOOM_OFF } from "@/workers/detection/consts";
 import type { WorkerRequest, WorkerResponse } from "@/workers/detection/types";
 import { createDetectionEngine, pacingDelay } from "./index";
 import {
+  FRAME_RETRY_MS,
   MAX_FRAME_INTERVAL_MS,
   MIN_FRAME_INTERVAL_MS,
   SCENE_GATE_MAX_SKIP_MS,
@@ -108,6 +109,34 @@ const DEFAULT_ENGINE_SETTINGS: EngineSettings = {
   sceneGate: true,
   zoom: ZOOM_OFF,
   confidenceThreshold: CONFIDENCE_THRESHOLD,
+};
+
+/**
+ * A video element whose requestVideoFrameCallback is under test control:
+ * callbacks queue up until presentFrame() fires them, simulating the camera
+ * presenting a new frame. jsdom's video element has no rVFC of its own, so
+ * assigning one exercises the pump's wait-for-new-frame path.
+ */
+const videoWithControlledFrames = () => {
+  const callbacks: VideoFrameRequestCallback[] = [];
+  const video = fakeVideo();
+  video.requestVideoFrameCallback = (callback) => {
+    callbacks.push(callback);
+    return callbacks.length;
+  };
+  const presentFrame = () => {
+    for (const callback of callbacks.splice(0)) {
+      callback(performance.now(), {
+        presentationTime: 0,
+        expectedDisplayTime: 0,
+        width: 512,
+        height: 512,
+        mediaTime: 0,
+        presentedFrames: 1,
+      });
+    }
+  };
+  return { video, presentFrame };
 };
 
 /** Detect requests a worker has been handed. */
@@ -878,5 +907,309 @@ describe("model load", () => {
     expect(telemetry.modelLoadStart).toHaveBeenCalledWith(false);
     expect(telemetry.modelDownloaded).toHaveBeenCalledWith(8_400);
     expect(telemetry.modelReady).toHaveBeenCalled();
+  });
+});
+
+describe("the frame pump", () => {
+  const timing = { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 };
+  const car = {
+    label: "car",
+    score: 0.9,
+    box: { xmin: 0.4, ymin: 0.5, xmax: 0.6, ymax: 0.8 },
+  };
+  const emptyResult = { type: "detections" as const, detections: [], timing };
+
+  /** An engine whose first capture has reached the worker. */
+  const scanning = async (video?: HTMLVideoElement) => {
+    const engineBuilt = testEngine();
+    engineBuilt.worker.emit({ type: "ready" });
+    engineBuilt.engine.setInputs({ video: video ?? fakeVideo() });
+    await vi.advanceTimersByTimeAsync(0);
+    return engineBuilt;
+  };
+
+  it("pumps a frame after start and another after each result", async () => {
+    const { engine, worker } = await scanning();
+    expect(detectCount(worker)).toBe(1);
+    worker.emit({ type: "detections", detections: [car], timing });
+    expect(engine.getSnapshot().status).toBe("running");
+    // The tracker registers a detection on its first frame, so its blip
+    // reaches the HUD immediately.
+    expect(engine.getSnapshot().hud?.top).toBeDefined();
+    // The next frame goes out once the pacing interval elapses.
+    await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    expect(detectCount(worker)).toBe(2);
+  });
+
+  it("hears a result that arrives synchronously with the post", async () => {
+    // A worker that answers before postMessage returns: legal for a worker
+    // shim, and the worst-case scheduling for the pump's reply listener. The
+    // pump must have that listener in place at post time, not attach it a
+    // tick later, or this reply lands on nothing and the pump stalls.
+    const { engine, worker } = testEngine();
+    const post = worker.postMessage.bind(worker);
+    worker.postMessage = (message: WorkerRequest) => {
+      post(message);
+      if (message.type === "detect") {
+        worker.emit(emptyResult);
+      }
+    };
+    worker.emit({ type: "ready" });
+    engine.setInputs({ video: fakeVideo() });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(detectCount(worker)).toBe(1);
+    // The synchronous reply was heard, so pacing is already scheduled and
+    // the next frame goes out on time instead of never.
+    await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    expect(detectCount(worker)).toBe(2);
+  });
+
+  it("publishes each scan's own detections with the frame they came from", async () => {
+    const { engine, worker } = await scanning();
+    expect(engine.getSnapshot().scan).toBeUndefined();
+    worker.emit({
+      type: "detections",
+      detections: [
+        car,
+        {
+          label: "police",
+          score: 0.2,
+          box: { xmin: 0.1, ymin: 0.1, xmax: 0.2, ymax: 0.2 },
+        },
+      ],
+      timing,
+    });
+    // The confidence filter runs before publication, so the low-score
+    // detection never reaches the overlay, and the frame geometry is the
+    // captured bitmap's own.
+    expect(engine.getSnapshot().scan).toMatchObject({
+      detections: [{ label: "car" }],
+      frame: { width: 1280 },
+      zoom: ZOOM_OFF,
+    });
+  });
+
+  it("drops a scan's boxes as soon as the model stops seeing them", async () => {
+    const { engine, worker } = await scanning();
+    worker.emit({ type: "detections", detections: [car], timing });
+    await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    worker.emit(emptyResult);
+    // The tracker coasts the lost car, so the HUD still shows it; the scan is
+    // raw per-frame output, so its box is gone the moment the model loses it.
+    expect(engine.getSnapshot().hud?.top).toBeDefined();
+    expect(engine.getSnapshot().scan?.detections).toHaveLength(0);
+  });
+
+  it("publishes tracks whose id stays with the same box across results", async () => {
+    const { engine, worker } = await scanning();
+    worker.emit({ type: "detections", detections: [car], timing });
+    expect(engine.getSnapshot().scan?.tracks).toMatchObject([
+      { id: 0, box: { xmin: 0.4 } },
+    ]);
+    await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    // The next result sees the same object drifted slightly (an IoU match)
+    // plus a brand-new one across the frame: the drifted box keeps id 0, the
+    // newcomer gets its own id.
+    worker.emit({
+      type: "detections",
+      detections: [
+        { ...car, box: { xmin: 0.42, ymin: 0.52, xmax: 0.62, ymax: 0.82 } },
+        { ...car, box: { xmin: 0.05, ymin: 0.05, xmax: 0.15, ymax: 0.15 } },
+      ],
+      timing,
+    });
+    expect(engine.getSnapshot().scan?.tracks).toMatchObject([
+      { id: 0, box: { xmin: 0.42 } },
+      { id: 1, box: { xmin: 0.05 } },
+    ]);
+  });
+
+  it("retries frame capture after createImageBitmap fails once", async () => {
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi
+        .fn()
+        .mockRejectedValueOnce(new Error("video has no frame data"))
+        .mockImplementation(() => Promise.resolve(fakeBitmap())),
+    );
+    const { engine, worker } = testEngine();
+    worker.emit({ type: "ready" });
+    engine.setInputs({ video: fakeVideo() });
+    // First capture rejects (no detect posted), scheduling a retry.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(detectCount(worker)).toBe(0);
+    // The retry fires after FRAME_RETRY_MS and succeeds.
+    await vi.advanceTimersByTimeAsync(FRAME_RETRY_MS);
+    expect(detectCount(worker)).toBe(1);
+  });
+
+  it("counts consecutive capture failures and clears the streak on success", async () => {
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi
+        .fn()
+        .mockRejectedValueOnce(new Error("video has no frame data"))
+        .mockRejectedValueOnce(new Error("video has no frame data"))
+        .mockImplementation(() => Promise.resolve(fakeBitmap())),
+    );
+    const { engine, worker } = testEngine();
+    worker.emit({ type: "ready" });
+    engine.setInputs({ video: fakeVideo() });
+    // Two captures fail back to back; the streak is visible mid-retry.
+    await vi.advanceTimersByTimeAsync(FRAME_RETRY_MS);
+    expect(engine.getDebugSnapshot().captureFailures).toBe(2);
+    // The third capture succeeds and posts, ending the streak.
+    await vi.advanceTimersByTimeAsync(FRAME_RETRY_MS);
+    expect(detectCount(worker)).toBe(1);
+    expect(engine.getDebugSnapshot().captureFailures).toBe(0);
+  });
+
+  it("paces the next frame to the minimum interval after a fast result", async () => {
+    const { worker } = await scanning();
+    expect(detectCount(worker)).toBe(1);
+    // A result arriving well before the pacing floor must not re-prime the
+    // pump immediately.
+    worker.emit(emptyResult);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(detectCount(worker)).toBe(1);
+    // Once the interval elapses, exactly one more frame goes out.
+    await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    expect(detectCount(worker)).toBe(2);
+  });
+
+  it("rests a fraction of the round trip after a slow result", async () => {
+    const { worker } = await scanning();
+    expect(detectCount(worker)).toBe(1);
+    // A slow device: the result lands well past the pacing floor, so the
+    // proportional rest governs instead. The expected wait comes from the
+    // pacing rule itself rather than being restated here, so this covers the
+    // pump honoring the decision and needs no edit when the rule is retuned.
+    const roundTripMs = 1_000;
+    const restMs = pacingDelay(roundTripMs).delayMs;
+    await vi.advanceTimersByTimeAsync(roundTripMs);
+    worker.emit({
+      type: "detections",
+      detections: [],
+      timing: { preprocessMs: 5, inferenceMs: 990, decodeMs: 5 },
+    });
+    // The pump rests out the decision, so just short of it nothing is posted.
+    await vi.advanceTimersByTimeAsync(restMs - 100);
+    expect(detectCount(worker)).toBe(1);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(detectCount(worker)).toBe(2);
+  });
+
+  it("does not pump a paced frame scheduled before the pump stopped", async () => {
+    const { engine, worker } = await scanning();
+    // The result schedules a paced frame, then the video detaches before it
+    // fires.
+    worker.emit(emptyResult);
+    engine.setInputs({ video: undefined });
+    await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS * 2);
+    expect(detectCount(worker)).toBe(1);
+  });
+
+  it("captures only when the camera presents a new frame", async () => {
+    const { video, presentFrame } = videoWithControlledFrames();
+    const { engine, worker } = testEngine();
+    worker.emit({ type: "ready" });
+    engine.setInputs({ video });
+    // No camera frame has been presented yet: the pump must hold the capture.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(detectCount(worker)).toBe(0);
+    presentFrame();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(detectCount(worker)).toBe(1);
+  });
+
+  it("discards a capture whose camera frame arrives after the pump stopped", async () => {
+    const { video, presentFrame } = videoWithControlledFrames();
+    const { engine, worker } = testEngine();
+    worker.emit({ type: "ready" });
+    engine.setInputs({ video });
+    // The stop lands while the pump is still waiting for a camera frame; the
+    // frame arriving afterwards must not trigger a capture.
+    engine.setInputs({ video: undefined });
+    presentFrame();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(detectCount(worker)).toBe(0);
+  });
+
+  it("keeps one frame in flight across a fast stop-then-start", async () => {
+    let closedFrames = 0;
+    const pendingCaptures: Array<(bitmap: ImageBitmap) => void> = [];
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(
+        () =>
+          new Promise<ImageBitmap>((resolve) => {
+            pendingCaptures.push(resolve);
+          }),
+      ),
+    );
+    const countingBitmap = () =>
+      ({
+        width: 1280,
+        height: 720,
+        close: () => {
+          closedFrames += 1;
+        },
+      }) as unknown as ImageBitmap;
+    const { engine, worker } = testEngine();
+    worker.emit({ type: "ready" });
+    engine.setInputs({ video: fakeVideo() });
+    // Flush the frame-wait microtask so capture #1 is pending, then stop and
+    // quickly start again (capture #2).
+    await vi.advanceTimersByTimeAsync(0);
+    engine.setInputs({ video: undefined });
+    engine.setInputs({ video: fakeVideo() });
+    await vi.advanceTimersByTimeAsync(0);
+    for (const resolveCapture of pendingCaptures.splice(0)) {
+      resolveCapture(countingBitmap());
+    }
+    await vi.advanceTimersByTimeAsync(0);
+    // Only the restarted pump's frame is posted; the stale one is closed.
+    expect(detectCount(worker)).toBe(1);
+    expect(closedFrames).toBe(1);
+  });
+
+  it("re-primes at depth one when a stale result lands after a stop and start", async () => {
+    const { engine, worker } = await scanning();
+    expect(detectCount(worker)).toBe(1);
+    // Stop, then restart before the stale result comes back.
+    engine.setInputs({ video: undefined });
+    engine.setInputs({ video: fakeVideo() });
+    // The restarted pump must not post while frame #1's result is pending.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(detectCount(worker)).toBe(1);
+    // The stale result re-primes the pump: exactly one more post once the
+    // pacing interval elapses.
+    worker.emit(emptyResult);
+    await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    expect(detectCount(worker)).toBe(2);
+    // Pipeline continues at depth one: the next result posts exactly one more.
+    worker.emit(emptyResult);
+    await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    expect(detectCount(worker)).toBe(3);
+  });
+
+  it("exposes a debug snapshot from detection results", async () => {
+    const { engine, worker } = await scanning();
+    worker.emit({
+      type: "detections",
+      detections: [car],
+      timing: { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 },
+    });
+    const debug = engine.getDebugSnapshot();
+    expect(debug).toMatchObject({
+      rawCount: 1,
+      filteredCount: 1,
+      inferenceMs: 2,
+      // The result came back near-instantly, so the floor set the delay.
+      pacingRule: "floor",
+    });
+    expect(debug.overheadMs).toBeGreaterThanOrEqual(0);
+    expect(debug.pacingDelayMs).toBeGreaterThan(0);
+    expect(debug.pacingDelayMs).toBeLessThanOrEqual(MIN_FRAME_INTERVAL_MS);
   });
 });
