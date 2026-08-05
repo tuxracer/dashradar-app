@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Component, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { RootState } from "@react-three/fiber";
 import type { Group, Mesh, Object3D } from "three";
@@ -26,6 +27,7 @@ import {
   GRID_OPACITY,
   GRID_SIZE_M,
   SURFACE_COLOR,
+  TEST_PLACEMENTS,
   TWEEN_MS,
 } from "./consts";
 import { EgoMarker, SceneGlyph } from "./glyphs";
@@ -51,6 +53,12 @@ type SceneViewProps = {
   audioEnabled: boolean;
   /** Whether detection has not started yet (model loading, session warm-up). */
   initializing?: boolean;
+  /**
+   * Whether to render the fixed sample objects (the Scene test objects
+   * developer option), one of each kind at known positions, alongside
+   * anything really detected.
+   */
+  testObjects?: boolean;
   /**
    * Called once when the scene cannot render at all: WebGL is unavailable, or
    * the context was lost and neither a restore nor a canvas remount brought
@@ -117,6 +125,36 @@ const applyFade = (group: Group, fade: number) => {
     child.material.opacity = (typeof base === "number" ? base : 1) * fade;
   });
 };
+
+/**
+ * Catches render-time errors from the canvas subtree and routes them into the
+ * scene's failure ladder. Without it a throw inside the r3f Canvas (a WebGL
+ * context the device refuses to create, a driver rejecting a shader) unmounts
+ * the entire app, because no boundary exists above this one; a detector must
+ * degrade to the radar dial, never to a black screen. React's root
+ * onCaughtError still reports the error to Sentry; the console line is for a
+ * device being watched over remote debugging. A class because error
+ * boundaries have no hook form.
+ */
+class SceneErrorBoundary extends Component<
+  { onError: () => void; children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error("Scene render failed", error);
+    this.props.onError();
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
 
 /** Per-glyph motion state the frame loop advances. */
 type GlyphMotion = {
@@ -326,6 +364,7 @@ export const SceneView = ({
   confidence,
   audioEnabled,
   initializing,
+  testObjects,
   onRenderFailure,
 }: SceneViewProps) => {
   const [glSupported] = useState(probeWebgl);
@@ -344,19 +383,30 @@ export const SceneView = ({
   // the next mount, same as the intro scene.
   const reducedMotion = useMemo(() => prefersReducedMotion(), []);
 
-  const placements = useMemo(
-    () => (frame ? placeTracks({ tracks, frame, fovDeg }) : []),
-    [tracks, frame, fovDeg],
-  );
+  // Test objects render even before the first scan (no frame yet), so glyph
+  // rendering can be judged on a device ahead of the camera and model.
+  const placements = useMemo(() => {
+    const placed = frame ? placeTracks({ tracks, frame, fovDeg }) : [];
+    return testObjects ? [...placed, ...TEST_PLACEMENTS] : placed;
+  }, [tracks, frame, fovDeg, testObjects]);
 
   useEffect(() => {
     onRenderFailureRef.current = onRenderFailure;
   }, [onRenderFailure]);
 
-  useEffect(() => {
-    if (!glSupported && !failedRef.current) {
+  // One-shot failure reporting shared by the probe, the context-loss ladder,
+  // and the error boundary, so no path can double-fire the fallback. Reads
+  // only refs, so any render's copy behaves identically.
+  const reportRenderFailure = () => {
+    if (!failedRef.current) {
       failedRef.current = true;
       onRenderFailureRef.current();
+    }
+  };
+
+  useEffect(() => {
+    if (!glSupported) {
+      reportRenderFailure();
     }
   }, [glSupported]);
 
@@ -439,9 +489,8 @@ export const SceneView = ({
         if (!remountedRef.current) {
           remountedRef.current = true;
           setCanvasKey((key) => key + 1);
-        } else if (!failedRef.current) {
-          failedRef.current = true;
-          onRenderFailureRef.current();
+        } else {
+          reportRenderFailure();
         }
       }, CONTEXT_RESTORE_TIMEOUT_MS);
     });
@@ -453,33 +502,35 @@ export const SceneView = ({
 
   return (
     <div className="absolute inset-0 bg-surface" data-testid="scene-view">
-      <Canvas
-        key={canvasKey}
-        frameloop="demand"
-        dpr={[1, DPR_MAX]}
-        gl={{ powerPreference: "low-power", antialias: true }}
-        camera={{
-          fov: CHASE_CAMERA_FOV,
-          position: [
-            CHASE_CAMERA_POSITION[0],
-            CHASE_CAMERA_POSITION[1],
-            CHASE_CAMERA_POSITION[2],
-          ],
-          near: CAMERA_NEAR_M,
-          far: CAMERA_FAR_M,
-        }}
-        onCreated={handleCreated}
-      >
-        <fog attach="fog" args={[SURFACE_COLOR, FOG_NEAR_M, FOG_FAR_M]} />
-        <gridHelper
-          args={[GRID_SIZE_M, GRID_DIVISIONS, GRID_COLOR, GRID_COLOR]}
-          position={[GRID_CENTER[0], GRID_CENTER[1], GRID_CENTER[2]]}
-          material-transparent
-          material-opacity={GRID_OPACITY}
-        />
-        <EgoMarker />
-        <SceneGlyphs placements={placements} reducedMotion={reducedMotion} />
-      </Canvas>
+      <SceneErrorBoundary onError={reportRenderFailure}>
+        <Canvas
+          key={canvasKey}
+          frameloop="demand"
+          dpr={[1, DPR_MAX]}
+          gl={{ powerPreference: "low-power", antialias: true }}
+          camera={{
+            fov: CHASE_CAMERA_FOV,
+            position: [
+              CHASE_CAMERA_POSITION[0],
+              CHASE_CAMERA_POSITION[1],
+              CHASE_CAMERA_POSITION[2],
+            ],
+            near: CAMERA_NEAR_M,
+            far: CAMERA_FAR_M,
+          }}
+          onCreated={handleCreated}
+        >
+          <fog attach="fog" args={[SURFACE_COLOR, FOG_NEAR_M, FOG_FAR_M]} />
+          <gridHelper
+            args={[GRID_SIZE_M, GRID_DIVISIONS, GRID_COLOR, GRID_COLOR]}
+            position={[GRID_CENTER[0], GRID_CENTER[1], GRID_CENTER[2]]}
+            material-transparent
+            material-opacity={GRID_OPACITY}
+          />
+          <EgoMarker />
+          <SceneGlyphs placements={placements} reducedMotion={reducedMotion} />
+        </Canvas>
+      </SceneErrorBoundary>
       <div className="pointer-events-none absolute inset-x-0 bottom-[max(1.25rem,env(safe-area-inset-bottom))] flex justify-center">
         <span
           data-testid="scene-status"

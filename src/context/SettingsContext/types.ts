@@ -52,6 +52,7 @@ export type SettingsContextValue = SettingsSnapshot & {
   toggleCameraPreview: () => void;
   toggleDetectionView: () => void;
   toggleRawConfidence: () => void;
+  toggleSceneTestObjects: () => void;
   /** Opens the full-screen settings panel. */
   openSettings: () => void;
   /** Closes the full-screen settings panel. */

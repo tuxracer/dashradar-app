@@ -41,6 +41,7 @@ export const DEVELOPER_OPTIONS_OFF: DeveloperOptions = {
   zoomMode: "1x",
   confidenceThreshold: CONFIDENCE_THRESHOLD,
   sceneFov: SCENE_FOV_DEG_DEFAULT,
+  sceneTestObjects: false,
   modelIds: [DEFAULT_MODEL.id],
   zoomIndicator: false,
   roundTripIndicator: false,

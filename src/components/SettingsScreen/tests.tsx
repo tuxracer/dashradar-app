@@ -111,6 +111,12 @@ const TOGGLE_ROWS: ReadonlyArray<{
     developer: true,
   },
   {
+    label: "Scene test objects",
+    key: "sceneTestObjects",
+    afterTap: true,
+    developer: true,
+  },
+  {
     label: "Throttle inference",
     key: "throttleInference",
     afterTap: false,

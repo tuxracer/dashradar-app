@@ -90,6 +90,12 @@ const TOGGLES: ReadonlyArray<{
     developer: true,
   },
   {
+    key: "sceneTestObjects",
+    toggle: "toggleSceneTestObjects",
+    fresh: false,
+    developer: true,
+  },
+  {
     key: "throttleInference",
     toggle: "toggleThrottleInference",
     fresh: true,
@@ -168,6 +174,7 @@ describe("SettingsContext", () => {
       zoomMode: "1x",
       confidenceThreshold: DEVELOPER_OPTIONS_OFF.confidenceThreshold,
       sceneFov: DEVELOPER_OPTIONS_OFF.sceneFov,
+      sceneTestObjects: false,
       modelIds: [DEFAULT_MODEL.id],
       zoomIndicator: false,
       roundTripIndicator: false,

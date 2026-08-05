@@ -60,6 +60,7 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleCameraPreview: () => store.toggle("cameraPreview"),
       toggleDetectionView: () => store.toggle("detectionView"),
       toggleRawConfidence: () => store.toggle("rawConfidence"),
+      toggleSceneTestObjects: () => store.toggle("sceneTestObjects"),
       openSettings: () => store.setSettingsOpen(true),
       closeSettings: () => store.setSettingsOpen(false),
     }),
