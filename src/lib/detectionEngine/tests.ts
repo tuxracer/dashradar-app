@@ -4,18 +4,26 @@ import {
   HEARTBEAT_INTERVAL_MS,
   SENTINEL_STORAGE_KEY,
 } from "@/lib/crashSentinel";
+import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 import { DEFAULT_MODEL } from "@/lib/detectionModels";
 import type { DetectionTelemetry } from "@/lib/detectionTelemetry";
+import { SIGNAL_FLOOR } from "@/lib/radarSignal";
+import { ZOOM_OFF } from "@/workers/detection/consts";
 import type { WorkerRequest, WorkerResponse } from "@/workers/detection/types";
 import { createDetectionEngine, pacingDelay } from "./index";
 import {
   MAX_FRAME_INTERVAL_MS,
   MIN_FRAME_INTERVAL_MS,
+  SCENE_GATE_MAX_SKIP_MS,
   WORKER_LOAD_TIMEOUT_MS,
   WORKER_RECYCLE_AFTER_MS,
   WORKER_REPLY_TIMEOUT_MS,
 } from "./consts";
-import type { DetectionEngine, DetectionWorkerLike } from "./types";
+import type {
+  DetectionEngine,
+  DetectionWorkerLike,
+  EngineSettings,
+} from "./types";
 
 /**
  * The engine is framework-free, so these drive it directly: build one on a
@@ -91,6 +99,15 @@ const testEngine = ({ deferModelLoad = false } = {}) => {
   built.push(engine);
   engine.activate();
   return { engine, workers, worker: workers[0], telemetry };
+};
+
+/** The engine's own starting settings, for a test that changes just one. */
+const DEFAULT_ENGINE_SETTINGS: EngineSettings = {
+  includeContact: false,
+  throttled: true,
+  sceneGate: true,
+  zoom: ZOOM_OFF,
+  confidenceThreshold: CONFIDENCE_THRESHOLD,
 };
 
 /** Detect requests a worker has been handed. */
@@ -496,5 +513,266 @@ describe("worker recycle", () => {
     workers[1].emit({ type: "ready" });
     await vi.advanceTimersByTimeAsync(0);
     expect(detectCount(workers[1])).toBe(1);
+  });
+});
+
+/** Minimal stand-in for ImageBitmap, which jsdom does not provide. */
+class FakeImageBitmap {
+  width = 320;
+  height = 240;
+  close = vi.fn();
+}
+
+describe("contact", () => {
+  const timing = { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 };
+  const policeDetection = (score: number, xmin: number, xmax: number) => ({
+    label: "police",
+    score,
+    box: { xmin, ymin: 0.4, xmax, ymax: 0.6 },
+  });
+
+  /** An engine asked for cutouts, which is off by default. */
+  const withContact = ({ includeContact = true } = {}) => {
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const built = testEngine();
+    built.engine.updateSettings({ ...DEFAULT_ENGINE_SETTINGS, includeContact });
+    return built;
+  };
+
+  const contact = (engine: DetectionEngine) => engine.getSnapshot().contact;
+
+  it("exposes a contact built from the cropped detection", () => {
+    const { engine, worker } = withContact();
+    // A score halfway up the [SIGNAL_FLOOR, 1] band remaps to 0.5 signal;
+    // center-x 0.2 is left.
+    const midBand = SIGNAL_FLOOR + (1 - SIGNAL_FLOOR) / 2;
+    worker.emit({
+      type: "detections",
+      detections: [policeDetection(midBand, 0.15, 0.25)],
+      timing,
+      crop: {
+        image: new FakeImageBitmap() as unknown as ImageBitmap,
+        detectionIndex: 0,
+      },
+    });
+    expect(contact(engine)).toMatchObject({
+      direction: "left",
+      score: midBand,
+    });
+    expect(contact(engine)?.signal).toBeCloseTo(0.5);
+  });
+
+  it("closes the previous contact's bitmap when a new crop arrives", () => {
+    const { engine, worker } = withContact();
+    const first = new FakeImageBitmap();
+    worker.emit({
+      type: "detections",
+      detections: [policeDetection(0.85, 0.15, 0.25)],
+      timing,
+      crop: { image: first as unknown as ImageBitmap, detectionIndex: 0 },
+    });
+    worker.emit({
+      type: "detections",
+      detections: [policeDetection(0.9, 0.45, 0.55)],
+      timing,
+      crop: {
+        image: new FakeImageBitmap() as unknown as ImageBitmap,
+        detectionIndex: 0,
+      },
+    });
+    expect(first.close).toHaveBeenCalled();
+    expect(contact(engine)?.direction).toBe("ahead");
+  });
+
+  it("keeps the last contact through detection-free frames", () => {
+    const { engine, worker } = withContact();
+    worker.emit({
+      type: "detections",
+      detections: [policeDetection(0.85, 0.15, 0.25)],
+      timing,
+      crop: {
+        image: new FakeImageBitmap() as unknown as ImageBitmap,
+        detectionIndex: 0,
+      },
+    });
+    worker.emit({ type: "detections", detections: [], timing });
+    expect(contact(engine)?.direction).toBe("left");
+  });
+
+  it("discards a crop whose indexed detection fails validation", () => {
+    const { engine, worker } = withContact();
+    const orphan = new FakeImageBitmap();
+    worker.emit({
+      type: "detections",
+      detections: [policeDetection(0.85, 0.15, 0.25)],
+      timing,
+      crop: { image: orphan as unknown as ImageBitmap, detectionIndex: 5 },
+    });
+    expect(orphan.close).toHaveBeenCalled();
+    expect(contact(engine)).toBeUndefined();
+  });
+
+  it("clears the contact on a worker error", () => {
+    const { engine, worker } = withContact();
+    const image = new FakeImageBitmap();
+    worker.emit({
+      type: "detections",
+      detections: [policeDetection(0.85, 0.15, 0.25)],
+      timing,
+      crop: { image: image as unknown as ImageBitmap, detectionIndex: 0 },
+    });
+    worker.emit({ type: "worker-error", code: "INFERENCE_FAILED" });
+    expect(image.close).toHaveBeenCalled();
+    expect(contact(engine)).toBeUndefined();
+  });
+
+  it("closes the contact bitmap when the engine is deactivated", () => {
+    const { engine, worker } = withContact();
+    const image = new FakeImageBitmap();
+    worker.emit({
+      type: "detections",
+      detections: [policeDetection(0.85, 0.15, 0.25)],
+      timing,
+      crop: { image: image as unknown as ImageBitmap, detectionIndex: 0 },
+    });
+    engine.deactivate();
+    expect(image.close).toHaveBeenCalled();
+  });
+
+  it("publishes no contact, and closes the crop, while cutouts are off", () => {
+    const { engine, worker } = withContact({ includeContact: false });
+    const image = new FakeImageBitmap();
+    worker.emit({
+      type: "detections",
+      detections: [policeDetection(0.85, 0.15, 0.25)],
+      timing,
+      crop: { image: image as unknown as ImageBitmap, detectionIndex: 0 },
+    });
+    expect(contact(engine)).toBeUndefined();
+    expect(image.close).toHaveBeenCalled();
+  });
+});
+
+describe("the scene-change gate", () => {
+  const police = {
+    label: "police",
+    score: 0.9,
+    box: { xmin: 0.4, ymin: 0.5, xmax: 0.6, ymax: 0.8 },
+  };
+  const timing = { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 };
+
+  /** The detect requests the pump has posted so far. */
+  const detects = (worker: FakeWorker) =>
+    worker.posted.filter((message) => message.type === "detect");
+
+  /** An engine whose first capture has reached the worker. */
+  const scanning = async ({ sceneGate = true } = {}) => {
+    const engineBuilt = testEngine();
+    if (!sceneGate) {
+      engineBuilt.engine.updateSettings({
+        ...DEFAULT_ENGINE_SETTINGS,
+        sceneGate,
+      });
+    }
+    engineBuilt.worker.emit({ type: "ready" });
+    engineBuilt.engine.setInputs({ video: fakeVideo() });
+    await vi.advanceTimersByTimeAsync(0);
+    return engineBuilt;
+  };
+
+  /** Answer the outstanding frame with a skip and let the next one go out. */
+  const skipAndAdvance = async (worker: FakeWorker) => {
+    worker.emit({ type: "scan-skipped", gateMs: 0.4, delta: 0.2 });
+    await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+  };
+
+  it("keeps pumping after a skip instead of waiting on a frame already answered", async () => {
+    // A skip is a reply, so the pump has to treat it as one. If it waited for a
+    // detections message that is never coming, the reply watchdog would recycle
+    // a worker that did exactly what it was asked.
+    const { worker } = await scanning();
+    expect(detects(worker)).toHaveLength(1);
+    await skipAndAdvance(worker);
+    expect(detects(worker)).toHaveLength(2);
+  });
+
+  it("holds the detection a skipped frame cannot have lost", async () => {
+    // The reason a skip is its own message rather than an empty result. An
+    // empty result would advance the coasting tracker toward dropping the
+    // vehicle and decay the meter behind it, which would be a lie: a scene that
+    // did not change cannot have lost what the last scan found.
+    const { engine, worker } = await scanning();
+    worker.emit({ type: "detections", detections: [police], timing });
+    expect(engine.getSnapshot().hud?.top).toBeDefined();
+    await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    // More skips than the tracker's coasting tolerance, so a tracker being
+    // advanced would have dropped the track by now.
+    await skipAndAdvance(worker);
+    await skipAndAdvance(worker);
+    await skipAndAdvance(worker);
+    expect(engine.getSnapshot().hud?.top).toBeDefined();
+  });
+
+  it("leaves the published scan's tracks untouched on a skip", async () => {
+    // If a skip republished the scan, or advanced the tracker behind it, the
+    // ids the scene view keys its objects on would churn or coast away while
+    // the scene is provably unchanged.
+    const { engine, worker } = await scanning();
+    worker.emit({ type: "detections", detections: [police], timing });
+    const tracks = engine.getSnapshot().scan?.tracks;
+    expect(tracks).toMatchObject([{ id: 0, box: { xmin: 0.4 } }]);
+    // More skips than the tracker's coasting tolerance, so a tracker being
+    // advanced would have dropped the track (and its id) by now.
+    await skipAndAdvance(worker);
+    await skipAndAdvance(worker);
+    await skipAndAdvance(worker);
+    expect(engine.getSnapshot().scan?.tracks).toBe(tracks);
+  });
+
+  it("scans the first frame of a span before it trusts the gate", async () => {
+    // The pump starts on a fresh worker, after a recycle, and on every resume
+    // from a pause, and in the last of those the road has had an unbounded
+    // amount of time to change while nobody was looking.
+    const { worker } = await scanning();
+    expect(detects(worker)[0]).toMatchObject({ forceScan: true });
+  });
+
+  it("lets the gate decide once a scan has landed", async () => {
+    const { worker } = await scanning();
+    worker.emit({ type: "detections", detections: [], timing });
+    await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    expect(detects(worker)[1]).toMatchObject({ forceScan: false });
+  });
+
+  it("demands a scan once skipping has run past the cap", async () => {
+    // The backstop. A threshold set above what a distant vehicle produces, and
+    // a camera feed that has quietly frozen, both look from in here exactly
+    // like a scene that is genuinely still, so the gate is not trusted to be
+    // its own check on how long it has been since the model last ran.
+    const { worker } = await scanning();
+    worker.emit({ type: "detections", detections: [], timing });
+    let forced = 0;
+    const scans = Math.ceil(SCENE_GATE_MAX_SKIP_MS / MIN_FRAME_INTERVAL_MS) + 1;
+    for (let scan = 0; scan < scans; scan += 1) {
+      await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+      const latest = detects(worker).at(-1);
+      if (latest?.type === "detect" && latest.forceScan) {
+        forced += 1;
+      }
+      worker.emit({ type: "scan-skipped", gateMs: 0.4, delta: 0.2 });
+    }
+    expect(forced).toBeGreaterThan(0);
+  });
+
+  it("scans every frame while the gate is switched off", async () => {
+    // The developer escape hatch, which is what the gate's cost and its effect
+    // on detections get measured against on a device.
+    const { worker } = await scanning({ sceneGate: false });
+    worker.emit({ type: "detections", detections: [], timing });
+    await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    // Both of them, so the assertion is not satisfied by the first frame's
+    // force alone, which every span gets whether the gate is on or off.
+    expect(detects(worker)).toHaveLength(2);
+    expect(detects(worker).every((message) => message.forceScan)).toBe(true);
   });
 });
