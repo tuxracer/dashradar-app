@@ -1,5 +1,5 @@
 import { Component, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { RootState } from "@react-three/fiber";
 import type { Group, Mesh, Object3D } from "three";
@@ -60,6 +60,14 @@ type SceneViewProps = {
    */
   testObjects?: boolean;
   /**
+   * Whether to show the scene diagnostics panel (the Debug overlay developer
+   * option): the WebGL probe verdict and GPU name, the framebuffer size, a
+   * live rendered-frame count, and recent context or error events. Exists so
+   * a phone can report why its canvas is blank on the glass itself, with no
+   * remote-debugging setup.
+   */
+  debug?: boolean;
+  /**
    * Called once when the scene cannot render at all: WebGL is unavailable, or
    * the context was lost and neither a restore nor a canvas remount brought
    * it back. The caller is expected to fall back to the radar view.
@@ -67,24 +75,52 @@ type SceneViewProps = {
   onRenderFailure: () => void;
 };
 
+/** What the WebGL probe learned: usability plus a line for the debug panel. */
+type WebglProbe = {
+  ok: boolean;
+  /** The GPU/driver string when ok, or the failure reason when not. */
+  detail: string;
+};
+
 /**
- * Whether a WebGL2 context can be created at all. Runs before the r3f Canvas
- * ever mounts: the Canvas throws where WebGL or ResizeObserver are missing
- * (jsdom has neither), so this probe is the seam that keeps the component
- * renderable in tests and lets real devices fail into the radar view instead
- * of a crash. The probe context is released immediately.
+ * Whether a WebGL2 context can be created at all, probed with the same
+ * attributes the Canvas requests. Runs before the r3f Canvas ever mounts: the
+ * Canvas throws where WebGL or ResizeObserver are missing (jsdom has
+ * neither), so this probe is the seam that keeps the component renderable in
+ * tests and lets real devices fail into the radar view instead of a crash.
+ * The probe context is released immediately. The detail string feeds the
+ * scene debug panel, so a phone can name its GPU or its refusal on the glass
+ * without a remote-debugging setup.
  */
-const probeWebgl = (): boolean => {
+const probeWebgl = (): WebglProbe => {
   try {
     const canvas = document.createElement("canvas");
-    const context = canvas.getContext("webgl2");
+    let creationError = "";
+    canvas.addEventListener("webglcontextcreationerror", (event) => {
+      // Typed as a plain Event; the WebGLContextEvent statusMessage needs a
+      // structural check.
+      creationError =
+        "statusMessage" in event && typeof event.statusMessage === "string"
+          ? event.statusMessage
+          : "context creation error";
+    });
+    const context = canvas.getContext("webgl2", {
+      powerPreference: "low-power",
+      antialias: true,
+    });
     if (!context) {
-      return false;
+      return { ok: false, detail: creationError || "webgl2 unavailable" };
     }
+    const debugInfo = context.getExtension("WEBGL_debug_renderer_info");
+    const renderer = String(
+      context.getParameter(
+        debugInfo ? debugInfo.UNMASKED_RENDERER_WEBGL : context.RENDERER,
+      ),
+    );
     context.getExtension("WEBGL_lose_context")?.loseContext();
-    return true;
-  } catch {
-    return false;
+    return { ok: true, detail: renderer };
+  } catch (error) {
+    return { ok: false, detail: String(error) };
   }
 };
 
@@ -137,7 +173,7 @@ const applyFade = (group: Group, fade: number) => {
  * boundaries have no hook form.
  */
 class SceneErrorBoundary extends Component<
-  { onError: () => void; children: ReactNode },
+  { onError: (error: unknown) => void; children: ReactNode },
   { failed: boolean }
 > {
   state = { failed: false };
@@ -148,13 +184,41 @@ class SceneErrorBoundary extends Component<
 
   componentDidCatch(error: unknown) {
     console.error("Scene render failed", error);
-    this.props.onError();
+    this.props.onError(error);
   }
 
   render() {
     return this.state.failed ? null : this.props.children;
   }
 }
+
+/**
+ * Counts frames the canvas actually renders, written straight to a DOM node
+ * in the scene debug panel. Rendered only while the panel is up; a demand
+ * frameloop means the subscription itself schedules nothing. The count is
+ * the panel's sharpest signal: zero frames on a black canvas means three
+ * never drew, while a climbing count means the GPU is drawing and the black
+ * is in presentation, two entirely different bugs.
+ */
+const DebugFrameProbe = ({
+  target,
+}: {
+  target: RefObject<HTMLSpanElement | null>;
+}) => {
+  const frames = useRef(0);
+  // Ref writes from a rAF-driven callback, off React's render path; the
+  // immutability lint cannot see that useFrame is not render.
+  /* eslint-disable react-hooks/immutability */
+  useFrame(() => {
+    frames.current += 1;
+    const span = target.current;
+    if (span) {
+      span.textContent = String(frames.current);
+    }
+  });
+  /* eslint-enable react-hooks/immutability */
+  return null;
+};
 
 /** Per-glyph motion state the frame loop advances. */
 type GlyphMotion = {
@@ -365,9 +429,22 @@ export const SceneView = ({
   audioEnabled,
   initializing,
   testObjects,
+  debug,
   onRenderFailure,
 }: SceneViewProps) => {
-  const [glSupported] = useState(probeWebgl);
+  const [probe] = useState(probeWebgl);
+  const glSupported = probe.ok;
+  /** Recent context/error events shown in the debug panel, oldest first. */
+  const [debugEvents, setDebugEvents] = useState<string[]>([]);
+  /** Actual drawing-buffer size, set once the renderer exists. */
+  const [createdInfo, setCreatedInfo] = useState<string>();
+  const framesSpanRef = useRef<HTMLSpanElement>(null);
+
+  // Rare by construction (context losses and errors), so the state churn a
+  // long session could accumulate is bounded by the slice.
+  const appendDebugEvent = (line: string) => {
+    setDebugEvents((previous) => [...previous.slice(-3), line.slice(0, 140)]);
+  };
   const [canvasKey, setCanvasKey] = useState(0);
   const failedRef = useRef(false);
   const remountedRef = useRef(false);
@@ -409,6 +486,26 @@ export const SceneView = ({
       reportRenderFailure();
     }
   }, [glSupported]);
+
+  // While the debug panel is up, catch what remote debugging would normally
+  // show: async errors from the renderer land on window, not in the boundary.
+  useEffect(() => {
+    if (!debug) {
+      return;
+    }
+    const handleError = (event: ErrorEvent) => {
+      appendDebugEvent(`error: ${event.message}`);
+    };
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      appendDebugEvent(`rejection: ${String(event.reason)}`);
+    };
+    window.addEventListener("error", handleError);
+    window.addEventListener("unhandledrejection", handleRejection);
+    return () => {
+      window.removeEventListener("error", handleError);
+      window.removeEventListener("unhandledrejection", handleRejection);
+    };
+  }, [debug]);
 
   // Mirror the beeper's inputs into refs and wake its parked loop on change,
   // the radar screen's pattern (refs may not be written during render).
@@ -479,15 +576,21 @@ export const SceneView = ({
 
   const handleCreated = (state: RootState) => {
     state.camera.lookAt(CAMERA_TARGET[0], CAMERA_TARGET[1], CAMERA_TARGET[2]);
+    const context = state.gl.getContext();
+    setCreatedInfo(
+      `${context.drawingBufferWidth}x${context.drawingBufferHeight}`,
+    );
     const element = state.gl.domElement;
     element.addEventListener("webglcontextlost", (event) => {
       // preventDefault tells the browser a restore is wanted; the timer is
       // the escalation ladder for when one never comes.
       event.preventDefault();
+      appendDebugEvent("context lost");
       window.clearTimeout(lossTimerRef.current);
       lossTimerRef.current = window.setTimeout(() => {
         if (!remountedRef.current) {
           remountedRef.current = true;
+          appendDebugEvent("remounting canvas");
           setCanvasKey((key) => key + 1);
         } else {
           reportRenderFailure();
@@ -495,6 +598,7 @@ export const SceneView = ({
       }, CONTEXT_RESTORE_TIMEOUT_MS);
     });
     element.addEventListener("webglcontextrestored", () => {
+      appendDebugEvent("context restored");
       window.clearTimeout(lossTimerRef.current);
       state.invalidate();
     });
@@ -502,7 +606,14 @@ export const SceneView = ({
 
   return (
     <div className="absolute inset-0 bg-surface" data-testid="scene-view">
-      <SceneErrorBoundary onError={reportRenderFailure}>
+      <SceneErrorBoundary
+        onError={(error) => {
+          appendDebugEvent(
+            `boundary: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          reportRenderFailure();
+        }}
+      >
         <Canvas
           key={canvasKey}
           frameloop="demand"
@@ -529,8 +640,22 @@ export const SceneView = ({
           />
           <EgoMarker />
           <SceneGlyphs placements={placements} reducedMotion={reducedMotion} />
+          {debug && <DebugFrameProbe target={framesSpanRef} />}
         </Canvas>
       </SceneErrorBoundary>
+      {debug && (
+        <div className="pointer-events-none absolute left-3 top-16 z-10 flex flex-col gap-0.5 text-left font-mono text-[10px] leading-tight text-white/70">
+          <span>{`gl: ${probe.ok ? "ok" : "FAIL"} · ${probe.detail}`}</span>
+          <span>{`canvas: ${createdInfo ?? "-"} · dpr ${window.devicePixelRatio}`}</span>
+          <span>
+            {"frames: "}
+            <span ref={framesSpanRef}>0</span>
+          </span>
+          {debugEvents.map((line, index) => (
+            <span key={`${index}-${line}`}>{line}</span>
+          ))}
+        </div>
+      )}
       <div className="pointer-events-none absolute inset-x-0 bottom-[max(1.25rem,env(safe-area-inset-bottom))] flex justify-center">
         <span
           data-testid="scene-status"
