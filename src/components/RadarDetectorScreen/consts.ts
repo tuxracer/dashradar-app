@@ -33,26 +33,10 @@ export const SWEEP_REVOLUTION_MS = 5_000;
  * Duration of the arc step one completed scan advances the sweep by. Equal
  * to the engine's 1 s pacing floor so that at floor pacing each step ends
  * about when the next result lands and the steps chain into a seamless
- * rotation; when the pacing backs off, the wedge fades out between steps and
- * the dial shows the true scan cadence.
+ * rotation; when the pacing backs off, the wedge is off between steps and the
+ * dial shows the true scan cadence.
  */
 export const SWEEP_STEP_MS = 1_000;
-
-/**
- * How long the wedge takes to fade away once its step has finished. A wedge
- * left lit where it stopped reads as a live sweep that froze, so it goes dark
- * instead of parking, and it goes dark gently because a wedge that vanished
- * in one frame reads as a glitch.
- */
-export const SWEEP_FADE_OUT_MS = 500;
-
-/**
- * How long the wedge takes to come back to full strength at the start of a
- * step. Kept short so a step still begins the moment a scan lands, and
- * ramping rather than snapping is what keeps a result arriving mid-fade from
- * flashing the wedge back to full brightness in one frame.
- */
-export const SWEEP_FADE_IN_MS = 200;
 
 /** Degrees one scan advances the sweep: the revolution pace times the step. */
 export const SWEEP_STEP_DEG = 360 * (SWEEP_STEP_MS / SWEEP_REVOLUTION_MS);

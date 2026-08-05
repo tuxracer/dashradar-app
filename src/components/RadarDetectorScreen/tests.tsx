@@ -332,6 +332,12 @@ describe("RadarDetectorScreen scan sweep", () => {
   const stepKeyframes = (call: number): Keyframe[] =>
     animate.mock.calls[call]?.[0] as Keyframe[];
 
+  /** Report the nth sweep step as having run to completion. */
+  const finishStep = (call: number): void => {
+    const step = animate.mock.results[call]?.value as Animation;
+    step.onfinish?.(new Event("finish") as AnimationPlaybackEvent);
+  };
+
   it("advances the sweep once per completed scan", () => {
     const view = render(
       <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
@@ -385,17 +391,27 @@ describe("RadarDetectorScreen scan sweep", () => {
     expect(animate).toHaveBeenCalledTimes(1);
   });
 
-  it("fades the wedge out at the end of a step instead of leaving it lit", () => {
+  it("hides the wedge when its step finishes instead of leaving it lit", () => {
     render(
       <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
     );
-    const keyframes = stepKeyframes(0);
-    const last = keyframes[keyframes.length - 1];
-    expect(last?.opacity).toBe(0);
-    // The wedge holds its angle through the fade rather than drifting on.
-    const lit = keyframes.findLast((keyframe) => keyframe.opacity === 1);
-    expect(lit).toBeDefined();
-    expect(last?.transform).toBe(lit?.transform);
+    const wedge = screen.getByTestId("sweep-wedge");
+    expect(wedge).toHaveStyle({ opacity: "1" });
+    finishStep(0);
+    expect(wedge).toHaveStyle({ opacity: "0" });
+  });
+
+  it("keeps the wedge lit when a superseded step reports finishing", () => {
+    const view = render(
+      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
+    );
+    view.rerender(
+      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={2050} />,
+    );
+    // The replaced step's finish can land after its replacement started; the
+    // wedge belongs to the step that is running now.
+    finishStep(0);
+    expect(screen.getByTestId("sweep-wedge")).toHaveStyle({ opacity: "1" });
   });
 
   it("keeps the sweep dark before the first scan", () => {
