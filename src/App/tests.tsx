@@ -301,4 +301,59 @@ describe("App", () => {
       await screen.findByRole("button", { name: "USE DEFAULT MODEL" }),
     ).toBeInTheDocument();
   });
+
+  // Guard tests for the scene-mode branch: jsdom has no WebGL, so entering
+  // scene mode here always exercises the render-failure fallback, which is
+  // exactly the never-a-dead-main-view guarantee the branch must keep.
+  it("degrades scene mode back to the radar view where WebGL is unavailable", async () => {
+    stubBrowser(grantedCamera);
+    render(<App />);
+    acceptFirstRunScreens();
+    await reachModelReady();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Switch to scene view" }),
+    );
+    // The scene's WebGL probe fails, the view reports render failure, and the
+    // app both re-renders the radar screen and reverts the persisted setting
+    // so the toggle never claims a view the screen is not in.
+    await waitFor(() =>
+      expect(screen.getByTestId("signal-status")).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId("scene-view")).not.toBeInTheDocument();
+    await waitFor(() => {
+      const stored = window.localStorage.getItem(STORAGE_KEY);
+      expect(stored).not.toBeNull();
+      expect(JSON.parse(stored ?? "{}").viewMode).toBe("radar");
+    });
+  });
+
+  it("lands on the radar view when a persisted scene mode meets no WebGL", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ viewMode: "scene" }),
+    );
+    stubBrowser(grantedCamera);
+    render(<App />);
+    acceptFirstRunScreens();
+    await reachModelReady();
+    await waitFor(() =>
+      expect(screen.getByTestId("signal-status")).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId("scene-view")).not.toBeInTheDocument();
+  });
+
+  it("hides the view toggle while the detection view developer option is on", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true, detectionView: true }),
+    );
+    stubBrowser(grantedCamera);
+    render(<App />);
+    acceptFirstRunScreens();
+    await reachModelReady();
+    expect(
+      screen.queryByRole("button", { name: /Switch to/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open settings" })).toBeVisible();
+  });
 });

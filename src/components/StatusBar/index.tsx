@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { SettingsButton } from "@/components/SettingsButton";
+import { ViewModeButton } from "@/components/ViewModeButton";
 import { WORDMARK } from "@/lib/branding";
 
 /** Props for StatusBar. */
@@ -18,8 +19,9 @@ type StatusBarProps = {
 };
 
 /**
- * Top bar over the radar: the DASHRADAR.APP wordmark on the left, the settings
- * gear on the right, and an optional centered slot between them. Diagnostics
+ * Top bar over the radar: the DASHRADAR.APP wordmark on the left, the view
+ * toggle and settings gear on the right, and an optional centered slot
+ * between them. Diagnostics
  * belong in the debug overlay, not here: the bar stays minimal and glanceable
  * for a driver.
  * pointer-events are disabled on the container so the video and HUD underneath
@@ -35,7 +37,8 @@ export const StatusBar = ({ center }: StatusBarProps) => {
       <span className={`justify-self-center ${center ? "px-3" : ""}`}>
         {center}
       </span>
-      <span className="justify-self-end">
+      <span className="flex items-center gap-1 justify-self-end">
+        <ViewModeButton />
         <SettingsButton />
       </span>
     </div>

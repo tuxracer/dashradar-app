@@ -19,6 +19,7 @@ import { ModelLoadScreen } from "@/components/ModelLoadScreen";
 import { RadarBackdrop } from "@/components/RadarBackdrop";
 import { RadarDetectorScreen } from "@/components/RadarDetectorScreen";
 import { RoundTripIndicator } from "@/components/RoundTripIndicator";
+import { SceneView } from "@/components/SceneView";
 import { SettingsScreen } from "@/components/SettingsScreen";
 import { StatusBar } from "@/components/StatusBar";
 import { UnsupportedScreen } from "@/components/UnsupportedScreen";
@@ -74,6 +75,9 @@ const RadarScreen = () => {
     cameraPreview,
     rawConfidence,
     detectionView,
+    viewMode,
+    setViewMode,
+    sceneFov,
     commitModelIds,
   } = useSettings();
   const [showIntro, setShowIntro] = useState(shouldShowIntro);
@@ -216,9 +220,13 @@ const RadarScreen = () => {
   // download screen instead of over it.
   const modelLoading = status === "loading-model";
 
+  // The developer detection view overrides both user-facing views; the
+  // status-bar toggle hides itself while it is on for the same reason.
+  const sceneMode = !detectionView && viewMode === "scene";
+
   return (
     <main className="fixed inset-0 bg-surface">
-      {!detectionView && <RadarBackdrop />}
+      {!detectionView && !sceneMode && <RadarBackdrop />}
       {/* Held back until the model is ready (see modelLoading above) and the
           launch update check settles (see updateSettled above). The "ready"
           handler parks at status "ready" when no camera has started, and this
@@ -239,13 +247,27 @@ const RadarScreen = () => {
           detection-view branch has no such instrument, so its
           pre-camera frames are a blank backdrop until the first scan lands. A
           first-visit download is still covered by the opaque ModelLoadScreen
-          below. */}
+          below. The scene branch mounts like the meter: grid and ego render
+          at once with the status strip reading INITIALIZING. */}
       {detectionView ? (
         <DetectionView
           detections={scan?.detections ?? []}
           frame={scan?.frame ?? videoSize ?? viewportSize}
           viewport={viewportSize}
           zoom={scan?.zoom ?? ZOOM_OFF}
+        />
+      ) : sceneMode ? (
+        <SceneView
+          tracks={scan?.tracks ?? []}
+          frame={scan?.frame}
+          fovDeg={sceneFov}
+          confidence={hudSignal(hud)}
+          audioEnabled={radarAudio}
+          initializing={status !== "running"}
+          // Falling back mutates the persisted setting on purpose: leaving it
+          // on "scene" while the radar renders would show a toggle claiming a
+          // view the screen is not in.
+          onRenderFailure={() => setViewMode("radar")}
         />
       ) : (
         <RadarDetectorScreen
