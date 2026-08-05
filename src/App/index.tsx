@@ -261,6 +261,7 @@ const RadarScreen = () => {
       ) : sceneMode ? (
         <SceneView
           tracks={scan?.tracks ?? []}
+          scanAt={scan?.at}
           frame={scan?.frame}
           fovDeg={sceneFov}
           confidence={hudSignal(hud)}

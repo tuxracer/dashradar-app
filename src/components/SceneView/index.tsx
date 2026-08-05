@@ -5,6 +5,7 @@ import type { RootState } from "@react-three/fiber";
 import type { Group, Mesh, Object3D } from "three";
 import type { Track } from "@/context/DetectionContext";
 import type { Size } from "@/lib/detection";
+import { tracksSeenAt } from "@/lib/detectionTracker";
 import { createRadarBeeper } from "@/lib/radarAudio";
 import { placeTracks } from "@/lib/scenePlacement";
 import type { ScenePlacement } from "@/lib/scenePlacement";
@@ -38,8 +39,18 @@ export { orientationOffsets, orientationQuaternion } from "./cameraRig";
 
 /** Props for SceneView. */
 type SceneViewProps = {
-  /** The published tracker output (scan.tracks): stable ids, coasted boxes. */
+  /**
+   * The published tracker output (scan.tracks): stable ids, and the tracks the
+   * last scan missed still held on their coasting budget. This view drops
+   * those against scanAt below.
+   */
   tracks: Track[];
+  /**
+   * Timestamp of the scan that produced `tracks` (scan.at). A track whose
+   * lastSeenAt matches it is one the model found on that scan; the rest are
+   * the tracker coasting through a miss. Undefined before the first scan.
+   */
+  scanAt?: number;
   /**
    * Native size of the frame the tracks' boxes are normalized to. Placements
    * recompute when the published scan changes (a fresh tracks array per
@@ -401,11 +412,14 @@ const SceneGlyphs = ({
  * coarse: range comes from a per-class height prior through a pinhole model
  * (see lib/scenePlacement) and is good to tens of percent, while bearing is
  * accurate, so glyphs and a fogged grid claim exactly as much as the data
- * supports. Glyph motion is tracker-truth: objects appear when a scan places
- * them, glide to each new fix, and fade out after their track dies, which
- * means positions update at the scan cadence (1 to 5 s) rather than
- * continuously, and the radar dial's peak-hold decay will briefly disagree
- * with this view by design.
+ * supports. Glyph motion is last-scan truth: objects appear when a scan finds
+ * them, glide to each new fix, and fade out as soon as a scan comes back
+ * without them, which means positions update at the scan cadence (1 to 5 s)
+ * rather than continuously, and the radar dial, which rides the tracker's
+ * coasting and its own peak-hold decay, will disagree with this view by
+ * design. That is the trade this view takes on purpose: a dial reading high
+ * for a moment after a vehicle is gone costs nothing, while a glyph left
+ * standing on the ground plane is a false statement about where something is.
  *
  * Thermal behavior mirrors the radar screen's parked loop: the canvas runs
  * frameloop="demand" with a dpr ceiling and a low-power context, glyph
@@ -425,6 +439,7 @@ const SceneGlyphs = ({
  */
 export const SceneView = ({
   tracks,
+  scanAt,
   frame,
   fovDeg,
   confidence,
@@ -462,12 +477,24 @@ export const SceneView = ({
   // the next mount, same as the intro scene.
   const reducedMotion = useMemo(() => prefersReducedMotion(), []);
 
+  // Only what the last scan actually saw. The tracker holds an unmatched
+  // track for its coasting budget so the meter and the contact card ride out
+  // a single missed detection, and this view deliberately does not take that
+  // set: a glyph standing on the ground plane says something is there now,
+  // which is a claim the scan that just came back no longer supports.
+  const liveTracks = useMemo(
+    () => (scanAt === undefined ? [] : tracksSeenAt(tracks, scanAt)),
+    [tracks, scanAt],
+  );
+
   // Test objects render even before the first scan (no frame yet), so glyph
   // rendering can be judged on a device ahead of the camera and model.
   const placements = useMemo(() => {
-    const placed = frame ? placeTracks({ tracks, frame, fovDeg }) : [];
+    const placed = frame
+      ? placeTracks({ tracks: liveTracks, frame, fovDeg })
+      : [];
     return testObjects ? [...placed, ...TEST_PLACEMENTS] : placed;
-  }, [tracks, frame, fovDeg, testObjects]);
+  }, [liveTracks, frame, fovDeg, testObjects]);
 
   useEffect(() => {
     onRenderFailureRef.current = onRenderFailure;
@@ -564,7 +591,7 @@ export const SceneView = ({
     [],
   );
 
-  const topTrack = tracks.reduce<Track | undefined>(
+  const topTrack = liveTracks.reduce<Track | undefined>(
     (best, track) =>
       best === undefined || track.score > best.score ? track : best,
     undefined,

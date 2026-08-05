@@ -126,6 +126,16 @@ export const stepTracker = (
 };
 
 /**
+ * The tracks a detection actually matched on the scan at `atMs`, dropping the
+ * ones the tracker is coasting through a miss. Consumers that smooth over
+ * misses on purpose (the meter, the contact card) want the full coasted set;
+ * a consumer that draws where something is standing right now wants this one,
+ * because a held track is a claim the latest scan does not support.
+ */
+export const tracksSeenAt = (tracks: Track[], atMs: number): Track[] =>
+  tracks.filter((track) => track.lastSeenAt === atMs);
+
+/**
  * Stateful wrapper that holds tracker state across frames. The engine keeps
  * one instance and calls `update` with each result's detections and its
  * timestamp; it returns the tracks to render (this frame's, plus any

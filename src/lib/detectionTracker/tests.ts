@@ -5,6 +5,7 @@ import {
   initialTrackerState,
   iou,
   stepTracker,
+  tracksSeenAt,
   type TrackerConfig,
 } from "@/lib/detectionTracker";
 
@@ -311,6 +312,46 @@ describe("stepTracker", () => {
     // instead of also claiming it. Two tracks total, not one merged.
     expect(stepped.state.tracks).toHaveLength(2);
     expect(stepped.visible).toHaveLength(2);
+  });
+});
+
+describe("tracksSeenAt", () => {
+  it("keeps a track the scan matched and drops one the tracker is coasting", () => {
+    const tracker = createDetectionTracker(config);
+    const stayer = box(0.4, 0.5, 0.6, 0.8);
+    const leaver = box(0.0, 0.0, 0.15, 0.15);
+    tracker.update([detection({ box: stayer }), detection({ box: leaver })], 0);
+    // Second scan finds only one of them. The tracker still reports both,
+    // because the other is inside its coasting budget.
+    const coasted = tracker.update(
+      [detection({ box: stayer })],
+      FLOOR_CADENCE_MS,
+    );
+    expect(coasted).toHaveLength(2);
+
+    const seen = tracksSeenAt(coasted, FLOOR_CADENCE_MS);
+    expect(seen).toHaveLength(1);
+    expect(seen[0].box).toEqual(stayer);
+  });
+
+  it("keeps every track while the scan is still finding them all", () => {
+    const tracker = createDetectionTracker(config);
+    const first = box(0.4, 0.5, 0.6, 0.8);
+    const second = box(0.0, 0.0, 0.15, 0.15);
+    tracker.update([detection({ box: first }), detection({ box: second })], 0);
+    const both = tracker.update(
+      [detection({ box: first }), detection({ box: second })],
+      FLOOR_CADENCE_MS,
+    );
+    expect(tracksSeenAt(both, FLOOR_CADENCE_MS)).toHaveLength(2);
+  });
+
+  it("drops everything on a scan that found nothing at all", () => {
+    const tracker = createDetectionTracker(config);
+    tracker.update([detection()], 0);
+    const coasted = tracker.update([], FLOOR_CADENCE_MS);
+    expect(coasted).toHaveLength(1);
+    expect(tracksSeenAt(coasted, FLOOR_CADENCE_MS)).toHaveLength(0);
   });
 });
 
