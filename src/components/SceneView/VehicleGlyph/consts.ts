@@ -17,3 +17,16 @@ export const VEHICLE_COLORS: Record<VehicleKind, string> = {
 
 /** Roof lightbar color on the police glyph: near-white, so it reads as a lamp. */
 export const POLICE_LIGHTBAR_COLOR = "#f2effa";
+
+/**
+ * Tire color, shared by every body color. Dark enough to separate the wheels
+ * from the body, but deliberately well clear of the backdrop: a true black
+ * would sink into it and leave the hull looking like it floats.
+ */
+export const VEHICLE_TIRE_COLOR = "#3b3946";
+
+/**
+ * Glass color for the window band around the greenhouse. Always drawn against
+ * a body color rather than the backdrop, so it can go darker than the tires.
+ */
+export const VEHICLE_GLASS_COLOR = "#23222c";
