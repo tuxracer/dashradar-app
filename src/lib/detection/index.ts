@@ -67,20 +67,23 @@ export const buildHudModel = (detections: Detection[]): HudModel => {
   return { top };
 };
 
-/** Scale factor for a video rendered `object-fit: cover` in the viewport. */
-export const coverScale = (video: Size, viewport: Size): number =>
-  Math.max(viewport.width / video.width, viewport.height / video.height);
+/** Scale factor for a video rendered `object-fit: contain` in the viewport. */
+export const containScale = (video: Size, viewport: Size): number =>
+  Math.min(viewport.width / video.width, viewport.height / video.height);
 
 /**
  * Map a normalized box onto the viewport for a video rendered with
- * `object-fit: cover` (the video is scaled up and center-cropped).
+ * `object-fit: contain` (the whole frame is shown, letterboxed on the axis it
+ * does not fill). Fitting rather than cropping is what lets the detection view
+ * show every box the model produced: under cover, a box near the edge of the
+ * frame lands in the cropped-away margin and simply is not there to check.
  */
 export const mapBoxToViewport = (
   box: NormalizedBox,
   video: Size,
   viewport: Size,
 ): PixelBox => {
-  const scale = coverScale(video, viewport);
+  const scale = containScale(video, viewport);
   const displayedWidth = video.width * scale;
   const displayedHeight = video.height * scale;
   const offsetX = (viewport.width - displayedWidth) / 2;

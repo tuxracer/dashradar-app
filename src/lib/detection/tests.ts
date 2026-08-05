@@ -3,7 +3,7 @@ import type { Detection, NormalizedBox } from "@/types";
 import {
   buildHudModel,
   CONFIDENCE_THRESHOLD,
-  coverScale,
+  containScale,
   mapBoxToViewport,
   scanRegionBox,
   enrichDetections,
@@ -136,48 +136,57 @@ describe("mapBoxToViewport", () => {
     expect(result).toEqual({ left: 250, top: 125, width: 500, height: 250 });
   });
 
-  it("crops horizontally when the viewport is taller than the video (portrait phone)", () => {
-    // video 16:9 (1600x900) shown in a 900x1600 portrait viewport with cover:
-    // scale = max(900/1600, 1600/900) = 16/9; displayed video = 2844.4x1600,
-    // horizontal offset = (900 - 2844.4) / 2 = -972.2
+  it("letterboxes when the viewport is taller than the video (portrait phone)", () => {
+    // video 16:9 (1600x900) shown in a 900x1600 portrait viewport with contain:
+    // scale = min(900/1600, 1600/900) = 0.5625; displayed video = 900x506.25,
+    // vertical offset = (1600 - 506.25) / 2 = 546.875
     const result = mapBoxToViewport(
       box(0.5, 0.0, 1.0, 1.0),
       { width: 1600, height: 900 },
       { width: 900, height: 1600 },
     );
-    expect(result.top).toBeCloseTo(0);
-    expect(result.height).toBeCloseTo(1600);
-    expect(result.left).toBeCloseTo(900 / 2 - 972.2 + 972.2); // center of viewport
-    expect(result.left).toBeCloseTo(450, 0);
-    expect(result.width).toBeCloseTo(2844.4 / 2, 0);
+    expect(result.left).toBeCloseTo(450);
+    expect(result.width).toBeCloseTo(450);
+    expect(result.top).toBeCloseTo(546.875);
+    expect(result.height).toBeCloseTo(506.25);
   });
 
-  it("centers vertical crop when the viewport is wider than the video", () => {
-    // video 4:3 (800x600) in a 1600x600 viewport: scale = 2, displayed 1600x1200,
-    // vertical offset = (600 - 1200) / 2 = -300
+  it("pillarboxes when the viewport is wider than the video", () => {
+    // video 4:3 (800x600) in a 1600x600 viewport: scale = min(2, 1) = 1,
+    // displayed 800x600, horizontal offset = (1600 - 800) / 2 = 400
     const result = mapBoxToViewport(
       box(0.0, 0.5, 1.0, 1.0),
       { width: 800, height: 600 },
       { width: 1600, height: 600 },
     );
-    expect(result.left).toBeCloseTo(0);
-    expect(result.width).toBeCloseTo(1600);
-    expect(result.top).toBeCloseTo(-300 + 600);
-    expect(result.height).toBeCloseTo(600);
+    expect(result.left).toBeCloseTo(400);
+    expect(result.width).toBeCloseTo(800);
+    expect(result.top).toBeCloseTo(300);
+    expect(result.height).toBeCloseTo(300);
+  });
+
+  it("keeps a box at the frame's edge on screen", () => {
+    const result = mapBoxToViewport(
+      box(0.0, 0.0, 0.1, 1.0),
+      { width: 1600, height: 900 },
+      { width: 900, height: 1600 },
+    );
+    expect(result.left).toBeGreaterThanOrEqual(0);
+    expect(result.left + result.width).toBeLessThanOrEqual(900);
   });
 });
 
-describe("coverScale", () => {
-  it("returns the larger of the width and height ratios (fill, then crop)", () => {
-    // 800/1280 = 0.625, 600/720 = 0.833 -> height ratio wins
+describe("containScale", () => {
+  it("returns the smaller of the width and height ratios (fit, then letterbox)", () => {
+    // 800/1280 = 0.625, 600/720 = 0.833 -> width ratio wins
     expect(
-      coverScale({ width: 1280, height: 720 }, { width: 800, height: 600 }),
-    ).toBeCloseTo(600 / 720);
+      containScale({ width: 1280, height: 720 }, { width: 800, height: 600 }),
+    ).toBeCloseTo(800 / 1280);
   });
 
   it("scales up when the viewport is larger than the video", () => {
     expect(
-      coverScale({ width: 640, height: 480 }, { width: 1280, height: 960 }),
+      containScale({ width: 640, height: 480 }, { width: 1280, height: 960 }),
     ).toBeCloseTo(2);
   });
 });

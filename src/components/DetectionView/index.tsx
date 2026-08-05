@@ -17,7 +17,7 @@ type DetectionViewProps = {
   detections: Detection[];
   /** Intrinsic size of the frame the detections were computed on. */
   frame: Size;
-  /** Current viewport size, which the feed fills with object-fit: cover. */
+  /** Current viewport size, which the feed fits into with object-fit: contain. */
   viewport: Size;
   /** Crop factor the frame was captured at, which sizes the region outline. */
   zoom: ZoomLevel;
@@ -34,7 +34,7 @@ type DetectionViewProps = {
  * the region the model is shown at all (the centered square crop, narrowed by
  * the zoom); without it, a vehicle the crop never covered looks like a miss.
  * Geometry goes through mapBoxToViewport, so the feed underneath must be
- * rendered object-fit: cover, which is what App does in this mode.
+ * rendered object-fit: contain, which is what CameraView does in this mode.
  * pointer-events are off so the settings button underneath stays reachable.
  */
 export const DetectionView = ({

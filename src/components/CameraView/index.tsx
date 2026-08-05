@@ -15,9 +15,11 @@ type CameraViewProps = {
   /** Terminal acquisition failure; the feed reports nothing after it. */
   onError: (error: CameraError) => void;
   /**
-   * Shows the feed full-screen instead of keeping the element a transparent
-   * pixel. Only the detection view developer option sets it: the app
-   * otherwise never puts the camera on screen.
+   * Shows the whole feed, fit inside the viewport, instead of keeping the
+   * element a transparent pixel. Only the detection view developer option
+   * sets it: the app otherwise never puts the camera on screen. It fits
+   * rather than fills so no part of the frame the model was handed is cropped
+   * off the screen, which is the point of looking at it.
    */
   visible?: boolean;
 };
@@ -85,7 +87,7 @@ export const CameraView = ({
       playsInline
       className={
         visible
-          ? "h-full w-full object-cover"
+          ? "h-full w-full object-contain"
           : "pointer-events-none absolute left-0 top-0 h-px w-px opacity-0"
       }
     />
