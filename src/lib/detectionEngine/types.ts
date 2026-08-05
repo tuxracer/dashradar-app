@@ -118,6 +118,15 @@ export type DetectionSnapshot = {
   hud: HudModel | undefined;
   /** The most recent scan's raw per-frame detections; never cleared. */
   scan: ScanResult | undefined;
+  /**
+   * performance.now() when the pump last completed a scan, whether the model
+   * ran or the scene-change gate answered the frame without it. The liveness
+   * signal the radar sweep steps on: `scan.at` above only moves when the model
+   * runs, so a gated session parked at a light would freeze a sweep keyed on
+   * it for up to SCENE_GATE_MAX_SKIP_MS while the detector is perfectly
+   * healthy. Undefined until the first scan of a page load completes.
+   */
+  scanCompletedAt: number | undefined;
   error: DetectionErrorCode | undefined;
   /**
    * Latest cutout with its score, remapped signal, and direction. Replaced

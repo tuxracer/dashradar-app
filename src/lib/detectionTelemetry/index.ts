@@ -36,7 +36,7 @@ export type DetectionTelemetry = {
   result: (timing: { inferenceMs: number; roundTripMs: number }) => void;
   /** A detection failure reached the user, with an optional platform cause. */
   error: (code: DetectionErrorCode | "WORKER_CRASHED", detail?: string) => void;
-  /** The worker went silent mid-scan and was recycled to recover. */
+  /** The worker went silent (mid-scan or mid-load) and was recycled to recover. */
   workerHung: () => void;
   /** The pump entered its running state; starts the scanning clock. */
   scanningStarted: () => void;

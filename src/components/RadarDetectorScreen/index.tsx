@@ -35,10 +35,12 @@ type RadarDetectorScreenProps = {
    */
   initializing?: boolean;
   /**
-   * performance.now() timestamp of the latest completed scan, empty or not
-   * (the engine's scan.at). Each new value advances the sweep one arc step,
-   * so the dial's sweep cadence is the real scan cadence; undefined before
-   * the first result keeps the sweep dark.
+   * performance.now() timestamp of the latest completed scan (the engine's
+   * scanCompletedAt), whether the model ran, found nothing, or the
+   * scene-change gate answered the frame without running it. Each new value
+   * advances the sweep one arc step, so the dial's sweep cadence is the real
+   * scan cadence even while the gate is holding a still scene; undefined
+   * before the first scan keeps the sweep dark.
    */
   scanAt?: number;
   /**

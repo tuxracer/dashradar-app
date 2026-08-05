@@ -39,13 +39,19 @@ const toDetection = (track: Track): Detection => ({
  * One frame of the coasting tracker. Greedily matches this frame's detections
  * to existing tracks by IoU, shows every detection immediately (whether it
  * matched an existing track or is brand new), and coasts an unmatched track
- * for up to `maxMisses` frames so its box does not flicker off when the model
- * briefly loses the object. Pure: all tuning comes in via `config`.
+ * for up to `maxCoastMs` after its last match so its box does not flicker off
+ * when the model briefly loses the object. The budget is elapsed time, taken
+ * from `atMs` (the result's own timestamp), not a count of processed results:
+ * results arrive at whatever cadence the pacing chooses, and a stale track
+ * holds its full score while it coasts, so a count would keep a vanished
+ * vehicle driving the alert several times longer on a slow device than on a
+ * fast one. Pure: all tuning comes in via `config`.
  */
 export const stepTracker = (
   state: TrackerState,
   detections: Detection[],
   config: TrackerConfig,
+  atMs: number,
 ): { state: TrackerState; visible: Detection[] } => {
   const { tracks } = state;
   const claimed = new Array<boolean>(tracks.length).fill(false);
@@ -98,18 +104,15 @@ export const stepTracker = (
         label: detection.label,
         score,
         box: detection.box,
-        misses: 0,
+        lastSeenAt: atMs,
       });
-    } else {
-      const misses = track.misses + 1;
-      if (misses <= config.maxMisses) {
-        // Coasting: keep the stale box AND stale score as-is (anti-flicker).
-        // Do not refresh the score from anywhere here, there is no new
-        // detection this frame to refresh it from.
-        nextTracks.push({ ...track, misses });
-      }
-      // Beyond maxMisses: dropped.
+    } else if (atMs - track.lastSeenAt <= config.maxCoastMs) {
+      // Coasting: keep the stale box AND stale score as-is (anti-flicker).
+      // Do not refresh the score from anywhere here, there is no new
+      // detection this frame to refresh it from.
+      nextTracks.push(track);
     }
+    // Past the coast budget: dropped.
   }
 
   let nextId = state.nextId;
@@ -119,7 +122,7 @@ export const stepTracker = (
       label: detection.label,
       score: detection.score,
       box: detection.box,
-      misses: 0,
+      lastSeenAt: atMs,
     });
     nextId += 1;
   }
@@ -129,17 +132,18 @@ export const stepTracker = (
 };
 
 /**
- * Stateful wrapper that holds tracker state across frames. The context keeps
- * one instance in a ref and calls `update` with each frame's detections; it
- * returns the detections to render (this frame's, plus any coasting).
+ * Stateful wrapper that holds tracker state across frames. The engine keeps
+ * one instance and calls `update` with each result's detections and its
+ * timestamp; it returns the detections to render (this frame's, plus any
+ * coasting).
  */
 export const createDetectionTracker = (
   config: TrackerConfig = DEFAULT_TRACKER_CONFIG,
 ) => {
   let state = initialTrackerState();
   return {
-    update: (detections: Detection[]): Detection[] => {
-      const result = stepTracker(state, detections, config);
+    update: (detections: Detection[], atMs: number): Detection[] => {
+      const result = stepTracker(state, detections, config, atMs);
       state = result.state;
       return result.visible;
     },

@@ -8,10 +8,16 @@ import type { TrackerConfig } from "./types";
 export const IOU_MATCH_THRESHOLD = 0.3;
 
 /**
- * Unmatched processed frames a track coasts before being dropped, so a box
- * does not flicker off when the model briefly loses it.
+ * Longest a track may coast unmatched before being dropped, so a box does not
+ * flicker off when the model briefly loses it. A time budget rather than a
+ * count of missed results on purpose: results arrive anywhere from every
+ * second (the pacing floor) to every five (the cap on a hot device), so a
+ * miss count would stretch how long a vanished vehicle keeps driving the
+ * alert by exactly the pacing multiple, and it would stretch it furthest on
+ * the throttled device that scans least. The value preserves the old
+ * two-missed-results behavior at the floor cadence.
  */
-export const MAX_MISSES = 2;
+export const MAX_COAST_MS = 2_500;
 
 /**
  * Blend weight for a matched detection's score (see TrackerConfig). At the
@@ -24,6 +30,6 @@ export const SCORE_SMOOTHING_ALPHA = 0.5;
 /** Default tuning applied by createDetectionTracker. */
 export const DEFAULT_TRACKER_CONFIG: TrackerConfig = {
   iouMatchThreshold: IOU_MATCH_THRESHOLD,
-  maxMisses: MAX_MISSES,
+  maxCoastMs: MAX_COAST_MS,
   scoreSmoothingAlpha: SCORE_SMOOTHING_ALPHA,
 };

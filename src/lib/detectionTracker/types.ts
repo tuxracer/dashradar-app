@@ -4,8 +4,9 @@ import type { Detection } from "@/types";
 export type Track = Detection & {
   /** Stable id for the life of the track. */
   id: number;
-  /** Consecutive processed frames with no matching detection. */
-  misses: number;
+  /** Result timestamp (performance.now() ms) a detection last matched this
+   * track, which is what its coasting budget is measured from. */
+  lastSeenAt: number;
 };
 
 /** All tracks currently held, plus the next id to assign. */
@@ -18,8 +19,8 @@ export type TrackerState = {
 export type TrackerConfig = {
   /** Minimum IoU for a detection to match an existing track. */
   iouMatchThreshold: number;
-  /** Unmatched frames a track coasts before being dropped. */
-  maxMisses: number;
+  /** Elapsed ms since a track's last match it may coast before being dropped. */
+  maxCoastMs: number;
   /**
    * Blend weight for a matched detection's score, in (0, 1]. Each match moves
    * the track's score this fraction of the way toward the new raw score, so

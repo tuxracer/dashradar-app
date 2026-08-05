@@ -24,9 +24,12 @@ const detection = (overrides: Partial<Detection> = {}): Detection => ({
 
 const config: TrackerConfig = {
   iouMatchThreshold: 0.3,
-  maxMisses: 2,
+  maxCoastMs: 2_500,
   scoreSmoothingAlpha: 0.5,
 };
+
+/** Result cadence at the pacing floor: one result per second. */
+const FLOOR_CADENCE_MS = 1_000;
 
 describe("iou", () => {
   it("is 1 for identical boxes", () => {
@@ -50,26 +53,47 @@ describe("stepTracker", () => {
       initialTrackerState(),
       [detection()],
       config,
+      0,
     );
     expect(visible).toHaveLength(1);
     expect(visible[0].label).toBe("police");
   });
 
-  it("coasts a track through maxMisses frames, then drops it", () => {
+  it("coasts a track through brief misses at the floor cadence, then drops it", () => {
     let state = initialTrackerState();
-    const shown = stepTracker(state, [detection()], config);
+    const shown = stepTracker(state, [detection()], config, 0);
     expect(shown.visible).toHaveLength(1);
     state = shown.state;
-    // Miss 1: still visible (coasting).
-    const miss1 = stepTracker(state, [], config);
+    // Misses at 1 s and 2 s: inside the coast budget, still visible.
+    const miss1 = stepTracker(state, [], config, FLOOR_CADENCE_MS);
     expect(miss1.visible).toHaveLength(1);
-    // Miss 2: still visible (coasting).
-    const miss2 = stepTracker(miss1.state, [], config);
+    const miss2 = stepTracker(miss1.state, [], config, 2 * FLOOR_CADENCE_MS);
     expect(miss2.visible).toHaveLength(1);
-    // Miss 3: exceeds maxMisses, dropped.
-    const miss3 = stepTracker(miss2.state, [], config);
+    // 3 s: past the budget, dropped.
+    const miss3 = stepTracker(miss2.state, [], config, 3 * FLOOR_CADENCE_MS);
     expect(miss3.visible).toHaveLength(0);
     expect(miss3.state.tracks).toHaveLength(0);
+  });
+
+  it("drops a stale track once its coast time is spent, however few results arrived", () => {
+    // Results 5 s apart, the pacing cap's cadence on a hot throttled device.
+    // Counting missed results instead of time would hold the stale full-score
+    // track (and the alert behind it) through two of these gaps, stretching
+    // the beeper ~5x past what the same miss costs at the floor cadence.
+    let state = initialTrackerState();
+    state = stepTracker(state, [detection()], config, 0).state;
+    const missed = stepTracker(state, [], config, 5_000);
+    expect(missed.visible).toHaveLength(0);
+    expect(missed.state.tracks).toHaveLength(0);
+  });
+
+  it("measures the coast budget from the last match, not the track's birth", () => {
+    let state = initialTrackerState();
+    state = stepTracker(state, [detection()], config, 0).state;
+    // Re-matched at 4 s: the budget restarts from there.
+    state = stepTracker(state, [detection()], config, 4_000).state;
+    const missed = stepTracker(state, [], config, 6_000);
+    expect(missed.visible).toHaveLength(1);
   });
 
   it("keeps one track as its box drifts across frames (IoU match)", () => {
@@ -78,11 +102,13 @@ describe("stepTracker", () => {
       state,
       [detection({ box: box(0.4, 0.5, 0.6, 0.8) })],
       config,
+      0,
     ).state;
     const drifted = stepTracker(
       state,
       [detection({ box: box(0.42, 0.52, 0.62, 0.82) })],
       config,
+      FLOOR_CADENCE_MS,
     );
     expect(drifted.state.tracks).toHaveLength(1);
     expect(drifted.visible).toHaveLength(1);
@@ -90,11 +116,12 @@ describe("stepTracker", () => {
 
   it("adopts a matched detection's box outright but eases its score by scoreSmoothingAlpha", () => {
     let state = initialTrackerState();
-    state = stepTracker(state, [detection({ score: 0.8 })], config).state;
+    state = stepTracker(state, [detection({ score: 0.8 })], config, 0).state;
     const updated = stepTracker(
       state,
       [detection({ score: 0.95, box: box(0.41, 0.51, 0.61, 0.81) })],
       config,
+      FLOOR_CADENCE_MS,
     );
     // Alpha 0.5 moves the score halfway from 0.8 toward 0.95.
     expect(updated.visible[0].score).toBeCloseTo(0.875);
@@ -106,10 +133,17 @@ describe("stepTracker", () => {
     // object. Without smoothing the shown score would swing the full 0.18
     // every frame; with alpha 0.5 the swing settles well inside that band.
     let state = initialTrackerState();
-    state = stepTracker(state, [detection({ score: 0.94 })], config).state;
+    state = stepTracker(state, [detection({ score: 0.94 })], config, 0).state;
     const shown: number[] = [];
+    let at = 0;
     for (const raw of [0.76, 0.94, 0.76, 0.94]) {
-      const stepped = stepTracker(state, [detection({ score: raw })], config);
+      at += FLOOR_CADENCE_MS;
+      const stepped = stepTracker(
+        state,
+        [detection({ score: raw })],
+        config,
+        at,
+      );
       state = stepped.state;
       shown.push(stepped.visible[0].score);
     }
@@ -120,11 +154,17 @@ describe("stepTracker", () => {
   it("adopts the raw score outright when scoreSmoothingAlpha is 1", () => {
     const unsmoothed: TrackerConfig = { ...config, scoreSmoothingAlpha: 1 };
     let state = initialTrackerState();
-    state = stepTracker(state, [detection({ score: 0.8 })], unsmoothed).state;
+    state = stepTracker(
+      state,
+      [detection({ score: 0.8 })],
+      unsmoothed,
+      0,
+    ).state;
     const updated = stepTracker(
       state,
       [detection({ score: 0.95 })],
       unsmoothed,
+      FLOOR_CADENCE_MS,
     );
     expect(updated.visible[0].score).toBe(0.95);
   });
@@ -136,6 +176,7 @@ describe("stepTracker", () => {
       state,
       [detection({ label: "police", score: 0.95 })],
       config,
+      0,
     ).state;
     // Next frame the model reports a PERSON, not a POLICE, in an overlapping
     // box. They match by IoU (stepTracker never checks label), but the score
@@ -149,6 +190,7 @@ describe("stepTracker", () => {
         }),
       ],
       config,
+      FLOOR_CADENCE_MS,
     );
     // The visible score must be the new detection's own value, not a blend
     // of the stale POLICE confidence (0.95) and the new PERSON score (which
@@ -162,6 +204,7 @@ describe("stepTracker", () => {
       initialTrackerState(),
       [detection({ score: 0.91 })],
       config,
+      0,
     );
     expect(visible[0].score).toBe(0.91);
   });
@@ -177,6 +220,7 @@ describe("stepTracker", () => {
         detection({ box: box(0.6, 0.6, 0.8, 0.8) }),
       ],
       config,
+      0,
     ).state;
 
     // Step with two new detections that overlap each track slightly.
@@ -187,6 +231,7 @@ describe("stepTracker", () => {
         detection({ box: box(0.62, 0.62, 0.82, 0.82) }),
       ],
       config,
+      FLOOR_CADENCE_MS,
     );
 
     // Both tracks matched and visible, not one, not three.
@@ -214,6 +259,7 @@ describe("stepTracker", () => {
       state,
       [detection({ box: box(0.4, 0.5, 0.6, 0.8) })],
       config,
+      0,
     ).state;
 
     // Step with a non-overlapping detection at box(0.0, 0.0, 0.1, 0.1).
@@ -222,6 +268,7 @@ describe("stepTracker", () => {
       state,
       [detection({ box: box(0.0, 0.0, 0.1, 0.1) })],
       config,
+      FLOOR_CADENCE_MS,
     );
 
     // The existing track was not matched so it coasts; the non-overlapping
@@ -244,6 +291,7 @@ describe("stepTracker", () => {
       state,
       [detection({ box: box(0.4, 0.4, 0.6, 0.6) })],
       config,
+      0,
     ).state;
 
     // Step with two detections that both overlap the same existing track
@@ -256,6 +304,7 @@ describe("stepTracker", () => {
         detection({ box: box(0.38, 0.38, 0.58, 0.58) }),
       ],
       config,
+      FLOOR_CADENCE_MS,
     );
 
     // One detection matched the existing track; the other spawned a new track
@@ -269,8 +318,16 @@ describe("createDetectionTracker", () => {
   it("holds state across update calls", () => {
     const tracker = createDetectionTracker(config);
     // First sighting is shown immediately.
-    expect(tracker.update([detection()])).toHaveLength(1);
-    // A frame with no detection still coasts the track (anti-flicker).
-    expect(tracker.update([])).toHaveLength(1);
+    expect(tracker.update([detection()], 0)).toHaveLength(1);
+    // A prompt empty result still coasts the track (anti-flicker).
+    expect(tracker.update([], FLOOR_CADENCE_MS)).toHaveLength(1);
+  });
+
+  it("drops a stale track by elapsed time under the default tuning", () => {
+    const tracker = createDetectionTracker();
+    expect(tracker.update([detection()], 0)).toHaveLength(1);
+    // One empty result 5 s later, the pacing cap's cadence: a results-counted
+    // coast would still show the stale track here; the time budget does not.
+    expect(tracker.update([], 5_000)).toHaveLength(0);
   });
 });

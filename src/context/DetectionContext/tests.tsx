@@ -9,6 +9,7 @@ import {
   MIN_FRAME_INTERVAL_MS,
   SCENE_GATE_MAX_SKIP_MS,
   useDetection,
+  WORKER_LOAD_TIMEOUT_MS,
   WORKER_RECYCLE_AFTER_MS,
   WORKER_REPLY_TIMEOUT_MS,
 } from "@/context/DetectionContext";
@@ -2474,6 +2475,59 @@ describe("worker recycle", () => {
     ).toHaveLength(1);
   });
 
+  it("recycles a worker whose model load goes silent", async () => {
+    vi.useFakeTimers();
+    const workers = renderWithWorkerFactory(<StartOnReady />);
+    // The worker posts nothing at all: no probe verdict, no load progress, no
+    // ready, no worker-error. The reply watchdog cannot see this (no frame is
+    // ever posted to a session that never loads), so without its own bound
+    // the pump would wait on this worker's ready for the rest of the drive.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WORKER_LOAD_TIMEOUT_MS);
+    });
+    expect(workers).toHaveLength(2);
+    expect(workers[0].terminate).toHaveBeenCalled();
+    expect(vi.mocked(track)).toHaveBeenCalledWith("worker_hung");
+    // The fresh worker loads normally and the app recovers.
+    act(() => {
+      workers[1].emit({ type: "ready" });
+    });
+    expect(screen.getByTestId("start").getAttribute("data-status")).toBe(
+      "ready",
+    );
+  });
+
+  it("does not recycle a load that is still reporting progress", async () => {
+    // Guard for the new watchdog branch: it must bound silence, not load
+    // time. A slow network streams the weights far past the timeout in total,
+    // but posts a progress message with every chunk; recycling that load
+    // would restart the download from scratch, forever.
+    vi.useFakeTimers();
+    const workers = renderWithWorkerFactory(<StartOnReady />);
+    for (let chunk = 0; chunk < 3; chunk += 1) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(WORKER_LOAD_TIMEOUT_MS - 1_000);
+      });
+      act(() => {
+        workers[0].emit({
+          type: "model-progress",
+          progress: { file: "model.onnx", loaded: chunk + 1, total: 4 },
+        });
+      });
+    }
+    expect(workers).toHaveLength(1);
+    act(() => {
+      workers[0].emit({ type: "ready" });
+    });
+    // Ready ends the watch: silence from here is normal idling, owned by the
+    // reply watchdog once a frame is posted.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WORKER_LOAD_TIMEOUT_MS * 2);
+    });
+    expect(workers).toHaveLength(1);
+    expect(workers[0].terminate).not.toHaveBeenCalled();
+  });
+
   it("keeps a recycled worker on the model the session started with", async () => {
     vi.useFakeTimers();
     let now = 0;
@@ -2926,6 +2980,37 @@ describe("the scene-change gate", () => {
       "createImageBitmap",
       vi.fn(() => Promise.resolve(fakeBitmap())),
     );
+  });
+
+  it("publishes a scan heartbeat on skips and results alike, so the sweep keeps stepping", async () => {
+    // The sweep steps on completed scans, and the pump defines a gate skip as
+    // a completed scan. If skips published no heartbeat, a session parked at
+    // a light would freeze the sweep for up to SCENE_GATE_MAX_SKIP_MS while
+    // the detector is perfectly healthy, which is exactly the
+    // looks-dead-while-working presentation the gate must never produce.
+    const BeatProbe = () => {
+      const { scanCompletedAt } = useDetection();
+      return <span data-testid="beat">{scanCompletedAt ?? "none"}</span>;
+    };
+    const worker = renderWithProvider(
+      <>
+        <BeatProbe />
+        <StartOnReady />
+      </>,
+    );
+    await startScanning(worker);
+    expect(screen.getByTestId("beat").textContent).toBe("none");
+    await skipAndAdvance(worker);
+    const afterSkip = screen.getByTestId("beat").textContent;
+    expect(afterSkip).not.toBe("none");
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+      });
+    });
+    expect(screen.getByTestId("beat").textContent).not.toBe(afterSkip);
   });
 
   it("keeps pumping after a skip instead of waiting on a frame already answered", async () => {

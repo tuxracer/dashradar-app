@@ -57,6 +57,7 @@ import {
   PACING_REST_RATIO_MAX,
   SCENE_GATE_MAX_SKIP_MS,
   SW_CONTROL_TIMEOUT_MS,
+  WORKER_LOAD_TIMEOUT_MS,
   WORKER_RECYCLE_AFTER_MS,
   WORKER_REPLY_TIMEOUT_MS,
 } from "./consts";
@@ -558,6 +559,11 @@ export const createDetectionEngine = ({
       }
       case "scan-skipped": {
         framesTotal += 1;
+        // The one piece of state a skip publishes: the pump completed a scan,
+        // which is what the radar sweep steps on. Without it a gated session
+        // parked at a light freezes the sweep for the whole skip run, the
+        // looks-dead-while-working presentation the gate must never produce.
+        publish({ scanCompletedAt: performance.now() });
         // Everything else is left exactly as the last real scan published it.
         // A frame that did not change cannot have lost what the last one found,
         // so the tracker is not advanced (which would coast the detection
@@ -573,17 +579,21 @@ export const createDetectionEngine = ({
       }
       case "detections": {
         framesTotal += 1;
-        lastScanAt = performance.now();
+        const at = performance.now();
+        lastScanAt = at;
         const result = processDetectionResult({
           detections: message.detections,
           crop: message.crop,
           confidenceThreshold: settings$.value.confidenceThreshold,
-          updateTracks: (detections) => tracker.update(detections),
+          updateTracks: (detections) => tracker.update(detections, at),
           includeContact: settings$.value.includeContact,
-          at: performance.now(),
+          at,
         });
         const frame = postedFrame;
-        const patch: Partial<DetectionSnapshot> = { hud: result.hud };
+        const patch: Partial<DetectionSnapshot> = {
+          hud: result.hud,
+          scanCompletedAt: at,
+        };
         // Publish this scan's own detections for the detection view. Raw
         // per-frame output, not the coasted set, since the view exists to
         // show what the model saw on each frame. Skipped when no frame was
@@ -594,7 +604,7 @@ export const createDetectionEngine = ({
             detections: result.detections,
             frame: { width: frame.width, height: frame.height },
             zoom: frame.zoom,
-            at: performance.now(),
+            at,
           };
         }
         if (result.contact) {
@@ -820,6 +830,9 @@ export const createDetectionEngine = ({
       switchMap((isRunning) =>
         isRunning
           ? session.loaded$.pipe(
+              // Unbounded on purpose: the session's load watchdog bounds how
+              // long a worker may sit unloaded, so a ready that never comes
+              // recycles the session out from under this wait.
               filter(Boolean),
               take(1),
               switchMap(() => scanOnce().pipe(repeat())),
@@ -830,6 +843,34 @@ export const createDetectionEngine = ({
 
     return merge(resultLanded$, captureLoop$);
   };
+
+  /**
+   * The load watchdog for one worker session: until the model reports ready,
+   * some message must arrive every WORKER_LOAD_TIMEOUT_MS or the session is
+   * recycled as wedged. An inactivity bound rather than a load budget, because
+   * a load can be legitimately slow (a first visit streams the weights over
+   * whatever network the car is on) but never legitimately silent: every stage
+   * posts something, so only a hang resets nothing. This is the load-time
+   * counterpart of the pump's reply watchdog, which cannot cover loading
+   * because it only arms once a frame is posted, and a frame is never posted
+   * to a session that never reports ready. Ready ends the watch; from there
+   * silence is normal idling and the reply watchdog owns wedge detection.
+   */
+  const loadWatchdogFor = (session: WorkerSession) =>
+    session.messages$.pipe(
+      timeout({
+        first: WORKER_LOAD_TIMEOUT_MS,
+        each: WORKER_LOAD_TIMEOUT_MS,
+        with: () =>
+          defer(() => {
+            telemetry.workerHung();
+            recycle$.next();
+            return EMPTY;
+          }),
+      }),
+      takeUntil(session.loaded$.pipe(filter(Boolean))),
+      ignoreElements(),
+    );
 
   // One activation's worker chain: sessions repeat on recycle and end on
   // halt; flipping active$ off unsubscribes the current session, which is
@@ -844,6 +885,7 @@ export const createDetectionEngine = ({
           tap((message) => handleMessage(session, message)),
           ignoreElements(),
         ),
+        loadWatchdogFor(session),
         pumpFor(session),
       ),
     ),

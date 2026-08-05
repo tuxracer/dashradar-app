@@ -157,6 +157,22 @@ export const WORKER_RECYCLE_AFTER_MS = 900_000;
  */
 export const WORKER_REPLY_TIMEOUT_MS = 30_000;
 
+/**
+ * Longest a loading worker may go without posting any message before it is
+ * treated as wedged and recycled. This is an inactivity bound, not a load
+ * budget: a healthy load posts something at every stage (the probe verdict,
+ * load-start, a progress message per downloaded chunk, ready), so a slow
+ * network resets the clock continuously and never trips it, while a load that
+ * hangs in CacheStorage or session creation posts nothing at all. Without the
+ * bound, a wedged load after the 15-minute recycle parks the pump behind a
+ * ready that never comes and scanning silently stops for the rest of the
+ * drive; the reply watchdog cannot catch it because no frame is ever posted.
+ * Twice the reply timeout, because the slowest legitimate silent stretch
+ * (building the session and warming it up on a throttled phone) is longer
+ * than any legitimate silence mid-scan.
+ */
+export const WORKER_LOAD_TIMEOUT_MS = 60_000;
+
 /** Published state before the worker reports anything. */
 export const INITIAL_SNAPSHOT: DetectionSnapshot = {
   status: "loading-model",
@@ -165,6 +181,7 @@ export const INITIAL_SNAPSHOT: DetectionSnapshot = {
   modelProgress: { loadedBytes: 0, totalBytes: 0 },
   hud: undefined,
   scan: undefined,
+  scanCompletedAt: undefined,
   error: undefined,
   contact: undefined,
 };

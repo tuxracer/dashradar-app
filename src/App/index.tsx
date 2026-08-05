@@ -62,6 +62,7 @@ const RadarScreen = () => {
     getDebugSnapshot,
     error,
     scan,
+    scanCompletedAt,
     attachVideo,
     activeModel,
   } = useDetection();
@@ -187,9 +188,10 @@ const RadarScreen = () => {
   }
   if (status === "error" && error) {
     // A selected model that will not load has a better recovery than retrying
-    // it: run the default. Committed synchronously for the same reason the
-    // model screen does it; the reload on the next line outruns the persist
-    // effect.
+    // it: run the default. Committed through commitModelIds for the same
+    // reason the model screen uses it: it confirms the write landed, and the
+    // reload only happens when it did, or the page would come back running
+    // the very model this button exists to escape.
     const revertAction =
       error === "MODEL_LOAD_FAILED" && activeModel.id !== DEFAULT_MODEL.id
         ? {
@@ -251,7 +253,7 @@ const RadarScreen = () => {
           audioEnabled={radarAudio}
           contact={contact}
           initializing={status !== "running"}
-          scanAt={scan?.at}
+          scanAt={scanCompletedAt}
           rawConfidence={rawConfidence ? hudScore(hud) : undefined}
           detectedLabel={hud?.top?.label}
         />
