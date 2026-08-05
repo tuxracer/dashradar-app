@@ -5,7 +5,13 @@ import {
   SphereGeometry,
 } from "three";
 import type { PlacedKind } from "@/lib/scenePlacement";
-import { EGO_COLOR, GLYPH_OPACITY, KIND_COLORS } from "./consts";
+import {
+  EGO_COLOR,
+  GLYPH_OPACITY,
+  KIND_COLORS,
+  TRAFFIC_LIGHT_HOUSING_COLOR,
+  TRAFFIC_LIGHT_LAMP_COLORS,
+} from "./consts";
 
 /**
  * Shared unit geometries, scaled per mesh. Three of them cover every glyph,
@@ -101,26 +107,33 @@ const PersonGlyph = () => (
   </>
 );
 
-/** A traffic-light glyph: signal housing on a thin pole down to the ground. */
+/**
+ * A traffic-light glyph: the signal head alone, floating at its mounted
+ * height with no pole (deliberate; the head is the recognizable part), a
+ * dark housing with the red, amber, and green lamps facing the ego.
+ */
 const TrafficLightGlyph = ({ elevationM }: { elevationM: number }) => (
   <>
-    <mesh
-      geometry={UNIT_CYLINDER}
-      position={[0, elevationM / 2, 0]}
-      scale={[0.12, elevationM, 0.12]}
-    >
-      <meshBasicMaterial
-        color="#8a8794"
-        transparent
-        opacity={GLYPH_OPACITY * 0.6}
-        userData={{ baseOpacity: GLYPH_OPACITY * 0.6 }}
-      />
-    </mesh>
     <GlyphBox
-      color={KIND_COLORS.trafficLight}
+      color={TRAFFIC_LIGHT_HOUSING_COLOR}
       center={[0, elevationM + 0.55, 0]}
-      size={[0.4, 1.05, 0.35]}
+      size={[0.44, 1.05, 0.3]}
     />
+    {TRAFFIC_LIGHT_LAMP_COLORS.map((color, index) => (
+      <mesh
+        key={color}
+        geometry={UNIT_SPHERE}
+        position={[0, elevationM + 0.55 + (1 - index) * 0.32, 0.17]}
+        scale={[0.24, 0.24, 0.12]}
+      >
+        <meshBasicMaterial
+          color={color}
+          transparent
+          opacity={GLYPH_OPACITY}
+          userData={{ baseOpacity: GLYPH_OPACITY }}
+        />
+      </mesh>
+    ))}
   </>
 );
 

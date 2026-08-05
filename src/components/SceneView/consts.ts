@@ -101,11 +101,25 @@ export const SURFACE_COLOR = "#0b0a10";
 /** Grid line color, a dim amber matching the radar backdrop's grid. */
 export const GRID_COLOR = "#8a6a33";
 
+/** Traffic-light housing color: dark, so the lamps carry the glyph. */
+export const TRAFFIC_LIGHT_HOUSING_COLOR = "#2f2d38";
+
+/**
+ * Traffic-light lamp colors, top to bottom: the meter's full-signal red, the
+ * amber accent, and the meter's low-signal green.
+ */
+export const TRAFFIC_LIGHT_LAMP_COLORS: readonly [string, string, string] = [
+  "#ff5a3c",
+  "#ffb340",
+  "#4ade40",
+];
+
 /**
  * Glyph color per placed kind. Police takes the meter's full-signal red so
  * the class the app exists for is the one that reads as the alert; people
  * and riders take the amber accent; other traffic stays dim so it shapes the
- * scene without competing; traffic lights take the meter's low-signal green.
+ * scene without competing. The trafficLight entry keeps the record total,
+ * but its glyph is drawn from the housing and lamp colors above instead.
  */
 export const KIND_COLORS: Record<PlacedKind, string> = {
   police: "#ff5a3c",
