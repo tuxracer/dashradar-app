@@ -41,6 +41,19 @@ export const SWEEP_STEP_MS = 1_000;
 /** Degrees one scan advances the sweep: the revolution pace times the step. */
 export const SWEEP_STEP_DEG = 360 * (SWEEP_STEP_MS / SWEEP_REVOLUTION_MS);
 
+/**
+ * How long the wedge stays lit after its step finishes before it is cut.
+ *
+ * At floor pacing scans land about SWEEP_STEP_MS apart, so a step ends right
+ * as the next is due and the small change left over (the capture, the result's
+ * trip through React) is enough to blank the wedge and relight it a frame or
+ * two later. That reads as a flicker rather than as a scan cadence. Holding
+ * for a fraction of a step absorbs that gap and the jitter around it, while
+ * the gaps a real backoff opens up, hundreds of milliseconds at rest pacing
+ * and seconds at the cap, still park the wedge dark for most of the wait.
+ */
+export const SWEEP_HOLD_MS = 400;
+
 /** Display strings for the contact card's direction row. */
 export const DIRECTION_DISPLAY: Readonly<Record<ContactDirection, string>> = {
   left: "◀ LEFT",

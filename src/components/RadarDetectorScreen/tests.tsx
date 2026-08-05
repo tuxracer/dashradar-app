@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CONTACT_THRESHOLD,
   RadarDetectorScreen,
+  SWEEP_HOLD_MS,
+  SWEEP_STEP_MS,
 } from "@/components/RadarDetectorScreen";
 import type { Contact } from "@/context/DetectionContext";
 import { isAudible } from "@/lib/radarAudio";
@@ -321,9 +323,13 @@ describe("RadarDetectorScreen scan sweep", () => {
   beforeEach(() => {
     animate.mockClear();
     HTMLElement.prototype.animate = animate;
+    // Only the timers: the meter's rAF loop and its performance.now clock are
+    // not what these tests drive, and faking them would stall it mid-render.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     HTMLElement.prototype.animate = originalAnimate;
     vi.restoreAllMocks();
   });
@@ -332,11 +338,20 @@ describe("RadarDetectorScreen scan sweep", () => {
   const stepKeyframes = (call: number): Keyframe[] =>
     animate.mock.calls[call]?.[0] as Keyframe[];
 
+  /** The nth sweep step's stub animation. */
+  const stepAnimation = (call: number): Animation =>
+    animate.mock.results[call]?.value as Animation;
+
   /** Report the nth sweep step as having run to completion. */
   const finishStep = (call: number): void => {
-    const step = animate.mock.results[call]?.value as Animation;
-    step.onfinish?.(new Event("finish") as AnimationPlaybackEvent);
+    stepAnimation(call).onfinish?.(
+      new Event("finish") as AnimationPlaybackEvent,
+    );
   };
+
+  /** The rotation, in degrees, a keyframe puts the wedge at. */
+  const frameDeg = (frame: Keyframe | undefined): number =>
+    Number(/-?[\d.]+/.exec(String(frame?.transform))?.[0]);
 
   it("advances the sweep once per completed scan", () => {
     const view = render(
@@ -391,14 +406,54 @@ describe("RadarDetectorScreen scan sweep", () => {
     expect(animate).toHaveBeenCalledTimes(1);
   });
 
-  it("hides the wedge when its step finishes instead of leaving it lit", () => {
+  it("resumes a superseded step from where the wedge actually is", () => {
+    const view = render(
+      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
+    );
+    // A result landing a quarter of the way through the step: the wedge has
+    // only travelled a quarter of the arc, wherever the step was headed.
+    (stepAnimation(0) as unknown as { currentTime: number }).currentTime =
+      SWEEP_STEP_MS / 4;
+    view.rerender(
+      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1250} />,
+    );
+    const first = stepKeyframes(0);
+    const resumed = frameDeg(stepKeyframes(1)[0]);
+    expect(resumed).toBeGreaterThan(frameDeg(first[0]));
+    expect(resumed).toBeLessThan(frameDeg(first[1]));
+  });
+
+  it("holds the wedge lit for a moment after its step finishes", () => {
     render(
       <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
     );
     const wedge = screen.getByTestId("sweep-wedge");
     expect(wedge).toHaveStyle({ opacity: "1" });
     finishStep(0);
-    expect(wedge).toHaveStyle({ opacity: "0" });
+    // The next scan is due about now; cutting on the instant is the flicker.
+    expect(wedge).toHaveStyle({ opacity: "1" });
+  });
+
+  it("cuts the wedge once the hold passes with no further scan", () => {
+    render(
+      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
+    );
+    finishStep(0);
+    vi.advanceTimersByTime(SWEEP_HOLD_MS);
+    expect(screen.getByTestId("sweep-wedge")).toHaveStyle({ opacity: "0" });
+  });
+
+  it("keeps the wedge lit when the next scan lands inside the hold", () => {
+    const view = render(
+      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={1000} />,
+    );
+    finishStep(0);
+    vi.advanceTimersByTime(SWEEP_HOLD_MS / 2);
+    view.rerender(
+      <RadarDetectorScreen confidence={0} audioEnabled={false} scanAt={2050} />,
+    );
+    vi.advanceTimersByTime(SWEEP_HOLD_MS);
+    expect(screen.getByTestId("sweep-wedge")).toHaveStyle({ opacity: "1" });
   });
 
   it("keeps the wedge lit when a superseded step reports finishing", () => {
