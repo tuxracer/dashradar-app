@@ -23,19 +23,18 @@ import {
   FOG_FAR_M,
   FOG_NEAR_M,
   GRID_CENTER,
-  GRID_COLOR,
   GRID_DIVISIONS,
-  GRID_OPACITY,
   GRID_SIZE_M,
-  SURFACE_COLOR,
   TEST_PLACEMENTS,
   TWEEN_MS,
 } from "./consts";
 import { CameraRig } from "./cameraRig";
 import { SceneGlyph } from "./SceneGlyph";
+import { useScenePalette } from "./scenePalette";
 
 export * from "./consts";
 export { orientationOffsets, orientationQuaternion } from "./cameraRig";
+export { useScenePalette } from "./scenePalette";
 
 /** Props for SceneView. */
 type SceneViewProps = {
@@ -421,6 +420,13 @@ const SceneGlyphs = ({
  * for a moment after a vehicle is gone costs nothing, while a glyph left
  * standing on the ground plane is a false statement about where something is.
  *
+ * This is also the one view that follows the phone's color scheme: a light
+ * scheme puts the scene on a white ground, tracked live so a phone that
+ * switches itself at dusk switches the scene with it (see useScenePalette).
+ * Everything else in the app stays a dark instrument, so the chrome drawn
+ * over this view picks its ink through the scene-light variant in globals.css
+ * rather than a scheme query of its own.
+ *
  * Thermal behavior mirrors the radar screen's parked loop: the canvas runs
  * frameloop="demand" with a dpr ceiling and a low-power context, glyph
  * animation re-invalidates only while a tween or fade is unfinished (see
@@ -451,6 +457,7 @@ export const SceneView = ({
 }: SceneViewProps) => {
   const [probe] = useState(probeWebgl);
   const glSupported = probe.ok;
+  const palette = useScenePalette();
   /** Recent context/error events shown in the debug panel, oldest first. */
   const [debugEvents, setDebugEvents] = useState<string[]>([]);
   /** Actual drawing-buffer size, set once the renderer exists. */
@@ -634,7 +641,14 @@ export const SceneView = ({
   };
 
   return (
-    <div className="absolute inset-0 bg-surface" data-testid="scene-view">
+    // The ground is an inline style rather than a utility class because the
+    // fog below has to fade to exactly this color, and one palette value
+    // feeding both is what keeps them from drifting apart.
+    <div
+      className="absolute inset-0"
+      style={{ backgroundColor: palette.surface }}
+      data-testid="scene-view"
+    >
       <SceneErrorBoundary
         onError={(error) => {
           appendDebugEvent(
@@ -660,12 +674,12 @@ export const SceneView = ({
           }}
           onCreated={handleCreated}
         >
-          <fog attach="fog" args={[SURFACE_COLOR, FOG_NEAR_M, FOG_FAR_M]} />
+          <fog attach="fog" args={[palette.surface, FOG_NEAR_M, FOG_FAR_M]} />
           <gridHelper
-            args={[GRID_SIZE_M, GRID_DIVISIONS, GRID_COLOR, GRID_COLOR]}
+            args={[GRID_SIZE_M, GRID_DIVISIONS, palette.grid, palette.grid]}
             position={[GRID_CENTER[0], GRID_CENTER[1], GRID_CENTER[2]]}
             material-transparent
-            material-opacity={GRID_OPACITY}
+            material-opacity={palette.gridOpacity}
           />
           <SceneGlyphs placements={placements} reducedMotion={reducedMotion} />
           <CameraRig enabled={!reducedMotion} />
@@ -675,7 +689,7 @@ export const SceneView = ({
       {debug && (
         // Bottom-left, clear of the debug overlay panel top-left: both are
         // gated on the same showDebug setting, so they are always up together.
-        <div className="pointer-events-none absolute bottom-14 left-3 z-10 flex flex-col gap-0.5 text-left font-mono text-[10px] leading-tight text-white/70">
+        <div className="pointer-events-none absolute bottom-14 left-3 z-10 flex flex-col gap-0.5 text-left font-mono text-[10px] leading-tight text-white/70 scene-light:text-black/65">
           <span>{`gl: ${probe.ok ? "ok" : "FAIL"} · ${probe.detail}`}</span>
           <span>{`canvas: ${createdInfo ?? "-"} · dpr ${window.devicePixelRatio}`}</span>
           <span>
@@ -691,7 +705,9 @@ export const SceneView = ({
         <span
           data-testid="scene-status"
           className={`whitespace-nowrap text-[13px] font-semibold uppercase tracking-[0.24em] ${
-            topTrack ? "text-hud-amber" : "text-white/40"
+            topTrack
+              ? "text-hud-amber scene-light:text-hud-amber-deep"
+              : "text-white/40 scene-light:text-black/45"
           }`}
         >
           {topTrack

@@ -85,9 +85,6 @@ export const GRID_DIVISIONS = 30;
 /** Grid center in scene meters, pushed ahead so most of it is in view. */
 export const GRID_CENTER: readonly [number, number, number] = [0, 0, -100];
 
-/** Opacity of the ground grid lines. */
-export const GRID_OPACITY = 0.14;
-
 /**
  * How long a glyph glides from its previous fix to a new one, in ms. Well
  * inside the 1 s scan floor, so a tween always finishes before the next
@@ -116,11 +113,34 @@ export const DPR_MAX = 1.5;
  */
 export const CONTEXT_RESTORE_TIMEOUT_MS = 4_000;
 
-/** Scene backdrop and fog color (the app surface color). */
-export const SURFACE_COLOR = "#0b0a10";
+/**
+ * Scene colors under a dark OS color scheme, which is the authored look: the
+ * app's own surface color as the ground, and a dim amber grid matching the
+ * radar backdrop's. Backdrop and fog are one value on purpose, since fog that
+ * does not fade to exactly what is behind the canvas draws a band across the
+ * horizon instead of a distance cue.
+ */
+export const DARK_SCENE_PALETTE = {
+  /** Color behind the canvas, and the color the fog fades to. */
+  surface: "#0b0a10",
+  /** Ground grid line color. */
+  grid: "#8a6a33",
+  /** Ground grid line opacity. */
+  gridOpacity: 0.14,
+};
 
-/** Grid line color, a dim amber matching the radar backdrop's grid. */
-export const GRID_COLOR = "#8a6a33";
+/**
+ * Scene colors under a light OS color scheme: a white ground, with the grid
+ * darkened and carried a little heavier so it sits about as far off white as
+ * the dark grid sits off the dark ground. The scene is the only view that
+ * follows the OS scheme at all; every other screen is a dark instrument
+ * whatever the phone says.
+ */
+export const LIGHT_SCENE_PALETTE: typeof DARK_SCENE_PALETTE = {
+  surface: "#ffffff",
+  grid: "#6f5222",
+  gridOpacity: 0.22,
+};
 
 /**
  * Tire color, shared by every vehicle glyph so a truck's wheels read as the

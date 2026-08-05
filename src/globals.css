@@ -3,6 +3,9 @@
 @theme {
   --font-sans: "Rajdhani", ui-sans-serif, system-ui, sans-serif;
   --color-hud-amber: #ffb340;
+  /* The HUD amber for anything drawn on the scene view's light-scheme white
+     ground, where the display amber is too pale to read. */
+  --color-hud-amber-deep: #b26a00;
   --color-surface: #0b0a10;
 
   /* One-shot entrance animations for full-screen panels. "both" keeps a
@@ -66,6 +69,20 @@
     to {
       opacity: 1;
       transform: scale(1);
+    }
+  }
+}
+
+/* The 3D scene is the one view that follows the phone's color scheme, and a
+   light scheme puts it on a white ground (see SceneView). Text and buttons
+   drawn over it are shared with the radar dial, which stays dark whatever the
+   OS says, so they switch to dark ink through this variant rather than a
+   plain "light" one. The app root carries the marker class while the scene is
+   the view being rendered. */
+@custom-variant scene-light {
+  @media (prefers-color-scheme: light) {
+    .scene-view & {
+      @slot;
     }
   }
 }

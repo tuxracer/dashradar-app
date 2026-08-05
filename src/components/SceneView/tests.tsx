@@ -1,10 +1,13 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, renderHook, screen } from "@testing-library/react";
 import { Quaternion, Vector3 } from "three";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  DARK_SCENE_PALETTE,
+  LIGHT_SCENE_PALETTE,
   orientationOffsets,
   orientationQuaternion,
   SceneView,
+  useScenePalette,
 } from "@/components/SceneView";
 
 /**
@@ -43,6 +46,66 @@ describe("SceneView", () => {
       />,
     );
     expect(onRenderFailure).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useScenePalette", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * A matchMedia whose answer can be changed after the fact, with the
+   * listeners it was handed, so a test can play the phone switching schemes
+   * mid-session.
+   */
+  const stubScheme = (light: boolean) => {
+    const listeners = new Set<() => void>();
+    const query = {
+      matches: light,
+      addEventListener: (_: string, listener: () => void) =>
+        listeners.add(listener),
+      removeEventListener: (_: string, listener: () => void) =>
+        listeners.delete(listener),
+    };
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => query),
+    );
+    return (nowLight: boolean) => {
+      query.matches = nowLight;
+      act(() => {
+        for (const listener of listeners) {
+          listener();
+        }
+      });
+    };
+  };
+
+  it("stays dark where the color scheme cannot be read", () => {
+    const { result } = renderHook(() => useScenePalette());
+    expect(result.current).toBe(DARK_SCENE_PALETTE);
+  });
+
+  it("stays dark for a scheme that is not light", () => {
+    stubScheme(false);
+    const { result } = renderHook(() => useScenePalette());
+    expect(result.current).toBe(DARK_SCENE_PALETTE);
+  });
+
+  it("takes the light palette for a light scheme", () => {
+    stubScheme(true);
+    const { result } = renderHook(() => useScenePalette());
+    expect(result.current).toBe(LIGHT_SCENE_PALETTE);
+  });
+
+  it("follows a scheme change without a remount", () => {
+    const setScheme = stubScheme(false);
+    const { result } = renderHook(() => useScenePalette());
+    setScheme(true);
+    expect(result.current).toBe(LIGHT_SCENE_PALETTE);
+    setScheme(false);
+    expect(result.current).toBe(DARK_SCENE_PALETTE);
   });
 });
 

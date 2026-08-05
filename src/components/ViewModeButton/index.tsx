@@ -29,7 +29,7 @@ export const ViewModeButton = () => {
     <button
       type="button"
       onClick={handleToggle}
-      className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full text-white/70 transition-colors hover:text-white/90"
+      className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full text-white/70 transition-colors hover:text-white/90 scene-light:text-black/70 scene-light:hover:text-black/90"
     >
       {next === "scene" ? (
         <Rotate3d className="h-7 w-7" strokeWidth={2} />

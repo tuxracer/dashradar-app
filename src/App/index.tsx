@@ -267,7 +267,13 @@ const RadarScreen = () => {
   const sceneMode = !detectionView && viewMode === "scene";
 
   return (
-    <main className="fixed inset-0 bg-surface">
+    // The marker class is what the scene-light variant hangs off: the scene
+    // view is the only one that follows the phone's color scheme, so the
+    // chrome above it needs to know which view it is drawn over before it can
+    // pick its ink (see globals.css).
+    <main
+      className={`fixed inset-0 bg-surface ${sceneMode ? "scene-view" : ""}`}
+    >
       {!detectionView && !sceneMode && <RadarBackdrop />}
       {source ? (
         // Not held back the way the camera below is: that gate is about the

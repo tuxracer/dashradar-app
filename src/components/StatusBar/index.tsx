@@ -30,7 +30,7 @@ type StatusBarProps = {
 export const StatusBar = ({ center }: StatusBarProps) => {
   return (
     <div className="pointer-events-none absolute inset-x-0 top-[max(0.75rem,env(safe-area-inset-top))] grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center px-4">
-      <span className="min-w-0 truncate text-[13px] font-semibold tracking-[0.34em] text-white/85">
+      <span className="min-w-0 truncate text-[13px] font-semibold tracking-[0.34em] text-white/85 scene-light:text-black/80">
         {WORDMARK}
       </span>
       {/* Always rendered, even empty, so the gear keeps the third column. */}
