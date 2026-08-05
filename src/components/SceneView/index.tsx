@@ -31,7 +31,7 @@ import {
   TWEEN_MS,
 } from "./consts";
 import { CameraRig } from "./cameraRig";
-import { SceneGlyph } from "./glyphs";
+import { SceneGlyph } from "./SceneGlyph";
 
 export * from "./consts";
 export { orientationOffsets, orientationQuaternion } from "./cameraRig";

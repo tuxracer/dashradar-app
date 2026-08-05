@@ -1,4 +1,20 @@
+import { BoxGeometry, CylinderGeometry, SphereGeometry } from "three";
 import type { PlacedKind, ScenePlacement } from "@/lib/scenePlacement";
+
+/**
+ * Shared unit geometries, scaled per mesh. Three of them cover every glyph,
+ * so the whole scene uploads a handful of vertex buffers once at module load
+ * regardless of how many objects are on the ground plane. Deliberately
+ * low-poly: the placement math is good to tens of percent in range, and a
+ * detailed car model would claim a precision the data does not have.
+ */
+export const UNIT_BOX = new BoxGeometry(1, 1, 1);
+
+/** Shared unit cylinder, scaled per mesh (see UNIT_BOX). */
+export const UNIT_CYLINDER = new CylinderGeometry(0.5, 0.5, 1, 10);
+
+/** Shared unit sphere, scaled per mesh (see UNIT_BOX). */
+export const UNIT_SPHERE = new SphereGeometry(0.5, 10, 8);
 
 /** Builds one sample placement for TEST_PLACEMENTS below. */
 const test = (
@@ -97,6 +113,9 @@ export const SURFACE_COLOR = "#0b0a10";
 
 /** Grid line color, a dim amber matching the radar backdrop's grid. */
 export const GRID_COLOR = "#8a6a33";
+
+/** Roof lightbar color on the police glyph: near-white, so it reads as a lamp. */
+export const POLICE_LIGHTBAR_COLOR = "#f2effa";
 
 /** Traffic-light housing color: dark, so the lamps carry the glyph. */
 export const TRAFFIC_LIGHT_HOUSING_COLOR = "#2f2d38";
