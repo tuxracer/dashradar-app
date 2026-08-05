@@ -1,5 +1,8 @@
-import { KIND_COLORS, UNIT_CYLINDER, UNIT_SPHERE } from "../consts";
+import { UNIT_CYLINDER, UNIT_SPHERE } from "../consts";
 import { GlyphMaterial } from "../GlyphMaterial";
+import { PERSON_COLOR } from "./consts";
+
+export * from "./consts";
 
 /** A person glyph: torso cylinder and head sphere. */
 export const PersonGlyph = () => (
@@ -9,14 +12,14 @@ export const PersonGlyph = () => (
       position={[0, 0.6, 0]}
       scale={[0.45, 1.2, 0.45]}
     >
-      <GlyphMaterial color={KIND_COLORS.person} />
+      <GlyphMaterial color={PERSON_COLOR} />
     </mesh>
     <mesh
       geometry={UNIT_SPHERE}
       position={[0, 1.42, 0]}
       scale={[0.44, 0.44, 0.44]}
     >
-      <GlyphMaterial color={KIND_COLORS.person} />
+      <GlyphMaterial color={PERSON_COLOR} />
     </mesh>
   </>
 );

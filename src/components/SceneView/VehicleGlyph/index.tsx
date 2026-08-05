@@ -1,9 +1,9 @@
-import type { PlacedKind } from "@/lib/scenePlacement";
-import { KIND_COLORS } from "../consts";
 import { GlyphBox } from "../GlyphBox";
-import { POLICE_LIGHTBAR_COLOR } from "./consts";
+import { POLICE_LIGHTBAR_COLOR, VEHICLE_COLORS } from "./consts";
+import type { VehicleKind } from "./types";
 
 export * from "./consts";
+export * from "./types";
 
 /** A vehicle glyph: one body box, and for police a lightbar on the roof. */
 export const VehicleGlyph = ({
@@ -12,14 +12,14 @@ export const VehicleGlyph = ({
   height,
   length,
 }: {
-  kind: PlacedKind;
+  kind: VehicleKind;
   width: number;
   height: number;
   length: number;
 }) => (
   <>
     <GlyphBox
-      color={KIND_COLORS[kind]}
+      color={VEHICLE_COLORS[kind]}
       center={[0, height / 2, 0]}
       size={[width, height, length]}
     />
