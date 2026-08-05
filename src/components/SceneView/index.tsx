@@ -30,9 +30,11 @@ import {
   TEST_PLACEMENTS,
   TWEEN_MS,
 } from "./consts";
+import { CameraRig } from "./cameraRig";
 import { SceneGlyph } from "./glyphs";
 
 export * from "./consts";
+export { orientationOffsets, orientationQuaternion } from "./cameraRig";
 
 /** Props for SceneView. */
 type SceneViewProps = {
@@ -639,6 +641,7 @@ export const SceneView = ({
             material-opacity={GRID_OPACITY}
           />
           <SceneGlyphs placements={placements} reducedMotion={reducedMotion} />
+          <CameraRig enabled={!reducedMotion} />
           {debug && <DebugFrameProbe target={framesSpanRef} />}
         </Canvas>
       </SceneErrorBoundary>

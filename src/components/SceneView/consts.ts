@@ -132,6 +132,34 @@ export const KIND_COLORS: Record<PlacedKind, string> = {
 /** Base opacity of glyph bodies (fades multiply against it). */
 export const GLYPH_OPACITY = 0.92;
 
+/** Farthest the orientation rig may pan the camera left or right, radians. */
+export const RIG_YAW_CLAMP_RAD = 0.35;
+
+/** Farthest the orientation rig may pitch the camera up or down, radians. */
+export const RIG_PITCH_CLAMP_RAD = 0.17;
+
+/**
+ * Per-event low-pass factor for the rig's camera offset. Orientation sensors
+ * report at roughly display rate; this smooths hand shake and road vibration
+ * into an eased glide.
+ */
+export const RIG_SMOOTHING = 0.15;
+
+/**
+ * Per-event factor by which the rig's neutral orientation adapts toward the
+ * current one. The camera always eases back to center over a few seconds, so
+ * a tilted dash mount, a slow turn, or compass drift never holds an offset.
+ */
+export const RIG_BASELINE_ADAPT = 0.004;
+
+/**
+ * Smallest applied-offset change worth a render, radians. Below this the rig
+ * neither touches the camera nor invalidates, which is what keeps a vibrating
+ * dash mount from re-rendering the scene for the whole drive; the offset must
+ * really move to cost a frame.
+ */
+export const RIG_DEADBAND_RAD = 0.003;
+
 /**
  * The sample placements the Scene test objects developer option renders: one
  * of every placed kind at a known position, spread across bearing and range so
