@@ -23,7 +23,8 @@ export const CONFIDENCE_LEVELS = [
  * Effective values the development-only settings report while the Developer
  * options master switch is off: nothing extra on the glass (no debug overlay,
  * no zoom or round-trip pill, no camera preview, no detection view), the
- * thermal pacing floor in place, the full 1x scan, the production confidence
+ * thermal pacing floor and the scene-change gate in place, the full 1x scan,
+ * the production confidence
  * floor, the percentage readout, and the shipping detection model. The floor is
  * CONFIDENCE_THRESHOLD itself rather than a copy of its value, so the state
  * every driver runs in cannot quietly disagree with the one the detector
@@ -34,6 +35,7 @@ export const CONFIDENCE_LEVELS = [
 export const DEVELOPER_OPTIONS_OFF: DeveloperOptions = {
   showDebug: false,
   throttleInference: true,
+  sceneChangeGate: true,
   zoomMode: "1x",
   confidenceThreshold: CONFIDENCE_THRESHOLD,
   modelIds: [DEFAULT_MODEL.id],

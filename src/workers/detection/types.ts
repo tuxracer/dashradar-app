@@ -120,6 +120,16 @@ export type WorkerRequest =
        * worker.
        */
       confidenceThreshold?: number;
+      /**
+       * Run inference on this frame whatever the scene-change gate makes of it.
+       * The worker measures how far the picture moved since the frame it last
+       * scanned and can answer `scan-skipped` instead of running the model, but
+       * it is deliberately not the one deciding when that shortcut has gone on
+       * too long: the sender owns that, because only the sender knows when
+       * scanning last produced a real answer and when a pause interrupted it.
+       * Omitting it lets the gate decide, the production default.
+       */
+      forceScan?: boolean;
     };
 
 /** Whether a value carries usable pixel dimensions for a captured frame. */
@@ -150,7 +160,8 @@ export const isWorkerRequest = (value: unknown): value is WorkerRequest => {
     (value.zoom === undefined || isNumber(value.zoom)) &&
     (value.source === undefined || isFrameSize(value.source)) &&
     (value.confidenceThreshold === undefined ||
-      isNumber(value.confidenceThreshold))
+      isNumber(value.confidenceThreshold)) &&
+    (value.forceScan === undefined || isBoolean(value.forceScan))
   );
 };
 
@@ -293,7 +304,26 @@ export type WorkerResponse =
       detections: RawDetection[];
       timing: FrameTiming;
       crop?: DetectionCrop;
+      /**
+       * How far the scene-change gate measured this frame from the last one
+       * scanned. Present on results as well as skips so the threshold can be
+       * read against both sides of it: skips alone only ever show values below
+       * the line, which says nothing about how close a gate that never fires is
+       * to firing. Absent on the first scan of a worker, which had no earlier
+       * frame to measure against.
+       */
+      sceneDelta?: number;
     }
+  /**
+   * The frame was close enough to the last one scanned that the worker did not
+   * run the model on it. A reply in its own right rather than an empty
+   * `detections`: an empty result would age the coasting tracker and decay the
+   * meter, which would be a lie, since a scene that did not change cannot have
+   * lost the vehicle the last real scan found. Carrying nothing but its own
+   * cost and the measurement behind the verdict keeps every consumer of a
+   * detection result untouched by a skip.
+   */
+  | { type: "scan-skipped"; gateMs: number; delta: number }
   | {
       type: "worker-error";
       code: DetectionErrorCode;
@@ -333,8 +363,11 @@ export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
         Array.isArray(value.detections) &&
         value.detections.every(isRawDetection) &&
         isFrameTiming(value.timing) &&
-        (value.crop === undefined || isDetectionCrop(value.crop))
+        (value.crop === undefined || isDetectionCrop(value.crop)) &&
+        (value.sceneDelta === undefined || isNumber(value.sceneDelta))
       );
+    case "scan-skipped":
+      return isNumber(value.gateMs) && isNumber(value.delta);
     case "worker-error":
       return (
         isDetectionErrorCode(value.code) &&

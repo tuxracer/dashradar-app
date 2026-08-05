@@ -23,6 +23,9 @@ const debug: DebugSnapshot = {
   pacingDelayMs: 600,
   pacingRule: "rest",
   zoom: 1,
+  sceneDelta: 0.4,
+  scanSkips: 0,
+  skipRate: 0,
 };
 
 const renderOverlay = () =>

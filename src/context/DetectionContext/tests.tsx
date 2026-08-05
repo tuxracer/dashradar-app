@@ -7,6 +7,7 @@ import {
   DetectionProvider,
   FRAME_RETRY_MS,
   MIN_FRAME_INTERVAL_MS,
+  SCENE_GATE_MAX_SKIP_MS,
   useDetection,
   WORKER_RECYCLE_AFTER_MS,
   WORKER_REPLY_TIMEOUT_MS,
@@ -2888,5 +2889,171 @@ describe("DetectionProvider contact", () => {
     });
     expect(screen.getByTestId("contact-direction")).toHaveTextContent("none");
     expect(image.close).toHaveBeenCalled();
+  });
+});
+
+describe("the scene-change gate", () => {
+  /** The detect requests the pump has posted so far. */
+  const detects = (worker: FakeWorker) =>
+    worker.posted.filter((message) => message.type === "detect");
+
+  /** Start the pump and let its first capture reach the worker. */
+  const startScanning = async (worker: FakeWorker) => {
+    act(() => {
+      worker.emit({ type: "ready" });
+    });
+    act(() => {
+      screen.getByTestId("start").click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+  };
+
+  /** Answer the outstanding frame with a skip and let the next one go out. */
+  const skipAndAdvance = async (worker: FakeWorker) => {
+    act(() => {
+      worker.emit({ type: "scan-skipped", gateMs: 0.4, delta: 0.2 });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    });
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => Promise.resolve(fakeBitmap())),
+    );
+  });
+
+  it("keeps pumping after a skip instead of waiting on a frame already answered", async () => {
+    // A skip is a reply, so the pump has to treat it as one. If it waited for a
+    // detections message that is never coming, the reply watchdog would recycle
+    // a worker that did exactly what it was asked.
+    const worker = renderWithProvider(<StartOnReady />);
+    await startScanning(worker);
+    expect(detects(worker)).toHaveLength(1);
+    await skipAndAdvance(worker);
+    expect(detects(worker)).toHaveLength(2);
+  });
+
+  it("holds the detection a skipped frame cannot have lost", async () => {
+    // The reason a skip is its own message rather than an empty result. An
+    // empty result would advance the coasting tracker toward dropping the
+    // vehicle and decay the meter behind it, which would be a lie: a scene that
+    // did not change cannot have lost what the last scan found.
+    const worker = renderWithProvider(
+      <>
+        <Probe />
+        <StartOnReady />
+      </>,
+    );
+    await startScanning(worker);
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [
+          {
+            label: "police",
+            score: 0.9,
+            box: { xmin: 0.4, ymin: 0.5, xmax: 0.6, ymax: 0.8 },
+          },
+        ],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+      });
+    });
+    expect(screen.getByTestId("objects").textContent).toBe("1");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    });
+    // More skips than the tracker's coasting tolerance, so a tracker being
+    // advanced would have dropped the track by now.
+    await skipAndAdvance(worker);
+    await skipAndAdvance(worker);
+    await skipAndAdvance(worker);
+    expect(screen.getByTestId("objects").textContent).toBe("1");
+  });
+
+  it("scans the first frame of a span before it trusts the gate", async () => {
+    // The pump starts on a fresh worker, after a recycle, and on every resume
+    // from a pause, and in the last of those the road has had an unbounded
+    // amount of time to change while nobody was looking.
+    const worker = renderWithProvider(<StartOnReady />);
+    await startScanning(worker);
+    expect(detects(worker)[0]).toMatchObject({ forceScan: true });
+  });
+
+  it("lets the gate decide once a scan has landed", async () => {
+    const worker = renderWithProvider(<StartOnReady />);
+    await startScanning(worker);
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    });
+    expect(detects(worker)[1]).toMatchObject({ forceScan: false });
+  });
+
+  it("demands a scan once skipping has run past the cap", async () => {
+    // The backstop. A threshold set above what a distant vehicle produces, and
+    // a camera feed that has quietly frozen, both look from in here exactly
+    // like a scene that is genuinely still, so the gate is not trusted to be
+    // its own check on how long it has been since the model last ran.
+    const worker = renderWithProvider(<StartOnReady />);
+    await startScanning(worker);
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+      });
+    });
+    let forced = 0;
+    const scans = Math.ceil(SCENE_GATE_MAX_SKIP_MS / MIN_FRAME_INTERVAL_MS) + 1;
+    for (let scan = 0; scan < scans; scan += 1) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+      });
+      const latest = detects(worker).at(-1);
+      if (latest?.type === "detect" && latest.forceScan) {
+        forced += 1;
+      }
+      act(() => {
+        worker.emit({ type: "scan-skipped", gateMs: 0.4, delta: 0.2 });
+      });
+    }
+    expect(forced).toBeGreaterThan(0);
+  });
+
+  it("scans every frame while the gate is switched off", async () => {
+    // The developer escape hatch, which is what the gate's cost and its effect
+    // on detections get measured against on a device.
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ developerOptions: true, sceneChangeGate: false }),
+    );
+    const worker = renderWithProvider(<StartOnReady />);
+    await startScanning(worker);
+    act(() => {
+      worker.emit({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 0, inferenceMs: 0, decodeMs: 0 },
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    });
+    // Both of them, so the assertion is not satisfied by the first frame's
+    // force alone, which every span gets whether the gate is on or off.
+    expect(detects(worker)).toHaveLength(2);
+    expect(detects(worker).every((message) => message.forceScan)).toBe(true);
   });
 });

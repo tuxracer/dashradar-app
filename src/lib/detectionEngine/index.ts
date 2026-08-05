@@ -55,6 +55,7 @@ import {
   PACING_REST_RAMP_MS,
   PACING_REST_RATIO,
   PACING_REST_RATIO_MAX,
+  SCENE_GATE_MAX_SKIP_MS,
   SW_CONTROL_TIMEOUT_MS,
   WORKER_RECYCLE_AFTER_MS,
   WORKER_REPLY_TIMEOUT_MS,
@@ -182,6 +183,7 @@ export const createDetectionEngine = ({
   const settings$ = new BehaviorSubject<EngineSettings>({
     includeContact: false,
     throttled: true,
+    sceneGate: true,
     zoom: ZOOM_OFF,
     confidenceThreshold: CONFIDENCE_THRESHOLD,
   });
@@ -234,9 +236,23 @@ export const createDetectionEngine = ({
   // pump stop, so a resumed session re-earns confirmation from scratch.
   let tracker = createDetectionTracker();
   const fileProgress = new Map<string, ModelProgress>();
-  // Running total of detections results this engine processed; the crash
-  // sentinel reads it against a baseline captured when scanning starts.
+  // Running total of scans this engine completed, counting the ones the
+  // scene-change gate answered without running the model; the crash sentinel
+  // reads it against a baseline captured when scanning starts. Skips count
+  // because what the sentinel measures is whether the pump kept turning over,
+  // and a gated session parked at a light is turning over perfectly well.
   let framesTotal = 0;
+  // How many of those the gate skipped, for the debug overlay's skip rate.
+  let skippedTotal = 0;
+  /**
+   * performance.now() of the last scan the model actually ran, or undefined
+   * when it has not run since the pump last started. This is the whole of the
+   * engine's side of the scene-change gate: it decides when skipping has gone
+   * on long enough to demand a scan regardless, and it is kept here rather than
+   * in the worker because the worker cannot see a pause, a resume, or a recycle
+   * for what they are.
+   */
+  let lastScanAt: number | undefined;
   let debug: DebugSnapshot = INITIAL_DEBUG;
 
   /**
@@ -410,6 +426,32 @@ export const createDetectionEngine = ({
     return delay;
   };
 
+  /**
+   * Whether this frame must be scanned whatever the scene-change gate makes of
+   * it. Three cases, all of them the engine's to see and none of them the
+   * worker's:
+   *
+   * The gate is off, a developer option, so every frame is scanned and the
+   * gate's effect on heat and on detections can be measured against its absence
+   * on a real device.
+   *
+   * Nothing has been scanned since the pump last started. A pump starts on a
+   * fresh worker, after a recycle, and on every resume from a pause, and in the
+   * last of those the world has had an unbounded amount of time to move while
+   * nobody was looking. The first frame of a span is the one frame the gate has
+   * no honest baseline for.
+   *
+   * Or skipping has run past SCENE_GATE_MAX_SKIP_MS, the backstop against the
+   * gate being wrong in the direction that matters. A threshold set above what
+   * a distant vehicle produces, or a camera feed that has frozen, both look
+   * from in here exactly like a scene that is genuinely still, and neither can
+   * be told apart from it by measuring the frames harder.
+   */
+  const forceScan = (sceneGate: boolean): boolean =>
+    !sceneGate ||
+    lastScanAt === undefined ||
+    performance.now() - lastScanAt >= SCENE_GATE_MAX_SKIP_MS;
+
   /** One spawned worker: its post channel, parsed messages, and load state. */
   type WorkerSession = {
     post: DetectionWorkerLike["postMessage"];
@@ -516,8 +558,25 @@ export const createDetectionEngine = ({
         );
         break;
       }
+      case "scan-skipped": {
+        framesTotal += 1;
+        skippedTotal += 1;
+        // Everything else is left exactly as the last real scan published it.
+        // A frame that did not change cannot have lost what the last one found,
+        // so the tracker is not advanced (which would coast the detection
+        // toward being dropped), the HUD is not rebuilt, and the contact card
+        // keeps the picture it is showing.
+        debug = {
+          ...debug,
+          sceneDelta: message.delta,
+          scanSkips: debug.scanSkips + 1,
+          skipRate: skippedTotal / framesTotal,
+        };
+        break;
+      }
       case "detections": {
         framesTotal += 1;
+        lastScanAt = performance.now();
         const result = processDetectionResult({
           detections: message.detections,
           crop: message.crop,
@@ -572,6 +631,12 @@ export const createDetectionEngine = ({
           // frame's actual pacing decision.
           pacingDelayMs: debug.pacingDelayMs,
           pacingRule: debug.pacingRule,
+          // A scan the gate let through, so the run of skips it ended is over.
+          // The delta is reported all the same: the readings above the
+          // threshold are half of what tuning it needs.
+          sceneDelta: message.sceneDelta ?? debug.sceneDelta,
+          scanSkips: 0,
+          skipRate: skippedTotal / framesTotal,
         };
         telemetry.result({ inferenceMs, roundTripMs });
         break;
@@ -601,15 +666,24 @@ export const createDetectionEngine = ({
   const pumpFor = (session: WorkerSession) => {
     let awaitingResult = false;
 
-    /** Every detections result this session delivers. */
-    const detections$ = session.messages$.pipe(
-      filter((message) => message.type === "detections"),
+    /**
+     * Every reply that closes out a posted frame. A gate skip counts: it costs
+     * the worker a frame and answers it, so to the pump it is a completed scan
+     * that happens to carry no detections. Treating only results as replies
+     * would leave the pump waiting on a frame that was already answered, and
+     * the reply watchdog would recycle a worker doing exactly what it should.
+     */
+    const replies$ = session.messages$.pipe(
+      filter(
+        (message) =>
+          message.type === "detections" || message.type === "scan-skipped",
+      ),
     );
 
     // Not gated by running: a stale result landing during a pause must still
     // clear the flag, or a resumed pump would wait forever for a message
     // its own (torn-down) subscription already missed.
-    const resultLanded$ = detections$.pipe(
+    const resultLanded$ = replies$.pipe(
       tap(() => {
         awaitingResult = false;
       }),
@@ -625,7 +699,7 @@ export const createDetectionEngine = ({
      * outstanding frame dies with the terminated worker; the fresh session's
      * ready re-primes the pump.
      */
-    const nextResult$ = detections$.pipe(
+    const nextResult$ = replies$.pipe(
       take(1),
       timeout({
         first: WORKER_REPLY_TIMEOUT_MS,
@@ -653,7 +727,8 @@ export const createDetectionEngine = ({
       // to be the same value or the worker maps the boxes back out of a crop it
       // was never told about, and only a single read can guarantee that across
       // the capture's await.
-      const { zoom, includeContact, confidenceThreshold } = settings$.value;
+      const { zoom, includeContact, confidenceThreshold, sceneGate } =
+        settings$.value;
       return captureFrame(video, includeContact ? undefined : zoom).pipe(
         switchMap(({ frame, captureMs, source }) =>
           merge(
@@ -680,6 +755,7 @@ export const createDetectionEngine = ({
                   zoom,
                   source: includeContact ? undefined : source,
                   confidenceThreshold,
+                  forceScan: forceScan(sceneGate),
                 },
                 [frame],
               );
@@ -796,8 +872,12 @@ export const createDetectionEngine = ({
       }
       return;
     }
-    // A resumed session must re-earn track confirmation from scratch.
+    // A resumed session must re-earn track confirmation from scratch, and for
+    // the same reason it must re-look at the road: a pause of any length can
+    // sit between these two frames, so the next one is scanned rather than
+    // measured against a baseline from before it.
     tracker = createDetectionTracker();
+    lastScanAt = undefined;
     if (snapshot$.value.status === "running") {
       setStatus("ready");
     }
@@ -832,6 +912,8 @@ export const createDetectionEngine = ({
       fileProgress.clear();
       debug = INITIAL_DEBUG;
       tracker = createDetectionTracker();
+      skippedTotal = 0;
+      lastScanAt = undefined;
       active$.next(true);
     },
     deactivate: () => {

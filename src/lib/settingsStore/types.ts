@@ -19,7 +19,7 @@ export const isZoomMode = (value: unknown): value is ZoomMode => {
 export type Settings = {
   /**
    * Master switch for the development-only settings (showDebug,
-   * throttleInference, zoomMode, confidenceThreshold, modelIds,
+   * throttleInference, sceneChangeGate, zoomMode, confidenceThreshold, modelIds,
    * zoomIndicator, roundTripIndicator, cameraPreview, detectionView,
    * rawConfidence). Off by default. While it is off, SettingsProvider
    * reports each of those at its DEVELOPER_OPTIONS_OFF value no matter what is
@@ -58,6 +58,15 @@ export type Settings = {
    * 2s pacing floor is the app's thermal/battery safeguard.
    */
   throttleInference: boolean;
+  /**
+   * When false, every frame goes through the model even when the picture has
+   * not moved since the last one scanned. On by default: idling at a light or
+   * parked is otherwise a full inference per second spent re-deriving an answer
+   * about a scene that cannot have changed, which is the app's worst heat for
+   * its least value. A developer option so the gate's effect can be measured
+   * against its absence on a device; a normal drive always runs it.
+   */
+  sceneChangeGate: boolean;
   /**
    * Crop factor the worker scans at. "2x" halves the centered square fed to
    * the model, so the same 512x512 input covers half the field of view and
@@ -154,6 +163,7 @@ export type DeveloperOptions = Pick<
   Settings,
   | "showDebug"
   | "throttleInference"
+  | "sceneChangeGate"
   | "zoomMode"
   | "confidenceThreshold"
   | "modelIds"
@@ -235,6 +245,7 @@ export const isPersistedSettings = (
     (value.detectionImage === undefined || isBoolean(value.detectionImage)) &&
     (value.throttleInference === undefined ||
       isBoolean(value.throttleInference)) &&
+    (value.sceneChangeGate === undefined || isBoolean(value.sceneChangeGate)) &&
     (value.zoomMode === undefined || isZoomMode(value.zoomMode)) &&
     (value.confidenceThreshold === undefined ||
       isNumber(value.confidenceThreshold)) &&

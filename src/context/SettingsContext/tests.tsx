@@ -163,6 +163,7 @@ describe("SettingsContext", () => {
       radarAudio: true,
       detectionImage: false,
       throttleInference: true,
+      sceneChangeGate: true,
       zoomMode: "1x",
       confidenceThreshold: DEVELOPER_OPTIONS_OFF.confidenceThreshold,
       modelIds: [DEFAULT_MODEL.id],

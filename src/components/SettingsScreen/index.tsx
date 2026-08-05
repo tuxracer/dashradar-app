@@ -75,6 +75,8 @@ export const SettingsScreen = () => {
     toggleDetectionImage,
     throttleInference,
     toggleThrottleInference,
+    sceneChangeGate,
+    toggleSceneChangeGate,
     zoomMode,
     setZoomMode,
     modelIds,
@@ -304,6 +306,22 @@ export const SettingsScreen = () => {
                   </span>
                 </span>
                 <Toggle on={throttleInference} />
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleSceneChangeGate}
+                className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
+              >
+                <span className="flex flex-col gap-1">
+                  <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                    Skip still frames
+                  </span>
+                  <span className="text-sm font-medium text-white/45">
+                    Saves inference while the view holds steady.
+                  </span>
+                </span>
+                <Toggle on={sceneChangeGate} />
               </button>
 
               <button

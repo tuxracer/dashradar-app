@@ -60,6 +60,7 @@ export const DetectionProvider = ({
   const {
     detectionImage,
     throttleInference,
+    sceneChangeGate,
     zoomMode,
     confidenceThreshold,
     modelIds,
@@ -98,6 +99,7 @@ export const DetectionProvider = ({
     engine.updateSettings({
       includeContact: detectionImage,
       throttled: throttleInference,
+      sceneGate: sceneChangeGate,
       zoom: zoomMode === "2x" ? ZOOM_2X : ZOOM_OFF,
       confidenceThreshold,
     });
@@ -105,6 +107,7 @@ export const DetectionProvider = ({
     engine,
     detectionImage,
     throttleInference,
+    sceneChangeGate,
     zoomMode,
     confidenceThreshold,
   ]);

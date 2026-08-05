@@ -77,7 +77,8 @@ export const DebugOverlay = ({
   videoSize,
   viewportSize,
 }: DebugOverlayProps) => {
-  const { showDebug, throttleInference, zoomMode } = useSettings();
+  const { showDebug, throttleInference, sceneChangeGate, zoomMode } =
+    useSettings();
 
   const [debug, setDebug] = useState<DebugSnapshot>(getDebug);
   useEffect(() => {
@@ -147,6 +148,14 @@ export const DebugOverlay = ({
       )}
       <Row label="round-trip" value={ms(debug.roundTripMs)} />
       <Row label="throttle" value={throttleInference ? "on" : "off"} />
+      <Row
+        label="scene gate"
+        value={
+          sceneChangeGate
+            ? `Δ${debug.sceneDelta.toFixed(1)} · ${debug.scanSkips} held · ${Math.round(debug.skipRate * 100)}%`
+            : "off"
+        }
+      />
       <Row label="zoom" value={`${zoomMode} · ${debug.zoom}x`} />
       <Row
         label="pacing"

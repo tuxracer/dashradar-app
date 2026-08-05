@@ -49,6 +49,7 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       toggleRadarAudio: () => store.toggle("radarAudio"),
       toggleDetectionImage: () => store.toggle("detectionImage"),
       toggleThrottleInference: () => store.toggle("throttleInference"),
+      toggleSceneChangeGate: () => store.toggle("sceneChangeGate"),
       setZoomMode: store.setZoomMode,
       commitModelIds: store.commitModelIds,
       setConfidenceThreshold: store.setConfidenceThreshold,

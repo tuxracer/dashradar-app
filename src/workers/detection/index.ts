@@ -10,6 +10,8 @@ import { DEFAULT_MODEL, modelWeightsUrl } from "@/lib/detectionModels";
 import type { DetectionModel, LoadedModel } from "@/lib/detectionModels";
 import { readOnnxMetadata } from "@/lib/onnxMetadata";
 import type { OnnxMetadata } from "@/lib/onnxMetadata";
+import { compareScenes, sceneSignature } from "@/lib/sceneChange";
+import type { SceneSignature } from "@/lib/sceneChange";
 import {
   DEV_MODEL_CACHE_NAME,
   INPUT_SIZE,
@@ -107,6 +109,23 @@ let model: ModelIo | undefined;
 const inputCanvas = new OffscreenCanvas(INPUT_SIZE, INPUT_SIZE);
 const inputContext = inputCanvas.getContext("2d", { willReadFrequently: true });
 const inputBuffer = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE);
+
+/**
+ * Tile signature of the frame the model last actually ran on, which is what the
+ * scene-change gate compares each new frame against.
+ *
+ * The last *scanned* frame rather than the last frame seen, deliberately. Held
+ * against its immediate predecessor a scene that creeps could drift arbitrarily
+ * far without any single step clearing the threshold, and the gate would sit
+ * there suppressing scans while the road filled up. Held against the last frame
+ * the model read, every skipped frame's drift stays on the books until
+ * something crosses the line, so the comparison answers the question that
+ * matters: has anything changed since the last time we actually looked.
+ *
+ * Undefined until the first scan of a worker's life, which is what makes a
+ * fresh or recycled worker always run the model before it ever skips.
+ */
+let lastScanned: SceneSignature | undefined;
 
 const post = (message: WorkerResponse, transfer: Transferable[] = []) => {
   self.postMessage(message, transfer);
@@ -547,6 +566,9 @@ const watchDeviceLoss = async () => {
 };
 
 const loadModel = async (requested: DetectionModel | undefined) => {
+  // A different model reads the same road differently, so what the previous one
+  // had already looked at says nothing about what this one still needs to.
+  lastScanned = undefined;
   if (!(await gpuProbe())) {
     reportUnsupported();
     return;
@@ -598,12 +620,14 @@ const detect = async ({
   zoom,
   source,
   confidenceThreshold,
+  forceScan,
 }: {
   frame: ImageBitmap;
   includeCrop: boolean;
   zoom: number;
   source?: { width: number; height: number };
   confidenceThreshold: number;
+  forceScan: boolean;
 }) => {
   if (!model) {
     frame.close();
@@ -649,6 +673,36 @@ const detect = async ({
       );
     }
     const imageData = inputContext.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
+
+    // The scene-change gate, sitting between the readback and the work worth
+    // avoiding. A car stopped at a light or parked spends minutes pointing the
+    // camera at a picture that does not move, and running the model on it burns
+    // a GPU-second per second to re-derive an answer that cannot have changed:
+    // nothing can enter the frame without changing the pixels in it. Measuring
+    // that directly costs a pass over bytes already in hand, and a skip saves
+    // both the normalization below and the inference after it, which is
+    // essentially the entire per-frame cost.
+    //
+    // Placed after the draw rather than before it because the comparison has to
+    // run on the same pixels the model would have read: the input canvas has
+    // the zoom crop and the scale to INPUT_SIZE already applied, so a frame is
+    // measured in the geometry it would be scanned in.
+    const gateStart = performance.now();
+    const signature = sceneSignature(imageData);
+    const scene = lastScanned
+      ? compareScenes(lastScanned, signature)
+      : undefined;
+    const gateMs = performance.now() - gateStart;
+    if (!forceScan && scene && !scene.changed) {
+      // The baseline deliberately stays where it is. Advancing it to this
+      // frame would restart the drift measurement on every skip, so a scene
+      // changing slower than the threshold per frame would never accumulate
+      // enough to trip and the gate would suppress scanning indefinitely.
+      post({ type: "scan-skipped", gateMs, delta: scene.delta });
+      return;
+    }
+    lastScanned = signature;
+
     const inputData = preprocess(imageData, inputBuffer);
     const preprocessMs = performance.now() - preprocessStart;
 
@@ -746,6 +800,7 @@ const detect = async ({
         detections,
         timing: { preprocessMs, inferenceMs, decodeMs },
         crop,
+        sceneDelta: scene?.delta,
       },
       transfer,
     );
@@ -789,5 +844,6 @@ self.onmessage = (event: MessageEvent<unknown>) => {
     zoom: request.zoom ?? ZOOM_OFF,
     source: request.source,
     confidenceThreshold: request.confidenceThreshold ?? CONFIDENCE_THRESHOLD,
+    forceScan: request.forceScan ?? false,
   });
 };

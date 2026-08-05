@@ -72,6 +72,27 @@ export const PACING_REST_RATIO_MAX = 3;
  */
 export const MAX_FRAME_INTERVAL_MS = 5_000;
 
+/**
+ * Longest the scene-change gate may go without the model running, after which
+ * the pump demands a scan whatever the gate makes of the picture.
+ *
+ * The gate's safety argument is that nothing can enter the frame without
+ * changing the pixels in it, and that argument holds only as far as the
+ * threshold is calibrated and the frames are real. Neither is guaranteed on a
+ * device nobody has measured: a threshold set above the change a distant
+ * vehicle produces, or a camera that has quietly stopped delivering new frames,
+ * both turn the gate into a detector that scans the road never while showing
+ * every sign of working. That is the failure this project already refused once
+ * in the wasm fallback, where scanning too rarely was judged worse than not
+ * shipping, so the gate is not trusted to be its own backstop.
+ *
+ * Ten seconds bounds how blind a miscalibration can leave a drive while
+ * keeping almost all of the win: a minute stopped at a light costs six
+ * inferences instead of sixty, and raising the bound further buys a few
+ * percent more for a proportionally worse worst case.
+ */
+export const SCENE_GATE_MAX_SKIP_MS = 10_000;
+
 /** Zeroed debug snapshot shown before the first detection result arrives. */
 export const INITIAL_DEBUG: DebugSnapshot = {
   captureMs: 0,
@@ -87,6 +108,9 @@ export const INITIAL_DEBUG: DebugSnapshot = {
   pacingDelayMs: 0,
   pacingRule: "floor",
   zoom: ZOOM_OFF,
+  sceneDelta: 0,
+  scanSkips: 0,
+  skipRate: 0,
 };
 
 /**

@@ -28,6 +28,7 @@ export type SettingsContextValue = SettingsSnapshot & {
   toggleRadarAudio: () => void;
   toggleDetectionImage: () => void;
   toggleThrottleInference: () => void;
+  toggleSceneChangeGate: () => void;
   /** Sets the zoom mode (1x or 2x). */
   setZoomMode: (mode: ZoomMode) => void;
   /**

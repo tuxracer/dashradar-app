@@ -63,6 +63,24 @@ export type DebugSnapshot = {
   pacingRule: PacingRule;
   /** Crop factor the frame was scanned at (ZOOM_OFF or ZOOM_2X). */
   zoom: number;
+  /**
+   * Largest per-tile luma shift the scene-change gate measured on the last
+   * frame, whether it skipped or scanned. The number the threshold is tuned
+   * against: point the camera at something still to read the noise floor, wave
+   * a hand through the frame to read what real movement produces, and the
+   * threshold belongs between them.
+   */
+  sceneDelta: number;
+  /**
+   * Inferences the gate has skipped since the last one it let through. Climbs
+   * while the view is still and resets the moment something moves, so it reads
+   * as how long the detector has been coasting. Bounded by the forced rescan,
+   * which is what stops a threshold set too high from reading as a healthy
+   * scanning session while the model has not run in minutes.
+   */
+  scanSkips: number;
+  /** Share of scans the gate has skipped since the engine activated, 0 to 1. */
+  skipRate: number;
 };
 
 /**
@@ -131,6 +149,13 @@ export type EngineSettings = {
   includeContact: boolean;
   /** Apply the pacing floor and rest; false is the debug-only escape hatch. */
   throttled: boolean;
+  /**
+   * Let the worker skip inference on a frame that has not changed since the
+   * one it last scanned; false is the debug-only escape hatch that makes every
+   * frame a forced scan, which is what the gate's cost and benefit are measured
+   * against on a device.
+   */
+  sceneGate: boolean;
   /** Crop factor to capture at (ZOOM_OFF or ZOOM_2X). */
   zoom: ZoomLevel;
   /** Minimum detection confidence for decode and enrichment. */

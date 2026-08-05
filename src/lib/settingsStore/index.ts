@@ -114,6 +114,7 @@ export const createSettingsStore = (): SettingsStore => {
       ? {
           showDebug: stored.showDebug,
           throttleInference: stored.throttleInference,
+          sceneChangeGate: stored.sceneChangeGate,
           zoomMode: stored.zoomMode,
           confidenceThreshold: stored.confidenceThreshold,
           modelIds: stored.modelIds,
