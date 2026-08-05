@@ -45,6 +45,14 @@ const eslintConfig = defineConfig([
     files: ["src/components/**", "src/context/**"],
     rules: { "react-refresh/only-export-components": "off" },
   },
+  {
+    // react-three-fiber JSX (mesh, group, gridHelper, ...) is not DOM, so
+    // react/no-unknown-property flags every three prop (args, attach,
+    // position, material-*). Scoped to the one component that renders a
+    // Canvas; DOM elements elsewhere keep the rule.
+    files: ["src/components/SceneView/**"],
+    rules: { "react/no-unknown-property": "off" },
+  },
 ]);
 
 export default eslintConfig;
