@@ -20,7 +20,8 @@ const snapshot = (roundTripMs: number): DebugSnapshot => ({
   zoom: 1,
   sceneDelta: 0,
   scanSkips: 0,
-  skipRate: 0,
+  scansTotal: 0,
+  skipsTotal: 0,
 });
 
 describe("RoundTripIndicator", () => {

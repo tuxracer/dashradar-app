@@ -79,8 +79,10 @@ export type DebugSnapshot = {
    * scanning session while the model has not run in minutes.
    */
   scanSkips: number;
-  /** Share of scans the gate has skipped since the engine activated, 0 to 1. */
-  skipRate: number;
+  /** Scans since the engine activated that the model actually ran. */
+  scansTotal: number;
+  /** Scans since the engine activated that the gate answered without it. */
+  skipsTotal: number;
 };
 
 /**

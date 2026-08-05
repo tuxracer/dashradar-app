@@ -242,8 +242,6 @@ export const createDetectionEngine = ({
   // because what the sentinel measures is whether the pump kept turning over,
   // and a gated session parked at a light is turning over perfectly well.
   let framesTotal = 0;
-  // How many of those the gate skipped, for the debug overlay's skip rate.
-  let skippedTotal = 0;
   /**
    * performance.now() of the last scan the model actually ran, or undefined
    * when it has not run since the pump last started. This is the whole of the
@@ -560,7 +558,6 @@ export const createDetectionEngine = ({
       }
       case "scan-skipped": {
         framesTotal += 1;
-        skippedTotal += 1;
         // Everything else is left exactly as the last real scan published it.
         // A frame that did not change cannot have lost what the last one found,
         // so the tracker is not advanced (which would coast the detection
@@ -570,7 +567,7 @@ export const createDetectionEngine = ({
           ...debug,
           sceneDelta: message.delta,
           scanSkips: debug.scanSkips + 1,
-          skipRate: skippedTotal / framesTotal,
+          skipsTotal: debug.skipsTotal + 1,
         };
         break;
       }
@@ -636,7 +633,8 @@ export const createDetectionEngine = ({
           // threshold are half of what tuning it needs.
           sceneDelta: message.sceneDelta ?? debug.sceneDelta,
           scanSkips: 0,
-          skipRate: skippedTotal / framesTotal,
+          scansTotal: debug.scansTotal + 1,
+          skipsTotal: debug.skipsTotal,
         };
         telemetry.result({ inferenceMs, roundTripMs });
         break;
@@ -912,7 +910,6 @@ export const createDetectionEngine = ({
       fileProgress.clear();
       debug = INITIAL_DEBUG;
       tracker = createDetectionTracker();
-      skippedTotal = 0;
       lastScanAt = undefined;
       active$.next(true);
     },

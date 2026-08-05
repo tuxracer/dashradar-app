@@ -110,7 +110,8 @@ export const INITIAL_DEBUG: DebugSnapshot = {
   zoom: ZOOM_OFF,
   sceneDelta: 0,
   scanSkips: 0,
-  skipRate: 0,
+  scansTotal: 0,
+  skipsTotal: 0,
 };
 
 /**

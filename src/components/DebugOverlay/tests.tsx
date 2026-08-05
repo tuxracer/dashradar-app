@@ -25,7 +25,8 @@ const debug: DebugSnapshot = {
   zoom: 1,
   sceneDelta: 0.4,
   scanSkips: 0,
-  skipRate: 0,
+  scansTotal: 0,
+  skipsTotal: 0,
 };
 
 const renderOverlay = () =>

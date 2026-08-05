@@ -55,6 +55,18 @@ const modelFile = (probe: BackendProbe | undefined): string => {
 /** Milliseconds to one decimal place, e.g. "5.6 ms". */
 const ms = (value: number): string => `${value.toFixed(1)} ms`;
 
+/**
+ * The scene-change gate's running tally: how many scans the model ran, how many
+ * the gate answered without it, and what share that is. The raw pair rather
+ * than the share alone, because the share says nothing about how much scanning
+ * it is a share of, and a high rate over four scans means nothing.
+ */
+const gateScans = ({ scansTotal, skipsTotal }: DebugSnapshot): string => {
+  const total = scansTotal + skipsTotal;
+  const share = total === 0 ? 0 : Math.round((skipsTotal / total) * 100);
+  return `${scansTotal} ran · ${skipsTotal} held · ${share}%`;
+};
+
 /** One label/value line in the panel. */
 const Row = ({ label, value }: { label: string; value: string }) => (
   <div className="flex justify-between gap-4">
@@ -152,10 +164,11 @@ export const DebugOverlay = ({
         label="scene gate"
         value={
           sceneChangeGate
-            ? `Δ${debug.sceneDelta.toFixed(1)} · ${debug.scanSkips} held · ${Math.round(debug.skipRate * 100)}%`
+            ? `Δ${debug.sceneDelta.toFixed(1)} · ${debug.scanSkips} held`
             : "off"
         }
       />
+      {sceneChangeGate && <Row label="gate scans" value={gateScans(debug)} />}
       <Row label="zoom" value={`${zoomMode} · ${debug.zoom}x`} />
       <Row
         label="pacing"
