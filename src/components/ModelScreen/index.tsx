@@ -1,13 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { isDeepEqual } from "remeda";
 import { ModelCard } from "@/components/ModelCard";
-import { useDetection } from "@/context/DetectionContext";
 import { useSettings } from "@/context/SettingsContext";
 import {
   addStoredModel,
   AddModelError,
-  DEFAULT_MODEL,
   isAddModelError,
   knownModels,
   listOnnxFiles,
@@ -84,15 +81,16 @@ type ModelScreenProps = {
  *
  * A row opens that model's card rather than selecting it, so choosing one is
  * something you do after reading what it is; the card is also where a model is
- * removed. The list keeps the amber selection, since it is what says which of
- * several near-identical names the draft is on.
+ * removed. The list keeps the amber mark on the selected entry, since it is
+ * what says which of several near-identical names is running.
  *
- * The selection lives in a draft until Save, so leaving the screen cannot
- * change what the detector runs. Save is the only way out that applies
- * anything: it confirms, writes the selection straight to storage, and reloads,
- * because a running worker holds a session built from the model it loaded and
- * swapping that under a live drive is not something this app does. That is also
- * why no row here says a restart is needed; the screen performs it.
+ * Nothing here is staged. Taking a model from its card confirms, writes the
+ * selection, and reloads on the spot, and adding one from a URL registers it as
+ * soon as the trial load proves it runs. There is no save step, because there
+ * was never a second decision for it to carry: every action on this screen is
+ * already an answer to a question the screen just asked. The reload is how a
+ * choice reaches the detector, which is also why no row says a restart is
+ * needed; the screen performs it.
  */
 export const ModelScreen = ({
   onClose,
@@ -101,23 +99,14 @@ export const ModelScreen = ({
   trialLoad = trialLoadModel,
 }: ModelScreenProps) => {
   const { modelIds, commitModelIds } = useSettings();
-  const { activeModel } = useDetection();
   const [models, setModels] = useState<readonly DetectionModel[]>(
     () => modelsProp ?? knownModels(),
   );
-  // Seeded from the resolved selection rather than the raw stored ids, so a
-  // stale id left by an older build shows as the model that would actually run
-  // and Save is not offered for a difference nobody made.
-  const [draft, setDraft] = useState<readonly string[]>(() =>
-    resolveModels(modelIds, models).map((model) => model.id),
-  );
-  // Compared against what the session pinned at mount, not against what is
-  // stored, because Save's whole job is applying the draft to the running
-  // detector. Where the two disagree (a commit that reached storage but whose
-  // reload never happened), comparing against storage would leave Save
-  // disabled while the picker showed a model the detector is not running, with
-  // no way to make it true.
-  const changed = !isDeepEqual([...draft], [activeModel.id]);
+  // Resolved rather than read raw, so a stale id left by an older build marks
+  // the model that would actually run instead of no row at all. Removing a
+  // model therefore moves the mark to the shipping entry on its own, which is
+  // exactly what the next load would do with the id left behind.
+  const selectedIds = resolveModels(modelIds, models).map((model) => model.id);
 
   // Which model's card is open, if any. An id rather than the entry, so a card
   // left open over a model that has just been removed closes itself instead of
@@ -287,7 +276,6 @@ export const ModelScreen = ({
       return;
     }
     refreshModels();
-    setDraft([entry.id]);
     const labels = (result.loaded?.classes ?? []).map((c) => c.label);
     setAdd({
       phase: "added",
@@ -307,11 +295,6 @@ export const ModelScreen = ({
     removeStoredModel(model.id);
     // Back to the list, where the row this card was opened from collapses out.
     setOpenId(undefined);
-    // A drafted selection of the removed row has nothing to apply anymore;
-    // the default is the one row guaranteed to exist.
-    setDraft((previous) =>
-      previous.includes(model.id) ? [DEFAULT_MODEL.id] : previous,
-    );
     // The row stays mounted long enough to collapse out, so the rows below it
     // travel into the space instead of jumping. Storage is already updated, so
     // a screen unmounted mid-collapse loses nothing but the animation.
@@ -326,26 +309,22 @@ export const ModelScreen = ({
   };
 
   /**
-   * Draft a model from its card, then return to the list, which is where the
-   * selection is visible and where SAVE lives.
+   * Apply a model straight from its card: confirm, write the selection, reload.
+   * There is no draft to keep and no save step, because there is nothing a
+   * second screen could add to a decision already made by tapping the model and
+   * answering the confirm. The reload is how a choice reaches the detector at
+   * all: a running worker holds a session built from the model it loaded, and
+   * swapping that under a live drive is not something this app does.
    */
   const chooseModel = (id: string) => {
-    setDraft((previous) =>
-      previous.includes(id)
-        ? previous
-        : // Past the cap the oldest pick drops, so a single-select list behaves
-          // like a radio group and a larger cap behaves like a queue.
-          [...previous, id].slice(-MAX_SELECTED_MODELS),
-    );
-    setOpenId(undefined);
-  };
-
-  const handleSave = () => {
-    const names = resolveModels(draft, models).map(modelLabel).join(", ");
+    // Past the cap the oldest pick drops, so a single-select list behaves like
+    // a radio group and a larger cap behaves like a queue.
+    const ids = [...selectedIds, id].slice(-MAX_SELECTED_MODELS);
+    const names = resolveModels(ids, models).map(modelLabel).join(", ");
     if (!window.confirm(`Run ${names}?`)) {
       return;
     }
-    if (!commitModelIds(draft)) {
+    if (!commitModelIds(ids)) {
       window.alert(COMMIT_FAILED_MESSAGE);
       return;
     }
@@ -359,7 +338,7 @@ export const ModelScreen = ({
     return (
       <ModelCard
         model={openModel}
-        selected={draft.includes(openModel.id)}
+        selected={selectedIds.includes(openModel.id)}
         onUse={() => chooseModel(openModel.id)}
         onRemove={() => handleRemove(openModel)}
         onBack={() => setOpenId(undefined)}
@@ -370,7 +349,7 @@ export const ModelScreen = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-surface px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))]">
       <div className="mx-auto flex max-w-3xl flex-col gap-6">
-        <div className="flex animate-rise-in items-center justify-between gap-6 motion-reduce:animate-none">
+        <div className="flex animate-rise-in items-center gap-6 motion-reduce:animate-none">
           <button
             type="button"
             data-testid="model-back"
@@ -383,24 +362,11 @@ export const ModelScreen = ({
           <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
             Detection model
           </span>
-          <button
-            type="button"
-            data-testid="model-save"
-            onClick={handleSave}
-            disabled={!changed}
-            className={`min-h-14 rounded-xl px-6 text-base font-semibold tracking-[0.12em] transition duration-200 active:scale-[0.97] motion-reduce:transition-none ${
-              changed
-                ? "bg-hud-amber text-surface"
-                : "bg-white/10 text-white/35"
-            }`}
-          >
-            SAVE
-          </button>
         </div>
 
         <div className="flex flex-col gap-3">
           {models.map((model, index) => {
-            const selected = draft.includes(model.id);
+            const selected = selectedIds.includes(model.id);
             const leaving = model.id === leavingId;
             return (
               <div
