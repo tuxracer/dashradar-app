@@ -97,5 +97,8 @@ export const readPreviousSessionEnd = (
     release: parsed.release,
     activeView: parsed.activeView,
     model: parsed.model,
+    recycles: parsed.recycles,
+    workerAgeMs: parsed.workerAgeMs,
+    ownedBitmaps: parsed.ownedBitmaps,
   };
 };

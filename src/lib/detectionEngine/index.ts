@@ -276,6 +276,46 @@ export const createDetectionEngine = ({
    */
   let scansTotal = 0;
   /**
+   * Worker sessions this engine has started, the first one included, so the
+   * recycles behind it are one fewer. Engine-scoped with no per-window
+   * baseline, unlike the frame counts: what a recycle bounds is native memory
+   * across the whole page load, so the question a report has to answer is how
+   * many this page has done, not how many landed inside the last scanning
+   * span.
+   */
+  let workersStarted = 0;
+  /**
+   * When the current worker session started. Its age is what says whether a
+   * kill landed near the WORKER_RECYCLE_AFTER_MS boundary, which is the one
+   * moment the engine tears a session down and builds another.
+   */
+  let workerStartedAt = performance.now();
+  /**
+   * ImageBitmaps this thread currently owns: incremented where one is
+   * captured or arrives from the worker, decremented where it is closed or
+   * transferred away. Every bitmap has exactly one owner, so this sits at 0
+   * with no contact published and 1 while one is on screen, and a capture in
+   * flight adds one for the moment between capture and transfer. It is a
+   * count rather than a collection on purpose: a set holding the bitmaps
+   * would keep the leak it is meant to detect alive.
+   */
+  let ownedBitmaps = 0;
+
+  /**
+   * Close a bitmap this thread owns and drop it from the outstanding count.
+   * Every close of an owned bitmap goes through here, so the count cannot
+   * drift from the closes; the one deliberate exception is the teardown
+   * doorman below, which closes a crop that arrived after its session's
+   * subscribers were gone and so was never counted as owned.
+   */
+  const releaseBitmap = (bitmap: ImageBitmap | undefined): void => {
+    if (!bitmap) {
+      return;
+    }
+    bitmap.close();
+    ownedBitmaps -= 1;
+  };
+  /**
    * performance.now() of the last scan the model actually ran, or undefined
    * when it has not run since the pump last started. This is the whole of the
    * engine's side of the scene-change gate: it decides when skipping has gone
@@ -293,7 +333,7 @@ export const createDetectionEngine = ({
    * batch the swap into a larger patch.
    */
   const swapContact = (next: Contact | undefined): Contact | undefined => {
-    snapshot$.value.contact?.image.close();
+    releaseBitmap(snapshot$.value.contact?.image);
     return next;
   };
 
@@ -351,6 +391,9 @@ export const createDetectionEngine = ({
         // Fixed for the engine's life (the provider pins the selection at
         // mount), so this only has to travel far enough to reach the record.
         model: reportedModel,
+        recycles: Math.max(0, workersStarted - 1),
+        workerAgeMs: Math.round(performance.now() - workerStartedAt),
+        ownedBitmaps,
       });
     };
     beat();
@@ -445,8 +488,9 @@ export const createDetectionEngine = ({
           const frame = await (cropTo === undefined
             ? createImageBitmap(video)
             : captureModelInput(video, source, cropTo));
+          ownedBitmaps += 1;
           if (cancelled) {
-            frame.close();
+            releaseBitmap(frame);
             return;
           }
           subscriber.next({
@@ -539,6 +583,8 @@ export const createDetectionEngine = ({
    * is what retires the old activation-counter guard.
    */
   const workerSession$ = new Observable<WorkerSession>((subscriber) => {
+    workersStarted += 1;
+    workerStartedAt = performance.now();
     const target = createWorker();
     const messages = new Subject<WorkerResponse>();
     const loaded$ = new BehaviorSubject(false);
@@ -656,6 +702,14 @@ export const createDetectionEngine = ({
       case "detections": {
         framesTotal += 1;
         scansTotal += 1;
+        // A crop rides in on the message, transferred, so this thread owns it
+        // the moment it arrives. processDetectionResult below hands it back as
+        // exactly one of contact (kept, released by the next swap) or
+        // discardedCrop (released immediately), so it is counted once here and
+        // released once either way.
+        if (message.crop) {
+          ownedBitmaps += 1;
+        }
         const at = performance.now();
         lastScanAt = at;
         const result = processDetectionResult({
@@ -692,7 +746,7 @@ export const createDetectionEngine = ({
         // keeps its cleanup from depending on how the publish's subscribers
         // behave. (rxjs isolates a throwing subscriber from this call today,
         // but the ordering should not need that.)
-        result.discardedCrop?.close();
+        releaseBitmap(result.discardedCrop);
         publish(patch);
         const { preprocessMs, inferenceMs, decodeMs } = message.timing;
         const roundTripMs = performance.now() - (frame?.postedAt ?? 0);
@@ -849,6 +903,9 @@ export const createDetectionEngine = ({
                 },
                 [frame],
               );
+              // Transferred, not closed: the bitmap is the worker's now, and
+              // this thread must stop counting it as one it has to release.
+              ownedBitmaps -= 1;
               return EMPTY;
             }),
           ),
@@ -1050,7 +1107,7 @@ export const createDetectionEngine = ({
       }
       // A fresh activation behaves like a fresh mount: published state and
       // per-load state reset before the new worker reports anything.
-      snapshot$.value.contact?.image.close();
+      releaseBitmap(snapshot$.value.contact?.image);
       snapshot$.next(INITIAL_SNAPSHOT);
       fileProgress.clear();
       debug = INITIAL_DEBUG;

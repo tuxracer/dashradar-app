@@ -52,6 +52,21 @@ export type SentinelRecord = {
    * one: a built-in by its slug, anything added as "custom".
    */
   model?: string;
+  /** Worker recycles this page load had done, not counting the first worker. */
+  recycles?: number;
+  /**
+   * Age of the worker session that was running. A kill landing just short of
+   * WORKER_RECYCLE_AFTER_MS, or just after one of these wrapped around, points
+   * at the teardown and rebuild rather than at steady-state scanning.
+   */
+  workerAgeMs?: number;
+  /**
+   * ImageBitmaps the page still owned. Each one has a single owner and a
+   * single release, so this rests at 0 or at 1 while a contact is on screen;
+   * a number climbing past that is a per-frame leak, which on a session that
+   * runs for hours is the shape an out-of-memory kill arrives in.
+   */
+  ownedBitmaps?: number;
 };
 
 /** Validates a value parsed from localStorage before it is trusted as a SentinelRecord. */
@@ -65,7 +80,10 @@ export const isSentinelRecord = (value: unknown): value is SentinelRecord => {
     (value.graphCapture === undefined || isBoolean(value.graphCapture)) &&
     (value.release === undefined || isString(value.release)) &&
     (value.activeView === undefined || isActiveView(value.activeView)) &&
-    (value.model === undefined || isString(value.model))
+    (value.model === undefined || isString(value.model)) &&
+    (value.recycles === undefined || isNumber(value.recycles)) &&
+    (value.workerAgeMs === undefined || isNumber(value.workerAgeMs)) &&
+    (value.ownedBitmaps === undefined || isNumber(value.ownedBitmaps))
   );
 };
 
@@ -87,4 +105,7 @@ export type PreviousSessionEnd = {
   release?: string;
   activeView?: ActiveView;
   model?: string;
+  recycles?: number;
+  workerAgeMs?: number;
+  ownedBitmaps?: number;
 };

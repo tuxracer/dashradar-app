@@ -80,6 +80,9 @@ if (!import.meta.env.DEV && isTrackingOptedOut() === false) {
       release,
       activeView,
       model,
+      recycles,
+      workerAgeMs,
+      ownedBitmaps,
     } = previousSessionEnd;
     // Tags are the only part of an event that can be grouped, filtered, and
     // charted, so anything a question gets asked of has to be one. That rules
@@ -99,8 +102,21 @@ if (!import.meta.env.DEV && isTrackingOptedOut() === false) {
         activeView: activeView ?? "unknown",
         model: model ?? "unknown",
         uptimeBucket: uptimeBucket(uptimeMs),
+        // Small and bounded in practice (a drive recycles four times an
+        // hour), so it can be a tag and answer whether crashes follow a
+        // rebuilt worker. The worker's age cannot: it is a fresh number every
+        // session, so it rides along as detail and would need a bucket of its
+        // own to become a question.
+        recycles: String(recycles ?? "unknown"),
       },
-      extra: { gapMs, uptimeMs, framesProcessed, scansProcessed },
+      extra: {
+        gapMs,
+        uptimeMs,
+        framesProcessed,
+        scansProcessed,
+        workerAgeMs,
+        ownedBitmaps,
+      },
     });
   }
 }

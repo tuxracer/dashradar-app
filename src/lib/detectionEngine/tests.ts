@@ -393,6 +393,63 @@ describe("crash sentinel heartbeat", () => {
     });
   });
 
+  // The count is only worth reading if it comes back down: a number that only
+  // ever climbs would report every healthy session as leaking.
+  it("counts the bitmaps this thread owns, and lets them go again", async () => {
+    vi.stubGlobal("ImageBitmap", FakeImageBitmap);
+    const { engine, worker } = scanning();
+    engine.updateSettings({
+      ...DEFAULT_ENGINE_SETTINGS,
+      includeContact: true,
+    });
+    const timing = { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 };
+    const detection = {
+      label: "police",
+      score: 0.9,
+      box: { xmin: 0.15, ymin: 0.4, xmax: 0.25, ymax: 0.6 },
+    };
+    const emitCrop = (detectionIndex: number) => {
+      worker.emit({
+        type: "detections",
+        detections: [detection],
+        timing,
+        crop: {
+          image: new FakeImageBitmap() as unknown as ImageBitmap,
+          detectionIndex,
+        },
+      });
+    };
+
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+    expect(readSentinel()).toMatchObject({ ownedBitmaps: 0 });
+
+    // A crop whose detection fails validation is released as it arrives.
+    emitCrop(5);
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+    expect(readSentinel()).toMatchObject({ ownedBitmaps: 0 });
+
+    // A crop kept as the contact is owned until the next one replaces it, so
+    // three in a row rest at one rather than at three.
+    emitCrop(0);
+    emitCrop(0);
+    emitCrop(0);
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+    expect(readSentinel()).toMatchObject({ ownedBitmaps: 1 });
+  });
+
+  it("counts a rebuilt worker, so a kill near a recycle is not read as a steady-state one", async () => {
+    const { workers } = scanning();
+    expect(readSentinel()).toMatchObject({ recycles: 0 });
+    expect(readSentinel()?.workerAgeMs).toEqual(expect.any(Number));
+    // A worker that never answers its posted frame is recycled by the reply
+    // watchdog, which is the cheapest second session to get here.
+    await vi.advanceTimersByTimeAsync(WORKER_REPLY_TIMEOUT_MS);
+    expect(workers).toHaveLength(2);
+    workers[1].emit({ type: "ready" });
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+    expect(readSentinel()).toMatchObject({ recycles: 1 });
+  });
+
   it("does not reset startedAt or framesProcessed when a recycled worker re-reports its probe", async () => {
     const { worker } = scanning();
     // Capture the initial startedAt written when the running span began.
