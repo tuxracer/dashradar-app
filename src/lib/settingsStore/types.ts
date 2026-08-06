@@ -115,9 +115,9 @@ export type Settings = {
    * though MAX_SELECTED_MODELS caps it at one today. Ids are stored unresolved
    * and resolved through resolveModels at the point of use, so an id left by a
    * build that had a model this one does not degrades to the shipping model
-   * instead of invalidating the whole blob. Driver-facing: the Detection model
-   * row is what shows which checkpoint the app is running, and gating it would
-   * mean a selection someone made stopped applying without the row saying so.
+   * instead of invalidating the whole blob. Driver-facing rather than gated:
+   * the model picker both shows this selection and applies it, so gating it
+   * would let someone save a model the app then refused to load.
    */
   modelIds: readonly string[];
   /**

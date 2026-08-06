@@ -5,7 +5,6 @@ import { ModelScreen } from "@/components/ModelScreen";
 import { ShareCard } from "@/components/ShareCard";
 import { useSettings } from "@/context/SettingsContext";
 import { useVideoSource } from "@/context/VideoSourceContext";
-import { resolveModels } from "@/lib/detectionModels";
 import { resetAppData } from "@/lib/resetAppData";
 import { SCENE_FOV_DEG_MAX, SCENE_FOV_DEG_MIN } from "@/lib/scenePlacement";
 import { REPO_URL, RESET_CONFIRM_MESSAGE, ZOOM_MODE_OPTIONS } from "./consts";
@@ -80,7 +79,6 @@ export const SettingsScreen = () => {
     toggleSceneChangeGate,
     zoomMode,
     setZoomMode,
-    modelIds,
     confidenceThreshold,
     setConfidenceThreshold,
     sceneFov,
@@ -201,12 +199,14 @@ export const SettingsScreen = () => {
                 Sets what the app looks for on the road.
               </span>
             </span>
-            <span className="flex items-center gap-2 text-base font-semibold tracking-[0.04em] text-white/60">
-              {resolveModels(modelIds)
-                .map((model) => model.slug)
-                .join(", ")}
-              <ChevronRight className="h-5 w-5 shrink-0" strokeWidth={2} />
-            </span>
+            {/* No model name here. A checkpoint's name is a repo slug, far too
+                long for what is left of a settings row, and it wrapped over
+                two lines to say something the screen behind this row says
+                properly. */}
+            <ChevronRight
+              className="h-5 w-5 shrink-0 text-white/60"
+              strokeWidth={2}
+            />
           </button>
 
           <button

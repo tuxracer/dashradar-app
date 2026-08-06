@@ -258,10 +258,10 @@ describe("SettingsScreen", () => {
     expect(screen.getByTestId("model-back")).toBeInTheDocument();
   });
 
-  // The selection used to be a developer option, so with the master switch off
-  // the row named the shipping model however it was set. It is driver-facing
-  // now: the row has to name the model the app actually loads.
-  it("names an added model on the row with developer options off", async () => {
+  // A repo slug is far longer than the space a settings row leaves beside its
+  // label, so naming the model here wrapped onto a second line; the picker the
+  // row opens is where a model is named.
+  it("names no model on the row", async () => {
     const added = pinnedModel({
       owner: "someone",
       slug: "other-detector",
@@ -274,9 +274,9 @@ describe("SettingsScreen", () => {
       JSON.stringify({ modelIds: [added.id] }),
     );
     await renderOpenSettings();
-    expect(screen.getByTestId("open-model-screen")).toHaveTextContent(
-      added.slug,
-    );
+    const row = screen.getByTestId("open-model-screen");
+    expect(row).not.toHaveTextContent(added.slug);
+    expect(row).not.toHaveTextContent(DEFAULT_MODEL.slug);
   });
 
   it("names the camera as the feed until a clip is picked", async () => {
