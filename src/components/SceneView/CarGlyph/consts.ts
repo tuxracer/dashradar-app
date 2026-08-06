@@ -33,6 +33,32 @@ export const POLICE_LIGHTBAR_RED = "#ff3b30";
 export const POLICE_LIGHTBAR_BLUE = "#2f6bff";
 
 /**
+ * The red half between flashes. Dark enough to read as an unlit lens, but
+ * still recognizably red, so a glyph too far away to resolve the strobe still
+ * shows a red-and-blue bar rather than a bar with one end missing.
+ */
+export const POLICE_LIGHTBAR_RED_DIM = "#6b201b";
+
+/** The blue half between flashes (see POLICE_LIGHTBAR_RED_DIM). */
+export const POLICE_LIGHTBAR_BLUE_DIM = "#1b2f6b";
+
+/**
+ * Opacity of the halo drawn over the lit half of the bar. Additive over the
+ * car's own dark roof, which is what sells it as light coming off the lamp
+ * rather than a bigger lamp.
+ */
+export const LIGHTBAR_GLOW_OPACITY = 0.5;
+
+/**
+ * Opacity of the pool of light on the road under a flashing car. Normally
+ * blended rather than additive: additive over the white ground of the light
+ * scene palette adds nothing, and a patrol car that stops throwing light when
+ * the phone switches to its day appearance would be the one glyph in the
+ * scene that changes meaning with the OS.
+ */
+export const LIGHTBAR_POOL_OPACITY = 0.34;
+
+/**
  * Taillight color. Cars are drawn facing away, which makes the tail the one
  * end a driver ever sees, so it is the only lamp worth spending a mesh on.
  */

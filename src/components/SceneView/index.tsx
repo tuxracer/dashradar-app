@@ -33,6 +33,7 @@ import { useScenePalette } from "./scenePalette";
 
 export * from "./consts";
 export { orientationOffsets, orientationQuaternion } from "./cameraRig";
+export { usePoliceStrobe } from "./policeStrobe";
 export { useScenePalette } from "./scenePalette";
 
 /** Props for SceneView. */

@@ -7,6 +7,8 @@ import {
   orientationOffsets,
   orientationQuaternion,
   SceneView,
+  STROBE_PERIOD_MS,
+  usePoliceStrobe,
   useScenePalette,
 } from "@/components/SceneView";
 
@@ -157,5 +159,77 @@ describe("orientationQuaternion", () => {
     const portrait = orientationQuaternion(30, 45, 10, 0);
     const landscape = orientationQuaternion(30, 45, 10, 90);
     expect(portrait.equals(landscape)).toBe(false);
+  });
+});
+
+/**
+ * The strobe is the one loop in this view that does not stop on its own, so
+ * what is worth testing is not the colors but the timer: that it exists only
+ * while a lightbar is mounted, and that reduced motion never starts one.
+ * Every test here is a guard on a mechanism that did not exist before the
+ * flashing lightbar, so none of them can fail against the code that preceded
+ * it; they earn their place by pinning the cost, not by catching a
+ * regression that already happened.
+ */
+describe("usePoliceStrobe", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  /** Stubs matchMedia so every query answers with the given verdict. */
+  const stubReducedMotion = (reduced: boolean) => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: reduced,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      })),
+    );
+  };
+
+  it("alternates the lit lamp on the cadence", () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() => usePoliceStrobe());
+    expect(result.current).toBe("red");
+    act(() => {
+      vi.advanceTimersByTime(STROBE_PERIOD_MS);
+    });
+    expect(result.current).toBe("blue");
+    act(() => {
+      vi.advanceTimersByTime(STROBE_PERIOD_MS);
+    });
+    expect(result.current).toBe("red");
+  });
+
+  it("runs one timer for however many lightbars are on screen", () => {
+    vi.useFakeTimers();
+    const first = renderHook(() => usePoliceStrobe());
+    const second = renderHook(() => usePoliceStrobe());
+    expect(vi.getTimerCount()).toBe(1);
+    act(() => {
+      vi.advanceTimersByTime(STROBE_PERIOD_MS);
+    });
+    expect(first.result.current).toBe("blue");
+    expect(second.result.current).toBe("blue");
+  });
+
+  it("stops the timer once the last lightbar leaves", () => {
+    vi.useFakeTimers();
+    const first = renderHook(() => usePoliceStrobe());
+    const second = renderHook(() => usePoliceStrobe());
+    first.unmount();
+    expect(vi.getTimerCount()).toBe(1);
+    second.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("starts no timer at all under reduced motion", () => {
+    vi.useFakeTimers();
+    stubReducedMotion(true);
+    const { result } = renderHook(() => usePoliceStrobe());
+    expect(result.current).toBeUndefined();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

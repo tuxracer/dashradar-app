@@ -1,4 +1,9 @@
-import { BoxGeometry, CylinderGeometry, SphereGeometry } from "three";
+import {
+  BoxGeometry,
+  CylinderGeometry,
+  PlaneGeometry,
+  SphereGeometry,
+} from "three";
 
 /**
  * Shared unit geometries, scaled per mesh. Four of them cover every glyph,
@@ -22,6 +27,15 @@ export const UNIT_TAPERED_CYLINDER = new CylinderGeometry(0.5, 0.34, 1, 10);
 
 /** Shared unit sphere, scaled per mesh (see UNIT_BOX). */
 export const UNIT_SPHERE = new SphereGeometry(0.5, 10, 8);
+
+/**
+ * Shared unit quad, scaled per mesh (see UNIT_BOX). Built in the xy plane, so
+ * anything laid on the ground rotates a quarter turn about x.
+ */
+export const UNIT_PLANE = new PlaneGeometry(1, 1);
+
+/** Side of the shared glow falloff texture, in pixels (see glowFalloff). */
+export const GLOW_TEXTURE_PX = 64;
 
 /**
  * Chase-camera position in scene meters: slightly above and behind the ego
@@ -78,6 +92,16 @@ export const FADE_IN_MS = 250;
 
 /** Fade-out duration for a glyph whose track has died, in ms. */
 export const FADE_OUT_MS = 300;
+
+/**
+ * How long a police lightbar holds one color before swapping to the other, in
+ * ms. The one animation in this view that does not finish on its own, so it
+ * is priced deliberately: each flip costs one rendered frame, and 200 ms puts
+ * that at five frames a second, only while a patrol car is on screen. Fast
+ * enough to read as a strobe rather than a blinker, slow enough that the
+ * scene still costs a twelfth of what a 60 fps loop would.
+ */
+export const STROBE_PERIOD_MS = 200;
 
 /**
  * Device-pixel-ratio ceiling for the canvas. A 3x phone display would
