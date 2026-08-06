@@ -541,6 +541,17 @@ export const createDetectionEngine = ({
     });
     return () => {
       loadRequest.unsubscribe();
+      // A message the worker posted before this teardown can still be
+      // dispatched after it, when the session's subscribers are gone; a
+      // detections message carrying a crop would then have no owner. Swap in
+      // a doorman that closes the crop instead of feeding the
+      // subscriber-less subject.
+      target.onmessage = (event: MessageEvent) => {
+        const message: unknown = event.data;
+        if (isWorkerResponse(message) && message.type === "detections") {
+          message.crop?.image.close();
+        }
+      };
       target.terminate();
     };
   });

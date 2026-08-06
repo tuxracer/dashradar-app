@@ -668,6 +668,23 @@ describe("contact", () => {
     expect(image.close).toHaveBeenCalled();
   });
 
+  // A message posted before teardown can be dispatched after it, when the
+  // session's subscribers are gone; without the teardown doorman the crop it
+  // carries would never be closed.
+  it("closes a crop delivered after the session is torn down", () => {
+    const { engine, worker } = withContact();
+    engine.deactivate();
+    const late = new FakeImageBitmap();
+    worker.emit({
+      type: "detections",
+      detections: [policeDetection(0.85, 0.15, 0.25)],
+      timing,
+      crop: { image: late as unknown as ImageBitmap, detectionIndex: 0 },
+    });
+    expect(late.close).toHaveBeenCalled();
+    expect(contact(engine)).toBeUndefined();
+  });
+
   // Once cutouts are off the worker stops producing crops, so nothing ever
   // swaps the published contact out again; the settings edge is the last
   // owner that can close it.
