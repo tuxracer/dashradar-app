@@ -222,6 +222,20 @@ export const isBuiltInModel = (model: DetectionModel): boolean =>
   BUILT_IN_MODELS.some((entry) => entry.id === model.id);
 
 /**
+ * How a model may be named in anything that leaves the device: a built-in by
+ * its own slug, anything added generically. An added model's identity comes
+ * from a URL someone pasted, which can name a private host and is theirs
+ * rather than ours to report; the count of them is the part worth knowing.
+ *
+ * One function rather than the rule restated at each reporting site, because
+ * the two are not interchangeable copies of a formatting choice: a site that
+ * drifts leaks an address, so the rule lives where it can only be changed
+ * once.
+ */
+export const reportableModelName = (model: DetectionModel): string =>
+  isBuiltInModel(model) ? model.slug : "custom";
+
+/**
  * Every model the app knows: the ones the build ships plus the stored
  * additions. The built-ins come from the code so the app runs with empty
  * storage and so a model release (a revision bump under the same id) reaches

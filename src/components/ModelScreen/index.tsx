@@ -6,7 +6,6 @@ import { useSettings } from "@/context/SettingsContext";
 import {
   addStoredModel,
   AddModelError,
-  isBuiltInModel,
   isAddModelError,
   knownModels,
   listOnnxFiles,
@@ -15,6 +14,7 @@ import {
   parseModelUrl,
   pinnedModel,
   removeStoredModel,
+  reportableModelName,
   resolveModelFromUrl,
   resolveModels,
 } from "@/lib/detectionModels";
@@ -32,15 +32,6 @@ import {
 } from "./consts";
 
 export * from "./consts";
-
-/**
- * How a model is named to analytics: a built-in by its own slug, anything added
- * generically. An added model's name comes from a URL someone pasted, which can
- * be a private host and is theirs rather than ours to report; the count of them
- * is the part worth knowing anyway.
- */
-const analyticsName = (model: DetectionModel): string =>
-  isBuiltInModel(model) ? model.slug : "custom";
 
 /**
  * Where a candidate's weights come from, the one thing worth separating about
@@ -377,8 +368,8 @@ export const ModelScreen = ({
     // event will get, and a commit that storage refuses is rare enough to be
     // worth counting as a switch that was asked for.
     track("model_switch", {
-      from: selected.map(analyticsName).join(", "),
-      to: resolveModels(ids, models).map(analyticsName).join(", "),
+      from: selected.map(reportableModelName).join(", "),
+      to: resolveModels(ids, models).map(reportableModelName).join(", "),
     });
     if (!commitModelIds(ids)) {
       window.alert(COMMIT_FAILED_MESSAGE);
