@@ -53,9 +53,10 @@ const classLabels = (classes: readonly DetectionClass[]): string =>
 
 /**
  * What one model is, for someone deciding whether to run it: what it looks for,
- * who published it, which version, and a way out to the page it came from. A
- * model added from a plain URL has no such page, so its card shows the address
- * the weights are fetched from and offers no link.
+ * which version, and a way out to the page it came from, which is where whoever
+ * published it says the rest. A model added from a plain URL has no such page,
+ * so its card shows the address the weights are fetched from and offers no
+ * link.
  *
  * The classes are read from whichever session actually loaded the file, never
  * from anything typed in here, so the card cannot claim a model detects
@@ -120,7 +121,6 @@ export const ModelCard = ({
                 : UNKNOWN_CLASSES_MESSAGE
             }
           />
-          <Fact label="FROM" value={model.owner} />
           {model.revision !== undefined && (
             <Fact label="VERSION" value={shortRevision(model.revision)} />
           )}
