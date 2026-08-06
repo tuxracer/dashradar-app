@@ -92,7 +92,7 @@ first. Give each build its own path if that matters.
 ## Adding a model
 
 For a checkpoint that already meets the contract above, the normal way onto a
-device is the model picker (Settings > Detection model > ADD MODEL):
+device is the model picker (Settings > Detection model, then the + in the corner):
 paste a Hugging Face URL. A bare repo page
 (`https://huggingface.co/<owner>/<repo>`) works whether the repo holds one
 `.onnx` file or several: with one it is used, and with several the picker

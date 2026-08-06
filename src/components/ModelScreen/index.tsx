@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { ModelCard } from "@/components/ModelCard";
 import { useSettings } from "@/context/SettingsContext";
 import {
@@ -362,90 +362,32 @@ export const ModelScreen = ({
           <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
             Detection model
           </span>
+          {/* Small, and off to the side. Pasting a URL is a rare, deliberate
+              errand next to picking one of the models already here, and it
+              read as the main thing on the screen while it was a full-width
+              row under the list. */}
+          <button
+            type="button"
+            data-testid="model-add-open"
+            aria-label="Add a model"
+            onClick={openAdd}
+            className="ml-auto flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-white/70 transition-colors hover:text-white/90 active:scale-[0.94] motion-reduce:transition-none"
+          >
+            <Plus className="h-7 w-7" strokeWidth={2} />
+          </button>
         </div>
 
         <div className="flex flex-col gap-3">
-          {models.map((model, index) => {
-            const selected = selectedIds.includes(model.id);
-            const leaving = model.id === leavingId;
-            return (
-              <div
-                key={model.id}
-                // Every row carries its entrance, so the first render staggers
-                // the whole list in and a row added later arrives on its own.
-                // A leaving row drops the delay: it is racing the timer that
-                // unmounts it, and a staggered start would be cut off.
-                style={{
-                  animationDelay: leaving
-                    ? "0ms"
-                    : `${(index + 1) * ROW_ENTER_STAGGER_MS}ms`,
-                }}
-                className={`flex items-stretch gap-2 motion-reduce:animate-none ${
-                  leaving
-                    ? "animate-row-out overflow-hidden"
-                    : "animate-rise-in"
-                }`}
-              >
-                <button
-                  type="button"
-                  data-testid={`model-option-${model.id}`}
-                  onClick={() => setOpenId(model.id)}
-                  // The amber arrives as a wipe rather than a repaint, so the
-                  // eye is told which row took the selection. Two entries can
-                  // read almost identically at a glance.
-                  className={`relative flex min-h-20 flex-1 items-center justify-between gap-4 overflow-hidden rounded-xl bg-white/10 px-6 py-4 text-left transition duration-300 before:absolute before:inset-0 before:origin-left before:bg-hud-amber before:transition-transform before:duration-300 before:ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.98] motion-reduce:transition-none motion-reduce:before:transition-none ${
-                    selected
-                      ? "text-surface before:scale-x-100"
-                      : "text-white before:scale-x-0"
-                  }`}
-                >
-                  <span className="flex flex-col gap-1">
-                    <span className="relative text-lg font-semibold tracking-[0.04em]">
-                      {model.slug}
-                    </span>
-                    <span
-                      className={`relative text-sm font-medium tracking-[0.06em] transition-colors duration-300 motion-reduce:transition-none ${
-                        selected ? "text-surface/70" : "text-white/45"
-                      }`}
-                    >
-                      {model.revision ?? model.owner}
-                    </span>
-                  </span>
-                  <ChevronRight
-                    className="relative h-5 w-5 shrink-0"
-                    strokeWidth={2}
-                  />
-                </button>
-              </div>
-            );
-          })}
-
           {/* Keyed on the phase so each step of the add flow remounts, which
               is what re-runs its entrance: the content is swapping in place,
               not arriving from off screen. */}
           <div
             key={add.phase}
-            // "closed" is the only phase the screen can mount into, so it is
-            // the only one that waits its turn behind the rows. Every other
-            // phase is the result of a tap and has to answer it immediately.
-            style={{
-              animationDelay:
-                add.phase === "closed"
-                  ? `${(models.length + 1) * ROW_ENTER_STAGGER_MS}ms`
-                  : "0ms",
-            }}
+            // No entrance delay: every phase that draws anything is the
+            // result of a tap and has to answer it immediately, and the
+            // "closed" phase draws nothing at all.
             className="flex animate-swap-in flex-col gap-3 motion-reduce:animate-none"
           >
-            {(add.phase === "closed" || add.phase === "added") && (
-              <button
-                type="button"
-                data-testid="model-add-open"
-                onClick={openAdd}
-                className="flex min-h-20 items-center justify-center rounded-xl bg-white/10 px-6 text-lg font-semibold tracking-[0.04em] text-white/90 transition active:scale-[0.98] motion-reduce:transition-none"
-              >
-                ADD MODEL
-              </button>
-            )}
             {add.phase === "added" && (
               <span
                 data-testid="model-add-status"
@@ -560,6 +502,60 @@ export const ModelScreen = ({
               </div>
             )}
           </div>
+          {models.map((model, index) => {
+            const selected = selectedIds.includes(model.id);
+            const leaving = model.id === leavingId;
+            return (
+              <div
+                key={model.id}
+                // Every row carries its entrance, so the first render staggers
+                // the whole list in and a row added later arrives on its own.
+                // A leaving row drops the delay: it is racing the timer that
+                // unmounts it, and a staggered start would be cut off.
+                style={{
+                  animationDelay: leaving
+                    ? "0ms"
+                    : `${(index + 1) * ROW_ENTER_STAGGER_MS}ms`,
+                }}
+                className={`flex items-stretch gap-2 motion-reduce:animate-none ${
+                  leaving
+                    ? "animate-row-out overflow-hidden"
+                    : "animate-rise-in"
+                }`}
+              >
+                <button
+                  type="button"
+                  data-testid={`model-option-${model.id}`}
+                  onClick={() => setOpenId(model.id)}
+                  // The amber arrives as a wipe rather than a repaint, so the
+                  // eye is told which row took the selection. Two entries can
+                  // read almost identically at a glance.
+                  className={`relative flex min-h-20 flex-1 items-center justify-between gap-4 overflow-hidden rounded-xl bg-white/10 px-6 py-4 text-left transition duration-300 before:absolute before:inset-0 before:origin-left before:bg-hud-amber before:transition-transform before:duration-300 before:ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.98] motion-reduce:transition-none motion-reduce:before:transition-none ${
+                    selected
+                      ? "text-surface before:scale-x-100"
+                      : "text-white before:scale-x-0"
+                  }`}
+                >
+                  <span className="flex flex-col gap-1">
+                    <span className="relative text-lg font-semibold tracking-[0.04em]">
+                      {model.slug}
+                    </span>
+                    <span
+                      className={`relative text-sm font-medium tracking-[0.06em] transition-colors duration-300 motion-reduce:transition-none ${
+                        selected ? "text-surface/70" : "text-white/45"
+                      }`}
+                    >
+                      {model.revision ?? model.owner}
+                    </span>
+                  </span>
+                  <ChevronRight
+                    className="relative h-5 w-5 shrink-0"
+                    strokeWidth={2}
+                  />
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
