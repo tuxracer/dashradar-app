@@ -1,6 +1,7 @@
 import { Component, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Smartphone } from "lucide-react";
 import type { RootState } from "@react-three/fiber";
 import type { Group, Mesh, Object3D } from "three";
 import type { Track } from "@/context/DetectionContext";
@@ -9,6 +10,7 @@ import { tracksSeenAt } from "@/lib/detectionTracker";
 import { placeTracks } from "@/lib/scenePlacement";
 import type { ScenePlacement } from "@/lib/scenePlacement";
 import { prefersReducedMotion } from "@/utils/prefersReducedMotion";
+import { useOrientationAccess } from "@/utils/useOrientationAccess";
 import { useRadarBeeper } from "@/utils/useRadarBeeper";
 import {
   CAMERA_FAR_M,
@@ -476,6 +478,10 @@ export const SceneView = ({
   // the next mount, same as the intro scene.
   const reducedMotion = useMemo(() => prefersReducedMotion(), []);
 
+  // Only while the camera rig is live, since a driver who asked for reduced
+  // motion has a view that would not pan with the phone anyway.
+  const orientation = useOrientationAccess(!reducedMotion);
+
   // Only what the last scan actually saw. The tracker holds an unmatched
   // track for its coasting budget so the meter and the contact card ride out
   // a single missed detection, and this view deliberately does not take that
@@ -643,7 +649,22 @@ export const SceneView = ({
           ))}
         </div>
       )}
-      <div className="pointer-events-none absolute inset-x-0 bottom-[max(1.25rem,env(safe-area-inset-bottom))] flex justify-center">
+      <div className="pointer-events-none absolute inset-x-0 bottom-[max(1.25rem,env(safe-area-inset-bottom))] flex flex-col items-center gap-3">
+        {orientation.needsGesture && (
+          // iOS hands over the orientation sensors only to a tap, and a
+          // dash-mounted phone may never get one, so the offer has to be a
+          // control of its own. It leaves for good on the answer, granted or
+          // denied, and never appears at all on the phones that just work.
+          <button
+            type="button"
+            onClick={orientation.request}
+            data-testid="scene-motion-ask"
+            className="pointer-events-auto flex min-h-12 animate-rise-in items-center gap-2.5 rounded-full border border-white/25 bg-white/10 px-6 text-[13px] font-semibold uppercase tracking-[0.2em] text-white/85 active:scale-95 motion-reduce:animate-none scene-light:border-black/20 scene-light:bg-black/5 scene-light:text-black/75"
+          >
+            <Smartphone className="h-5 w-5" strokeWidth={2} />
+            Enable tilt to look around
+          </button>
+        )}
         <span
           data-testid="scene-status"
           className={`whitespace-nowrap text-[13px] font-semibold uppercase tracking-[0.24em] ${

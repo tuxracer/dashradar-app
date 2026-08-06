@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { useThree } from "@react-three/fiber";
 import { Euler, Quaternion, Vector3 } from "three";
 import { clamp } from "remeda";
-import { askForOrientationAccess } from "@/lib/deviceOrientation";
 import {
   CAMERA_TARGET,
   RIG_BASELINE_ADAPT,
@@ -66,12 +65,10 @@ export const orientationOffsets = (
  * axis. Renders only through invalidate() and only when the smoothed offset
  * moves more than RIG_DEADBAND_RAD, so a vibrating mount costs no frames; that
  * dead band is load-bearing for the thermal budget, not a tuning nicety.
- * On an engine that gates the sensors behind a gesture-scoped ask (WebKit,
- * so every browser on iOS) the rig asks for them while it is mounted, since
- * this view is the only thing in the app that reads them; see
- * askForOrientationAccess. Where deviceorientation never fires anyway
- * (desktop, or an ask the driver refused) the listener simply stays silent
- * and the camera holds its base framing.
+ * Where deviceorientation never fires (desktop, or an iOS ask the driver
+ * refused) the listener simply stays silent and the camera holds its base
+ * framing; getting that ask answered belongs to the view above, which is the
+ * one with a screen to put a control on.
  */
 export const CameraRig = ({ enabled }: { enabled: boolean }) => {
   const camera = useThree((state) => state.camera);
@@ -93,12 +90,7 @@ export const CameraRig = ({ enabled }: { enabled: boolean }) => {
     let appliedYaw = 0;
     let appliedPitch = 0;
 
-    // A reading is proof the sensors are open, whatever it holds, so it is
-    // also the end of the asking on the engines that gate them.
-    const stopAsking = askForOrientationAccess();
-
     const handleOrientation = (event: DeviceOrientationEvent) => {
-      stopAsking();
       if (event.alpha === null || event.beta === null || event.gamma === null) {
         return;
       }
@@ -140,7 +132,6 @@ export const CameraRig = ({ enabled }: { enabled: boolean }) => {
     };
     window.addEventListener("deviceorientation", handleOrientation);
     return () => {
-      stopAsking();
       window.removeEventListener("deviceorientation", handleOrientation);
       camera.lookAt(target);
       invalidate();

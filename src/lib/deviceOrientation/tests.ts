@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { askForOrientationAccess } from "./index";
+import { askForOrientationAccess, orientationAccessGated } from "./index";
 
 /**
  * Stands in for the constructor WebKit exposes, with the ask under test's
@@ -26,15 +26,15 @@ const tap = () => {
  * that listens to every click for the rest of the drive, which is the cost
  * that dropping the listeners exists to avoid.
  */
-const startAsking = () => {
+const startAsking = (onAnswer: () => void = () => {}) => {
   const listen = vi.spyOn(window, "addEventListener");
-  const stop = askForOrientationAccess();
+  const pending = askForOrientationAccess(onAnswer);
   const signals = listen.mock.calls.flatMap(([, , options]) =>
     typeof options === "object" && options.signal ? [options.signal] : [],
   );
   listen.mockRestore();
   return {
-    stop,
+    ...pending,
     listening: () =>
       signals.length > 0 && signals.every((signal) => !signal.aborted),
   };
@@ -44,44 +44,72 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("orientationAccessGated", () => {
+  it("is true where the browser puts an ask in front of the sensors", () => {
+    stubOrientationEvent(vi.fn().mockResolvedValue("granted" as const));
+    expect(orientationAccessGated()).toBe(true);
+  });
+
+  it("is false where the sensors are simply open", () => {
+    stubOrientationEvent();
+    expect(orientationAccessGated()).toBe(false);
+  });
+
+  it("is false where there is no orientation event at all", () => {
+    vi.stubGlobal("DeviceOrientationEvent", undefined);
+    expect(orientationAccessGated()).toBe(false);
+  });
+});
+
 describe("askForOrientationAccess", () => {
-  it("asks on the first gesture, not before one", async () => {
+  it("asks on the first gesture, not before one", () => {
     const ask = vi.fn().mockResolvedValue("granted" as const);
     stubOrientationEvent(ask);
 
-    askForOrientationAccess();
+    askForOrientationAccess(() => {});
     expect(ask).not.toHaveBeenCalled();
 
     tap();
     expect(ask).toHaveBeenCalledTimes(1);
   });
 
-  it("stops listening once the driver has answered", async () => {
+  it("asks on request, for a control offering the tap itself", () => {
     const ask = vi.fn().mockResolvedValue("granted" as const);
     stubOrientationEvent(ask);
 
-    const asking = startAsking();
+    startAsking().request();
+
+    expect(ask).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports the answer and stops listening once the driver grants", async () => {
+    const ask = vi.fn().mockResolvedValue("granted" as const);
+    const onAnswer = vi.fn();
+    stubOrientationEvent(ask);
+
+    const asking = startAsking(onAnswer);
     tap();
     await vi.waitFor(() => {
-      expect(asking.listening()).toBe(false);
+      expect(onAnswer).toHaveBeenCalledTimes(1);
     });
 
+    expect(asking.listening()).toBe(false);
     tap();
     expect(ask).toHaveBeenCalledTimes(1);
   });
 
-  it("stops listening on a refusal too, since it will not be reconsidered", async () => {
+  it("reports a refusal too, since it will not be reconsidered", async () => {
     const ask = vi.fn().mockResolvedValue("denied" as const);
+    const onAnswer = vi.fn();
     stubOrientationEvent(ask);
 
-    const asking = startAsking();
+    const asking = startAsking(onAnswer);
     tap();
     await vi.waitFor(() => {
-      expect(asking.listening()).toBe(false);
+      expect(onAnswer).toHaveBeenCalledTimes(1);
     });
 
-    tap();
-    expect(ask).toHaveBeenCalledTimes(1);
+    expect(asking.listening()).toBe(false);
   });
 
   it("tries the next gesture when the ask itself was rejected", async () => {
@@ -91,13 +119,15 @@ describe("askForOrientationAccess", () => {
       .fn()
       .mockRejectedValueOnce(new Error("no transient activation"))
       .mockResolvedValue("granted" as const);
+    const onAnswer = vi.fn();
     stubOrientationEvent(ask);
 
-    const asking = startAsking();
+    const asking = startAsking(onAnswer);
     tap();
     await vi.waitFor(() => {
       expect(ask).toHaveBeenCalledTimes(1);
     });
+    expect(onAnswer).not.toHaveBeenCalled();
     expect(asking.listening()).toBe(true);
 
     tap();
@@ -108,7 +138,7 @@ describe("askForOrientationAccess", () => {
     const ask = vi.fn().mockResolvedValue("granted" as const);
     stubOrientationEvent(ask);
 
-    askForOrientationAccess()();
+    askForOrientationAccess(() => {}).stop();
     tap();
 
     expect(ask).not.toHaveBeenCalled();
@@ -118,19 +148,10 @@ describe("askForOrientationAccess", () => {
     stubOrientationEvent();
     const listen = vi.spyOn(window, "addEventListener");
 
-    const stop = askForOrientationAccess();
+    const pending = askForOrientationAccess(() => {});
     tap();
-    stop();
-
-    expect(listen).not.toHaveBeenCalled();
-    listen.mockRestore();
-  });
-
-  it("wires up nothing where there is no orientation event at all", () => {
-    vi.stubGlobal("DeviceOrientationEvent", undefined);
-    const listen = vi.spyOn(window, "addEventListener");
-
-    askForOrientationAccess()();
+    pending.request();
+    pending.stop();
 
     expect(listen).not.toHaveBeenCalled();
     listen.mockRestore();
