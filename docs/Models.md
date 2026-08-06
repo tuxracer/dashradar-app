@@ -81,8 +81,13 @@ model can come from anywhere on huggingface.co.
 weights `CacheFirst` keyed on the URL, so a mutable ref would sit behind an
 immutable cache entry and a new export would never reach anyone who had already
 loaded the old one. Changing the tag changes the URL, which is what makes a
-release land. The host also has to be `huggingface.co`; that is what the cache
-route matches on.
+release land.
+
+A model added from a plain URL skips all of that: its address is the whole
+entry, and the cache route matches any `.onnx` path as well as anything on
+`huggingface.co`. There are no revisions to pin, so the URL is the pin, and a
+host that serves different bytes from one address will keep whatever landed
+first. Give each build its own path if that matters.
 
 ## Adding a model
 
@@ -97,6 +102,16 @@ or a branch, is resolved to that revision's commit SHA before anything is
 stored, so what gets registered is pinned the same way a shipped entry is.
 Only a URL that already names a commit SHA skips that lookup, since a commit
 SHA is the one revision form that cannot move.
+
+**A checkpoint does not have to live on Hugging Face.** Any https link straight
+to an `.onnx` file works, and is taken exactly as pasted: there is no API to ask
+a strange host what it holds or which revision this is, so the link has to name
+the file itself, and a link to a page or a directory is refused rather than
+downloaded to find out. The host has to allow cross-origin reads, because the
+app is cross-origin isolated and the download is a plain CORS fetch; one that
+does not send the headers fails in the picker with the rest of the trial-load
+failures. Such a model shows the address it came from where a Hugging Face one
+shows a link to its page.
 
 The paste does not just register a URL. The app spins up a real detection
 worker, downloads the weights, builds a WebGPU session, and runs it once, on
@@ -121,6 +136,10 @@ Registering a model in code is still how a build's own default changes:
 That is the whole entry a build declares. It says which bytes to fetch and
 nothing about what they contain, because everything else is read from the bytes
 themselves at load.
+
+A model added from a plain URL carries `weightsUrl`, the address to fetch, and
+no `revision`: its `owner`, `slug`, and `file` are read off that address for
+display rather than used to build one.
 
 A model added from a URL carries one more field, `classes`, written by the trial
 load rather than by hand: the labels that file named, so the model card can say

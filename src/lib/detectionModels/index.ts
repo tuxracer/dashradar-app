@@ -7,19 +7,38 @@ import type { DetectionClass, DetectionModel, ParsedModelUrl } from "./types";
 export * from "./consts";
 export * from "./types";
 
-/** Hugging Face page a model's weights are published on. */
-export const modelRepoUrl = (model: Omit<DetectionModel, "id">): string =>
-  `https://huggingface.co/${model.owner}/${model.slug}`;
+/**
+ * Page a model is published on, for anyone wanting to know more about it, or
+ * undefined for a model added from a plain URL: an address that serves weights
+ * is not a page about them, and sending someone there would start a download
+ * rather than explain anything.
+ */
+export const modelRepoUrl = (
+  model: Omit<DetectionModel, "id">,
+): string | undefined =>
+  model.weightsUrl === undefined
+    ? `https://huggingface.co/${model.owner}/${model.slug}`
+    : undefined;
 
 /**
- * Revision-pinned URL of a model's ONNX weights. The pin is what makes a model
- * release reach anyone: the service worker caches weights CacheFirst keyed on
- * URL, so a changed revision is a changed URL and a cache miss, while an
- * unchanged one is served from cache forever. Takes the id-less shape because
- * an added model's id IS this URL, so the id cannot exist before the URL does.
+ * Where a model's ONNX weights are fetched from: the address a plain-URL entry
+ * carries, or the revision-pinned Hugging Face URL built from the rest. The pin
+ * is what makes a model release reach anyone: the service worker caches weights
+ * CacheFirst keyed on URL, so a changed revision is a changed URL and a cache
+ * miss, while an unchanged one is served from cache forever. Takes the id-less
+ * shape because an added model's id IS this URL, so the id cannot exist before
+ * the URL does.
  */
 export const modelWeightsUrl = (model: Omit<DetectionModel, "id">): string =>
-  `${modelRepoUrl(model)}/resolve/${model.revision}/${model.file}`;
+  model.weightsUrl ??
+  `https://huggingface.co/${model.owner}/${model.slug}/resolve/${model.revision}/${model.file}`;
+
+/**
+ * How a model is named where both its name and its version matter, like the
+ * confirms that run or remove one. A plain-URL model has no version to add.
+ */
+export const modelLabel = (model: DetectionModel): string =>
+  model.revision === undefined ? model.slug : `${model.slug} ${model.revision}`;
 
 /**
  * The classes a loaded checkpoint names, read from the `names` map its export
@@ -268,6 +287,43 @@ export const parseModelUrl = (input: string): ParsedModelUrl | undefined => {
   return { owner, slug, revision, file };
 };
 
+/**
+ * Turn a plain https link to an .onnx file into an entry, or undefined when it
+ * is not one. Everything a card shows is read off the address, since a bare
+ * file has nothing else to say for itself: the host is who it came from, and
+ * the file's own name is the model's. The URL is the id, the same as a pinned
+ * Hugging Face entry, so re-adding the same link updates one entry rather than
+ * growing the list.
+ */
+export const directUrlModel = (input: string): DetectionModel | undefined => {
+  const trimmed = input.trim();
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== "https:") {
+    return undefined;
+  }
+  let file: string;
+  try {
+    file = decodeURIComponent(url.pathname.split("/").pop() ?? "");
+  } catch {
+    return undefined;
+  }
+  if (!file.endsWith(".onnx")) {
+    return undefined;
+  }
+  return {
+    id: trimmed,
+    owner: url.hostname,
+    slug: file.slice(0, -".onnx".length),
+    file,
+    weightsUrl: trimmed,
+  };
+};
+
 /** The two facts the HF revision endpoint answers with that matter here. */
 type HfRevisionInfo = { sha: string; onnxFiles: readonly string[] };
 
@@ -306,8 +362,9 @@ const isCommitSha = (revision: string): boolean =>
   /^[0-9a-f]{40}$/.test(revision);
 
 /**
- * Turn a pasted URL into a registrable entry: parsed, revision-pinned, and
- * with exactly one .onnx file named. Every pasted revision is pinned to the
+ * Turn a pasted URL into a registrable entry. A Hugging Face URL is parsed,
+ * revision-pinned, and resolved to exactly one .onnx file; any other https link
+ * straight to an .onnx file is taken as it is. Every pasted revision is pinned to the
  * commit sha it names at add time, through the Hugging Face API, because the
  * weights cache is CacheFirst keyed on URL: a tag and a branch are both
  * mutable refs that can move without the URL changing, and the two cannot be
@@ -322,7 +379,14 @@ export const resolveModelFromUrl = async (
 ): Promise<DetectionModel> => {
   const parsed = parseModelUrl(input);
   if (!parsed) {
-    throw new AddModelError("INVALID_URL");
+    // Anywhere else, the link has to name the file itself: there is no API to
+    // ask what a strange host holds, and no revision of it to pin, so a link
+    // that is not already an .onnx file is not something this can resolve.
+    const direct = directUrlModel(input);
+    if (!direct) {
+      throw new AddModelError("INVALID_URL");
+    }
+    return direct;
   }
   if (
     parsed.file !== undefined &&

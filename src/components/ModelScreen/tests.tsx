@@ -291,10 +291,13 @@ describe("adding a model from a URL", () => {
   // lookup, which src/lib/detectionModels/tests.ts covers directly.
   const pastedUrl = `https://huggingface.co/someone/some-repo/resolve/${"a".repeat(40)}/model.onnx`;
 
-  const openAndSubmit = async (trialLoad: typeof trialLoadModel) => {
+  const openAndSubmit = async (
+    trialLoad: typeof trialLoadModel,
+    url = pastedUrl,
+  ) => {
     renderModelScreen({ trialLoad });
     await userEvent.click(screen.getByTestId("model-add-open"));
-    await userEvent.type(screen.getByTestId("model-add-url"), pastedUrl);
+    await userEvent.type(screen.getByTestId("model-add-url"), url);
     await userEvent.click(screen.getByTestId("model-add-submit"));
   };
 
@@ -320,6 +323,30 @@ describe("adding a model from a URL", () => {
     );
   });
 
+  // A checkpoint does not have to live on Hugging Face. There is no API to ask
+  // a strange host anything, so the link has to name the file itself, and the
+  // trial load is what proves the bytes behind it run here.
+  it("registers a model from a plain link to an onnx file", async () => {
+    const fetchStub = vi.fn();
+    vi.stubGlobal("fetch", fetchStub);
+    const url = "https://models.example.com/patrol-v2.onnx";
+    await openAndSubmit(
+      async () => ({ ok: true, loaded: { headWidth: 2, classes: [] } }),
+      url,
+    );
+    await waitFor(() => {
+      expect(loadStoredModels()).toHaveLength(1);
+    });
+    expect(loadStoredModels()[0]).toMatchObject({
+      id: url,
+      owner: "models.example.com",
+      slug: "patrol-v2",
+      weightsUrl: url,
+    });
+    expect(fetchStub).not.toHaveBeenCalled();
+    expect(screen.getByTestId("model-save")).toBeEnabled();
+  });
+
   it("registers nothing when the trial fails, and shows the reason", async () => {
     await openAndSubmit(async () => ({
       ok: false,
@@ -333,13 +360,16 @@ describe("adding a model from a URL", () => {
     expect(loadStoredModels()).toEqual([]);
   });
 
-  it("rejects a non-HF URL locally without running a trial", async () => {
+  // Off Hugging Face there is nothing to ask what a page holds, so a link that
+  // does not name the file is refused before a byte moves rather than
+  // downloading whatever is at the other end to find out.
+  it("rejects a link that names no onnx file, without running a trial", async () => {
     const trialLoad = vi.fn();
     renderModelScreen({ trialLoad });
     await userEvent.click(screen.getByTestId("model-add-open"));
     await userEvent.type(
       screen.getByTestId("model-add-url"),
-      "https://example.com/model.onnx",
+      "https://example.com/models/",
     );
     await userEvent.click(screen.getByTestId("model-add-submit"));
     await waitFor(() => {

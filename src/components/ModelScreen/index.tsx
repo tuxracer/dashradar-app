@@ -12,6 +12,7 @@ import {
   knownModels,
   listOnnxFiles,
   MAX_SELECTED_MODELS,
+  modelLabel,
   parseModelUrl,
   pinnedModel,
   removeStoredModel,
@@ -300,7 +301,7 @@ export const ModelScreen = ({
   const handleRemove = (model: DetectionModel) => {
     // Confirmed because getting the model back means pasting the URL again and
     // re-downloading the weights.
-    if (!window.confirm(`Remove ${model.slug} ${model.revision}?`)) {
+    if (!window.confirm(`Remove ${modelLabel(model)}?`)) {
       return;
     }
     removeStoredModel(model.id);
@@ -340,9 +341,7 @@ export const ModelScreen = ({
   };
 
   const handleSave = () => {
-    const names = resolveModels(draft, models)
-      .map((model) => `${model.slug} ${model.revision}`)
-      .join(", ");
+    const names = resolveModels(draft, models).map(modelLabel).join(", ");
     if (!window.confirm(`Run ${names}? The app will reload.`)) {
       return;
     }
@@ -443,7 +442,7 @@ export const ModelScreen = ({
                         selected ? "text-surface/70" : "text-white/45"
                       }`}
                     >
-                      {model.revision}
+                      {model.revision ?? model.owner}
                     </span>
                   </span>
                   <ChevronRight

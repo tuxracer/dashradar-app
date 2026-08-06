@@ -32,7 +32,7 @@ export const GENERIC_CLASSES_MESSAGE =
 /** Add-flow copy for the URL stories, keyed by AddModelErrorCode. */
 export const ADD_ERROR_COPY: Readonly<Record<AddModelErrorCode, string>> = {
   INVALID_URL:
-    "Not a Hugging Face model URL. Paste a repo page or a link to an .onnx file.",
+    "Paste a Hugging Face model page, or a link straight to an .onnx file.",
   REPO_LOOKUP_FAILED: "Could not look up that repo on Hugging Face.",
   NO_ONNX_FILE: "That repo has no .onnx file.",
   // Only reached when the follow-up listing call fails, since a repo with

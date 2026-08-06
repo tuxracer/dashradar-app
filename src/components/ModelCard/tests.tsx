@@ -97,6 +97,27 @@ describe("ModelCard", () => {
     expect(screen.getByText("v1.0")).toBeInTheDocument();
   });
 
+  // A bare file has no page about it, and linking the file itself would start
+  // a download instead of explaining anything, so the address is shown as a
+  // fact and the link is not offered at all.
+  it("shows a plain-URL model's address instead of a link", () => {
+    mount({
+      model: {
+        id: "https://models.example.com/patrol-v2.onnx",
+        owner: "models.example.com",
+        slug: "patrol-v2",
+        file: "patrol-v2.onnx",
+        weightsUrl: "https://models.example.com/patrol-v2.onnx",
+      },
+    });
+    expect(screen.queryByTestId("model-card-link")).toBeNull();
+    expect(
+      screen.getByText("models.example.com/patrol-v2.onnx"),
+    ).toBeInTheDocument();
+    // Nothing pins a plain URL, so there is no version to claim.
+    expect(screen.queryByText("VERSION")).toBeNull();
+  });
+
   it("offers no remove for the model the build ships", () => {
     mount({ model: DEFAULT_MODEL });
     expect(

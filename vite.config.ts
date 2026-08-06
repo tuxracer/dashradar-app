@@ -192,9 +192,13 @@ const pwa = () =>
           },
         },
         {
-          // The RF-DETR ONNX weights are downloaded from Hugging Face at
-          // runtime; cache-first so the model survives offline cold-loads.
-          urlPattern: ({ url }) => url.hostname === "huggingface.co",
+          // The ONNX weights are downloaded at runtime; cache-first so the
+          // model survives offline cold-loads. Hugging Face by hostname
+          // (the resolve URL 302s to a signed CDN address, and Workbox keys on
+          // the stable request URL), plus any .onnx anywhere, since a model can
+          // be added as a plain link to a file on any host.
+          urlPattern: ({ url }) =>
+            url.hostname === "huggingface.co" || url.pathname.endsWith(".onnx"),
           handler: "CacheFirst",
           options: {
             cacheName: "model-cache",

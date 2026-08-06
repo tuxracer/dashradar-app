@@ -72,6 +72,48 @@ describe("isDetectionModel", () => {
     expect(isDetectionModel({ ...entry, revision: "" })).toBe(false);
   });
 
+  it("accepts a plain-URL entry, which has an address instead of a revision", () => {
+    expect(
+      isDetectionModel({
+        id: "https://example.com/patrol.onnx",
+        owner: "example.com",
+        slug: "patrol",
+        file: "patrol.onnx",
+        weightsUrl: "https://example.com/patrol.onnx",
+      }),
+    ).toBe(true);
+  });
+
+  // Half of each shape resolves to a URL nobody meant: a revision alongside an
+  // address says the entry was built two ways at once, and an address with no
+  // scheme cannot be fetched at all.
+  it("rejects a mixture of the two shapes", () => {
+    expect(
+      isDetectionModel({
+        ...entry,
+        weightsUrl: "https://example.com/patrol.onnx",
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects an entry whose address is not https", () => {
+    expect(
+      isDetectionModel({
+        id: "http://example.com/patrol.onnx",
+        owner: "example.com",
+        slug: "patrol",
+        file: "patrol.onnx",
+        weightsUrl: "http://example.com/patrol.onnx",
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects an entry with neither a revision nor an address", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { revision, ...withoutRevision } = entry;
+    expect(isDetectionModel(withoutRevision)).toBe(false);
+  });
+
   it("rejects non-objects", () => {
     expect(isDetectionModel("weights/model.onnx")).toBe(false);
   });
@@ -481,6 +523,41 @@ describe("resolveModelFromUrl", () => {
     await expect(
       resolveModelFromUrl("https://huggingface.co/someone/some-repo", fetcher),
     ).rejects.toMatchObject({ code: "REPO_LOOKUP_FAILED" });
+  });
+
+  it("takes a plain link to an onnx file, asking no API about it", async () => {
+    const fetcher = fakeApi({});
+    const url = "https://models.example.com/detectors/patrol-v2.onnx";
+    const model = await resolveModelFromUrl(url, fetcher);
+    // Nothing to look up: a strange host has no API to ask and no revisions to
+    // pin, so the address itself is the whole entry.
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(model).toEqual({
+      id: url,
+      owner: "models.example.com",
+      slug: "patrol-v2",
+      file: "patrol-v2.onnx",
+      weightsUrl: url,
+    });
+    expect(modelWeightsUrl(model)).toBe(url);
+    // No page to send anyone to; the card shows the address instead.
+    expect(modelRepoUrl(model)).toBeUndefined();
+  });
+
+  it("refuses a link that is not to an onnx file", async () => {
+    const fetcher = fakeApi({});
+    await expect(
+      resolveModelFromUrl("https://models.example.com/detectors/", fetcher),
+    ).rejects.toMatchObject({ code: "INVALID_URL" });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  // The page is https, so a plain-http fetch would be blocked as mixed content
+  // partway through an add rather than refused up front.
+  it("refuses a plain-http link", async () => {
+    await expect(
+      resolveModelFromUrl("http://models.example.com/patrol.onnx", fakeApi({})),
+    ).rejects.toMatchObject({ code: "INVALID_URL" });
   });
 
   describe("listOnnxFiles", () => {

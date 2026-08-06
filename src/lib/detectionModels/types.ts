@@ -40,21 +40,46 @@ export type DetectionModel = {
   /**
    * Revision tag the weights URL pins. Never "main": the Workbox model cache is
    * CacheFirst keyed on URL, so a mutable ref would sit behind an immutable
-   * cache entry and a new model would never reach anyone.
+   * cache entry and a new model would never reach anyone. Absent on a model
+   * added from a plain URL, which has no revisions to pin: there the pasted URL
+   * is itself the pin, and a host that serves different bytes from one address
+   * is beyond anything this app can see.
    */
-  revision: string;
+  revision?: string;
   /** Repo-relative path of the ONNX file (for example "onnx/model_fp16.onnx"). */
   file: string;
+  /**
+   * The exact address to fetch the weights from, set only for a model added
+   * from a URL that is not a Hugging Face one. Its presence is what makes an
+   * entry a plain-URL model: `owner`, `slug`, and `file` are then read off this
+   * address for display and identity rather than used to build one, and there
+   * is no revision and no repo page to link to.
+   */
+  weightsUrl?: string;
   /**
    * What the file named when it was added, recorded from the trial load so the
    * model card can say what an entry looks for without downloading it again.
    * Display only: the decode always reads the classes off the session it is
-   * decoding, so this copy can never reach a box. It cannot go stale either,
-   * since an added entry's id is its own revision-pinned weights URL and those
-   * bytes do not change. Absent on the shipping entry, whose revision does move
-   * under a stable id, and on anything stored before this was recorded.
+   * decoding, so this copy can never reach a box. For a Hugging Face entry it
+   * cannot go stale either, since its id is its own revision-pinned weights URL
+   * and those bytes do not change; a plain URL is only as fixed as whoever
+   * serves it. Absent on the shipping entry, whose revision moves under a
+   * stable id, and on anything stored before this was recorded.
    */
   classes?: readonly DetectionClass[];
+};
+
+/**
+ * Whether a string is an https URL. Plain http is refused rather than upgraded:
+ * the page is served over https, so a mixed-content fetch would be blocked by
+ * the browser anyway, and failing here says why instead of at download time.
+ */
+export const isHttpsUrl = (value: string): boolean => {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
 };
 
 /**
@@ -63,6 +88,11 @@ export type DetectionModel = {
  * rather than assumed. The `.onnx` check is the one content rule: everything
  * else about a file is proven by the trial load, but a path that is not even
  * an ONNX file can be rejected before a byte moves.
+ *
+ * The two shapes are told apart by `weightsUrl`, and each is required to be
+ * complete: a Hugging Face entry has the revision its URL is built from, and a
+ * plain-URL entry has an https address to fetch. Half of each would be an entry
+ * that resolves to a URL nobody meant.
  */
 export const isDetectionModel = (value: unknown): value is DetectionModel => {
   return (
@@ -73,8 +103,11 @@ export const isDetectionModel = (value: unknown): value is DetectionModel => {
     value.owner.length > 0 &&
     isString(value.slug) &&
     value.slug.length > 0 &&
-    isString(value.revision) &&
-    value.revision.length > 0 &&
+    (isString(value.weightsUrl)
+      ? isHttpsUrl(value.weightsUrl) && value.revision === undefined
+      : value.weightsUrl === undefined &&
+        isString(value.revision) &&
+        value.revision.length > 0) &&
     isString(value.file) &&
     value.file.endsWith(".onnx") &&
     (value.classes === undefined ||

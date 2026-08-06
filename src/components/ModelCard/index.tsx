@@ -44,13 +44,18 @@ const shortRevision = (revision: string): string =>
     ? revision.slice(0, SHORT_REVISION_LENGTH)
     : revision;
 
+/** A URL as it reads on screen, where the scheme is noise. */
+const displayUrl = (url: string): string => url.replace("https://", "");
+
 /** The labels a set of classes carries, as one readable list. */
 const classLabels = (classes: readonly DetectionClass[]): string =>
   classes.map((entry) => entry.label).join(", ");
 
 /**
  * What one model is, for someone deciding whether to run it: what it looks for,
- * who published it, which version, and a way out to the page it came from.
+ * who published it, which version, and a way out to the page it came from. A
+ * model added from a plain URL has no such page, so its card shows the address
+ * the weights are fetched from and offers no link.
  *
  * The classes are read from whichever session actually loaded the file, never
  * from anything typed in here, so the card cannot claim a model detects
@@ -66,6 +71,7 @@ export const ModelCard = ({
   onBack,
 }: ModelCardProps) => {
   const { activeModel, loadedClasses } = useDetection();
+  const repoUrl = modelRepoUrl(model);
   const running = model.id === activeModel.id;
   const classes = (running ? loadedClasses : undefined) ?? model.classes;
   const removable = model.id !== DEFAULT_MODEL.id;
@@ -115,7 +121,15 @@ export const ModelCard = ({
             }
           />
           <Fact label="FROM" value={model.owner} />
-          <Fact label="VERSION" value={shortRevision(model.revision)} />
+          {model.revision !== undefined && (
+            <Fact label="VERSION" value={shortRevision(model.revision)} />
+          )}
+          {/* A model added from a plain link has no page to send anyone to, so
+              the address it came from is shown here instead of behind the
+              button below, which is not rendered for one. */}
+          {model.weightsUrl !== undefined && (
+            <Fact label="FILE" value={displayUrl(model.weightsUrl)} />
+          )}
         </div>
 
         <div
@@ -136,26 +150,28 @@ export const ModelCard = ({
             {selected ? "IN USE" : "USE THIS MODEL"}
           </button>
 
-          <a
-            href={modelRepoUrl(model)}
-            target="_blank"
-            rel="noreferrer"
-            data-testid="model-card-link"
-            className="flex min-h-16 items-center justify-between gap-4 rounded-xl border border-white/25 px-6 transition active:scale-[0.98] motion-reduce:transition-none"
-          >
-            <span className="flex flex-col gap-0.5 text-left">
-              <span className="text-base font-semibold tracking-[0.12em] text-white/90">
-                {MORE_INFO_LABEL}
+          {repoUrl !== undefined && (
+            <a
+              href={repoUrl}
+              target="_blank"
+              rel="noreferrer"
+              data-testid="model-card-link"
+              className="flex min-h-16 items-center justify-between gap-4 rounded-xl border border-white/25 px-6 transition active:scale-[0.98] motion-reduce:transition-none"
+            >
+              <span className="flex flex-col gap-0.5 text-left">
+                <span className="text-base font-semibold tracking-[0.12em] text-white/90">
+                  {MORE_INFO_LABEL}
+                </span>
+                {/* The destination, not the model's name again: this is the one
+                    control on the card that leaves the app, and where it goes
+                    is the thing worth knowing before the tap. */}
+                <span className="break-all text-sm font-medium text-white/45">
+                  {displayUrl(repoUrl)}
+                </span>
               </span>
-              {/* The destination, not the model's name again: this is the one
-                  control on the card that leaves the app, and where it goes is
-                  the thing worth knowing before the tap. */}
-              <span className="break-all text-sm font-medium text-white/45">
-                {modelRepoUrl(model).replace("https://", "")}
-              </span>
-            </span>
-            <ExternalLink className="h-5 w-5 shrink-0 text-white/60" />
-          </a>
+              <ExternalLink className="h-5 w-5 shrink-0 text-white/60" />
+            </a>
+          )}
 
           {removable && (
             <button
