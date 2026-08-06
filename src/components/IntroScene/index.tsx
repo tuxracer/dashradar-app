@@ -73,10 +73,17 @@ export const IntroScene = ({
     };
     frame = requestAnimationFrame(loop);
 
+    // Only a hidden-to-visible transition may restart the loop: a stray
+    // visible event would otherwise start a second chain, and with one id in
+    // `frame` the older chain could never be cancelled again, not even by the
+    // unmount cleanup.
+    let paused = false;
     const handleVisibility = () => {
       if (document.hidden) {
         cancelAnimationFrame(frame);
-      } else {
+        paused = true;
+      } else if (paused) {
+        paused = false;
         frame = requestAnimationFrame(loop);
       }
     };

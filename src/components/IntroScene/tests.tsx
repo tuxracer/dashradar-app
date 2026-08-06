@@ -43,6 +43,42 @@ describe("IntroScene component", () => {
     expect(scene.dispose).toHaveBeenCalledOnce();
   });
 
+  // A second chain would be uncancellable: the loop keeps one frame id, so
+  // only the newest chain is reachable by the hidden branch and the unmount
+  // cleanup, and an orphaned one would step a disposed scene forever.
+  it("does not stack a second frame loop on a stray visible event", () => {
+    const pending = new Map<number, FrameRequestCallback>();
+    let nextId = 1;
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      const id = nextId++;
+      pending.set(id, callback);
+      return id;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => {
+      pending.delete(id);
+    });
+    const setHidden = (hidden: boolean) =>
+      Object.defineProperty(document, "hidden", {
+        value: hidden,
+        configurable: true,
+      });
+    const scene = fakeScene();
+    render(<IntroScene createScene={() => scene} />);
+    expect(pending.size).toBe(1);
+    // The page is already visible, so this is not a hidden-to-visible
+    // transition and must not schedule anything.
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(pending.size).toBe(1);
+    // A real hide then show still parks and restarts a single chain.
+    setHidden(true);
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(pending.size).toBe(0);
+    setHidden(false);
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(pending.size).toBe(1);
+    delete (document as { hidden?: boolean }).hidden;
+  });
+
   it("renders a single static frame under prefers-reduced-motion", () => {
     vi.stubGlobal(
       "matchMedia",
