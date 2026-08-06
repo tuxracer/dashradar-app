@@ -6,7 +6,11 @@
 import { env, InferenceSession, Tensor } from "onnxruntime-web/webgpu";
 import { isWebKitUa } from "@/lib/browserEngine";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
-import { DEFAULT_MODEL, modelWeightsUrl } from "@/lib/detectionModels";
+import {
+  BUILT_IN_MODELS,
+  DEFAULT_MODEL,
+  modelWeightsUrl,
+} from "@/lib/detectionModels";
 import type { DetectionModel, LoadedModel } from "@/lib/detectionModels";
 import { readOnnxMetadata } from "@/lib/onnxMetadata";
 import type { OnnxMetadata } from "@/lib/onnxMetadata";
@@ -276,7 +280,7 @@ const fetchModel = async (url: string): Promise<Uint8Array<ArrayBuffer>> => {
  * megabytes per reload.
  *
  * The entry is keyed on the revision-pinned URL, so a revision bump misses and
- * re-downloads. Entries evicted are anything that is neither the default's
+ * re-downloads. Entries evicted are anything that is neither a built-in model's
  * weights nor the weights being loaded, so flipping between two added models
  * in dev re-downloads one of them, a dev-only cost.
  *
@@ -292,7 +296,7 @@ const cacheModelInDev = async (
   }
   try {
     const cache = await caches.open(DEV_MODEL_CACHE_NAME);
-    const keep = new Set([modelWeightsUrl(DEFAULT_MODEL), url]);
+    const keep = new Set([...BUILT_IN_MODELS.map(modelWeightsUrl), url]);
     for (const request of await cache.keys()) {
       if (!keep.has(request.url)) {
         await cache.delete(request);

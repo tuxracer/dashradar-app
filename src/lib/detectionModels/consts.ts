@@ -15,6 +15,34 @@ export const DEFAULT_MODEL: DetectionModel = {
 };
 
 /**
+ * A general-purpose detector offered beside the shipping one: Roboflow's COCO
+ * checkpoint on RF-DETR Small, which names all 80 COCO categories. It is here
+ * to be picked without pasting a URL, and nothing fetches it until someone
+ * does. Running it turns the app into a detector of everyday objects rather
+ * than of patrol vehicles: the meter takes the highest score of anything the
+ * model names, so a car ahead drives the dial exactly as a police vehicle
+ * would, and CONFIDENCE_THRESHOLD is the shipping checkpoint's operating point
+ * rather than this one's.
+ */
+const COCO_MODEL: DetectionModel = {
+  id: "coco-small",
+  owner: "tuxracer",
+  slug: "coco-rfdetr-small",
+  revision: "v1.0",
+  file: "onnx/model_fp16.onnx",
+};
+
+/**
+ * Every model a build offers without anyone pasting a URL, the default first.
+ * Being listed costs nothing: an entry names bytes to fetch, and only the
+ * selected model is ever loaded.
+ */
+export const BUILT_IN_MODELS: readonly DetectionModel[] = [
+  DEFAULT_MODEL,
+  COCO_MODEL,
+];
+
+/**
  * localStorage key the added models live under, as an array of DetectionModel
  * entries. Unprefixed, matching the app's other keys.
  */

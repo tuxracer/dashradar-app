@@ -122,8 +122,15 @@ model added this way is stored on the device and can be selected, removed, or
 replaced like any other, and the trial's download is also the cache fill, so
 nothing downloads twice.
 
-Registering a model in code is still how a build's own default changes:
-`DEFAULT_MODEL` in `src/lib/detectionModels/consts.ts` is one entry.
+Registering a model in code is how a build offers one without anyone pasting a
+URL. `BUILT_IN_MODELS` in `src/lib/detectionModels/consts.ts` is that list, and
+`DEFAULT_MODEL`, the entry it starts with, is what a device runs until someone
+picks otherwise. Adding an entry there downloads nothing on its own: it becomes
+a row in the picker, and only a selected model is ever fetched. One caveat comes
+with it, though. `CONFIDENCE_THRESHOLD` is a single app-wide floor read off the
+default's release notes, so any other entry runs at a threshold measured for a
+different checkpoint, and the meter takes the highest score of anything a model
+names, so a general-purpose model alerts on whatever it sees.
 
 | Field      | What it is                                                               |
 | ---------- | ------------------------------------------------------------------------ |

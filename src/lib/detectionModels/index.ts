@@ -1,6 +1,6 @@
 import { isPlainObject, isString } from "remeda";
 import type { OnnxMetadata } from "@/lib/onnxMetadata";
-import { DEFAULT_MODEL, HF_API_BASE, STORED_MODELS_KEY } from "./consts";
+import { BUILT_IN_MODELS, HF_API_BASE, STORED_MODELS_KEY } from "./consts";
 import { AddModelError, isDetectionModel } from "./types";
 import type { DetectionClass, DetectionModel, ParsedModelUrl } from "./types";
 
@@ -213,14 +213,24 @@ export const removeStoredModel = (id: string): boolean =>
   writeStoredModels(loadStoredModels().filter((entry) => entry.id !== id));
 
 /**
- * Every model the app knows: the build's default plus the stored additions.
- * There is no built-in versus custom distinction beyond where an entry lives;
- * the default comes from the build so the app runs with empty storage and so
- * a model release (a revision bump under the same id) reaches every device.
+/**
+ * Whether an entry is one the build ships rather than one someone added. Only
+ * an added model can be removed: a built-in one would come straight back on the
+ * next load, since it lives in the code rather than in storage.
+ */
+export const isBuiltInModel = (model: DetectionModel): boolean =>
+  BUILT_IN_MODELS.some((entry) => entry.id === model.id);
+
+/**
+ * Every model the app knows: the ones the build ships plus the stored
+ * additions. The built-ins come from the code so the app runs with empty
+ * storage and so a model release (a revision bump under the same id) reaches
+ * every device; a stored entry that shadows one of their ids is dropped, since
+ * the build's own copy is the current one.
  */
 export const knownModels = (): readonly DetectionModel[] => [
-  DEFAULT_MODEL,
-  ...loadStoredModels().filter((entry) => entry.id !== DEFAULT_MODEL.id),
+  ...BUILT_IN_MODELS,
+  ...loadStoredModels().filter((entry) => !isBuiltInModel(entry)),
 ];
 
 /**

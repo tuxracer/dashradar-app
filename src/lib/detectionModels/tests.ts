@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addStoredModel,
+  BUILT_IN_MODELS,
   classesFromMetadata,
   DEFAULT_MODEL,
   isDetectionClass,
@@ -320,11 +321,12 @@ describe("knownModels", () => {
     localStorage.clear();
   });
 
-  it("is the default alone with empty storage", () => {
-    expect(knownModels()).toEqual([DEFAULT_MODEL]);
+  it("is the built-in models alone with empty storage, the default first", () => {
+    expect(knownModels()).toEqual(BUILT_IN_MODELS);
+    expect(BUILT_IN_MODELS[0]).toEqual(DEFAULT_MODEL);
   });
 
-  it("lists the default first, then stored additions", () => {
+  it("lists the built-in models first, then stored additions", () => {
     const stored: DetectionModel = {
       id: "url-id",
       owner: "someone",
@@ -333,7 +335,15 @@ describe("knownModels", () => {
       file: "model.onnx",
     };
     addStoredModel(stored);
-    expect(knownModels()).toEqual([DEFAULT_MODEL, stored]);
+    expect(knownModels()).toEqual([...BUILT_IN_MODELS, stored]);
+  });
+
+  // A build's own copy of an entry is the current one, and the stored copy
+  // cannot be removed through the picker, so a shadowing entry would otherwise
+  // pin whatever revision it was written at forever.
+  it("drops a stored entry shadowing a built-in id", () => {
+    addStoredModel({ ...DEFAULT_MODEL, revision: "v0.1" });
+    expect(knownModels()).toEqual(BUILT_IN_MODELS);
   });
 
   it("resolveModels resolves a stored id without an explicit registry", () => {

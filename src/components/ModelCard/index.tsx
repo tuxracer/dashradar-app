@@ -1,6 +1,6 @@
 import { ChevronLeft, ExternalLink } from "lucide-react";
 import { useDetection } from "@/context/DetectionContext";
-import { DEFAULT_MODEL, modelRepoUrl } from "@/lib/detectionModels";
+import { isBuiltInModel, modelRepoUrl } from "@/lib/detectionModels";
 import type { DetectionClass, DetectionModel } from "@/lib/detectionModels";
 import {
   MORE_INFO_LABEL,
@@ -75,7 +75,7 @@ export const ModelCard = ({
   const repoUrl = modelRepoUrl(model);
   const running = model.id === activeModel.id;
   const classes = (running ? loadedClasses : undefined) ?? model.classes;
-  const removable = model.id !== DEFAULT_MODEL.id;
+  const removable = !isBuiltInModel(model);
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-surface px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))]">

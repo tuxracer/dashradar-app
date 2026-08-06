@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ModelCard, UNKNOWN_CLASSES_MESSAGE } from "@/components/ModelCard";
-import { DEFAULT_MODEL } from "@/lib/detectionModels";
+import { BUILT_IN_MODELS, DEFAULT_MODEL } from "@/lib/detectionModels";
 import type { DetectionClass, DetectionModel } from "@/lib/detectionModels";
 
 /**
@@ -118,10 +118,12 @@ describe("ModelCard", () => {
     expect(screen.queryByText("VERSION")).toBeNull();
   });
 
-  it("offers no remove for the model the build ships", () => {
-    mount({ model: DEFAULT_MODEL });
+  // Removing one would only take it off screen until the next load, since a
+  // built-in lives in the code rather than in storage.
+  it.each(BUILT_IN_MODELS)("offers no remove for $slug", (model) => {
+    mount({ model });
     expect(
-      screen.queryByTestId(`model-remove-${DEFAULT_MODEL.id}`),
+      screen.queryByTestId(`model-remove-${model.id}`),
     ).not.toBeInTheDocument();
   });
 
