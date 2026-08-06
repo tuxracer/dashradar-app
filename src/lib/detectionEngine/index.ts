@@ -477,17 +477,22 @@ export const createDetectionEngine = ({
     createdAt: number;
   };
 
-  // Ends the current activation's inner work after a worker error. Nothing
-  // runs again until deactivate then activate, matching the old halt.
-  const halt$ = new Subject<void>();
   // Completes the current worker session so repeat() spawns a fresh one; the
   // pump's scanOnce fires it at a result boundary once the worker's age
   // passes WORKER_RECYCLE_AFTER_MS.
   const recycle$ = new Subject<void>();
 
+  /**
+   * End the activation after a worker error by flipping active$ off, the same
+   * falling edge deactivate() rides, which unsubscribes the session and
+   * terminates its worker. It has to be this edge and not a separate halt
+   * signal: activate() early-returns while active$ is true, so a halt that
+   * left it true could never be restarted. The error snapshot stays
+   * published; a later activate() is what resets it.
+   */
   const haltForError = () => {
     replaceContact(undefined);
-    halt$.next();
+    active$.next(false);
   };
 
   /**
@@ -918,9 +923,10 @@ export const createDetectionEngine = ({
       ignoreElements(),
     );
 
-  // One activation's worker chain: sessions repeat on recycle and end on
-  // halt; flipping active$ off unsubscribes the current session, which is
-  // what terminates its worker. The merge order is load-bearing: the message
+  // One activation's worker chain: sessions repeat on recycle; flipping
+  // active$ off (deactivate, or a halt after a worker error) unsubscribes the
+  // current session, which is what terminates its worker. The merge order is
+  // load-bearing: the message
   // handler subscribes to messages$ before the pump, so it processes a
   // result (publishing hud/scan/contact and writing the debug timings)
   // before the pump's take(1) computes pacing.
@@ -937,7 +943,6 @@ export const createDetectionEngine = ({
     ),
     takeUntil(recycle$),
     repeat(),
-    takeUntil(halt$),
   );
 
   active$

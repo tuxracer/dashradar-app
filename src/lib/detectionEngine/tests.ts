@@ -930,6 +930,19 @@ describe("model load", () => {
     );
   });
 
+  // A halt ends the activation over the same falling edge deactivate() uses;
+  // a halt that left active$ true would make activate() early-return, so the
+  // engine could never come back from a crash without a deactivate() first.
+  it("can be reactivated after a worker error", () => {
+    const { engine, workers, worker } = testEngine();
+    worker.emit({ type: "worker-error", code: "INFERENCE_FAILED" });
+    expect(engine.getSnapshot().status).toBe("error");
+    expect(worker.terminate).toHaveBeenCalled();
+    engine.activate();
+    expect(workers).toHaveLength(2);
+    expect(engine.getSnapshot().status).not.toBe("error");
+  });
+
   it("treats a worker that dies without a message as a crash", () => {
     const { worker, telemetry } = testEngine();
     worker.onerror?.(new ErrorEvent("error"));
