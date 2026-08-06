@@ -31,8 +31,7 @@ const COCO_MODEL: DetectionModel = {
   slug: "coco-rfdetr-small",
   revision: "v1.0",
   file: "onnx/model_fp16.onnx",
-  summary:
-    "Finds 80 everyday things, from people and cars to traffic lights. Not police vehicles in particular.",
+  summary: "Finds 80 everyday things, from people and cars to traffic lights.",
 };
 
 /**
