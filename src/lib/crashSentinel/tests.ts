@@ -93,6 +93,37 @@ describe("writeHeartbeat / readPreviousSessionEnd", () => {
     });
   });
 
+  it("carries the session log through in the order it was written", () => {
+    writeHeartbeat({
+      startedAt: 0,
+      lastBeatAt: 100,
+      framesProcessed: 1,
+      events: [
+        { at: 10, kind: "load" },
+        { at: 40, kind: "scan", detail: "420ms" },
+        { at: 90, kind: "view", detail: "scene" },
+      ],
+    });
+    expect(readPreviousSessionEnd(100)?.events).toEqual([
+      { at: 10, kind: "load" },
+      { at: 40, kind: "scan", detail: "420ms" },
+      { at: 90, kind: "view", detail: "scene" },
+    ]);
+  });
+
+  it("rejects a log carrying a kind this build does not know", () => {
+    window.localStorage.setItem(
+      SENTINEL_STORAGE_KEY,
+      JSON.stringify({
+        startedAt: 0,
+        lastBeatAt: 0,
+        framesProcessed: 0,
+        events: [{ at: 1, kind: "telepathy" }],
+      }),
+    );
+    expect(readPreviousSessionEnd()).toBeUndefined();
+  });
+
   // The view becomes a tag, so a value that is not one of the three would
   // otherwise be reported as though the app had recorded it.
   it("rejects the whole record when the stored view is not a real view", () => {

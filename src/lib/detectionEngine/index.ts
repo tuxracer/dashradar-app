@@ -27,8 +27,10 @@ import { waitForNextVideoFrame } from "@/lib/camera";
 import {
   clearSentinel,
   heartbeatDelayMs,
+  MAX_SESSION_EVENTS,
   writeHeartbeat,
 } from "@/lib/crashSentinel";
+import type { SessionEvent, SessionEventKind } from "@/lib/crashSentinel";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 import type { Size } from "@/lib/detection";
 import { reportableModelName } from "@/lib/detectionModels";
@@ -302,6 +304,40 @@ export const createDetectionEngine = ({
   let ownedBitmaps = 0;
 
   /**
+   * The rolling log of what this engine did, oldest first and capped at
+   * MAX_SESSION_EVENTS. Engine-scoped rather than scoped to the scanning
+   * window, so the entries leading up to scanning (the model load, a view
+   * chosen before the camera came up) are still there to read.
+   */
+  const sessionEvents: SessionEvent[] = [];
+  /**
+   * Fires when an event lands that should not wait for the next scheduled
+   * heartbeat. The crash sentinel subscribes to it while scanning; nothing
+   * else listens, so recording outside a scanning window is free.
+   */
+  const eventBeat$ = new Subject<void>();
+
+  /**
+   * Append to the log, and for everything except the per-frame kinds, ask for
+   * a heartbeat on the spot.
+   *
+   * The split is the whole cost control. Scans and skips arrive about once a
+   * second and would double the write rate for entries the next beat picks up
+   * anyway; the rest are rare deliberate moments, and those are exactly the
+   * ones whose timing has to survive, since an event recorded but never
+   * written is lost precisely when the page dies right after it.
+   */
+  const recordEvent = (kind: SessionEventKind, detail?: string): void => {
+    sessionEvents.push({ at: Date.now(), kind, detail });
+    if (sessionEvents.length > MAX_SESSION_EVENTS) {
+      sessionEvents.shift();
+    }
+    if (kind !== "scan" && kind !== "skip") {
+      eventBeat$.next();
+    }
+  };
+
+  /**
    * Close a bitmap this thread owns and drop it from the outstanding count.
    * Every close of an owned bitmap goes through here, so the count cannot
    * drift from the closes; the one deliberate exception is the teardown
@@ -394,6 +430,10 @@ export const createDetectionEngine = ({
         recycles: Math.max(0, workersStarted - 1),
         workerAgeMs: Math.round(performance.now() - workerStartedAt),
         ownedBitmaps,
+        // Copied, not referenced: the record is serialized on the spot, but a
+        // shared array would let a later push edit what a caller believes it
+        // already wrote down.
+        events: [...sessionEvents],
       });
     };
     beat();
@@ -407,19 +447,12 @@ export const createDetectionEngine = ({
         repeat(),
         tap(beat),
       ),
-      // Beat on a view change too, rather than waiting for the next scheduled
-      // one. Without this the record names the view a session was in up to a
-      // beat ago, so a crash moments after switching into the scene reads as
-      // a crash in the radar view: the one reading the field exists to
-      // produce, reported backwards. A view switch is a rare deliberate tap,
-      // so the extra write costs nothing on the cadence that matters.
-      // skip(1) drops the current value, which the beat above just wrote.
-      inputs$.pipe(
-        map(({ activeView }) => activeView),
-        distinctUntilChanged(),
-        skip(1),
-        tap(beat),
-      ),
+      // Beat when a notable event lands, rather than waiting for the next
+      // scheduled one. Without this the record trails reality by up to a beat,
+      // so a crash moments after switching into the scene reads as a crash in
+      // the radar view: the thing these fields exist to show, reported
+      // backwards. recordEvent decides what qualifies.
+      eventBeat$.pipe(tap(beat)),
       // A reload or navigation away mid-scan can outrun any teardown path, so
       // pagehide is the last synchronous chance to clear the record; a real
       // crash never fires pagehide, so genuine kills still leave it behind.
@@ -562,6 +595,26 @@ export const createDetectionEngine = ({
   // passes WORKER_RECYCLE_AFTER_MS.
   const recycle$ = new Subject<void>();
 
+  // Engine-lifetime recording of the world state changes worth a log entry.
+  // Both are read off inputs$ rather than from setInputs, so a change is
+  // logged once per actual change however many times it is pushed, and the
+  // current value at subscribe is not logged as if it had just happened.
+  recycle$.subscribe(() => recordEvent("recycle"));
+  inputs$
+    .pipe(
+      map(({ activeView }) => activeView),
+      distinctUntilChanged(),
+      skip(1),
+    )
+    .subscribe((view) => recordEvent("view", view));
+  inputs$
+    .pipe(
+      map(({ video }) => video !== undefined),
+      distinctUntilChanged(),
+      skip(1),
+    )
+    .subscribe((attached) => recordEvent("video", attached ? "on" : "off"));
+
   /**
    * End the activation after a worker error by flipping active$ off, the same
    * falling edge deactivate() rides, which unsubscribes the session and
@@ -674,6 +727,7 @@ export const createDetectionEngine = ({
       }
       case "ready": {
         session.loaded$.next(true);
+        recordEvent("load");
         telemetry.modelReady();
         // Republished by every recycle, which loads the same entry again, so a
         // session that comes back naming nothing is reported as naming nothing
@@ -686,6 +740,7 @@ export const createDetectionEngine = ({
       }
       case "scan-skipped": {
         framesTotal += 1;
+        recordEvent("skip");
         // A skip publishes nothing. Everything is left exactly as the last
         // real scan published it: a frame that did not change cannot have lost
         // what the last one found, so the tracker is not advanced (which would
@@ -782,10 +837,14 @@ export const createDetectionEngine = ({
           scansTotal: debug.scansTotal + 1,
           skipsTotal: debug.skipsTotal,
         };
+        recordEvent("scan", `${Math.round(roundTripMs)}ms`);
         telemetry.result({ inferenceMs, roundTripMs });
         break;
       }
       case "worker-error": {
+        // The code only. message.detail carries what the platform said, which
+        // is free text and does not belong in something this log ships.
+        recordEvent("error", message.code);
         telemetry.error(message.code, message.detail);
         publish({ error: message.code });
         setStatus("error");

@@ -1,6 +1,19 @@
 /** localStorage key for the in-progress session heartbeat record. */
 export const SENTINEL_STORAGE_KEY = "sessionSentinel";
 
+/**
+ * How many entries the rolling session log keeps. The whole log is rewritten
+ * on every heartbeat, so this is what decides the cost of a beat: twenty short
+ * entries is on the order of a kilobyte, which a synchronous localStorage
+ * write absorbs without being felt on a cadence of one per second.
+ *
+ * Twenty is also about what the log needs to be useful. At the pump's one
+ * round trip a second it covers the last twenty seconds, and every OS kill
+ * seen in the field landed inside the first half minute of scanning, so the
+ * window reaches back past the start of the ones being explained.
+ */
+export const MAX_SESSION_EVENTS = 20;
+
 /** Cadence of heartbeat writes once a session is past its startup window. */
 export const HEARTBEAT_INTERVAL_MS = 5_000;
 

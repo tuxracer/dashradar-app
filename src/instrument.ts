@@ -83,7 +83,20 @@ if (!import.meta.env.DEV && isTrackingOptedOut() === false) {
       recycles,
       workerAgeMs,
       ownedBitmaps,
+      events,
     } = previousSessionEnd;
+    // Replayed before the report is captured, which is what attaches them to
+    // it. Oldest first, each keeping the time it actually happened rather than
+    // the time it is being replayed, so the trail reads against the moment the
+    // page died instead of against this launch. Sentry takes seconds here.
+    for (const { at, kind, detail } of events ?? []) {
+      Sentry.addBreadcrumb({
+        category: "session",
+        level: kind === "error" ? "error" : "info",
+        message: detail ? `${kind} ${detail}` : kind,
+        timestamp: at / 1_000,
+      });
+    }
     // Tags are the only part of an event that can be grouped, filtered, and
     // charted, so anything a question gets asked of has to be one. That rules
     // out the raw counts below, which are distinct per session and would each

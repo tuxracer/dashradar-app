@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { APP_RELEASE } from "@/lib/appRelease";
 import {
   HEARTBEAT_INTERVAL_MS,
+  MAX_SESSION_EVENTS,
   SENTINEL_STORAGE_KEY,
 } from "@/lib/crashSentinel";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
@@ -448,6 +449,38 @@ describe("crash sentinel heartbeat", () => {
     workers[1].emit({ type: "ready" });
     await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
     expect(readSentinel()).toMatchObject({ recycles: 1 });
+  });
+
+  // The whole point of the split: a notable moment has to be on disk before
+  // the page dies, while a once-a-second scan must not buy a write of its own.
+  it("writes a notable event through at once and lets scans wait for the next beat", async () => {
+    const { engine, worker } = scanning();
+    await vi.advanceTimersByTimeAsync(0);
+    worker.emit(emptyResult);
+    expect(readSentinel()?.events).not.toContainEqual(
+      expect.objectContaining({ kind: "scan" }),
+    );
+    engine.setInputs({ activeView: "scene" });
+    expect(readSentinel()?.events).toContainEqual(
+      expect.objectContaining({ kind: "scan" }),
+    );
+    expect(readSentinel()?.events).toContainEqual(
+      expect.objectContaining({ kind: "view", detail: "scene" }),
+    );
+  });
+
+  it("keeps the log bounded and oldest first, so a drive cannot grow the record", async () => {
+    const { engine, worker } = scanning();
+    await vi.advanceTimersByTimeAsync(0);
+    for (let i = 0; i < MAX_SESSION_EVENTS + 5; i += 1) {
+      worker.emit(emptyResult);
+    }
+    engine.setInputs({ activeView: "scene" });
+    const events = readSentinel()?.events as { kind: string }[];
+    expect(events).toHaveLength(MAX_SESSION_EVENTS);
+    // Newest last, and the load this session opened with has aged out.
+    expect(events[events.length - 1]).toMatchObject({ kind: "view" });
+    expect(events.some(({ kind }) => kind === "load")).toBe(false);
   });
 
   it("does not reset startedAt or framesProcessed when a recycled worker re-reports its probe", async () => {

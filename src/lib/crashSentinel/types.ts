@@ -1,4 +1,4 @@
-import { isBoolean, isNumber, isPlainObject, isString } from "remeda";
+import { isArray, isBoolean, isNumber, isPlainObject, isString } from "remeda";
 
 /**
  * Which view was on screen when a session ended. Recorded because the three
@@ -15,6 +15,58 @@ const ACTIVE_VIEWS: readonly ActiveView[] = ["radar", "scene", "detection"];
 /** Validates a value read back from localStorage as an ActiveView. */
 export const isActiveView = (value: unknown): value is ActiveView =>
   isString(value) && ACTIVE_VIEWS.includes(value as ActiveView);
+
+/**
+ * What happened. A fixed set rather than free text, so the log stays bounded
+ * in size and in what it can ever say about a person's device.
+ */
+export type SessionEventKind =
+  | "scan"
+  | "skip"
+  | "load"
+  | "recycle"
+  | "view"
+  | "video"
+  | "error";
+
+const SESSION_EVENT_KINDS: readonly SessionEventKind[] = [
+  "scan",
+  "skip",
+  "load",
+  "recycle",
+  "view",
+  "video",
+  "error",
+];
+
+/**
+ * One thing the engine did, kept in a short rolling log so a crash report can
+ * say what was happening just before the page died rather than only how long
+ * it had been alive. "Died at 8.0 s" and "died 340 ms after switching to the
+ * scene view" are the same crash and different bugs.
+ */
+export type SessionEvent = {
+  /**
+   * Date.now() epoch ms, never performance.now(), which restarts every page
+   * load and so cannot be read against the heartbeat at the next launch.
+   */
+  at: number;
+  kind: SessionEventKind;
+  /**
+   * A short bounded value for the kinds that have one (a round trip, a view
+   * name, an error code). Never a URL, a message, or anything anyone typed:
+   * this travels off the device.
+   */
+  detail?: string;
+};
+
+/** Validates one entry of a log read back from localStorage. */
+export const isSessionEvent = (value: unknown): value is SessionEvent =>
+  isPlainObject(value) &&
+  isNumber(value.at) &&
+  isString(value.kind) &&
+  SESSION_EVENT_KINDS.includes(value.kind as SessionEventKind) &&
+  (value.detail === undefined || isString(value.detail));
 
 /**
  * Snapshot of an in-progress detection session, written to localStorage on a
@@ -67,6 +119,12 @@ export type SentinelRecord = {
    * runs for hours is the shape an out-of-memory kill arrives in.
    */
   ownedBitmaps?: number;
+  /**
+   * The rolling log, oldest first, capped at MAX_SESSION_EVENTS. Rewritten
+   * whole on every beat, which is what bounds it: the cap is the only thing
+   * between this and a record that grows for the length of a drive.
+   */
+  events?: readonly SessionEvent[];
 };
 
 /** Validates a value parsed from localStorage before it is trusted as a SentinelRecord. */
@@ -83,7 +141,12 @@ export const isSentinelRecord = (value: unknown): value is SentinelRecord => {
     (value.model === undefined || isString(value.model)) &&
     (value.recycles === undefined || isNumber(value.recycles)) &&
     (value.workerAgeMs === undefined || isNumber(value.workerAgeMs)) &&
-    (value.ownedBitmaps === undefined || isNumber(value.ownedBitmaps))
+    (value.ownedBitmaps === undefined || isNumber(value.ownedBitmaps)) &&
+    // Strict, like every other field here: a log that does not parse comes
+    // from a build that wrote a different record shape, and the rest of that
+    // record cannot be read with any more confidence than this part of it.
+    (value.events === undefined ||
+      (isArray(value.events) && value.events.every(isSessionEvent)))
   );
 };
 
@@ -108,4 +171,5 @@ export type PreviousSessionEnd = {
   recycles?: number;
   workerAgeMs?: number;
   ownedBitmaps?: number;
+  events?: readonly SessionEvent[];
 };
