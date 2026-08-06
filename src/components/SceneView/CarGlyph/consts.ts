@@ -1,17 +1,36 @@
 /**
- * Police body color: the meter's full-signal red, so the class the app exists
- * for is the one that reads as the alert.
+ * Police body color: near-black, the dark half of the black-and-white livery
+ * every patrol car in this app's training set wears. Kept clear of a true
+ * black for the same reason as the tires, so the body does not sink into the
+ * backdrop and leave the white panels floating.
  */
-export const POLICE_COLOR = "#ff5a3c";
+export const POLICE_BODY_COLOR = "#34323f";
+
+/**
+ * The white half of the police livery: doors, hood, roof, and the rear panel.
+ * Off-white rather than pure white so it still separates from the ground under
+ * the light scene palette, which is white.
+ */
+export const POLICE_PANEL_COLOR = "#e6e3f0";
 
 /**
  * Civilian car body color, dim so other traffic shapes the scene without
- * competing with the police red.
+ * competing with the police lightbar.
  */
 export const CAR_COLOR = "#8a8794";
 
-/** Roof lightbar color on the police car: near-white, so it reads as a lamp. */
-export const POLICE_LIGHTBAR_COLOR = "#f2effa";
+/**
+ * Red half of the roof lightbar. The police glyph carries no alert color on
+ * its body any more, so this is what makes the class the app exists for read
+ * as the alert at a glance.
+ */
+export const POLICE_LIGHTBAR_RED = "#ff3b30";
+
+/**
+ * Blue half of the roof lightbar. Bright and slightly cyan-shifted so it holds
+ * against a dark ground, where a deep blue would read as another black panel.
+ */
+export const POLICE_LIGHTBAR_BLUE = "#2f6bff";
 
 /**
  * Taillight color. Cars are drawn facing away, which makes the tail the one
