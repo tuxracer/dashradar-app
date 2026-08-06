@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
+import { track } from "@vercel/analytics";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ModelScreen } from "@/components/ModelScreen";
@@ -7,6 +8,7 @@ import { SettingsProvider, STORAGE_KEY } from "@/context/SettingsContext";
 import type { PersistedSettings } from "@/context/SettingsContext";
 import {
   addStoredModel,
+  BUILT_IN_MODELS,
   DEFAULT_MODEL,
   loadStoredModels,
 } from "@/lib/detectionModels";
@@ -21,6 +23,8 @@ import type { trialLoadModel } from "@/lib/modelTrialLoad";
 vi.mock("@/context/DetectionContext", () => ({
   useDetection: () => ({ activeModel: running, loadedClasses: undefined }),
 }));
+
+vi.mock("@vercel/analytics", () => ({ track: vi.fn() }));
 
 afterEach(() => {
   window.localStorage.clear();
@@ -514,5 +518,128 @@ describe("choosing between a repo's onnx files", () => {
     await userEvent.click(screen.getByTestId("model-file-cancel"));
     expect(screen.getByTestId("model-add-url")).toHaveValue(repoUrl);
     expect(loadStoredModels()).toEqual([]);
+  });
+});
+
+describe("what the picker reports", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.mocked(track).mockClear();
+  });
+
+  it("counts a look at the picker", () => {
+    mount();
+    expect(track).toHaveBeenCalledWith("model_picker_open");
+  });
+
+  // The real registry, not the fixture: the slugs are only reportable because
+  // they are the build's own, which is what the built-in check decides.
+  it("names both ends of a switch by their built-in slugs", async () => {
+    const other = BUILT_IN_MODELS[1];
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ modelIds: [DEFAULT_MODEL.id] }),
+    );
+    renderModelScreen();
+    await choose(other.id);
+    expect(track).toHaveBeenCalledWith("model_switch", {
+      from: DEFAULT_MODEL.slug,
+      to: other.slug,
+    });
+  });
+
+  // An added model's name came from a URL someone pasted, which can be a
+  // private host; the count is the part worth having.
+  it("reports a switch to an added model without naming it", async () => {
+    const added: DetectionModel = {
+      id: "https://models.example.com/patrol.onnx",
+      owner: "models.example.com",
+      slug: "patrol",
+      file: "patrol.onnx",
+      weightsUrl: "https://models.example.com/patrol.onnx",
+    };
+    addStoredModel(added);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ modelIds: [DEFAULT_MODEL.id] }),
+    );
+    renderModelScreen();
+    await choose(added.id);
+    expect(track).toHaveBeenCalledWith("model_switch", {
+      from: DEFAULT_MODEL.slug,
+      to: "custom",
+    });
+  });
+
+  it("counts a model that passed its trial, by where it came from", async () => {
+    const url = "https://models.example.com/patrol.onnx";
+    renderModelScreen({
+      trialLoad: async () => ({
+        ok: true,
+        loaded: { headWidth: 2, classes: [{ index: 1, label: "police" }] },
+      }),
+    });
+    await userEvent.click(screen.getByTestId("model-add-open"));
+    await userEvent.type(screen.getByTestId("model-add-url"), url);
+    await userEvent.click(screen.getByTestId("model-add-submit"));
+    await waitFor(() => {
+      expect(track).toHaveBeenCalledWith("model_add", {
+        source: "url",
+        classes: 1,
+      });
+    });
+    // The address someone pasted is theirs, not ours to report.
+    for (const [, props] of vi.mocked(track).mock.calls) {
+      expect(JSON.stringify(props ?? {})).not.toContain("models.example.com");
+    }
+  });
+
+  it("says why an add failed, without the message it failed with", async () => {
+    renderModelScreen({
+      trialLoad: async () => ({ ok: false, reason: "input shape mismatch" }),
+    });
+    await userEvent.click(screen.getByTestId("model-add-open"));
+    await userEvent.type(
+      screen.getByTestId("model-add-url"),
+      "https://models.example.com/patrol.onnx",
+    );
+    await userEvent.click(screen.getByTestId("model-add-submit"));
+    await waitFor(() => {
+      expect(track).toHaveBeenCalledWith("model_add_failed", {
+        reason: "TRIAL_FAILED",
+      });
+    });
+  });
+
+  it("rejects a bad URL with the code it was rejected for", async () => {
+    renderModelScreen();
+    await userEvent.click(screen.getByTestId("model-add-open"));
+    await userEvent.type(
+      screen.getByTestId("model-add-url"),
+      "https://example.com/models/",
+    );
+    await userEvent.click(screen.getByTestId("model-add-submit"));
+    await waitFor(() => {
+      expect(track).toHaveBeenCalledWith("model_add_failed", {
+        reason: "INVALID_URL",
+      });
+    });
+  });
+
+  it("counts a removal by where the model came from", async () => {
+    const added: DetectionModel = {
+      id: "https://models.example.com/patrol.onnx",
+      owner: "models.example.com",
+      slug: "patrol",
+      file: "patrol.onnx",
+      weightsUrl: "https://models.example.com/patrol.onnx",
+    };
+    addStoredModel(added);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderModelScreen();
+    await removeFromCard(added.id);
+    expect(track).toHaveBeenCalledWith("model_remove", { source: "url" });
   });
 });

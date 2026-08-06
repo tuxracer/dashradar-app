@@ -181,6 +181,7 @@ Anonymous, no camera, location, or detection geometry; dev builds emit nothing. 
 | Event | Says |
 | --- | --- |
 | `intro_start`, `camera_prompt_*`, `settings_open`, `share_click`, `reset` | Funnel and UI steps; `reset` separates a wiped install from a fresh one |
+| `model_picker_open`, `model_switch`, `model_add`, `model_add_failed`, `model_remove` | What people do with the model picker: whether they look, what they run (`from`/`to`), and how often a pasted checkpoint survives its trial load (`source: huggingface \| url`, plus the class count on a success and the code on a failure). A built-in is named by its slug; anything added is `custom`, and no pasted address or trial-load message ever travels, since both are the person's own and can name a private host |
 | `model_downloaded` | Weights finished streaming (slug, revision, duration); real downloads only |
 | `model_ready` | Session up, and whether from cache; first `ready` of the page load only, so recycles do not re-fire it |
 | `first_inference`, `first_round_trip` | End of the funnel: one frame scored, cold |

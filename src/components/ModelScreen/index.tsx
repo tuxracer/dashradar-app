@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { track } from "@vercel/analytics";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { ModelCard } from "@/components/ModelCard";
 import { useSettings } from "@/context/SettingsContext";
 import {
   addStoredModel,
   AddModelError,
+  isBuiltInModel,
   isAddModelError,
   knownModels,
   listOnnxFiles,
@@ -30,6 +32,23 @@ import {
 } from "./consts";
 
 export * from "./consts";
+
+/**
+ * How a model is named to analytics: a built-in by its own slug, anything added
+ * generically. An added model's name comes from a URL someone pasted, which can
+ * be a private host and is theirs rather than ours to report; the count of them
+ * is the part worth knowing anyway.
+ */
+const analyticsName = (model: DetectionModel): string =>
+  isBuiltInModel(model) ? model.slug : "custom";
+
+/**
+ * Where a candidate's weights come from, the one thing worth separating about
+ * an add: a Hugging Face repo the picker resolved and pinned, or a plain link
+ * taken as pasted.
+ */
+const analyticsSource = (model: DetectionModel): string =>
+  model.weightsUrl === undefined ? "huggingface" : "url";
 
 /**
  * The add-flow's state, one discriminated union so the row renders from a
@@ -106,7 +125,8 @@ export const ModelScreen = ({
   // the model that would actually run instead of no row at all. Removing a
   // model therefore moves the mark to the shipping entry on its own, which is
   // exactly what the next load would do with the id left behind.
-  const selectedIds = resolveModels(modelIds, models).map((model) => model.id);
+  const selected = resolveModels(modelIds, models);
+  const selectedIds = selected.map((model) => model.id);
 
   // Which model's card is open, if any. An id rather than the entry, so a card
   // left open over a model that has just been removed closes itself instead of
@@ -124,6 +144,12 @@ export const ModelScreen = ({
   // await checks this controller before touching state or starting a trial.
   const abortRef = useRef<AbortController | undefined>(undefined);
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  // How many people look at all, which is what every other number here is a
+  // fraction of. Sent once per opening of the screen, not once per load.
+  useEffect(() => {
+    track("model_picker_open");
+  }, []);
 
   // Escape closes the open card and stops there, the same one-screen-at-a-time
   // rule the settings panel follows backing out of this screen. The listener is
@@ -154,6 +180,9 @@ export const ModelScreen = ({
 
   /** Give up on a paste, leaving it in the field so it can be corrected. */
   const failAdd = (candidateUrl: string, error: unknown) => {
+    track("model_add_failed", {
+      reason: isAddModelError(error) ? error.code : "REPO_LOOKUP_FAILED",
+    });
     setAdd({
       phase: "failed",
       url: candidateUrl,
@@ -261,6 +290,9 @@ export const ModelScreen = ({
       return;
     }
     if (!result.ok) {
+      // The reason itself is a message out of onnxruntime about someone else's
+      // file, so only the fact that the trial rejected it travels.
+      track("model_add_failed", { reason: "TRIAL_FAILED" });
       setAdd({ phase: "failed", url: candidateUrl, message: result.reason });
       return;
     }
@@ -268,6 +300,7 @@ export const ModelScreen = ({
     // only time anything reads them out of these exact bytes until the model is
     // run; the card shows them from here.
     if (!addStoredModel({ ...entry, classes: result.loaded?.classes })) {
+      track("model_add_failed", { reason: "STORAGE_FAILED" });
       setAdd({
         phase: "failed",
         url: candidateUrl,
@@ -277,6 +310,12 @@ export const ModelScreen = ({
     }
     refreshModels();
     const labels = (result.loaded?.classes ?? []).map((c) => c.label);
+    // The whole download-build-run sequence has already passed at this point,
+    // so this counts checkpoints that actually run here rather than pastes.
+    track("model_add", {
+      source: analyticsSource(entry),
+      classes: labels.length,
+    });
     setAdd({
       phase: "added",
       summary:
@@ -292,6 +331,7 @@ export const ModelScreen = ({
     if (!window.confirm(`Remove ${modelLabel(model)}?`)) {
       return;
     }
+    track("model_remove", { source: analyticsSource(model) });
     removeStoredModel(model.id);
     // Back to the list, where the row this card was opened from collapses out.
     setOpenId(undefined);
@@ -324,6 +364,14 @@ export const ModelScreen = ({
     if (!window.confirm(`Use ${names}?`)) {
       return;
     }
+    // Sent before the commit rather than after it, because the reload on the
+    // next line can cut an in-flight request: this is the widest window the
+    // event will get, and a commit that storage refuses is rare enough to be
+    // worth counting as a switch that was asked for.
+    track("model_switch", {
+      from: selected.map(analyticsName).join(", "),
+      to: resolveModels(ids, models).map(analyticsName).join(", "),
+    });
     if (!commitModelIds(ids)) {
       window.alert(COMMIT_FAILED_MESSAGE);
       return;
