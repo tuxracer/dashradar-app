@@ -637,6 +637,9 @@ const detect = async ({
     frame.close();
     return;
   }
+  // Above the try so the catch can reach it: a crop only leaves this
+  // function's ownership when the post delivers it.
+  let crop: DetectionCrop | undefined;
   try {
     const preprocessStart = performance.now();
     if (!inputContext) {
@@ -769,7 +772,6 @@ const detect = async ({
     // would land somewhere else entirely. Senders already withhold the pre-crop
     // whenever a cutout is wanted; this keeps the two from drifting apart into
     // a wrong picture rather than a missing one.
-    let crop: DetectionCrop | undefined;
     const topIndex = topDetectionIndex(detections);
     if (includeCrop && !source && topIndex !== undefined) {
       const rect = cropRect(
@@ -809,6 +811,11 @@ const detect = async ({
       transfer,
     );
   } catch (error) {
+    // Landing here means the crop was never delivered, even when the throw
+    // came from the post itself, so it is still this function's to close.
+    // Closing an already-detached bitmap is a no-op, so a post that failed
+    // after transferring stays safe.
+    crop?.image.close();
     // A DetectionError carries the real cause (a head-width mismatch reports
     // MODEL_LOAD_FAILED, since the loaded model is wrong for this build rather
     // than the inference having failed). Anything else is a genuine inference
