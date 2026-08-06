@@ -973,6 +973,13 @@ export const createDetectionEngine = ({
       inputs$.next({ ...inputs$.value, ...next });
     },
     updateSettings: (next) => {
+      // Turning the detection image off retires the published contact here,
+      // at the settings edge: the worker stops producing crops the moment the
+      // setting lands, so no later result would ever swap the pinned bitmap
+      // out, and it would stay open for the rest of the session.
+      if (!next.includeContact && snapshot$.value.contact) {
+        replaceContact(undefined);
+      }
       settings$.next(next);
     },
     getDebugSnapshot: () => debug,

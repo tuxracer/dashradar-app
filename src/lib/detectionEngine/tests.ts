@@ -668,6 +668,26 @@ describe("contact", () => {
     expect(image.close).toHaveBeenCalled();
   });
 
+  // Once cutouts are off the worker stops producing crops, so nothing ever
+  // swaps the published contact out again; the settings edge is the last
+  // owner that can close it.
+  it("closes the published contact when cutouts are turned off", () => {
+    const { engine, worker } = withContact();
+    const image = new FakeImageBitmap();
+    worker.emit({
+      type: "detections",
+      detections: [policeDetection(0.85, 0.15, 0.25)],
+      timing,
+      crop: { image: image as unknown as ImageBitmap, detectionIndex: 0 },
+    });
+    engine.updateSettings({
+      ...DEFAULT_ENGINE_SETTINGS,
+      includeContact: false,
+    });
+    expect(image.close).toHaveBeenCalled();
+    expect(contact(engine)).toBeUndefined();
+  });
+
   it("publishes no contact, and closes the crop, while cutouts are off", () => {
     const { engine, worker } = withContact({ includeContact: false });
     const image = new FakeImageBitmap();
