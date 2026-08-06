@@ -369,7 +369,7 @@ export const DeveloperScreen = ({ onClose }: DeveloperScreenProps) => {
         <div className="mx-auto flex w-full max-w-2xl flex-col divide-y divide-white/10">
           <ToggleRow
             label="Enable developer options"
-            description="Reveals the tools below."
+            description="Reveals advanced options."
             on={developerOptions}
             onToggle={() => {
               // Switching off takes a picked clip back to the camera with it.
