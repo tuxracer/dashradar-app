@@ -54,7 +54,8 @@ describe("ModelCard", () => {
       { index: 2, label: "sheriff" },
     ];
     mount();
-    expect(screen.getByText("police, sheriff")).toBeInTheDocument();
+    expect(screen.getByText("police")).toBeInTheDocument();
+    expect(screen.getByText("sheriff")).toBeInTheDocument();
   });
 
   it("names what an added model's trial load saw, without running it", () => {
@@ -65,10 +66,44 @@ describe("ModelCard", () => {
   });
 
   // The alternative is guessing, and a card that names a class the file does
-  // not have is worse than one that admits it has not looked.
+  // not have is worse than one that admits it has not looked. This is the last
+  // resort: an added file with no names in it and no sentence of its own.
   it("says so for a model nothing on this device has loaded", () => {
     mount();
     expect(screen.getByText(UNKNOWN_CLASSES_MESSAGE)).toBeInTheDocument();
+  });
+
+  // Someone comparing two models before running either is the whole reason the
+  // picker exists, and no class list can reach them: the words live in a file
+  // this device has not downloaded.
+  it("says what a built-in model is for without having loaded it", () => {
+    const model = BUILT_IN_MODELS[1];
+    mount({ model });
+    expect(screen.getByText(model.summary ?? "")).toBeInTheDocument();
+    // And drops the row that would otherwise apologise for not knowing.
+    expect(screen.queryByText(UNKNOWN_CLASSES_MESSAGE)).toBeNull();
+  });
+
+  it("still names the classes once the session has loaded them", () => {
+    const model = BUILT_IN_MODELS[1];
+    running = model;
+    loadedClasses = [{ index: 1, label: "person" }];
+    mount({ model });
+    expect(screen.getByText("person")).toBeInTheDocument();
+    expect(screen.getByText(model.summary ?? "")).toBeInTheDocument();
+  });
+
+  // A general detector names 80 things, and someone comparing models wants to
+  // find one of them, so every class is listed rather than a sample of them.
+  it("lists every class a model names, however many there are", () => {
+    running = added;
+    loadedClasses = Array.from({ length: 80 }, (_, index) => ({
+      index: index + 1,
+      label: `thing-${index + 1}`,
+    }));
+    mount();
+    expect(screen.getByText("thing-1")).toBeInTheDocument();
+    expect(screen.getByText("thing-80")).toBeInTheDocument();
   });
 
   // The session's own report wins: the recorded copy was written by a trial

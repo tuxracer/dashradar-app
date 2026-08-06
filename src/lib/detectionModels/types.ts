@@ -67,6 +67,22 @@ export type DetectionModel = {
    * stable id, and on anything stored before this was recorded.
    */
   classes?: readonly DetectionClass[];
+  /**
+   * One plain sentence about what this checkpoint is for, shown on its card so
+   * someone can tell two models apart before running either. Written here
+   * rather than read from the weights, because the only machine-readable
+   * answer, the class list, needs the file downloaded and is 80 words long for
+   * a general-purpose model, which answers nobody's question.
+   *
+   * Prose about a pinned entry, never a class table: nothing decodes it, no box
+   * is ever labelled from it, and the classes row still comes from a session
+   * that loaded the file. It can only drift if a revision bump changes what a
+   * model detects and this line is left behind, which is what the release
+   * runbook covers; running the model corrects the classes row regardless.
+   * Only the entries a build ships carry one, since nobody is there to write a
+   * sentence about a model someone pastes in.
+   */
+  summary?: string;
 };
 
 /**

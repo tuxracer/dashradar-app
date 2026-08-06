@@ -47,9 +47,29 @@ const shortRevision = (revision: string): string =>
 /** A URL as it reads on screen, where the scheme is noise. */
 const displayUrl = (url: string): string => url.replace("https://", "");
 
-/** The labels a set of classes carries, as one readable list. */
-const classLabels = (classes: readonly DetectionClass[]): string =>
-  classes.map((entry) => entry.label).join(", ");
+/**
+ * Every class a model names, each its own chip. A wrapping grid rather than a
+ * sentence because the count runs from one to eighty: a list that long reads as
+ * a block of things to scan, while the same words in a right-aligned row would
+ * be a paragraph pretending to be a value.
+ */
+const ClassList = ({ classes }: { classes: readonly DetectionClass[] }) => (
+  <div className="flex flex-col gap-3 py-3">
+    <span className="text-sm font-semibold tracking-[0.12em] text-white/45">
+      LOOKS FOR
+    </span>
+    <div className="flex flex-wrap gap-2">
+      {classes.map((entry) => (
+        <span
+          key={entry.index}
+          className="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-semibold tracking-[0.04em] text-white/85"
+        >
+          {entry.label}
+        </span>
+      ))}
+    </div>
+  </div>
+);
 
 /**
  * What one model is, for someone deciding whether to run it: what it looks for,
@@ -62,7 +82,10 @@ const classLabels = (classes: readonly DetectionClass[]): string =>
  * from anything typed in here, so the card cannot claim a model detects
  * something it does not: the running model's come from its own live session,
  * an added model's from the trial load that registered it, and a model neither
- * has seen says so rather than guessing.
+ * has seen has no row at all. The entry's own sentence covers that case, which
+ * is the one someone browsing the list is in: nothing here can download 57 MB
+ * to answer what a model is for, and for a general-purpose model the honest
+ * machine-readable answer is 80 words long anyway.
  */
 export const ModelCard = ({
   model,
@@ -75,6 +98,10 @@ export const ModelCard = ({
   const repoUrl = modelRepoUrl(model);
   const running = model.id === activeModel.id;
   const classes = (running ? loadedClasses : undefined) ?? model.classes;
+  // A file that named nothing is the same as one nobody has read here: neither
+  // has words to show, and an empty heading would be worse than no heading.
+  const named =
+    classes !== undefined && classes.length > 0 ? classes : undefined;
   const removable = !isBuiltInModel(model);
 
   return (
@@ -104,6 +131,14 @@ export const ModelCard = ({
           <span className="break-words text-3xl font-semibold tracking-[0.02em] text-white">
             {model.slug}
           </span>
+          {/* What this model is for, which is the question someone comparing
+              two of them is actually asking. The classes below answer a
+              narrower one and only once the file has been loaded. */}
+          {model.summary !== undefined && (
+            <span className="text-base font-medium text-white/70">
+              {model.summary}
+            </span>
+          )}
           <span className="text-sm font-medium text-white/45">
             {ON_DEVICE_MESSAGE}
           </span>
@@ -113,14 +148,14 @@ export const ModelCard = ({
           style={{ animationDelay: `${2 * SECTION_ENTER_STAGGER_MS}ms` }}
           className="flex animate-rise-in flex-col divide-y divide-white/10 motion-reduce:animate-none"
         >
-          <Fact
-            label="LOOKS FOR"
-            value={
-              classes && classes.length > 0
-                ? classLabels(classes)
-                : UNKNOWN_CLASSES_MESSAGE
-            }
-          />
+          {named !== undefined && <ClassList classes={named} />}
+          {/* Only when nothing here can say anything: no session has read the
+              file and the entry carries no sentence either. An apology about
+              what this device has not done yet is worse than the line under
+              the title having answered it already. */}
+          {named === undefined && model.summary === undefined && (
+            <Fact label="LOOKS FOR" value={UNKNOWN_CLASSES_MESSAGE} />
+          )}
           {model.revision !== undefined && (
             <Fact label="VERSION" value={shortRevision(model.revision)} />
           )}

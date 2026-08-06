@@ -144,6 +144,14 @@ That is the whole entry a build declares. It says which bytes to fetch and
 nothing about what they contain, because everything else is read from the bytes
 themselves at load.
 
+A built-in entry also carries `summary`, one plain sentence about what the
+checkpoint is for. It is the only thing an entry says about the weights rather
+than about where they live, and it exists because the machine-readable answer,
+the class list, needs the file downloaded, which is precisely what someone
+comparing two models has not done yet. Nothing decodes it and no box is ever
+labelled from it; the card's class list still comes from a session that loaded
+the file. Update it when a revision changes what a model finds.
+
 A model added from a plain URL carries `weightsUrl`, the address to fetch, and
 no `revision`: its `owner`, `slug`, and `file` are read off that address for
 display rather than used to build one.
