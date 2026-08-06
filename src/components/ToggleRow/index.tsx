@@ -17,8 +17,11 @@ const Toggle = ({ on }: { on: boolean }) => (
 type ToggleRowProps = {
   /** The setting's name, as it reads on the glass. */
   label: string;
-  /** One short sentence saying what changes; see the settings-copy rules. */
-  description: string;
+  /**
+   * One short sentence saying what changes. Left off where the label already
+   * says everything there is to say.
+   */
+  description?: string;
   /** Current state of the setting. */
   on: boolean;
   /** Flips the setting. The whole row fires it, not just the switch. */
@@ -45,7 +48,9 @@ export const ToggleRow = ({
       <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
         {label}
       </span>
-      <span className="text-sm font-medium text-white/45">{description}</span>
+      {description && (
+        <span className="text-sm font-medium text-white/45">{description}</span>
+      )}
     </span>
     <Toggle on={on} />
   </button>
