@@ -825,6 +825,18 @@ const detect = async ({
 self.onmessage = (event: MessageEvent<unknown>) => {
   const request = event.data;
   if (!isWorkerRequest(request)) {
+    // A malformed detect request still carries its transferred frame, and
+    // this rejection is the frame's last owner. Nothing well-typed sends one
+    // today, but a newer page posting to an older precached worker after a
+    // service-worker update would leak one full-resolution bitmap per scan.
+    if (
+      typeof request === "object" &&
+      request !== null &&
+      "frame" in request &&
+      request.frame instanceof ImageBitmap
+    ) {
+      request.frame.close();
+    }
     return;
   }
   if (request.type === "probe") {
