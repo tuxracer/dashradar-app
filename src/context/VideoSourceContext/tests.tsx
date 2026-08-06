@@ -1,4 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
+import { StrictMode } from "react";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   useVideoSource,
@@ -61,6 +63,21 @@ describe("VideoSourceProvider", () => {
     act(() => result.current.clearVideoFile());
     expect(result.current.source).toBeNull();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:mock/clip-1");
+  });
+
+  // StrictMode invokes state updaters twice, so a URL minted inside the
+  // updater leaks one orphan per file: the discarded invocation's URL never
+  // reaches state and the revoke effect never sees it.
+  it("mints exactly one object URL per chosen file", () => {
+    const { result } = renderHook(() => useVideoSource(), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <StrictMode>
+          <VideoSourceProvider>{children}</VideoSourceProvider>
+        </StrictMode>
+      ),
+    });
+    act(() => result.current.setVideoFile(clip("drive.mp4")));
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
   });
 
   // Consumers key feed-scoped state on this id. Both camera sessions have a

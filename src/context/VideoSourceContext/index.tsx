@@ -62,8 +62,13 @@ export const VideoSourceProvider = ({ children }: { children: ReactNode }) => {
   const setVideoFile = useCallback(
     (file: File) => {
       detachVideo();
+      // Minted before setFeed because updaters must stay pure: React can run
+      // an updater more than once (StrictMode does, concurrent rerenders may),
+      // and a URL minted in a discarded invocation never reaches state, so the
+      // revoke effect above could never release it.
+      const url = URL.createObjectURL(file);
       setFeed((previous) => ({
-        source: { url: URL.createObjectURL(file), name: file.name },
+        source: { url, name: file.name },
         feedId: previous.feedId + 1,
       }));
     },
