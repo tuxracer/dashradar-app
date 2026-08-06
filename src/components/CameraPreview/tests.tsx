@@ -39,6 +39,43 @@ describe("CameraPreview", () => {
     expect(video?.srcObject).toBeNull();
   });
 
+  // A stream minted via captureStream is the preview's own; leaving its
+  // tracks running keeps the capture tap on the source element alive after
+  // the preview is gone, and each remount leaks another one.
+  it("stops the tracks of a stream it minted via captureStream", () => {
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    const stop = vi.fn();
+    const stream = {
+      getTracks: () => [{ stop }, { stop }],
+    } as unknown as MediaStream;
+    const source = createSource(null) as HTMLVideoElement & {
+      captureStream: () => MediaStream;
+    };
+    source.captureStream = () => stream;
+    const { container, unmount } = render(
+      <CameraPreview source={source} zoom={ZOOM_OFF} />,
+    );
+    expect(container.querySelector("video")?.srcObject).toBe(stream);
+    unmount();
+    expect(stop).toHaveBeenCalledTimes(2);
+  });
+
+  // Guard test (cannot fail against the pre-fix code, which stopped nothing):
+  // the camera path's stream belongs to the engine, so teardown must not
+  // stop it out from under the detector.
+  it("leaves a borrowed camera stream running on unmount", () => {
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    const stop = vi.fn();
+    const stream = {
+      getTracks: () => [{ stop }],
+    } as unknown as MediaStream;
+    const { unmount } = render(
+      <CameraPreview source={createSource(stream)} zoom={ZOOM_OFF} />,
+    );
+    unmount();
+    expect(stop).not.toHaveBeenCalled();
+  });
+
   it("stays idle when the source has no stream yet", () => {
     const play = vi
       .spyOn(HTMLMediaElement.prototype, "play")

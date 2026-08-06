@@ -57,10 +57,20 @@ export const CameraPreview = ({ source, zoom }: CameraPreviewProps) => {
 
   useEffect(() => {
     const video = videoRef.current;
-    const stream =
-      source.srcObject ??
-      (hasCaptureStream(source) ? source.captureStream() : null);
-    if (!video || !stream) {
+    if (!video) {
+      return;
+    }
+    // On the camera path the preview borrows the stream the source already
+    // plays; on the file path it mints its own via captureStream. Ownership
+    // follows creation: a minted stream's tracks are stopped on teardown or
+    // the capture tap outlives the preview, while the borrowed stream belongs
+    // to the engine and must be left running.
+    const minted =
+      !source.srcObject && hasCaptureStream(source)
+        ? source.captureStream()
+        : null;
+    const stream = source.srcObject ?? minted;
+    if (!stream) {
       return;
     }
     video.srcObject = stream;
@@ -70,6 +80,11 @@ export const CameraPreview = ({ source, zoom }: CameraPreviewProps) => {
     });
     return () => {
       video.srcObject = null;
+      if (minted) {
+        for (const track of minted.getTracks()) {
+          track.stop();
+        }
+      }
     };
   }, [source]);
 
