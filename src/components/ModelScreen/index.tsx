@@ -342,7 +342,7 @@ export const ModelScreen = ({
 
   const handleSave = () => {
     const names = resolveModels(draft, models).map(modelLabel).join(", ");
-    if (!window.confirm(`Run ${names}? The app will reload.`)) {
+    if (!window.confirm(`Run ${names}?`)) {
       return;
     }
     if (!commitModelIds(draft)) {
