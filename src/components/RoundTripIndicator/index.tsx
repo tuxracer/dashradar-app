@@ -23,21 +23,19 @@ type RoundTripIndicatorProps = {
  * state, the same way DebugOverlay reads it: the snapshot deliberately lives
  * outside state so a per-result update doesn't re-render every consumer. Only
  * the number is held here, so an unchanged reading bails out of re-rendering.
+ *
+ * An interval rather than an animation frame, because the readout is paced in
+ * wall time and has nothing to say between ticks. The frame loop this replaced
+ * woke at the display's refresh rate to answer "has the interval elapsed yet",
+ * which is 240 wake-ups a second to take four readings.
  */
 export const RoundTripIndicator = ({ getDebug }: RoundTripIndicatorProps) => {
   const [roundTripMs, setRoundTripMs] = useState(() => getDebug().roundTripMs);
   useEffect(() => {
-    let frame = 0;
-    let last = 0;
-    const tick = (time: number) => {
-      if (time - last > READOUT_INTERVAL_MS) {
-        last = time;
-        setRoundTripMs(getDebug().roundTripMs);
-      }
-      frame = window.requestAnimationFrame(tick);
-    };
-    frame = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(frame);
+    const readout = window.setInterval(() => {
+      setRoundTripMs(getDebug().roundTripMs);
+    }, READOUT_INTERVAL_MS);
+    return () => window.clearInterval(readout);
   }, [getDebug]);
 
   // A scan has yet to land, so there is no round trip to report. Zero would
