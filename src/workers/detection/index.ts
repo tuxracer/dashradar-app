@@ -443,13 +443,18 @@ const warmUpSession = async (
  * instant stacks a redundant copy onto the highest peak of the whole session,
  * on a platform that kills the page for crossing its budget with no warning.
  *
- * Only a cache-backed load releases, because only it can hand the bytes back
- * for free: the capture fallback below re-matches the very CacheStorage entry
- * this read came from. A fresh download has no such second source, so it keeps
- * the buffer across the first run exactly as before rather than risk paying for
- * 54 MB twice. That costs nothing in practice for a driving session: a first
- * visit loads once, while every worker recycle after it reads from cache and so
- * takes the releasing path.
+ * A load releases only when CacheStorage is confirmed to hold the bytes,
+ * because only then can they be handed back for free: the capture fallback
+ * below re-matches the entry the release relied on. A cache read confirms
+ * itself. A fresh download is confirmed by re-matching after it completes,
+ * which usually hits because the download itself seeds the cache: in
+ * production the service worker's model-cache route stores the body as it
+ * streams, and in dev cacheModelInDev writes it. That puts the release on the
+ * first visit too, which is exactly where it matters most: the first launch on
+ * a low-RAM phone is the one moment the page holds the download buffer and the
+ * session build at once. When the confirm misses (the service worker never
+ * took control, or the cache write failed), the buffer is the only copy and is
+ * kept across the first run instead.
  */
 const createModel = async (
   detectionModel: DetectionModel,
@@ -462,6 +467,7 @@ const createModel = async (
   // the ONNX session, which otherwise flashes a misleading "downloading" UI).
   post({ type: "model-load-start", fromCache: cached !== undefined });
   let weights: Uint8Array<ArrayBuffer> | undefined;
+  let inCacheStorage = cached !== undefined;
   if (cached) {
     weights = new Uint8Array(await cached.arrayBuffer());
   } else {
@@ -475,6 +481,10 @@ const createModel = async (
       durationMs: performance.now() - downloadStartedAt,
     });
     await cacheModelInDev(url, weights);
+    // Confirm the download seeded CacheStorage before treating the cache as a
+    // second source of the bytes. A miss is not an error; it only means this
+    // buffer is the sole copy, so releaseWeights below must keep it.
+    inCacheStorage = (await matchCachedModel(url)) !== undefined;
   }
   // Read the file's own metadata before a session is built from it, because
   // the capture path hands the buffer back the moment ORT has copied it.
@@ -482,7 +492,7 @@ const createModel = async (
   // parsed, so file size does not enter into it.
   const fileMetadata = readOnnxMetadata(weights);
   const releaseWeights = () => {
-    if (cached) {
+    if (inCacheStorage) {
       weights = undefined;
     }
   };
@@ -503,8 +513,8 @@ const createModel = async (
   if (!io) {
     if (!weights) {
       // The capture attempt released the buffer after building its session, so
-      // re-read the entry it came from. Guaranteed present: this same cache was
-      // matched moments ago, and the miss branch never releases.
+      // re-read the entry it came from. Guaranteed present: weights are only
+      // released after a match confirmed the cache holds them.
       const entry = await matchCachedModel(url);
       if (!entry) {
         throw new DetectionError("MODEL_LOAD_FAILED");
