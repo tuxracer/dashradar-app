@@ -25,6 +25,40 @@ export const STARTUP_HEARTBEAT_INTERVAL_MS = 1_000;
 export const STARTUP_HEARTBEAT_WINDOW_MS = 30_000;
 
 /**
+ * How a session's uptime is labelled for reporting, as ordered upper bounds in
+ * milliseconds paired with the label a session under that bound gets. Anything
+ * past the last bound takes UPTIME_BUCKET_OVERFLOW.
+ *
+ * A bucket exists because the raw millisecond count cannot be charted: a
+ * reporting backend can group and filter on a handful of labels, but not on a
+ * number that is distinct for every session, so a question as basic as whether
+ * crashes moved earlier between two builds has to be answered by opening
+ * reports one at a time. Bucketing trades resolution the answer never needed
+ * for the ability to ask at all.
+ *
+ * The boundaries are fine early and coarse late because that is where the
+ * evidence is: every kill observed so far landed inside the first half minute,
+ * which is also the stretch the heartbeat covers at one-second resolution
+ * (STARTUP_HEARTBEAT_INTERVAL_MS). Past the startup window the beat itself is
+ * five seconds wide and a session that survived minutes did not die of
+ * whatever startup does, so the labels widen to match.
+ */
+export const UPTIME_BUCKETS: readonly {
+  readonly under: number;
+  readonly label: string;
+}[] = [
+  { under: 1_000, label: "0-1s" },
+  { under: 2_000, label: "1-2s" },
+  { under: 5_000, label: "2-5s" },
+  { under: 10_000, label: "5-10s" },
+  { under: 30_000, label: "10-30s" },
+  { under: 300_000, label: "30s-5m" },
+];
+
+/** Label for a session that outlived every bound in UPTIME_BUCKETS. */
+export const UPTIME_BUCKET_OVERFLOW = "5m+";
+
+/**
  * A dirty sentinel record found at next launch classifies as a "crash" when
  * the gap since its last heartbeat is within this window: iOS auto-reloads a
  * crashed foreground tab within seconds, so a short gap means the OS killed

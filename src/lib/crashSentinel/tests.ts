@@ -6,11 +6,41 @@ import {
   readPreviousSessionEnd,
   SENTINEL_STORAGE_KEY,
   STARTUP_HEARTBEAT_WINDOW_MS,
+  uptimeBucket,
+  UPTIME_BUCKET_OVERFLOW,
+  UPTIME_BUCKETS,
   writeHeartbeat,
 } from "@/lib/crashSentinel";
 
 afterEach(() => {
   window.localStorage.clear();
+});
+
+// Driven off UPTIME_BUCKETS rather than a list of labels typed in here, so
+// these keep testing the partitioning after someone retunes the boundaries.
+describe("uptimeBucket", () => {
+  it("puts a value exactly on a boundary in the bucket above it", () => {
+    for (const { under } of UPTIME_BUCKETS) {
+      expect(uptimeBucket(under)).not.toBe(uptimeBucket(under - 1));
+      expect(uptimeBucket(under)).toBe(uptimeBucket(under + 1));
+    }
+  });
+
+  it("labels every session, including zero and absurdly long ones", () => {
+    const last = UPTIME_BUCKETS[UPTIME_BUCKETS.length - 1];
+    expect(uptimeBucket(0)).toBe(UPTIME_BUCKETS[0].label);
+    expect(uptimeBucket(last.under)).toBe(UPTIME_BUCKET_OVERFLOW);
+    expect(uptimeBucket(Number.MAX_SAFE_INTEGER)).toBe(UPTIME_BUCKET_OVERFLOW);
+  });
+
+  it("never puts a longer session in an earlier bucket", () => {
+    const labels = UPTIME_BUCKETS.flatMap(({ under }) => [
+      uptimeBucket(under - 1),
+      uptimeBucket(under),
+    ]);
+    // One label per bucket, plus the overflow the last boundary spills into.
+    expect(new Set(labels).size).toBe(UPTIME_BUCKETS.length + 1);
+  });
 });
 
 describe("writeHeartbeat / readPreviousSessionEnd", () => {
@@ -44,6 +74,36 @@ describe("writeHeartbeat / readPreviousSessionEnd", () => {
       graphCapture: undefined,
       release: undefined,
     });
+  });
+
+  it("carries the view and the model through to the report", () => {
+    writeHeartbeat({
+      startedAt: 0,
+      lastBeatAt: 100,
+      framesProcessed: 1,
+      activeView: "scene",
+      model: "custom",
+    });
+    expect(readPreviousSessionEnd(100)).toMatchObject({
+      activeView: "scene",
+      model: "custom",
+    });
+  });
+
+  // The view becomes a tag, so a value that is not one of the three would
+  // otherwise be reported as though the app had recorded it.
+  it("rejects the whole record when the stored view is not a real view", () => {
+    window.localStorage.setItem(
+      SENTINEL_STORAGE_KEY,
+      JSON.stringify({
+        startedAt: 0,
+        lastBeatAt: 0,
+        framesProcessed: 0,
+        activeView: "hologram",
+      }),
+    );
+    expect(readPreviousSessionEnd()).toBeUndefined();
+    expect(window.localStorage.getItem(SENTINEL_STORAGE_KEY)).toBeNull();
   });
 
   it("returns undefined and clears the key when the release has the wrong type", () => {

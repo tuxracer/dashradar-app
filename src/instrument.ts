@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/react";
 import { APP_RELEASE } from "@/lib/appRelease";
-import { readPreviousSessionEnd } from "@/lib/crashSentinel";
+import { readPreviousSessionEnd, uptimeBucket } from "@/lib/crashSentinel";
 import { readInstallId } from "@/lib/installId";
 import { isTrackingOptedOut } from "privacy-signals";
 
@@ -70,8 +70,22 @@ if (!import.meta.env.DEV && isTrackingOptedOut() === false) {
   // restart, deliberate shutdown), which cannot be told apart from a genuine
   // crash by gap alone but is far less likely to be one.
   if (previousSessionEnd) {
-    const { outcome, gapMs, uptimeMs, framesProcessed, graphCapture, release } =
-      previousSessionEnd;
+    const {
+      outcome,
+      gapMs,
+      uptimeMs,
+      framesProcessed,
+      graphCapture,
+      release,
+      activeView,
+      model,
+    } = previousSessionEnd;
+    // Tags are the only part of an event that can be grouped, filtered, and
+    // charted, so anything a question gets asked of has to be one. That rules
+    // out the raw counts below, which are distinct per session and would each
+    // answer for exactly one report; uptime earns a tag through a bucket
+    // instead, which is what lets "did crashes move earlier in this build" be
+    // a chart rather than a stack of reports opened one at a time.
     Sentry.captureMessage("Previous session terminated while scanning", {
       level: outcome === "crash" ? "error" : "warning",
       tags: {
@@ -81,6 +95,9 @@ if (!import.meta.env.DEV && isTrackingOptedOut() === false) {
         // tag (the build reporting it): they differ when a deploy landed
         // between the dirty session and this launch.
         sentinelRelease: release ?? "unknown",
+        activeView: activeView ?? "unknown",
+        model: model ?? "unknown",
+        uptimeBucket: uptimeBucket(uptimeMs),
       },
       extra: { gapMs, uptimeMs, framesProcessed },
     });

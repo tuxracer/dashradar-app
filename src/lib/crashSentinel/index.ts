@@ -4,6 +4,8 @@ import {
   SENTINEL_STORAGE_KEY,
   STARTUP_HEARTBEAT_INTERVAL_MS,
   STARTUP_HEARTBEAT_WINDOW_MS,
+  UPTIME_BUCKET_OVERFLOW,
+  UPTIME_BUCKETS,
 } from "./consts";
 import { isSentinelRecord } from "./types";
 import type { PreviousSessionEnd, SentinelRecord } from "./types";
@@ -21,6 +23,16 @@ export const heartbeatDelayMs = (uptimeMs: number): number =>
   uptimeMs < STARTUP_HEARTBEAT_WINDOW_MS
     ? STARTUP_HEARTBEAT_INTERVAL_MS
     : HEARTBEAT_INTERVAL_MS;
+
+/**
+ * The reporting label for how long a session ran, from UPTIME_BUCKETS. Buckets
+ * are open at the bottom and closed at the top, so a session that ran exactly
+ * as long as a boundary falls in the bucket above it, and the labels read as
+ * the ranges they are with no value belonging to two of them.
+ */
+export const uptimeBucket = (uptimeMs: number): string =>
+  UPTIME_BUCKETS.find(({ under }) => uptimeMs < under)?.label ??
+  UPTIME_BUCKET_OVERFLOW;
 
 /**
  * Writes the current heartbeat record to localStorage under
@@ -82,5 +94,7 @@ export const readPreviousSessionEnd = (
     framesProcessed: parsed.framesProcessed,
     graphCapture: parsed.graphCapture,
     release: parsed.release,
+    activeView: parsed.activeView,
+    model: parsed.model,
   };
 };

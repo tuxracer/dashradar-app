@@ -1,6 +1,22 @@
 import { isBoolean, isNumber, isPlainObject, isString } from "remeda";
 
 /**
+ * Which view was on screen when a session ended. Recorded because the three
+ * cost very different things to keep running: the scene view holds a WebGL
+ * context open beside the WebGPU one the detector runs on, and the detection
+ * view draws the full camera feed. A crash that only ever happens under one of
+ * them is a different bug from one that happens under all three, and there is
+ * no way to tell those apart after the fact without writing it down first.
+ */
+export type ActiveView = "radar" | "scene" | "detection";
+
+const ACTIVE_VIEWS: readonly ActiveView[] = ["radar", "scene", "detection"];
+
+/** Validates a value read back from localStorage as an ActiveView. */
+export const isActiveView = (value: unknown): value is ActiveView =>
+  isString(value) && ACTIVE_VIEWS.includes(value as ActiveView);
+
+/**
  * Snapshot of an in-progress detection session, written to localStorage on a
  * heartbeat cadence while scanning runs so the next launch can tell whether
  * this one ended cleanly. `startedAt`/`lastBeatAt` are `Date.now()` epoch ms
@@ -17,6 +33,12 @@ export type SentinelRecord = {
   framesProcessed: number;
   graphCapture?: boolean;
   release?: string;
+  activeView?: ActiveView;
+  /**
+   * The running model, named the way anything leaving the device has to name
+   * one: a built-in by its slug, anything added as "custom".
+   */
+  model?: string;
 };
 
 /** Validates a value parsed from localStorage before it is trusted as a SentinelRecord. */
@@ -27,7 +49,9 @@ export const isSentinelRecord = (value: unknown): value is SentinelRecord => {
     isNumber(value.lastBeatAt) &&
     isNumber(value.framesProcessed) &&
     (value.graphCapture === undefined || isBoolean(value.graphCapture)) &&
-    (value.release === undefined || isString(value.release))
+    (value.release === undefined || isString(value.release)) &&
+    (value.activeView === undefined || isActiveView(value.activeView)) &&
+    (value.model === undefined || isString(value.model))
   );
 };
 
@@ -46,4 +70,6 @@ export type PreviousSessionEnd = {
   framesProcessed: number;
   graphCapture?: boolean;
   release?: string;
+  activeView?: ActiveView;
+  model?: string;
 };

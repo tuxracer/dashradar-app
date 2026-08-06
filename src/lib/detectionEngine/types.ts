@@ -1,3 +1,4 @@
+import type { ActiveView } from "@/lib/crashSentinel";
 import type { HudModel, Size } from "@/lib/detection";
 import type { DetectionClass } from "@/lib/detectionModels";
 import type { Track } from "@/lib/detectionTracker";
@@ -143,9 +144,10 @@ export type DetectionSnapshot = {
 };
 
 /**
- * The world state the engine derives its running state from. The pump runs
- * exactly while a video source is attached, the page is visible, and the
- * settings panel is closed; there is no imperative pause or resume.
+ * The world state the owner pushes in. The first three are what the running
+ * state derives from: the pump runs exactly while a video source is attached,
+ * the page is visible, and the settings panel is closed, and there is no
+ * imperative pause or resume. The last is carried rather than acted on.
  */
 export type EngineInputs = {
   /** The video element frames are captured from; undefined detaches it. */
@@ -154,6 +156,13 @@ export type EngineInputs = {
   visible: boolean;
   /** Whether the full-screen settings panel is open. */
   settingsOpen: boolean;
+  /**
+   * Which view is on screen. Changes nothing about scanning and never reaches
+   * `wantsToRun`; the engine holds it only to stamp onto the crash heartbeat,
+   * which has to record what was on screen at the moment a session died and is
+   * the one thing no later launch can reconstruct.
+   */
+  activeView: ActiveView;
 };
 
 /**

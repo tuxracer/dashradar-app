@@ -31,6 +31,7 @@ import {
 } from "@/lib/crashSentinel";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 import type { Size } from "@/lib/detection";
+import { reportableModelName } from "@/lib/detectionModels";
 import type { DetectionModel } from "@/lib/detectionModels";
 import type { DetectionTelemetry } from "@/lib/detectionTelemetry";
 import { createDetectionTracker } from "@/lib/detectionTracker";
@@ -172,6 +173,9 @@ export const createDetectionEngine = ({
   /** Start with the weights held back; see `modelLoadAllowed$` below. */
   deferModelLoad?: boolean;
 }): DetectionEngine => {
+  /** How this engine's model is named anywhere it is reported. */
+  const reportedModel = reportableModelName(model);
+
   // ---- published state ----
   const snapshot$ = new BehaviorSubject<DetectionSnapshot>(INITIAL_SNAPSHOT);
   const publish = (patch: Partial<DetectionSnapshot>) => {
@@ -183,6 +187,7 @@ export const createDetectionEngine = ({
     video: undefined,
     visible: true,
     settingsOpen: false,
+    activeView: "radar",
   });
   const settings$ = new BehaviorSubject<EngineSettings>({
     includeContact: false,
@@ -328,6 +333,13 @@ export const createDetectionEngine = ({
         // Stamp the writing build, so a crash report names the deploy that
         // produced it rather than the one that happens to read the record.
         release: APP_RELEASE,
+        // Read per beat rather than captured when the session started: the
+        // view changes under a running session, and the one that explains a
+        // kill is whichever was on screen when it happened.
+        activeView: inputs$.value.activeView,
+        // Fixed for the engine's life (the provider pins the selection at
+        // mount), so this only has to travel far enough to reach the record.
+        model: reportedModel,
       });
     };
     beat();
@@ -339,6 +351,19 @@ export const createDetectionEngine = ({
       // extra writes to hours of scanning.
       defer(() => timer(heartbeatDelayMs(Date.now() - startedAt))).pipe(
         repeat(),
+        tap(beat),
+      ),
+      // Beat on a view change too, rather than waiting for the next scheduled
+      // one. Without this the record names the view a session was in up to a
+      // beat ago, so a crash moments after switching into the scene reads as
+      // a crash in the radar view: the one reading the field exists to
+      // produce, reported backwards. A view switch is a rare deliberate tap,
+      // so the extra write costs nothing on the cadence that matters.
+      // skip(1) drops the current value, which the beat above just wrote.
+      inputs$.pipe(
+        map(({ activeView }) => activeView),
+        distinctUntilChanged(),
+        skip(1),
         tap(beat),
       ),
       // A reload or navigation away mid-scan can outrun any teardown path, so

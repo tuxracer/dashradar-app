@@ -73,6 +73,8 @@ export const DetectionProvider = ({
     confidenceThreshold,
     modelIds,
     settingsOpen,
+    detectionView,
+    viewMode,
   } = useSettings();
   // Pinned at mount, not tracked. Changing the model applies by reloading the
   // page (the model screen reloads on save), so a selection changed underneath
@@ -134,6 +136,18 @@ export const DetectionProvider = ({
   useEffect(() => {
     engine.setInputs({ settingsOpen });
   }, [engine, settingsOpen]);
+
+  // Which view is up, derived here for the same reason the zoom mode is: the
+  // engine should not have to learn that the detection view outranks the
+  // radar/scene choice, only which of the three is drawing. It changes no
+  // behavior and is carried purely so a crash report can name it. The scene
+  // view's render failure resets viewMode itself, so this follows a fallback
+  // to the radar rather than claiming a scene that never mounted.
+  useEffect(() => {
+    engine.setInputs({
+      activeView: detectionView ? "detection" : viewMode,
+    });
+  }, [engine, detectionView, viewMode]);
 
   // Page visibility (app switched away, screen off). Without this the pump
   // would keep capturing and running inference in the background until the OS

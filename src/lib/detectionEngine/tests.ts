@@ -84,11 +84,11 @@ const built: DetectionEngine[] = [];
  * so a recycle is observable; `worker` is the first, which is all a test that
  * never recycles needs.
  */
-const testEngine = ({ deferModelLoad = false } = {}) => {
+const testEngine = ({ deferModelLoad = false, model = DEFAULT_MODEL } = {}) => {
   const workers: FakeWorker[] = [];
   const telemetry = fakeTelemetry();
   const engine = createDetectionEngine({
-    model: DEFAULT_MODEL,
+    model,
     createWorker: () => {
       const worker = new FakeWorker();
       workers.push(worker);
@@ -283,6 +283,30 @@ describe("crash sentinel heartbeat", () => {
       framesProcessed: 0,
       release: APP_RELEASE,
     });
+  });
+
+  it("stamps the view and the model, so a crash report can name both", () => {
+    const { engine } = scanning();
+    expect(readSentinel()).toMatchObject({
+      activeView: "radar",
+      model: DEFAULT_MODEL.slug,
+    });
+    engine.setInputs({ activeView: "scene" });
+    expect(readSentinel()).toMatchObject({ activeView: "scene" });
+  });
+
+  it("names an added model generically, never by its pasted address", () => {
+    const { engine, worker } = testEngine({
+      model: {
+        ...DEFAULT_MODEL,
+        id: "added-1",
+        slug: "private-host-name",
+        weightsUrl: "https://internal.example.com/secret/model.onnx",
+      },
+    });
+    worker.emit({ type: "ready" });
+    engine.setInputs({ video: fakeVideo() });
+    expect(readSentinel()).toMatchObject({ model: "custom" });
   });
 
   it("clears the sentinel record when the pump leaves the running state", () => {
