@@ -144,6 +144,10 @@ export const ModelScreen = ({
   // await checks this controller before touching state or starting a trial.
   const abortRef = useRef<AbortController | undefined>(undefined);
   useEffect(() => () => abortRef.current?.abort(), []);
+  // The row-exit collapse timer, cleared on unmount so a removal followed
+  // straight by BACK does not fire a callback into an unmounted tree.
+  const rowExitRef = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(rowExitRef.current), []);
 
   // How many people look at all, which is what every other number here is a
   // fraction of. Sent once per opening of the screen, not once per load.
@@ -229,6 +233,9 @@ export const ModelScreen = ({
   };
 
   const handleAdd = async (candidateUrl: string) => {
+    // A trial still in flight loses its place in the ref here; abort it so
+    // its worker dies and its late settle cannot write over this add.
+    abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     setAdd({ phase: "busy", percent: undefined });
@@ -257,6 +264,7 @@ export const ModelScreen = ({
     choice: Extract<AddPhase, { phase: "choosing" }>,
     file: string,
   ) => {
+    abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     setAdd({ phase: "busy", percent: undefined });
@@ -339,7 +347,7 @@ export const ModelScreen = ({
     // travel into the space instead of jumping. Storage is already updated, so
     // a screen unmounted mid-collapse loses nothing but the animation.
     setLeavingId(model.id);
-    window.setTimeout(
+    rowExitRef.current = window.setTimeout(
       () => {
         setLeavingId(undefined);
         refreshModels();

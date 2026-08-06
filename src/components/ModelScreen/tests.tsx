@@ -389,6 +389,27 @@ describe("adding a model from a URL", () => {
     expect(loadStoredModels()).toEqual([]);
   });
 
+  // Only the newest controller lives in the ref, so without this abort a
+  // superseded trial's worker would keep downloading with nothing left able
+  // to stop it, and its late settle would write over the second add.
+  it("aborts the running trial when a second add starts", async () => {
+    const signals: (AbortSignal | undefined)[] = [];
+    const trialLoad = vi.fn(
+      (_entry: unknown, options: { signal?: AbortSignal }) => {
+        signals.push(options.signal);
+        return new Promise(() => {});
+      },
+    ) as unknown as typeof trialLoadModel;
+    await openAndSubmit(trialLoad);
+    await waitFor(() => expect(trialLoad).toHaveBeenCalledTimes(1));
+    await userEvent.click(screen.getByTestId("model-add-open"));
+    await userEvent.type(screen.getByTestId("model-add-url"), pastedUrl);
+    await userEvent.click(screen.getByTestId("model-add-submit"));
+    await waitFor(() => expect(trialLoad).toHaveBeenCalledTimes(2));
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[1]?.aborted).toBe(false);
+  });
+
   it("starts no trial when the screen unmounts during URL resolution", async () => {
     const trialLoad = vi.fn();
     // A bare repo page (no pinned revision/file) forces resolveModelFromUrl
