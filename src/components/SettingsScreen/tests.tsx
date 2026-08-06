@@ -211,6 +211,21 @@ describe("SettingsScreen", () => {
     expect(screen.queryByText("Audio alerts")).not.toBeInTheDocument();
   });
 
+  // The card is a third screen on the same stack, and the panel's Escape
+  // handler cannot see it, so one press has to stop at the picker rather than
+  // taking both down.
+  it("backs out of a model card on Escape before the picker", async () => {
+    const user = await renderOpenSettings();
+    await user.click(screen.getByTestId("open-model-screen"));
+    await user.click(screen.getByTestId(`model-option-${DEFAULT_MODEL.id}`));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("model-card-use")).toBeNull();
+    expect(screen.getByTestId("model-back")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("model-back")).toBeNull();
+    expect(screen.getByText("Audio alerts")).toBeInTheDocument();
+  });
+
   it("persists the mode picked from the segmented Zoom row", async () => {
     const user = await renderOpenSettingsWithDeveloperOptions();
     await user.click(screen.getByRole("button", { name: "2X" }));

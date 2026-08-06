@@ -19,7 +19,7 @@ import type { trialLoadModel } from "@/lib/modelTrialLoad";
  * screen reads from it.
  */
 vi.mock("@/context/DetectionContext", () => ({
-  useDetection: () => ({ activeModel: running }),
+  useDetection: () => ({ activeModel: running, loadedClasses: undefined }),
 }));
 
 afterEach(() => {
@@ -52,6 +52,21 @@ let running: DetectionModel = MODELS[0];
 beforeEach(() => {
   running = MODELS[0];
 });
+
+/**
+ * Picks a model the way someone does: open its card from the row, then take it.
+ * The card closes itself, so the list is on screen again afterwards.
+ */
+const choose = async (id: string) => {
+  await userEvent.click(screen.getByTestId(`model-option-${id}`));
+  await userEvent.click(screen.getByTestId("model-card-use"));
+};
+
+/** Opens a model's card and removes it from there. */
+const removeFromCard = async (id: string) => {
+  await userEvent.click(screen.getByTestId(`model-option-${id}`));
+  await userEvent.click(screen.getByTestId(`model-remove-${id}`));
+};
 
 /** The settings field currently persisted to localStorage. */
 const stored = <K extends keyof PersistedSettings>(key: K) =>
@@ -91,7 +106,7 @@ describe("ModelScreen", () => {
   it("offers no save until the draft differs from the running model", async () => {
     mount();
     expect(screen.getByTestId("model-save")).toBeDisabled();
-    await userEvent.click(screen.getByTestId("model-option-beta"));
+    await choose("beta");
     expect(screen.getByTestId("model-save")).toBeEnabled();
   });
 
@@ -104,19 +119,29 @@ describe("ModelScreen", () => {
     expect(screen.getByTestId("model-save")).toBeEnabled();
   });
 
-  it("keeps a model selected when its own row is tapped again", async () => {
+  it("opens a model's card from its row, and comes back to the list", async () => {
+    mount();
+    await userEvent.click(screen.getByTestId("model-option-beta"));
+    expect(screen.getByTestId("model-card-use")).toBeInTheDocument();
+    // A row that only opened a card cannot have changed the draft.
+    expect(screen.queryByTestId("model-save")).toBeNull();
+    await userEvent.click(screen.getByTestId("model-card-back"));
+    expect(screen.getByTestId("model-save")).toBeDisabled();
+  });
+
+  it("offers no second take on the model already selected", async () => {
     mount();
     await userEvent.click(screen.getByTestId("model-option-alpha"));
-    // Nothing selected would leave no model to load, so the tap is a no-op and
-    // there is no emptied selection to save.
-    expect(screen.getByTestId("model-save")).toBeDisabled();
+    // Nothing selected would leave no model to load, so the selected model's
+    // card cannot deselect it; there is no emptied selection to save.
+    expect(screen.getByTestId("model-card-use")).toBeDisabled();
   });
 
   it("selecting past the cap replaces the selection rather than adding to it", async () => {
     const reload = vi.fn();
     vi.spyOn(window, "confirm").mockReturnValue(true);
     mount({ reload });
-    await userEvent.click(screen.getByTestId("model-option-beta"));
+    await choose("beta");
     await userEvent.click(screen.getByTestId("model-save"));
     expect(stored("modelIds")).toEqual(["beta"]);
   });
@@ -126,7 +151,7 @@ describe("ModelScreen", () => {
     const onClose = vi.fn();
     vi.spyOn(window, "confirm").mockReturnValue(false);
     mount({ reload, onClose });
-    await userEvent.click(screen.getByTestId("model-option-beta"));
+    await choose("beta");
     await userEvent.click(screen.getByTestId("model-save"));
     expect(stored("modelIds")).toEqual(["alpha"]);
     expect(reload).not.toHaveBeenCalled();
@@ -137,7 +162,7 @@ describe("ModelScreen", () => {
     const reload = vi.fn();
     vi.spyOn(window, "confirm").mockReturnValue(true);
     mount({ reload });
-    await userEvent.click(screen.getByTestId("model-option-beta"));
+    await choose("beta");
     await userEvent.click(screen.getByTestId("model-save"));
     expect(reload).toHaveBeenCalled();
   });
@@ -147,7 +172,7 @@ describe("ModelScreen", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     const alert = vi.spyOn(window, "alert").mockImplementation(() => {});
     mount({ reload });
-    await userEvent.click(screen.getByTestId("model-option-beta"));
+    await choose("beta");
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new Error("quota");
     });
@@ -159,7 +184,7 @@ describe("ModelScreen", () => {
   it("discards the draft on back", async () => {
     const onClose = vi.fn();
     mount({ onClose });
-    await userEvent.click(screen.getByTestId("model-option-beta"));
+    await choose("beta");
     await userEvent.click(screen.getByTestId("model-back"));
     expect(stored("modelIds")).toEqual(["alpha"]);
     expect(onClose).toHaveBeenCalled();
@@ -207,11 +232,16 @@ describe("removing a stored model", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
   });
 
-  it("offers no remove control on the default row", () => {
+  it("offers no remove on the shipping model's card", async () => {
     renderModelScreen();
+    await userEvent.click(
+      screen.getByTestId(`model-option-${DEFAULT_MODEL.id}`),
+    );
     expect(
       screen.queryByTestId(`model-remove-${DEFAULT_MODEL.id}`),
     ).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("model-card-back"));
+    await userEvent.click(screen.getByTestId(`model-option-${addedModel.id}`));
     expect(
       screen.getByTestId(`model-remove-${addedModel.id}`),
     ).toBeInTheDocument();
@@ -219,7 +249,7 @@ describe("removing a stored model", () => {
 
   it("removes the row and unregisters the model", async () => {
     renderModelScreen();
-    await userEvent.click(screen.getByTestId(`model-remove-${addedModel.id}`));
+    await removeFromCard(addedModel.id);
     // Unregistered at once; the row itself outlives the click only as long as
     // it takes to collapse out of the list.
     expect(loadStoredModels()).toEqual([]);
@@ -233,7 +263,12 @@ describe("removing a stored model", () => {
   it("keeps the model when the confirm is declined", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(false);
     renderModelScreen();
-    await userEvent.click(screen.getByTestId(`model-remove-${addedModel.id}`));
+    await removeFromCard(addedModel.id);
+    // Still on its own card, since a declined confirm changed nothing.
+    expect(
+      screen.getByTestId(`model-remove-${addedModel.id}`),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("model-card-back"));
     expect(
       screen.getByTestId(`model-option-${addedModel.id}`),
     ).toBeInTheDocument();
@@ -242,8 +277,8 @@ describe("removing a stored model", () => {
 
   it("moves a drafted selection back to the default on remove", async () => {
     renderModelScreen();
-    await userEvent.click(screen.getByTestId(`model-option-${addedModel.id}`));
-    await userEvent.click(screen.getByTestId(`model-remove-${addedModel.id}`));
+    await choose(addedModel.id);
+    await removeFromCard(addedModel.id);
     // The default row is selected again, matching what the running session
     // pinned, so SAVE has nothing to apply.
     expect(screen.getByTestId("model-save")).toBeDisabled();

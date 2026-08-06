@@ -1,4 +1,4 @@
-import { isNumber, isPlainObject, isString } from "remeda";
+import { isArray, isNumber, isPlainObject, isString } from "remeda";
 
 /**
  * One class the loaded checkpoint names. Derived at load from the `names` map
@@ -45,6 +45,16 @@ export type DetectionModel = {
   revision: string;
   /** Repo-relative path of the ONNX file (for example "onnx/model_fp16.onnx"). */
   file: string;
+  /**
+   * What the file named when it was added, recorded from the trial load so the
+   * model card can say what an entry looks for without downloading it again.
+   * Display only: the decode always reads the classes off the session it is
+   * decoding, so this copy can never reach a box. It cannot go stale either,
+   * since an added entry's id is its own revision-pinned weights URL and those
+   * bytes do not change. Absent on the shipping entry, whose revision does move
+   * under a stable id, and on anything stored before this was recorded.
+   */
+  classes?: readonly DetectionClass[];
 };
 
 /**
@@ -66,7 +76,9 @@ export const isDetectionModel = (value: unknown): value is DetectionModel => {
     isString(value.revision) &&
     value.revision.length > 0 &&
     isString(value.file) &&
-    value.file.endsWith(".onnx")
+    value.file.endsWith(".onnx") &&
+    (value.classes === undefined ||
+      (isArray(value.classes) && value.classes.every(isDetectionClass)))
   );
 };
 

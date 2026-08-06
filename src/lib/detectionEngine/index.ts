@@ -577,6 +577,10 @@ export const createDetectionEngine = ({
       case "ready": {
         session.loaded$.next(true);
         telemetry.modelReady();
+        // Republished by every recycle, which loads the same entry again, so a
+        // session that comes back naming nothing is reported as naming nothing
+        // rather than keeping the last session's words.
+        publish({ loadedClasses: message.loaded?.classes });
         setStatus(
           wantsToRun(active$.value, inputs$.value) ? "running" : "ready",
         );

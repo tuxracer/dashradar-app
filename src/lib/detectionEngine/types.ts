@@ -1,4 +1,5 @@
 import type { HudModel, Size } from "@/lib/detection";
+import type { DetectionClass } from "@/lib/detectionModels";
 import type { Track } from "@/lib/detectionTracker";
 import type { Contact } from "@/lib/processDetectionResult";
 import type { Detection } from "@/types";
@@ -119,6 +120,12 @@ export type DetectionSnapshot = {
   status: DetectionStatus;
   /** How the detector's backend came up; undefined until the session builds. */
   backendProbe: BackendProbe | undefined;
+  /**
+   * What the running checkpoint says it looks for, as its own file named it on
+   * load, which is the only place those words exist. Undefined until a session
+   * reports ready, and undefined afterwards for a file that names nothing.
+   */
+  loadedClasses: readonly DetectionClass[] | undefined;
   /** True only while the weights stream over the network (never for cache). */
   downloadingModel: boolean;
   modelProgress: ModelProgress;

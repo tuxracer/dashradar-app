@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, X } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { isDeepEqual } from "remeda";
+import { ModelCard } from "@/components/ModelCard";
 import { useDetection } from "@/context/DetectionContext";
 import { useSettings } from "@/context/SettingsContext";
 import {
@@ -80,6 +81,11 @@ type ModelScreenProps = {
  * Full-screen picker for the model the detector runs, opened from the Detection
  * model row of the settings panel.
  *
+ * A row opens that model's card rather than selecting it, so choosing one is
+ * something you do after reading what it is; the card is also where a model is
+ * removed. The list keeps the amber selection, since it is what says which of
+ * several near-identical names the draft is on.
+ *
  * The selection lives in a draft until Save, so leaving the screen cannot
  * change what the detector runs. Save is the only way out that applies
  * anything: it confirms, writes the selection straight to storage, and reloads,
@@ -112,6 +118,10 @@ export const ModelScreen = ({
   // no way to make it true.
   const changed = !isDeepEqual([...draft], [activeModel.id]);
 
+  // Which model's card is open, if any. An id rather than the entry, so a card
+  // left open over a model that has just been removed closes itself instead of
+  // describing something the registry no longer holds.
+  const [openId, setOpenId] = useState<string | undefined>(undefined);
   const [add, setAdd] = useState<AddPhase>({ phase: "closed" });
   // The row currently collapsing out. Its model is already gone from storage;
   // this only keeps the element on screen for the length of the animation.
@@ -124,6 +134,26 @@ export const ModelScreen = ({
   // await checks this controller before touching state or starting a trial.
   const abortRef = useRef<AbortController | undefined>(undefined);
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  // Escape closes the open card and stops there, the same one-screen-at-a-time
+  // rule the settings panel follows backing out of this screen. The listener is
+  // on the capture phase and consumes the event, because the panel's own
+  // handler is on window too and was registered first: left to run, it would
+  // take the picker down with the card on a single press.
+  useEffect(() => {
+    if (!openId) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      event.stopImmediatePropagation();
+      setOpenId(undefined);
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [openId]);
 
   /** Re-read the list after a stored-model mutation. */
   const refreshModels = () => {
@@ -244,7 +274,10 @@ export const ModelScreen = ({
       setAdd({ phase: "failed", url: candidateUrl, message: result.reason });
       return;
     }
-    if (!addStoredModel(entry)) {
+    // The trial's own classes are stored with the entry, since this load is the
+    // only time anything reads them out of these exact bytes until the model is
+    // run; the card shows them from here.
+    if (!addStoredModel({ ...entry, classes: result.loaded?.classes })) {
       setAdd({
         phase: "failed",
         url: candidateUrl,
@@ -265,13 +298,14 @@ export const ModelScreen = ({
   };
 
   const handleRemove = (model: DetectionModel) => {
-    // Confirmed because the row is a wide touch target next to the one that
-    // selects the model, and getting it back means pasting the URL again and
+    // Confirmed because getting the model back means pasting the URL again and
     // re-downloading the weights.
     if (!window.confirm(`Remove ${model.slug} ${model.revision}?`)) {
       return;
     }
     removeStoredModel(model.id);
+    // Back to the list, where the row this card was opened from collapses out.
+    setOpenId(undefined);
     // A drafted selection of the removed row has nothing to apply anymore;
     // the default is the one row guaranteed to exist.
     setDraft((previous) =>
@@ -290,18 +324,19 @@ export const ModelScreen = ({
     );
   };
 
-  const toggleModel = (id: string) => {
-    setDraft((previous) => {
-      if (previous.includes(id)) {
-        // Never leave nothing selected: there would be no model to load.
-        return previous.length > 1
-          ? previous.filter((entry) => entry !== id)
-          : previous;
-      }
-      // Past the cap the oldest pick drops, so a single-select list behaves
-      // like a radio group and a larger cap behaves like a queue.
-      return [...previous, id].slice(-MAX_SELECTED_MODELS);
-    });
+  /**
+   * Draft a model from its card, then return to the list, which is where the
+   * selection is visible and where SAVE lives.
+   */
+  const chooseModel = (id: string) => {
+    setDraft((previous) =>
+      previous.includes(id)
+        ? previous
+        : // Past the cap the oldest pick drops, so a single-select list behaves
+          // like a radio group and a larger cap behaves like a queue.
+          [...previous, id].slice(-MAX_SELECTED_MODELS),
+    );
+    setOpenId(undefined);
   };
 
   const handleSave = () => {
@@ -317,6 +352,21 @@ export const ModelScreen = ({
     }
     reload();
   };
+
+  // Rendered instead of the list rather than over it, the same way the panel
+  // hands over to this screen: one screen on the glass at a time.
+  const openModel = models.find((model) => model.id === openId);
+  if (openModel) {
+    return (
+      <ModelCard
+        model={openModel}
+        selected={draft.includes(openModel.id)}
+        onUse={() => chooseModel(openModel.id)}
+        onRemove={() => handleRemove(openModel)}
+        onBack={() => setOpenId(undefined)}
+      />
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-surface px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))]">
@@ -374,38 +424,33 @@ export const ModelScreen = ({
                 <button
                   type="button"
                   data-testid={`model-option-${model.id}`}
-                  onClick={() => toggleModel(model.id)}
+                  onClick={() => setOpenId(model.id)}
                   // The amber arrives as a wipe rather than a repaint, so the
                   // eye is told which row took the selection. Two entries can
                   // read almost identically at a glance.
-                  className={`relative flex min-h-20 flex-1 flex-col justify-center gap-1 overflow-hidden rounded-xl bg-white/10 px-6 py-4 text-left transition duration-300 before:absolute before:inset-0 before:origin-left before:bg-hud-amber before:transition-transform before:duration-300 before:ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.98] motion-reduce:transition-none motion-reduce:before:transition-none ${
+                  className={`relative flex min-h-20 flex-1 items-center justify-between gap-4 overflow-hidden rounded-xl bg-white/10 px-6 py-4 text-left transition duration-300 before:absolute before:inset-0 before:origin-left before:bg-hud-amber before:transition-transform before:duration-300 before:ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.98] motion-reduce:transition-none motion-reduce:before:transition-none ${
                     selected
                       ? "text-surface before:scale-x-100"
                       : "text-white before:scale-x-0"
                   }`}
                 >
-                  <span className="relative text-lg font-semibold tracking-[0.04em]">
-                    {model.slug}
+                  <span className="flex flex-col gap-1">
+                    <span className="relative text-lg font-semibold tracking-[0.04em]">
+                      {model.slug}
+                    </span>
+                    <span
+                      className={`relative text-sm font-medium tracking-[0.06em] transition-colors duration-300 motion-reduce:transition-none ${
+                        selected ? "text-surface/70" : "text-white/45"
+                      }`}
+                    >
+                      {model.revision}
+                    </span>
                   </span>
-                  <span
-                    className={`relative text-sm font-medium tracking-[0.06em] transition-colors duration-300 motion-reduce:transition-none ${
-                      selected ? "text-surface/70" : "text-white/45"
-                    }`}
-                  >
-                    {model.revision}
-                  </span>
+                  <ChevronRight
+                    className="relative h-5 w-5 shrink-0"
+                    strokeWidth={2}
+                  />
                 </button>
-                {model.id !== DEFAULT_MODEL.id && (
-                  <button
-                    type="button"
-                    data-testid={`model-remove-${model.id}`}
-                    aria-label={`Remove ${model.slug}`}
-                    onClick={() => handleRemove(model)}
-                    className="flex min-w-14 items-center justify-center rounded-xl border border-white/25 text-white/60 transition active:scale-[0.94] motion-reduce:transition-none"
-                  >
-                    <X className="h-5 w-5" strokeWidth={2} />
-                  </button>
-                )}
               </div>
             );
           })}

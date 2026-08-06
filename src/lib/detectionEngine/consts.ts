@@ -177,6 +177,7 @@ export const WORKER_LOAD_TIMEOUT_MS = 60_000;
 export const INITIAL_SNAPSHOT: DetectionSnapshot = {
   status: "loading-model",
   backendProbe: undefined,
+  loadedClasses: undefined,
   downloadingModel: false,
   modelProgress: { loadedBytes: 0, totalBytes: 0 },
   hud: undefined,

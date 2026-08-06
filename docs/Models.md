@@ -87,7 +87,7 @@ route matches on.
 ## Adding a model
 
 For a checkpoint that already meets the contract above, the normal way onto a
-device is the developer model picker (Settings > Detection model > ADD MODEL):
+device is the model picker (Settings > Detection model > ADD MODEL):
 paste a Hugging Face URL. A bare repo page
 (`https://huggingface.co/<owner>/<repo>`) works whether the repo holds one
 `.onnx` file or several: with one it is used, and with several the picker
@@ -118,8 +118,16 @@ Registering a model in code is still how a build's own default changes:
 | `revision` | The pinned tag.                                                           |
 | `file`     | Repo-relative path to the ONNX file (for example `onnx/model_fp16.onnx`). |
 
-That is the whole entry. It says which bytes to fetch and nothing about what
-they contain, because everything else is read from the bytes themselves at load.
+That is the whole entry a build declares. It says which bytes to fetch and
+nothing about what they contain, because everything else is read from the bytes
+themselves at load.
+
+A model added from a URL carries one more field, `classes`, written by the trial
+load rather than by hand: the labels that file named, so the model card can say
+what an entry looks for without downloading it again. It is display only, never
+read by the decode, and it cannot drift, because an added entry's id is its own
+revision-pinned weights URL and those bytes do not change. A declared entry has
+no equivalent, since its revision moves under a stable id.
 
 ### Publish the score you measured at
 

@@ -843,6 +843,34 @@ describe("model load", () => {
     expect(engine.getSnapshot().status).toBe("ready");
   });
 
+  // The words a checkpoint gives its classes exist in the file and nowhere
+  // else, so the load is the only chance to learn them; the model card reads
+  // them from here to say what the running detector looks for.
+  it("publishes the classes the loaded checkpoint named", () => {
+    const { engine, worker } = testEngine();
+    expect(engine.getSnapshot().loadedClasses).toBeUndefined();
+    worker.emit({
+      type: "ready",
+      loaded: { headWidth: 2, classes: [{ index: 1, label: "police" }] },
+    });
+    expect(engine.getSnapshot().loadedClasses).toEqual([
+      { index: 1, label: "police" },
+    ]);
+  });
+
+  it("reports a checkpoint that names nothing as naming nothing", () => {
+    const { engine, worker } = testEngine();
+    worker.emit({
+      type: "ready",
+      loaded: { headWidth: 2, classes: [{ index: 1, label: "police" }] },
+    });
+    // A recycle rebuilds the session from the same entry, so a rebuild that
+    // reports no classes is the truth about what is running now, not a gap to
+    // paper over with what the last session said.
+    worker.emit({ type: "ready" });
+    expect(engine.getSnapshot().loadedClasses).toBeUndefined();
+  });
+
   it("surfaces an unsupported device as a terminal error", () => {
     const { engine, worker } = testEngine();
     worker.emit({ type: "worker-error", code: "WEBGPU_UNSUPPORTED" });
