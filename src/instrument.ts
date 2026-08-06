@@ -75,6 +75,7 @@ if (!import.meta.env.DEV && isTrackingOptedOut() === false) {
       gapMs,
       uptimeMs,
       framesProcessed,
+      scansProcessed,
       graphCapture,
       release,
       activeView,
@@ -99,7 +100,7 @@ if (!import.meta.env.DEV && isTrackingOptedOut() === false) {
         model: model ?? "unknown",
         uptimeBucket: uptimeBucket(uptimeMs),
       },
-      extra: { gapMs, uptimeMs, framesProcessed },
+      extra: { gapMs, uptimeMs, framesProcessed, scansProcessed },
     });
   }
 }

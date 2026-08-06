@@ -76,15 +76,18 @@ describe("writeHeartbeat / readPreviousSessionEnd", () => {
     });
   });
 
-  it("carries the view and the model through to the report", () => {
+  it("carries the view, the model, and the scan count through to the report", () => {
     writeHeartbeat({
       startedAt: 0,
       lastBeatAt: 100,
-      framesProcessed: 1,
+      framesProcessed: 5,
+      scansProcessed: 2,
       activeView: "scene",
       model: "custom",
     });
     expect(readPreviousSessionEnd(100)).toMatchObject({
+      framesProcessed: 5,
+      scansProcessed: 2,
       activeView: "scene",
       model: "custom",
     });

@@ -92,6 +92,7 @@ export const readPreviousSessionEnd = (
     gapMs,
     uptimeMs: parsed.lastBeatAt - parsed.startedAt,
     framesProcessed: parsed.framesProcessed,
+    scansProcessed: parsed.scansProcessed,
     graphCapture: parsed.graphCapture,
     release: parsed.release,
     activeView: parsed.activeView,

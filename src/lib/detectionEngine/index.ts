@@ -267,6 +267,15 @@ export const createDetectionEngine = ({
   // and a gated session parked at a light is turning over perfectly well.
   let framesTotal = 0;
   /**
+   * Running total of the subset of those that actually ran the model. Kept
+   * apart from framesTotal because the two answer different questions and one
+   * number cannot answer both: the total says the pump kept turning over,
+   * while this says how much GPU work the session had done by the time it
+   * died. A session that skipped its way to twenty round trips and one that
+   * inferred twenty times look identical in the total and are nothing alike.
+   */
+  let scansTotal = 0;
+  /**
    * performance.now() of the last scan the model actually ran, or undefined
    * when it has not run since the pump last started. This is the whole of the
    * engine's side of the scene-change gate: it decides when skipping has gone
@@ -324,11 +333,13 @@ export const createDetectionEngine = ({
   const crashSentinel$ = defer(() => {
     const startedAt = Date.now();
     const baseline = framesTotal;
+    const scanBaseline = scansTotal;
     const beat = () => {
       writeHeartbeat({
         startedAt,
         lastBeatAt: Date.now(),
         framesProcessed: framesTotal - baseline,
+        scansProcessed: scansTotal - scanBaseline,
         graphCapture: snapshot$.value.backendProbe?.graphCapture,
         // Stamp the writing build, so a crash report names the deploy that
         // produced it rather than the one that happens to read the record.
@@ -644,6 +655,7 @@ export const createDetectionEngine = ({
       }
       case "detections": {
         framesTotal += 1;
+        scansTotal += 1;
         const at = performance.now();
         lastScanAt = at;
         const result = processDetectionResult({

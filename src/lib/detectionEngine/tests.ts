@@ -358,6 +358,41 @@ describe("crash sentinel heartbeat", () => {
     expect(readSentinel()).toMatchObject({ framesProcessed: 1 });
   });
 
+  it("counts a gated skip as a round trip but not as a scan", async () => {
+    const { worker } = scanning();
+    await vi.advanceTimersByTimeAsync(0);
+    worker.emit({ type: "scan-skipped", gateMs: 1, delta: 0 });
+    worker.emit(emptyResult);
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+    // Two round trips, one of which the gate answered without the model. Read
+    // as a single total, this session looks twice as busy as it was.
+    expect(readSentinel()).toMatchObject({
+      framesProcessed: 2,
+      scansProcessed: 1,
+    });
+  });
+
+  // Both counts are engine-scoped totals read against a baseline taken when
+  // scanning starts. Without the baseline a session that paused once would
+  // report every frame the whole drive had run as its own.
+  it("counts from zero again after a stop and restart, not from the drive's total", async () => {
+    const { engine, worker } = scanning();
+    await vi.advanceTimersByTimeAsync(0);
+    worker.emit({ type: "scan-skipped", gateMs: 1, delta: 0 });
+    worker.emit(emptyResult);
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+    expect(readSentinel()).toMatchObject({
+      framesProcessed: 2,
+      scansProcessed: 1,
+    });
+    engine.setInputs({ video: undefined });
+    engine.setInputs({ video: fakeVideo() });
+    expect(readSentinel()).toMatchObject({
+      framesProcessed: 0,
+      scansProcessed: 0,
+    });
+  });
+
   it("does not reset startedAt or framesProcessed when a recycled worker re-reports its probe", async () => {
     const { worker } = scanning();
     // Capture the initial startedAt written when the running span began.

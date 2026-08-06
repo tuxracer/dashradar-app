@@ -30,7 +30,20 @@ export const isActiveView = (value: unknown): value is ActiveView =>
 export type SentinelRecord = {
   startedAt: number;
   lastBeatAt: number;
+  /**
+   * Round trips the pump completed, counting the ones the scene-change gate
+   * answered without running the model. Keeps that meaning rather than
+   * narrowing to real scans, because reports already in hand were written
+   * under it and a field that quietly changes what it counts makes every
+   * comparison across the change wrong without looking wrong.
+   */
   framesProcessed: number;
+  /**
+   * How many of those actually ran the model. Absent on records written by
+   * builds that counted only the total; the difference against
+   * framesProcessed is how many frames the gate answered for free.
+   */
+  scansProcessed?: number;
   graphCapture?: boolean;
   release?: string;
   activeView?: ActiveView;
@@ -48,6 +61,7 @@ export const isSentinelRecord = (value: unknown): value is SentinelRecord => {
     isNumber(value.startedAt) &&
     isNumber(value.lastBeatAt) &&
     isNumber(value.framesProcessed) &&
+    (value.scansProcessed === undefined || isNumber(value.scansProcessed)) &&
     (value.graphCapture === undefined || isBoolean(value.graphCapture)) &&
     (value.release === undefined || isString(value.release)) &&
     (value.activeView === undefined || isActiveView(value.activeView)) &&
@@ -68,6 +82,7 @@ export type PreviousSessionEnd = {
   gapMs: number;
   uptimeMs: number;
   framesProcessed: number;
+  scansProcessed?: number;
   graphCapture?: boolean;
   release?: string;
   activeView?: ActiveView;
