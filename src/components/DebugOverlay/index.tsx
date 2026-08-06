@@ -3,6 +3,9 @@ import { useSettings } from "@/context/SettingsContext";
 import type { DebugSnapshot, ModelProgress } from "@/context/DetectionContext";
 import type { Size } from "@/lib/detection";
 import type { BackendProbe } from "@/workers/detection/types";
+import { READOUT_INTERVAL_MS } from "./consts";
+
+export * from "./consts";
 
 /** Props for DebugOverlay. Data is passed in so it renders without the worker. */
 type DebugOverlayProps = {
@@ -95,25 +98,19 @@ export const DebugOverlay = ({
   const [debug, setDebug] = useState<DebugSnapshot>(getDebug);
   useEffect(() => {
     // The panel renders nothing while showDebug is off, so don't run the
-    // readout loop (and its state updates) for a hidden overlay. On enable,
-    // the first tick fires within a frame (rAF timestamps exceed the throttle
-    // window on any page older than it), so the readout is current
-    // immediately rather than stale from the last time it was shown.
+    // readout (and its state updates) for a hidden overlay.
     if (!showDebug) {
       return;
     }
-    let frame = 0;
-    let last = 0;
-    const tick = (time: number) => {
-      // Throttle to ~8 Hz; the readout is for eyeballing, not smoothness.
-      if (time - last > 120) {
-        last = time;
-        setDebug(getDebug());
-      }
-      frame = window.requestAnimationFrame(tick);
-    };
-    frame = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(frame);
+    // Polled in wall time rather than per frame: the readout has nothing to
+    // say between ticks, so a frame loop would only be waking at the display's
+    // rate to ask whether the interval had elapsed. The first tick replaces
+    // whatever was on screen when the panel was last shown, one interval after
+    // it opens.
+    const readout = window.setInterval(() => {
+      setDebug(getDebug());
+    }, READOUT_INTERVAL_MS);
+    return () => window.clearInterval(readout);
   }, [getDebug, showDebug]);
 
   if (!showDebug) {

@@ -1,7 +1,11 @@
-import { render } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DebugOverlay } from "@/components/DebugOverlay";
-import { SettingsProvider } from "@/context/SettingsContext";
+import {
+  SETTINGS_VERSION,
+  SettingsProvider,
+  STORAGE_KEY,
+} from "@/context/SettingsContext";
 import type { DebugSnapshot } from "@/context/DetectionContext";
 
 afterEach(() => {
@@ -29,18 +33,30 @@ const debug: DebugSnapshot = {
   skipsTotal: 0,
 };
 
-const renderOverlay = () =>
+const renderOverlay = (getDebug: () => DebugSnapshot = () => debug) =>
   render(
     <SettingsProvider>
       <DebugOverlay
         backendProbe={undefined}
         modelProgress={{ loadedBytes: 0, totalBytes: 0 }}
-        getDebug={() => debug}
+        getDebug={getDebug}
         videoSize={{ width: 1280, height: 720 }}
         viewportSize={{ width: 800, height: 400 }}
       />
     </SettingsProvider>,
   );
+
+/** Turn the overlay on, which needs the developer master switch on too. */
+const enableDebugOverlay = () => {
+  window.localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({
+      settingsVersion: SETTINGS_VERSION,
+      developerOptions: true,
+      showDebug: true,
+    }),
+  );
+};
 
 describe("DebugOverlay", () => {
   it("renders nothing when showDebug is off (the default)", () => {
@@ -48,11 +64,29 @@ describe("DebugOverlay", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  // The overlay is off for every real drive, so its readout loop must not cost
-  // a frame's work per frame for the whole session.
-  it("does not schedule the readout loop while showDebug is off", () => {
-    const rafSpy = vi.spyOn(window, "requestAnimationFrame").mockReturnValue(0);
+  // The overlay is off for every real drive, so its readout must cost the
+  // session nothing at all while it is hidden.
+  it("schedules no readout while showDebug is off", () => {
+    const interval = vi.spyOn(window, "setInterval");
+    const frame = vi.spyOn(window, "requestAnimationFrame").mockReturnValue(0);
     renderOverlay();
-    expect(rafSpy).not.toHaveBeenCalled();
+    expect(interval).not.toHaveBeenCalled();
+    expect(frame).not.toHaveBeenCalled();
+  });
+
+  it("polls the snapshot on a timer rather than every frame", async () => {
+    // Per-frame polling is what this readout does not need: it is paced in
+    // wall time and has nothing to say between ticks.
+    enableDebugOverlay();
+    const frame = vi.spyOn(window, "requestAnimationFrame").mockReturnValue(0);
+    let current = debug;
+    renderOverlay(() => current);
+    await waitFor(() => expect(screen.getByText("9.1 ms")).toBeInTheDocument());
+
+    current = { ...debug, roundTripMs: 42.3 };
+    await waitFor(() =>
+      expect(screen.getByText("42.3 ms")).toBeInTheDocument(),
+    );
+    expect(frame).not.toHaveBeenCalled();
   });
 });
