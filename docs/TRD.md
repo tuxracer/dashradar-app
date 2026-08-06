@@ -198,6 +198,8 @@ Timing values are bucketed to the nearest half second, so jitter collapses and a
 
 **Crash sentinel.** iOS sometimes kills the page mid-scan with no JS running at kill time, so Sentry never sees it. While scanning, the app writes a heartbeat to localStorage and clears it on every clean exit, including a synchronous `pagehide` path (React never flushes effect cleanups during unload, and the auto-updating service worker reloads sessions routinely). Only a real OS kill leaves a stale record; the next launch classifies it by gap length (short: crash, since iOS relaunches a killed foreground tab within seconds; long: unclean shutdown). The heartbeat runs fast for the first 30 s of scanning and slow after, because every field kill so far landed within ~21 s of the pump starting and a flat slow cadence could not resolve where in startup the page died.
 
+**Install id.** Every Sentry event carries a random per-install identifier, kept in localStorage and reported as the user id. Nothing about the device or the person goes into it. It exists because reports with no identity all count as zero users, which leaves five relaunches on one handset looking exactly like five handsets failing once, and those are opposite conclusions about how bad a fault is. It is minted only once reporting is known to be allowed, so a visitor who has opted out never has one written, and clearing site data or resetting the app mints a new one.
+
 ## 13. Error handling
 
 Typed error classes with a machine-readable `code`, never string-matched messages.

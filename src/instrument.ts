@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/react";
 import { APP_RELEASE } from "@/lib/appRelease";
 import { readPreviousSessionEnd } from "@/lib/crashSentinel";
+import { readInstallId } from "@/lib/installId";
 import { isTrackingOptedOut } from "privacy-signals";
 
 /**
@@ -52,6 +53,16 @@ if (!import.meta.env.DEV && isTrackingOptedOut() === false) {
     // Never attach IP addresses or other PII to events.
     sendDefaultPii: false,
   });
+
+  // Tag every event with the install it came from. The id is random and means
+  // nothing outside this project, but it is what separates one phone crashing
+  // five times from five phones crashing once, which the crash sentinel cannot
+  // tell apart on its own. Minted here rather than at import time so a visitor
+  // who has opted out never has one written.
+  const installId = readInstallId();
+  if (installId) {
+    Sentry.setUser({ id: installId });
+  }
 
   // Report a dirty previous session now that Sentry is initialized. Level
   // distinguishes an OS-level kill ("crash", the page relaunched almost
