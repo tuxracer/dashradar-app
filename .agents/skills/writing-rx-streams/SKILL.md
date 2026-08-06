@@ -29,6 +29,8 @@ The stream modules (`src/lib/detectionEngine`, `src/lib/camera`, `src/lib/wakeLo
 
 **Terminal failures use the error channel with a typed error**; recoverable ones stay inside the stream. `cameraFeed` errors with a `CameraError` and reports nothing after it, while the pump's capture failures retry without ever erroring the pump.
 
+**A throwing subscriber cannot unwind `next()`.** rxjs catches consumer-callback errors and reports them asynchronously, so a `subject.next()` (the engine's `publish`) always returns. Do not order cleanup on the assumption that a subscriber throw propagates, and do not diagnose a leak through that path either; it is unreachable (verified empirically, rxjs 7).
+
 ## React boundary
 
 **React consumes a resource stream once per mount.** Subscribe in a mount-scoped effect and read changing callbacks through refs (see `CameraView`); a subscription keyed on callback identity restarts the resource on any parent render that forgets to memoize, which for the camera means a user-visible stutter and possibly a fresh permission hit.
