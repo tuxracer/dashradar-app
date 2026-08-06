@@ -410,26 +410,29 @@ describe("model selection", () => {
     expect(result.current.modelIds).toEqual([DEFAULT_MODEL.id]);
   });
 
-  it("reports the shipping model while developer options are off", () => {
-    const { result } = mount({ developerOptions: false, modelIds: ["other"] });
-    expect(result.current.modelIds).toEqual([DEFAULT_MODEL.id]);
-  });
-
-  it("reports the stored selection once developer options are on", () => {
-    const { result } = mount({ developerOptions: true, modelIds: ["other"] });
-    expect(result.current.modelIds).toEqual(["other"]);
+  // Driver-facing, not a developer option: the Detection model row is what says
+  // which checkpoint is running, so a selection that stopped applying with the
+  // master switch off would leave the row naming a model the app is not using.
+  it("reports the stored selection whatever the master switch does", () => {
+    expect(
+      mount({ developerOptions: false, modelIds: ["other"] }).result.current
+        .modelIds,
+    ).toEqual(["other"]);
+    expect(
+      mount({ developerOptions: true, modelIds: ["other"] }).result.current
+        .modelIds,
+    ).toEqual(["other"]);
   });
 
   it("ignores a stored selection that is not a list of strings", () => {
     const { result } = mount({
-      developerOptions: true,
       modelIds: [7],
     } as unknown as Partial<PersistedSettings>);
     expect(result.current.modelIds).toEqual([DEFAULT_MODEL.id]);
   });
 
   it("commits the selection without waiting for an effect", () => {
-    const { result } = mount({ developerOptions: true });
+    const { result } = mount();
     // Deliberately not wrapped in act(): the commit has to reach storage on its
     // own, because the caller reloads the page on the next line and would
     // outrun the persist effect.

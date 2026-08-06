@@ -119,7 +119,6 @@ export const createSettingsStore = (): SettingsStore => {
           zoomMode: stored.zoomMode,
           confidenceThreshold: stored.confidenceThreshold,
           sceneFov: stored.sceneFov,
-          modelIds: stored.modelIds,
           zoomIndicator: stored.zoomIndicator,
           roundTripIndicator: stored.roundTripIndicator,
           cameraPreview: stored.cameraPreview,
@@ -131,6 +130,7 @@ export const createSettingsStore = (): SettingsStore => {
     radarAudio: stored.radarAudio,
     viewMode: stored.viewMode,
     detectionImage: stored.detectionImage,
+    modelIds: stored.modelIds,
     settingsOpen,
   });
 

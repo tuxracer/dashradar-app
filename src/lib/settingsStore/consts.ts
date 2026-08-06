@@ -25,9 +25,8 @@ export const CONFIDENCE_LEVELS = [
  * options master switch is off: nothing extra on the glass (no debug overlay,
  * no zoom or round-trip pill, no camera preview, no detection view), the
  * thermal pacing floor and the scene-change gate in place, the full 1x scan,
- * the production confidence
- * floor, the default lens FoV, the percentage readout, and the shipping
- * detection model. The floor is
+ * the production confidence floor, the default lens FoV, and the percentage
+ * readout. The floor is
  * CONFIDENCE_THRESHOLD itself rather than a copy of its value, so the state
  * every driver runs in cannot quietly disagree with the one the detector
  * filters at. These are also the
@@ -41,7 +40,6 @@ export const DEVELOPER_OPTIONS_OFF: DeveloperOptions = {
   zoomMode: "1x",
   confidenceThreshold: CONFIDENCE_THRESHOLD,
   sceneFov: SCENE_FOV_DEG_DEFAULT,
-  modelIds: [DEFAULT_MODEL.id],
   zoomIndicator: false,
   roundTripIndicator: false,
   cameraPreview: false,
@@ -61,5 +59,6 @@ export const DEFAULT_SETTINGS: Settings = {
   radarAudio: true,
   viewMode: "radar",
   detectionImage: false,
+  modelIds: [DEFAULT_MODEL.id],
   ...DEVELOPER_OPTIONS_OFF,
 };

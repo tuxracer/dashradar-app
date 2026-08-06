@@ -45,7 +45,7 @@ export type Settings = {
   /**
    * Master switch for the development-only settings (showDebug,
    * throttleInference, sceneChangeGate, zoomMode, confidenceThreshold,
-   * sceneFov, modelIds, zoomIndicator, roundTripIndicator, cameraPreview,
+   * sceneFov, zoomIndicator, roundTripIndicator, cameraPreview,
    * detectionView, rawConfidence). Off by default. While it is off,
    * SettingsProvider reports each of those at its DEVELOPER_OPTIONS_OFF value
    * no matter what is stored, so a development tweak left enabled cannot alter
@@ -115,9 +115,9 @@ export type Settings = {
    * though MAX_SELECTED_MODELS caps it at one today. Ids are stored unresolved
    * and resolved through resolveModels at the point of use, so an id left by a
    * build that had a model this one does not degrades to the shipping model
-   * instead of invalidating the whole blob. A developer option, so it only
-   * takes effect while developerOptions is on and the app runs the shipping
-   * model otherwise.
+   * instead of invalidating the whole blob. Driver-facing: the Detection model
+   * row is what shows which checkpoint the app is running, and gating it would
+   * mean a selection someone made stopped applying without the row saying so.
    */
   modelIds: readonly string[];
   /**
@@ -206,7 +206,6 @@ export type DeveloperOptions = Pick<
   | "zoomMode"
   | "confidenceThreshold"
   | "sceneFov"
-  | "modelIds"
   | "zoomIndicator"
   | "roundTripIndicator"
   | "cameraPreview"
@@ -233,6 +232,7 @@ export type SettingsSnapshot = DeveloperOptions & {
   radarAudio: boolean;
   viewMode: ViewMode;
   detectionImage: boolean;
+  modelIds: readonly string[];
   /** Whether the full-screen settings panel is open. Ephemeral, not persisted. */
   settingsOpen: boolean;
 };

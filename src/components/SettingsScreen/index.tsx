@@ -3,10 +3,9 @@ import { track } from "@vercel/analytics";
 import { ChevronRight, X } from "lucide-react";
 import { ModelScreen } from "@/components/ModelScreen";
 import { ShareCard } from "@/components/ShareCard";
-import { useDetection } from "@/context/DetectionContext";
 import { useSettings } from "@/context/SettingsContext";
 import { useVideoSource } from "@/context/VideoSourceContext";
-import { modelRepoUrl, resolveModels } from "@/lib/detectionModels";
+import { resolveModels } from "@/lib/detectionModels";
 import { resetAppData } from "@/lib/resetAppData";
 import { SCENE_FOV_DEG_MAX, SCENE_FOV_DEG_MIN } from "@/lib/scenePlacement";
 import { REPO_URL, RESET_CONFIRM_MESSAGE, ZOOM_MODE_OPTIONS } from "./consts";
@@ -50,12 +49,12 @@ const handleReset = () => {
 /**
  * Full-screen settings panel built for driver-first use on a dash mount, in
  * landscape. Renders nothing until the panel is opened. Large, full-width rows
- * with big tap targets: the Audio alerts, Detection image, and Developer
- * options toggles, the development-only controls Developer options reveals
- * (Debug overlay, Zoom indicator, Round-trip, Raw confidence, Camera preview,
- * Detection view, Throttle inference, Detection model, the segmented Zoom mode
- * picker, Min confidence, Scene FoV, Video file, Reset app data), plus
- * read-only Model and About rows.
+ * with big tap targets: the Audio alerts and Detection image toggles, the
+ * Detection model row, the Developer options toggle, the development-only
+ * controls it reveals (Debug overlay, Zoom indicator, Round-trip, Raw
+ * confidence, Camera preview, Detection view, Throttle inference, Skip still
+ * frames, the segmented Zoom mode picker, Min confidence, Scene FoV, Video
+ * file, Reset app data), plus the About row.
  * Detection model is the one row that leads somewhere: it opens ModelScreen in
  * place of this panel, which owns picking the model and applying the choice.
  * Closes on the large close button or Escape, and Escape backs out of the model
@@ -97,7 +96,6 @@ export const SettingsScreen = () => {
     rawConfidence,
     toggleRawConfidence,
   } = useSettings();
-  const { activeModel } = useDetection();
   const { source, setVideoFile, clearVideoFile } = useVideoSource();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [modelScreenOpen, setModelScreenOpen] = useState(false);
@@ -187,6 +185,28 @@ export const SettingsScreen = () => {
               </span>
             </span>
             <Toggle on={detectionImage} />
+          </button>
+
+          <button
+            type="button"
+            data-testid="open-model-screen"
+            onClick={() => setModelScreenOpen(true)}
+            className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
+          >
+            <span className="flex flex-col gap-1">
+              <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+                Detection model
+              </span>
+              <span className="text-sm font-medium text-white/45">
+                Sets what the app looks for on the road.
+              </span>
+            </span>
+            <span className="flex items-center gap-2 text-base font-semibold tracking-[0.04em] text-white/60">
+              {resolveModels(modelIds)
+                .map((model) => model.slug)
+                .join(", ")}
+              <ChevronRight className="h-5 w-5 shrink-0" strokeWidth={2} />
+            </span>
           </button>
 
           <button
@@ -337,28 +357,6 @@ export const SettingsScreen = () => {
                   </span>
                 </span>
                 <Toggle on={sceneChangeGate} />
-              </button>
-
-              <button
-                type="button"
-                data-testid="open-model-screen"
-                onClick={() => setModelScreenOpen(true)}
-                className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
-              >
-                <span className="flex flex-col gap-1">
-                  <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-                    Detection model
-                  </span>
-                  <span className="text-sm font-medium text-white/45">
-                    Chooses the checkpoint the detector runs.
-                  </span>
-                </span>
-                <span className="flex items-center gap-2 text-base font-semibold tracking-[0.04em] text-white/60">
-                  {resolveModels(modelIds)
-                    .map((model) => model.slug)
-                    .join(", ")}
-                  <ChevronRight className="h-5 w-5 shrink-0" strokeWidth={2} />
-                </span>
               </button>
 
               <div className="flex min-h-16 flex-col gap-3 py-4">
@@ -518,20 +516,6 @@ export const SettingsScreen = () => {
               </div>
             </>
           )}
-
-          <a
-            href={modelRepoUrl(activeModel)}
-            target="_blank"
-            rel="noreferrer"
-            className="flex min-h-16 items-center justify-between gap-6 py-4"
-          >
-            <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-              Model
-            </span>
-            <span className="text-base font-semibold tracking-[0.04em] text-white/60">
-              {activeModel.slug} · {activeModel.revision} ↗
-            </span>
-          </a>
 
           <a
             href={REPO_URL}

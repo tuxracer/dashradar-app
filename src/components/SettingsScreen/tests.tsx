@@ -10,11 +10,16 @@ import {
 } from "@/context/SettingsContext";
 import type { PersistedSettings } from "@/context/SettingsContext";
 import { VideoSourceProvider } from "@/context/VideoSourceContext";
-import { DEFAULT_MODEL } from "@/lib/detectionModels";
+import {
+  addStoredModel,
+  DEFAULT_MODEL,
+  pinnedModel,
+} from "@/lib/detectionModels";
 
 /**
- * The panel reads the active model from DetectionContext and the video source
- * provider detaches the engine's video on a swap; neither needs a worker here.
+ * The model screen reads the running model from DetectionContext and the video
+ * source provider detaches the engine's video on a swap; neither needs a worker
+ * here.
  */
 const detachVideo = vi.fn();
 vi.mock("@/context/DetectionContext", () => ({
@@ -162,11 +167,11 @@ describe("SettingsScreen", () => {
     expect(screen.queryByText("Zoom")).not.toBeInTheDocument();
     expect(screen.queryByText("Min confidence")).not.toBeInTheDocument();
     expect(screen.queryByText("Scene FoV")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("open-model-screen")).toBeNull();
     expect(screen.queryByText("Video file")).not.toBeInTheDocument();
     // The driver-facing rows are not developer rows and stay put.
     expect(screen.getByText("Audio alerts")).toBeInTheDocument();
     expect(screen.getByText("Detection image")).toBeInTheDocument();
+    expect(screen.getByTestId("open-model-screen")).toBeInTheDocument();
   });
 
   it("reveals every developer row once developer options are on", async () => {
@@ -232,10 +237,31 @@ describe("SettingsScreen", () => {
     expect(stored("sceneFov")).toBe(75);
   });
 
-  it("opens the model screen from the developer row", async () => {
-    const user = await renderOpenSettingsWithDeveloperOptions();
+  it("opens the model screen without developer options", async () => {
+    const user = await renderOpenSettings();
     await user.click(screen.getByTestId("open-model-screen"));
     expect(screen.getByTestId("model-back")).toBeInTheDocument();
+  });
+
+  // The selection used to be a developer option, so with the master switch off
+  // the row named the shipping model however it was set. It is driver-facing
+  // now: the row has to name the model the app actually loads.
+  it("names an added model on the row with developer options off", async () => {
+    const added = pinnedModel({
+      owner: "someone",
+      slug: "other-detector",
+      revision: "abc123",
+      file: "model.onnx",
+    });
+    addStoredModel(added);
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ modelIds: [added.id] }),
+    );
+    await renderOpenSettings();
+    expect(screen.getByTestId("open-model-screen")).toHaveTextContent(
+      added.slug,
+    );
   });
 
   it("names the camera as the feed until a clip is picked", async () => {

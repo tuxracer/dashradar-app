@@ -77,8 +77,8 @@ type ModelScreenProps = {
 };
 
 /**
- * Full-screen picker for the model the detector runs, opened from the developer
- * section of the settings panel.
+ * Full-screen picker for the model the detector runs, opened from the Detection
+ * model row of the settings panel.
  *
  * The selection lives in a draft until Save, so leaving the screen cannot
  * change what the detector runs. Save is the only way out that applies
@@ -106,10 +106,10 @@ export const ModelScreen = ({
   );
   // Compared against what the session pinned at mount, not against what is
   // stored, because Save's whole job is applying the draft to the running
-  // detector. The two can disagree: turning developer options on mid-session
-  // reveals a stored selection the session never saw, and comparing against
-  // storage would leave Save disabled while the picker showed a model the
-  // detector is not running, with no way to make it true.
+  // detector. Where the two disagree (a commit that reached storage but whose
+  // reload never happened), comparing against storage would leave Save
+  // disabled while the picker showed a model the detector is not running, with
+  // no way to make it true.
   const changed = !isDeepEqual([...draft], [activeModel.id]);
 
   const [add, setAdd] = useState<AddPhase>({ phase: "closed" });
