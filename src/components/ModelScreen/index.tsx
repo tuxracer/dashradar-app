@@ -321,7 +321,7 @@ export const ModelScreen = ({
     // a radio group and a larger cap behaves like a queue.
     const ids = [...selectedIds, id].slice(-MAX_SELECTED_MODELS);
     const names = resolveModels(ids, models).map(modelLabel).join(", ");
-    if (!window.confirm(`Run ${names}?`)) {
+    if (!window.confirm(`Use ${names}?`)) {
       return;
     }
     if (!commitModelIds(ids)) {
