@@ -167,7 +167,7 @@ const pwa = () =>
       // browser that gets this far: WebGPU support (which probeWebGpu requires
       // before the app runs at all) postdates universal woff2 support by years.
       // Precaching them just doubled the font entries on every install.
-      globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+      globPatterns: ["**/*.{js,css,html,svg,png,ico,woff2}"],
       // Rajdhani is a Devanagari-and-Latin typeface, and its @font-face rules
       // carry a unicode-range, so a browser rendering this app's uppercase
       // Latin HUD never requests the Devanagari subsets. The precache does not
