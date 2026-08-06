@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import type { ReactNode } from "react";
 import { track } from "@vercel/analytics";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { ToggleRow } from "@/components/ToggleRow";
 import { useSettings } from "@/context/SettingsContext";
 import { useVideoSource } from "@/context/VideoSourceContext";
@@ -38,6 +38,12 @@ const handleReset = () => {
 type DeveloperScreenProps = {
   /** Returns to the settings panel. */
   onClose: () => void;
+  /**
+   * Opens the model picker. Owned by the settings panel rather than by this
+   * screen, so backing out of the picker lands here instead of dismissing both
+   * and so one component keeps the whole screen stack.
+   */
+  onOpenModel: () => void;
 };
 
 /**
@@ -51,8 +57,16 @@ type DeveloperScreenProps = {
  * is the same `developerOptions` the settings store gates on, which is why a row
  * turned on here goes back to its off value the moment it is flipped: the rows
  * below are not merely hidden, they stop applying.
+ *
+ * Detection model is the exception, and deliberately so: the picker applies a
+ * choice by confirming it and reloading the app, so the choice outlives the
+ * switch rather than being quietly undone by it. `modelIds` is not gated for
+ * that reason.
  */
-export const DeveloperScreen = ({ onClose }: DeveloperScreenProps) => {
+export const DeveloperScreen = ({
+  onClose,
+  onOpenModel,
+}: DeveloperScreenProps) => {
   const {
     developerOptions,
     toggleDeveloperOptions,
@@ -86,6 +100,33 @@ export const DeveloperScreen = ({ onClose }: DeveloperScreenProps) => {
   // numbering being written out by hand. Flipping the master switch is the tap
   // this stagger answers.
   const rows: readonly { key: string; row: ReactNode }[] = [
+    {
+      key: "model",
+      row: (
+        <button
+          type="button"
+          data-testid="open-model-screen"
+          onClick={onOpenModel}
+          className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
+        >
+          <span className="flex flex-col gap-1">
+            <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
+              Detection model
+            </span>
+            <span className="text-sm font-medium text-white/45">
+              Sets what the app looks for on the road.
+            </span>
+          </span>
+          {/* No model name here. A checkpoint's name is a repo slug, far too
+              long for what is left of a row, and it wrapped over two lines to
+              say something the screen behind this row says properly. */}
+          <ChevronRight
+            className="h-5 w-5 shrink-0 text-white/60"
+            strokeWidth={2}
+          />
+        </button>
+      ),
+    },
     {
       key: "showDebug",
       row: (

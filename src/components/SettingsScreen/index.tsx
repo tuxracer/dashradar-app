@@ -10,9 +10,9 @@ import { REPO_URL } from "./consts";
 export * from "./consts";
 
 /**
- * Which screen the panel has handed over to, if any. One value rather than a
- * flag each, because only one can be on the glass at a time and the Escape
- * handler backs out of whichever it is.
+ * The screens the panel can hand over to. Held as a stack rather than one
+ * value, because the picker is reached through the developer screen and backing
+ * out of it has to land there rather than here.
  */
 type SubScreen = "model" | "developer";
 
@@ -20,11 +20,12 @@ type SubScreen = "model" | "developer";
  * Full-screen settings panel built for driver-first use on a dash mount, in
  * landscape. Renders nothing until the panel is opened. Large, full-width rows
  * with big tap targets: the Audio alerts and Detection image toggles, the
- * Detection model row, the Developer options row, and the About row.
- * Two rows lead somewhere rather than doing something: Detection model opens
- * ModelScreen, which owns picking the model and applying the choice, and
- * Developer options opens DeveloperScreen, which owns the master switch and
- * everything behind it. Both render in place of this panel.
+ * Developer options row, and the About row.
+ * Developer options is the one row that leads somewhere: it opens
+ * DeveloperScreen, which owns the master switch, everything behind it, and the
+ * model picker it opens in turn. Sub-screens render in place of this panel, one
+ * at a time, and the panel owns the stack so backing out of the picker lands on
+ * the screen that opened it.
  * Closes on the large close button or Escape, and Escape backs out of a
  * sub-screen first rather than dismissing both. While it is open the detection
  * pump is paused (DetectionContext watches `settingsOpen`) and resumes on
@@ -39,7 +40,8 @@ export const SettingsScreen = () => {
     detectionImage,
     toggleDetectionImage,
   } = useSettings();
-  const [subScreen, setSubScreen] = useState<SubScreen | undefined>(undefined);
+  const [stack, setStack] = useState<readonly SubScreen[]>([]);
+  const top = stack[stack.length - 1];
 
   useEffect(() => {
     if (!settingsOpen) {
@@ -49,21 +51,21 @@ export const SettingsScreen = () => {
       if (event.key !== "Escape") {
         return;
       }
-      // Backs out one screen at a time rather than dismissing both at once,
-      // which is what a sub-screen makes someone expect and is also what keeps
-      // subScreen from outliving the panel. This component is rendered
-      // unconditionally and only returns null while the panel is closed, so it
-      // never unmounts: closing settings straight from a sub-screen would
-      // leave subScreen set and reopen settings onto it.
-      if (subScreen) {
-        setSubScreen(undefined);
+      // Backs out one screen at a time rather than dismissing the lot, which is
+      // what a stack of screens makes someone expect and is also what keeps it
+      // from outliving the panel. This component is rendered unconditionally
+      // and only returns null while the panel is closed, so it never unmounts:
+      // closing settings straight from a sub-screen would leave the stack set
+      // and reopen settings onto it.
+      if (stack.length > 0) {
+        setStack((previous) => previous.slice(0, -1));
         return;
       }
       closeSettings();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [settingsOpen, closeSettings, subScreen]);
+  }, [settingsOpen, closeSettings, stack]);
 
   if (!settingsOpen) {
     return null;
@@ -72,11 +74,17 @@ export const SettingsScreen = () => {
   // Rendered instead of the panel rather than over it, so there is one screen
   // on the glass at a time. settingsOpen stays true throughout, which is what
   // keeps the detection pump paused while a sub-screen is up.
-  if (subScreen === "model") {
-    return <ModelScreen onClose={() => setSubScreen(undefined)} />;
+  const pop = () => setStack((previous) => previous.slice(0, -1));
+  if (top === "model") {
+    return <ModelScreen onClose={pop} />;
   }
-  if (subScreen === "developer") {
-    return <DeveloperScreen onClose={() => setSubScreen(undefined)} />;
+  if (top === "developer") {
+    return (
+      <DeveloperScreen
+        onClose={pop}
+        onOpenModel={() => setStack((previous) => [...previous, "model"])}
+      />
+    );
   }
 
   const versionLabel = __COMMIT_SHA__;
@@ -115,32 +123,8 @@ export const SettingsScreen = () => {
 
           <button
             type="button"
-            data-testid="open-model-screen"
-            onClick={() => setSubScreen("model")}
-            className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
-          >
-            <span className="flex flex-col gap-1">
-              <span className="text-lg font-semibold tracking-[0.06em] text-white/90">
-                Detection model
-              </span>
-              <span className="text-sm font-medium text-white/45">
-                Sets what the app looks for on the road.
-              </span>
-            </span>
-            {/* No model name here. A checkpoint's name is a repo slug, far too
-                long for what is left of a settings row, and it wrapped over
-                two lines to say something the screen behind this row says
-                properly. */}
-            <ChevronRight
-              className="h-5 w-5 shrink-0 text-white/60"
-              strokeWidth={2}
-            />
-          </button>
-
-          <button
-            type="button"
             data-testid="open-developer-screen"
-            onClick={() => setSubScreen("developer")}
+            onClick={() => setStack(["developer"])}
             className="flex min-h-16 items-center justify-between gap-6 py-4 text-left"
           >
             <span className="flex flex-col gap-1">

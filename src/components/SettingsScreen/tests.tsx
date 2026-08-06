@@ -6,11 +6,7 @@ import { SettingsScreen } from "@/components/SettingsScreen";
 import { SettingsProvider, STORAGE_KEY } from "@/context/SettingsContext";
 import type { PersistedSettings } from "@/context/SettingsContext";
 import { VideoSourceProvider } from "@/context/VideoSourceContext";
-import {
-  addStoredModel,
-  DEFAULT_MODEL,
-  pinnedModel,
-} from "@/lib/detectionModels";
+import { DEFAULT_MODEL } from "@/lib/detectionModels";
 
 /**
  * The model screen reads the running model from DetectionContext and the video
@@ -57,6 +53,16 @@ const renderOpenSettings = async () => {
   renderScreen();
   await open(user);
   return user;
+};
+
+/**
+ * Walks to the model picker the way someone does now: the developer screen,
+ * its master switch, then the Detection model row it reveals.
+ */
+const openPicker = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.click(screen.getByTestId("open-developer-screen"));
+  await user.click(screen.getByText("Enable developer options"));
+  await user.click(screen.getByTestId("open-model-screen"));
 };
 
 /**
@@ -118,8 +124,10 @@ describe("SettingsScreen", () => {
     // The driver-facing rows are what is left.
     expect(screen.getByText("Audio alerts")).toBeInTheDocument();
     expect(screen.getByText("Detection image")).toBeInTheDocument();
-    expect(screen.getByTestId("open-model-screen")).toBeInTheDocument();
     expect(screen.getByTestId("open-developer-screen")).toBeInTheDocument();
+    // The picker moved behind the developer screen with the rest of them.
+    expect(screen.queryByTestId("open-model-screen")).toBeNull();
+    expect(screen.queryByText("Detection model")).not.toBeInTheDocument();
   });
 
   it("closes on the close button", async () => {
@@ -136,13 +144,16 @@ describe("SettingsScreen", () => {
 
   // Escape used to close the panel outright from the model screen. This
   // component is rendered unconditionally and only returns null, so it never
-  // unmounts: the sub-screen flag survived, and reopening settings landed on
-  // the picker instead of the panel.
-  it("backs out of the model screen on Escape before closing the panel", async () => {
+  // unmounts: the sub-screen state survived, and reopening settings landed on
+  // the picker instead of the panel. The picker is now two screens deep, so
+  // one press has to land on the screen that opened it.
+  it("backs out of the model screen on Escape, one screen at a time", async () => {
     const user = await renderOpenSettings();
-    await user.click(screen.getByTestId("open-model-screen"));
+    await openPicker(user);
     await user.keyboard("{Escape}");
     expect(screen.queryByTestId("model-back")).toBeNull();
+    expect(screen.getByTestId("developer-back")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
     expect(screen.getByText("Audio alerts")).toBeInTheDocument();
     await user.keyboard("{Escape}");
     expect(screen.queryByText("Audio alerts")).not.toBeInTheDocument();
@@ -166,20 +177,22 @@ describe("SettingsScreen", () => {
   // taking both down.
   it("backs out of a model card on Escape before the picker", async () => {
     const user = await renderOpenSettings();
-    await user.click(screen.getByTestId("open-model-screen"));
+    await openPicker(user);
     await user.click(screen.getByTestId(`model-option-${DEFAULT_MODEL.id}`));
     await user.keyboard("{Escape}");
     expect(screen.queryByTestId("model-card-use")).toBeNull();
     expect(screen.getByTestId("model-back")).toBeInTheDocument();
     await user.keyboard("{Escape}");
     expect(screen.queryByTestId("model-back")).toBeNull();
-    expect(screen.getByText("Audio alerts")).toBeInTheDocument();
+    expect(screen.getByTestId("developer-back")).toBeInTheDocument();
   });
 
-  it("opens the model screen without developer options", async () => {
+  it("returns to the developer screen from the picker", async () => {
     const user = await renderOpenSettings();
-    await user.click(screen.getByTestId("open-model-screen"));
+    await openPicker(user);
     expect(screen.getByTestId("model-back")).toBeInTheDocument();
+    await user.click(screen.getByTestId("model-back"));
+    expect(screen.getByText("Enable developer options")).toBeInTheDocument();
   });
 
   // The developer screen is where the master switch lives, so the row that
@@ -197,26 +210,5 @@ describe("SettingsScreen", () => {
     await user.click(screen.getByTestId("developer-back"));
     expect(screen.getByText("Audio alerts")).toBeInTheDocument();
     expect(screen.queryByTestId("developer-back")).toBeNull();
-  });
-
-  // A repo slug is far longer than the space a settings row leaves beside its
-  // label, so naming the model here wrapped onto a second line; the picker the
-  // row opens is where a model is named.
-  it("names no model on the row", async () => {
-    const added = pinnedModel({
-      owner: "someone",
-      slug: "other-detector",
-      revision: "abc123",
-      file: "model.onnx",
-    });
-    addStoredModel(added);
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ modelIds: [added.id] }),
-    );
-    await renderOpenSettings();
-    const row = screen.getByTestId("open-model-screen");
-    expect(row).not.toHaveTextContent(added.slug);
-    expect(row).not.toHaveTextContent(DEFAULT_MODEL.slug);
   });
 });
