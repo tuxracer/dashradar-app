@@ -650,8 +650,13 @@ export const createDetectionEngine = ({
         if (result.contact) {
           patch.contact = swapContact(result.contact);
         }
-        publish(patch);
+        // Closed before the publish on purpose: the discarded crop is not in
+        // the patch, so nothing downstream can want it, and closing it first
+        // keeps its cleanup from depending on how the publish's subscribers
+        // behave. (rxjs isolates a throwing subscriber from this call today,
+        // but the ordering should not need that.)
         result.discardedCrop?.close();
+        publish(patch);
         const { preprocessMs, inferenceMs, decodeMs } = message.timing;
         const roundTripMs = performance.now() - (frame?.postedAt ?? 0);
         debug = {
