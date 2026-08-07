@@ -325,13 +325,23 @@ describe("crash sentinel heartbeat", () => {
     expect(readSentinel()).toBeNull();
   });
 
-  it("rewrites the sentinel on the next beat after a bfcache-style pagehide", async () => {
-    scanning();
+  // Pagehide now ends the whole activation (the worker's memory is handed
+  // back before the page departs), so coverage across a bfcache round trip is
+  // restored by reactivation rather than by a heartbeat that outlived the
+  // session.
+  it("re-arms crash coverage through reactivation after a bfcache round trip", async () => {
+    const { workers } = scanning();
     window.dispatchEvent(new Event("pagehide"));
     expect(readSentinel()).toBeNull();
-    // The page came back from the bfcache instead of unloading: the interval
-    // is still alive, so the next tick restores crash coverage.
+    // The heartbeat died with the session, so nothing rewrites the record.
     await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+    expect(readSentinel()).toBeNull();
+    // The bfcache restore reactivates the engine; once its fresh worker is
+    // ready, scanning resumes and a new record is written.
+    const pageshow = new Event("pageshow");
+    Object.defineProperty(pageshow, "persisted", { value: true });
+    window.dispatchEvent(pageshow);
+    workers.at(-1)?.emit({ type: "ready" });
     expect(readSentinel()).not.toBeNull();
   });
 
@@ -1161,6 +1171,47 @@ describe("model load", () => {
       "MODEL_LOAD_FAILED",
       undefined,
     );
+  });
+
+  // Pagehide is the one synchronous chance to hand the worker's memory back
+  // before the page departs; WebKit reclaims a departed page's worker lazily
+  // at best, and the residue stacking up across reloads in one WebContent
+  // process is what walks it into the per-process kill.
+  it("terminates the worker on pagehide", () => {
+    const { worker } = testEngine();
+    worker.emit({ type: "ready" });
+    window.dispatchEvent(new Event("pagehide"));
+    expect(worker.terminate).toHaveBeenCalled();
+  });
+
+  it("reactivates on the bfcache restore of a pagehide it acted on", () => {
+    const { workers } = testEngine();
+    window.dispatchEvent(new Event("pagehide"));
+    expect(workers).toHaveLength(1);
+    const pageshow = new Event("pageshow");
+    Object.defineProperty(pageshow, "persisted", { value: true });
+    window.dispatchEvent(pageshow);
+    expect(workers).toHaveLength(2);
+  });
+
+  it("ignores a pageshow that is not a bfcache restore", () => {
+    const { workers } = testEngine();
+    window.dispatchEvent(new Event("pagehide"));
+    window.dispatchEvent(new Event("pageshow"));
+    expect(workers).toHaveLength(1);
+  });
+
+  // Guard for the new branch: reactivation is scoped to a pagehide this
+  // handler acted on, so a bfcache restore must not resurrect an engine that
+  // halted on an error before the page ever departed.
+  it("does not resurrect an error-halted engine on a bfcache restore", () => {
+    const { engine, workers, worker } = testEngine();
+    worker.emit({ type: "worker-error", code: "GPU_DEVICE_LOST" });
+    const pageshow = new Event("pageshow");
+    Object.defineProperty(pageshow, "persisted", { value: true });
+    window.dispatchEvent(pageshow);
+    expect(workers).toHaveLength(1);
+    expect(engine.getSnapshot().status).toBe("error");
   });
 
   // A halt ends the activation over the same falling edge deactivate() uses;

@@ -495,8 +495,10 @@ export const createDetectionEngine = ({
       // A reload or navigation away mid-scan can outrun any teardown path, so
       // pagehide is the last synchronous chance to clear the record; a real
       // crash never fires pagehide, so genuine kills still leave it behind.
-      // The heartbeat above deliberately keeps running, so a bfcache return
-      // rewrites the record on its next beat and restores coverage.
+      // The engine-level pagehide teardown also ends the activation (and this
+      // window with it), but this tap is what covers the error phase, whose
+      // activation is already gone while the sentinel keeps watching; a
+      // bfcache return re-arms coverage through reactivation.
       fromEvent(window, "pagehide").pipe(tap(clearSentinel)),
     );
   }).pipe(ignoreElements(), finalize(clearSentinel));
@@ -1229,6 +1231,62 @@ export const createDetectionEngine = ({
     }
   });
 
+  const activate = (): void => {
+    if (active$.value) {
+      return;
+    }
+    // A fresh activation behaves like a fresh mount: published state and
+    // per-load state reset before the new worker reports anything.
+    releaseBitmap(snapshot$.value.contact?.image);
+    snapshot$.next(INITIAL_SNAPSHOT);
+    fileProgress.clear();
+    debug = INITIAL_DEBUG;
+    tracker = createDetectionTracker();
+    lastScanAt = undefined;
+    active$.next(true);
+  };
+
+  const deactivate = (): void => {
+    if (!active$.value) {
+      return;
+    }
+    active$.next(false);
+    replaceContact(undefined);
+  };
+
+  // A departing page never runs React cleanups, so pagehide is the one
+  // synchronous chance to end the activation, which terminates the worker.
+  // This exists for memory, not tidiness: WebKit reuses one WebContent
+  // process across same-site reloads and reclaims a departed page's worker
+  // (its wasm memory, ORT session, GPU handles) lazily at best, so each
+  // reload otherwise stacks a dead page's residue onto the process until iOS
+  // kills whichever page is running at the per-process memory cap, which is
+  // DASHRADAR-2's jetsam signature. Terminating before departure hands the
+  // memory back deterministically. pagehide also fires on the way into the
+  // bfcache, so a restored page would come back to a dead worker: the
+  // switchMap arms a one-shot pageshow wait scoped to the pagehide this
+  // handler acted on, reactivating on the restore, and the takeUntil stands
+  // down if something else (a new mount) has already activated the engine.
+  // An engine that was not active (deactivated, or halted on an error) is
+  // deliberately left alone by both halves.
+  fromEvent(window, "pagehide")
+    .pipe(
+      filter(() => active$.value),
+      tap(() => {
+        deactivate();
+      }),
+      switchMap(() =>
+        fromEvent<PageTransitionEvent>(window, "pageshow").pipe(
+          filter((event) => event.persisted),
+          take(1),
+          takeUntil(active$.pipe(filter(Boolean))),
+        ),
+      ),
+    )
+    .subscribe(() => {
+      activate();
+    });
+
   return {
     getSnapshot: () => snapshot$.value,
     subscribe: (onChange) => {
@@ -1257,26 +1315,7 @@ export const createDetectionEngine = ({
     allowModelLoad: () => {
       modelLoadAllowed$.next(true);
     },
-    activate: () => {
-      if (active$.value) {
-        return;
-      }
-      // A fresh activation behaves like a fresh mount: published state and
-      // per-load state reset before the new worker reports anything.
-      releaseBitmap(snapshot$.value.contact?.image);
-      snapshot$.next(INITIAL_SNAPSHOT);
-      fileProgress.clear();
-      debug = INITIAL_DEBUG;
-      tracker = createDetectionTracker();
-      lastScanAt = undefined;
-      active$.next(true);
-    },
-    deactivate: () => {
-      if (!active$.value) {
-        return;
-      }
-      active$.next(false);
-      replaceContact(undefined);
-    },
+    activate,
+    deactivate,
   };
 };
