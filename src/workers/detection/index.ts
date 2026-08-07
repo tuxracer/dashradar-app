@@ -4,7 +4,6 @@
 // JSEP has no TopK kernel, which parks this graph's TopK on the CPU EP and
 // makes graph capture impossible; the native EP has one.
 import { env, InferenceSession, Tensor } from "onnxruntime-web/webgpu";
-import { isWebKitUa } from "@/lib/browserEngine";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 import {
   BUILT_IN_MODELS,
@@ -508,10 +507,7 @@ const createModel = async (
   };
   let captureError: string | undefined;
   let io: SessionIo | undefined;
-  // WebKit never attempts capture: measured iPhone round trips are the same
-  // with capture on or off, so the replay buys nothing there to weigh against
-  // its instability risk (see the WEBGPU_GRAPH_CAPTURE doc in consts.ts).
-  if (WEBGPU_GRAPH_CAPTURE && !isWebKitUa(navigator.userAgent)) {
+  if (WEBGPU_GRAPH_CAPTURE) {
     try {
       io = await createCaptureModel(weights, releaseWeights);
     } catch (error) {

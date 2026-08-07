@@ -54,24 +54,20 @@ export const DEV_MODEL_CACHE_NAME = "model-cache-dev";
  * worker falls back to a plain WebGPU session and the debug overlay's
  * "graph capture" row reads "failed" with the reason.
  *
- * WebKit never attempts capture regardless of this flag (`isWebKitUa` in
- * `src/lib/browserEngine`, checked in `createModel`); it runs a plain WebGPU
- * session and the overlay row reads "disabled". The exclusion rests on
- * measured cost/benefit, not crash attribution: on an iPhone 16e in Safari,
- * round trips with capture on are about the same as without, so the
- * dispatch-replay win that makes capture worthwhile on Chromium Android never
- * materializes on WebKit's WebGPU implementation. A feature with no measured
- * upside only has to be suspected of instability to lose its place, and iOS
- * crash volume with capture enabled supplies the suspicion.
- *
- * History, because this exclusion existed once before on different grounds
- * and that reasoning was wrong: the first exclusion rested on a single crash
- * event tagged `graphCapture: true`, and reading all of Sentry DASHRADAR-2
- * later showed nine of the ten iOS crashes had capture *off*, all inside the
- * first ~21 s of scanning, a startup signature capture does not touch. That
- * finding still stands; crash telemetry never implicated capture and is not
- * what justifies this exclusion. What would lift it is a demonstrated WebKit
- * round-trip improvement worth the risk, verified on a real iPhone.
+ * The attempt runs on every engine, WebKit included. Expect no speedup
+ * there: on an iPhone 16e in Safari, round trips with capture on measured
+ * about the same as without, so the dispatch-replay win that makes capture
+ * worthwhile on Chromium Android does not materialize on WebKit's WebGPU.
+ * WebKit was excluded twice on the way here and both exclusions were
+ * retired: the first rested on a single crash event tagged
+ * `graphCapture: true` and was disproved when Sentry DASHRADAR-2 showed the
+ * iOS crashes landing with capture on and off alike (the kills were later
+ * traced to content-process memory, which capture does not touch); the
+ * second rested on the measured no-win and was retired for the branch it
+ * cost, since a uniform path with a graceful fallback beats a user-agent
+ * special case guarding against nothing observed. If WebKit capture ever
+ * turns unstable, the crash sentinel's `graphCapture` tag is what will show
+ * the correlation.
  */
 export const WEBGPU_GRAPH_CAPTURE = true;
 

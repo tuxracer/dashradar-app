@@ -24,7 +24,7 @@ The crashes are intermittent: sometimes the app scans for a long time without on
 | -------------------------------------- | ---------------------------------------------------------------------------------------- |
 | Per-scan wasm heap growth              | Measured flat at 127.4 MiB across long sessions and in the dying session's last heartbeat |
 | App-side ImageBitmap leak              | The engine counts every owned bitmap; the count was 0 at every kill                       |
-| WebGPU graph capture                   | Disabled on WebKit; crashes continue unchanged, and most early crashes had it off already |
+| WebGPU graph capture                   | Crashes landed with capture on and off alike; a WebKit exclusion changed nothing and has since been retired (capture is attempted everywhere again, and every crash report carries a `graphCapture` tag to catch any future correlation) |
 | GPU process memory                     | ~130 MiB at the moment WebContent died at 2.0 GiB                                         |
 | The worker recycle path                | Every crash so far had zero recycles and a worker 11 to 17 seconds old                    |
 | One specific view                      | Kills recorded under both the radar dial and the 3D scene                                 |
