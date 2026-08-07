@@ -159,6 +159,39 @@ describe("isWorkerResponse", () => {
     ).toBe(false);
   });
 
+  it("bounds a device-lost reason to the WebGPU enum", () => {
+    expect(
+      isWorkerResponse({
+        type: "worker-error",
+        code: "GPU_DEVICE_LOST",
+        reason: "unknown",
+      }),
+    ).toBe(true);
+    expect(
+      isWorkerResponse({
+        type: "worker-error",
+        code: "GPU_DEVICE_LOST",
+        reason: "destroyed",
+      }),
+    ).toBe(true);
+    // The reason lands in the crash sentinel's session log, which only ever
+    // ships bounded values, so free text must not pass as one.
+    expect(
+      isWorkerResponse({
+        type: "worker-error",
+        code: "GPU_DEVICE_LOST",
+        reason: "the GPU process exited",
+      }),
+    ).toBe(false);
+    expect(
+      isWorkerResponse({
+        type: "worker-error",
+        code: "GPU_DEVICE_LOST",
+        reason: 42,
+      }),
+    ).toBe(false);
+  });
+
   it("accepts a wasm heap size on the replies that report one", () => {
     expect(isWorkerResponse({ type: "ready", wasmHeapBytes: 1024 })).toBe(true);
     expect(

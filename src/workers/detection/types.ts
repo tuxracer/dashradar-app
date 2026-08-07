@@ -64,6 +64,26 @@ export const isDetectionError = (error: unknown): error is DetectionError => {
   return error instanceof DetectionError;
 };
 
+/**
+ * Bounded classification of a GPU device loss, mirroring the platform's
+ * GPUDeviceLostReason enum. Kept separate from `detail`'s free text because
+ * this value travels into the crash sentinel's session log, which only ever
+ * ships bounded values; the guard enforcing the enum is what keeps a
+ * platform's message from riding through as a "reason".
+ */
+export type GpuDeviceLostReason = "unknown" | "destroyed";
+
+const GPU_DEVICE_LOST_REASONS: readonly GpuDeviceLostReason[] = [
+  "unknown",
+  "destroyed",
+];
+
+export const isGpuDeviceLostReason = (
+  value: unknown,
+): value is GpuDeviceLostReason =>
+  isString(value) &&
+  GPU_DEVICE_LOST_REASONS.includes(value as GpuDeviceLostReason);
+
 export type WorkerRequest =
   /**
    * Resolve whether this device can run the detector, without downloading
@@ -348,6 +368,13 @@ export type WorkerResponse =
        * cause instead of arriving as a bare code.
        */
       detail?: string;
+      /**
+       * The bounded loss classification, set only for GPU_DEVICE_LOST. This
+       * is the one part of a loss the crash sentinel's log may carry, so a
+       * page killed moments after the GPU process dies still names the loss
+       * in its next-launch report; `detail` above stays out of that log.
+       */
+      reason?: GpuDeviceLostReason;
     };
 
 /**
@@ -392,7 +419,8 @@ export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
     case "worker-error":
       return (
         isDetectionErrorCode(value.code) &&
-        (value.detail === undefined || isString(value.detail))
+        (value.detail === undefined || isString(value.detail)) &&
+        (value.reason === undefined || isGpuDeviceLostReason(value.reason))
       );
     default:
       return false;

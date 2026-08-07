@@ -394,6 +394,76 @@ describe("crash sentinel heartbeat", () => {
     });
   });
 
+  // The record used to be torn down with the scanning window, which erased
+  // the log's last entry (the very error that explains the halt) microseconds
+  // after the beat wrote it, so a page killed on the error screen reported
+  // nothing at the next launch.
+  it("keeps the record, error and reason logged, when a worker error halts scanning", async () => {
+    const { worker } = scanning();
+    await vi.advanceTimersByTimeAsync(0);
+    worker.emit({
+      type: "worker-error",
+      code: "GPU_DEVICE_LOST",
+      reason: "unknown",
+      detail: "unknown: the GPU process exited",
+    });
+    const record = readSentinel();
+    expect(record).not.toBeNull();
+    const events = record?.events as { kind: string; detail?: string }[];
+    // The bounded reason, never the free-text detail: the log ships.
+    expect(events.at(-1)).toEqual({
+      at: expect.any(Number),
+      kind: "error",
+      detail: "GPU_DEVICE_LOST unknown",
+    });
+  });
+
+  it("keeps beating on the error screen, so a kill there still classifies by a fresh gap", async () => {
+    const { worker } = scanning();
+    worker.emit({ type: "worker-error", code: "GPU_DEVICE_LOST" });
+    const before = (readSentinel() as { lastBeatAt: number }).lastBeatAt;
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS * 2);
+    const after = (readSentinel() as { lastBeatAt: number }).lastBeatAt;
+    expect(after).toBeGreaterThan(before);
+  });
+
+  it("still clears the surviving record on pagehide", () => {
+    const { worker } = scanning();
+    worker.emit({ type: "worker-error", code: "GPU_DEVICE_LOST" });
+    expect(readSentinel()).not.toBeNull();
+    window.dispatchEvent(new Event("pagehide"));
+    expect(readSentinel()).toBeNull();
+  });
+
+  it("clears the surviving record when a new activation starts", () => {
+    const { engine, worker } = scanning();
+    worker.emit({ type: "worker-error", code: "GPU_DEVICE_LOST" });
+    expect(readSentinel()).not.toBeNull();
+    engine.activate();
+    expect(readSentinel()).toBeNull();
+  });
+
+  // Guard for the new branch: an error with no scanning window behind it has
+  // no record to keep, so surviving must not mean creating.
+  it("leaves no record when the error lands before scanning ever ran", () => {
+    const { worker } = testEngine();
+    worker.emit({ type: "ready" });
+    worker.emit({ type: "worker-error", code: "MODEL_LOAD_FAILED" });
+    expect(readSentinel()).toBeNull();
+  });
+
+  it("logs a worker that died without a message in the surviving record", () => {
+    const { worker } = scanning();
+    worker.onerror?.(new ErrorEvent("error"));
+    const record = readSentinel();
+    expect(record).not.toBeNull();
+    const events = record?.events as { kind: string; detail?: string }[];
+    expect(events.at(-1)).toMatchObject({
+      kind: "error",
+      detail: "WORKER_CRASHED",
+    });
+  });
+
   it("reports the wasm heap size the worker last carried on a reply", async () => {
     const { worker } = scanning();
     await vi.advanceTimersByTimeAsync(0);

@@ -577,6 +577,7 @@ const watchDeviceLoss = async () => {
       type: "worker-error",
       code: "GPU_DEVICE_LOST",
       detail: `${reason}: ${message}`,
+      reason,
     });
   } catch {
     // No device exposed to watch. The session still runs; a real loss just

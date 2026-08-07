@@ -13,6 +13,7 @@ import {
   Observable,
   repeat,
   retry,
+  scan,
   skip,
   Subject,
   switchMap,
@@ -396,11 +397,13 @@ export const createDetectionEngine = ({
   };
 
   // ---- the scanning window ----
-  // Three resources live exactly as long as the engine is scanning: the
-  // telemetry clock, the crash sentinel, and the screen wake lock. Each is a
-  // stream whose teardown is its own release, so the window is a subscribe
-  // and an unsubscribe rather than paired start/stop calls with timers,
-  // listeners, and flags kept alongside them.
+  // Three resources live with the engine's scanning: the telemetry clock, the
+  // crash sentinel, and the screen wake lock. Each is a stream whose teardown
+  // is its own release, so a window is a subscribe and an unsubscribe rather
+  // than paired start/stop calls with timers, listeners, and flags kept
+  // alongside them. The clock and the lock live exactly while status is
+  // "running"; the sentinel also rides out an error that halted scanning (see
+  // its window below).
 
   /** The telemetry scanning clock, running while subscribed. */
   const scanClock$ = new Observable<never>(() => {
@@ -479,15 +482,41 @@ export const createDetectionEngine = ({
   // reported once for the page load.
   const wakeLock$ = screenWakeLock();
 
-  // The window opens and closes on the published status, so it cannot miss a
-  // transition no matter which code path publishes it.
+  // The windows open and close on the published status, so they cannot miss a
+  // transition no matter which code path publishes it. The clock and the wake
+  // lock live exactly while scanning runs; a screen held awake in front of an
+  // error screen would burn the battery for nothing.
   snapshot$
     .pipe(
       map((s) => s.status === "running"),
       distinctUntilChanged(),
       switchMap((isScanning) =>
-        isScanning ? merge(scanClock$, crashSentinel$, wakeLock$) : EMPTY,
+        isScanning ? merge(scanClock$, wakeLock$) : EMPTY,
       ),
+    )
+    .subscribe();
+
+  // The crash sentinel additionally rides out an error that halted scanning.
+  // Torn down with the scanning window, the record died microseconds after
+  // the halting error was written into its log, so a page killed on the error
+  // screen reported nothing at the next launch: exactly the GPU-process-death
+  //-then-OS-kill chain the record exists to witness. Staying subscribed keeps
+  // the heartbeat running there (so the kill-vs-shutdown gap classification
+  // stays sharp) and keeps pagehide armed to clear on any exit that runs JS;
+  // the next activation resets the status, closing the window and clearing
+  // the record before a new session writes its own. An error with no scanning
+  // window behind it (a model that failed to load) never opens the window:
+  // there is no record to keep.
+  snapshot$
+    .pipe(
+      map((s) => s.status),
+      scan(
+        (open: boolean, status) =>
+          status === "running" || (open && status === "error"),
+        false,
+      ),
+      distinctUntilChanged(),
+      switchMap((open) => (open ? crashSentinel$ : EMPTY)),
     )
     .subscribe();
 
@@ -659,6 +688,7 @@ export const createDetectionEngine = ({
       }
     };
     target.onerror = () => {
+      recordEvent("error", "WORKER_CRASHED");
       telemetry.error("WORKER_CRASHED");
       publish({ error: "WORKER_CRASHED" });
       setStatus("error");
@@ -867,9 +897,14 @@ export const createDetectionEngine = ({
         break;
       }
       case "worker-error": {
-        // The code only. message.detail carries what the platform said, which
-        // is free text and does not belong in something this log ships.
-        recordEvent("error", message.code);
+        // The code plus the bounded loss reason, when one rode along.
+        // message.detail carries what the platform said, which is free text
+        // and does not belong in something this log ships; message.reason is
+        // guard-enforced to the WebGPU enum, so it may.
+        recordEvent(
+          "error",
+          message.reason ? `${message.code} ${message.reason}` : message.code,
+        );
         telemetry.error(message.code, message.detail);
         publish({ error: message.code });
         setStatus("error");
