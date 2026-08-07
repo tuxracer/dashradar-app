@@ -185,6 +185,12 @@ export type EngineSettings = {
   zoom: ZoomLevel;
   /** Minimum detection confidence for decode and enrichment. */
   confidenceThreshold: number;
+  /**
+   * Mirror the session log to the browser console, for tethered Web
+   * Inspector sessions. The Console diagnostics developer row, gated like
+   * every other developer option.
+   */
+  consoleDiagnostics: boolean;
 };
 
 /**

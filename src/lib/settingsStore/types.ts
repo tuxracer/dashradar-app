@@ -46,7 +46,7 @@ export type Settings = {
    * Master switch for the development-only settings (showDebug,
    * throttleInference, sceneChangeGate, zoomMode, confidenceThreshold,
    * sceneFov, zoomIndicator, roundTripIndicator, cameraPreview,
-   * detectionView, rawConfidence). Off by default. While it is off,
+   * detectionView, rawConfidence, consoleDiagnostics). Off by default. While it is off,
    * SettingsProvider reports each of those at its DEVELOPER_OPTIONS_OFF value
    * no matter what is stored, so a development tweak left enabled cannot alter
    * a normal drive.
@@ -183,6 +183,14 @@ export type Settings = {
    * developerOptions is on, and off until asked for there.
    */
   rawConfidence: boolean;
+  /**
+   * When true, the engine mirrors its session log to the browser console
+   * (what the crash sentinel would report, live: scans with their round trip
+   * and the worker's wasm heap, view switches, errors), for tethered Web
+   * Inspector sessions. A developer option, so it only takes effect while
+   * developerOptions is on, and off until asked for there.
+   */
+  consoleDiagnostics: boolean;
 };
 
 /**
@@ -211,6 +219,7 @@ export type DeveloperOptions = Pick<
   | "cameraPreview"
   | "detectionView"
   | "rawConfidence"
+  | "consoleDiagnostics"
 >;
 
 /**
@@ -304,6 +313,7 @@ const FIELD_VALIDATORS: {
   cameraPreview: isBoolean,
   detectionView: isBoolean,
   rawConfidence: isBoolean,
+  consoleDiagnostics: isBoolean,
 };
 
 /**

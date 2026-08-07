@@ -45,6 +45,7 @@ export const DEVELOPER_OPTIONS_OFF: DeveloperOptions = {
   cameraPreview: false,
   detectionView: false,
   rawConfidence: false,
+  consoleDiagnostics: false,
 };
 
 /**

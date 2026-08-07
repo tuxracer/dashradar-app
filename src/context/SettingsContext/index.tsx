@@ -57,6 +57,7 @@ export const SettingsProvider = ({ children }: SettingsProviderProps) => {
       setSceneFov: (deg) => store.setSceneFov(deg),
       toggleZoomIndicator: () => store.toggle("zoomIndicator"),
       toggleRoundTripIndicator: () => store.toggle("roundTripIndicator"),
+      toggleConsoleDiagnostics: () => store.toggle("consoleDiagnostics"),
       toggleCameraPreview: () => store.toggle("cameraPreview"),
       toggleDetectionView: () => store.toggle("detectionView"),
       toggleRawConfidence: () => store.toggle("rawConfidence"),

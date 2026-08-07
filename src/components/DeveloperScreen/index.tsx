@@ -92,6 +92,8 @@ export const DeveloperScreen = ({
     toggleDetectionView,
     rawConfidence,
     toggleRawConfidence,
+    consoleDiagnostics,
+    toggleConsoleDiagnostics,
   } = useSettings();
   const { source, setVideoFile, clearVideoFile } = useVideoSource();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -135,6 +137,17 @@ export const DeveloperScreen = ({
           description="Shows timing and detection diagnostics."
           on={showDebug}
           onToggle={toggleShowDebug}
+        />
+      ),
+    },
+    {
+      key: "consoleDiagnostics",
+      row: (
+        <ToggleRow
+          label="Console diagnostics"
+          description="Mirrors the detection log to the browser console."
+          on={consoleDiagnostics}
+          onToggle={toggleConsoleDiagnostics}
         />
       ),
     },

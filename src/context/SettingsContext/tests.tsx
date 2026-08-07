@@ -174,6 +174,7 @@ describe("SettingsContext", () => {
       cameraPreview: false,
       detectionView: false,
       rawConfidence: false,
+      consoleDiagnostics: false,
     });
   });
 

@@ -52,7 +52,6 @@ import type { WorkerResponse, ZoomLevel } from "@/workers/detection/types";
 import { isWorkerResponse } from "@/workers/detection/types";
 import {
   BYTES_PER_MIB,
-  CONSOLE_DIAGNOSTICS_STORAGE_KEY,
   FRAME_RETRY_MS,
   INITIAL_DEBUG,
   INITIAL_SNAPSHOT,
@@ -200,6 +199,7 @@ export const createDetectionEngine = ({
     sceneGate: true,
     zoom: ZOOM_OFF,
     confidenceThreshold: CONFIDENCE_THRESHOLD,
+    consoleDiagnostics: false,
   });
   const active$ = new BehaviorSubject(false);
 
@@ -332,20 +332,13 @@ export const createDetectionEngine = ({
 
   /**
    * Mirror a session-log line (or an extra diagnostic beside one) to the
-   * console, for a tethered Web Inspector session. Silent unless the
-   * CONSOLE_DIAGNOSTICS_STORAGE_KEY flag is in localStorage; the flag is read
-   * per line so flipping it from the inspector takes effect without a reload.
-   * Unlike the sentinel log this never leaves the device, so free-text detail
-   * is allowed here.
+   * console, for a tethered Web Inspector session. The Console diagnostics
+   * developer row is its one switch; being a setting, it persists across the
+   * crash-reload loop being debugged. Unlike the sentinel log this never
+   * leaves the device, so free-text detail is allowed here.
    */
   const consoleDiagnostic = (line: string): void => {
-    try {
-      if (
-        window.localStorage.getItem(CONSOLE_DIAGNOSTICS_STORAGE_KEY) === null
-      ) {
-        return;
-      }
-    } catch {
+    if (!settings$.value.consoleDiagnostics) {
       return;
     }
     console.info(`[dashradar] ${line}`);

@@ -71,6 +71,7 @@ export const DetectionProvider = ({
     sceneChangeGate,
     zoomMode,
     confidenceThreshold,
+    consoleDiagnostics,
     modelIds,
     settingsOpen,
     detectionView,
@@ -120,6 +121,7 @@ export const DetectionProvider = ({
       sceneGate: sceneChangeGate,
       zoom: zoomMode === "2x" ? ZOOM_2X : ZOOM_OFF,
       confidenceThreshold,
+      consoleDiagnostics,
     });
   }, [
     engine,
@@ -128,6 +130,7 @@ export const DetectionProvider = ({
     sceneChangeGate,
     zoomMode,
     confidenceThreshold,
+    consoleDiagnostics,
   ]);
 
   // The settings panel is a same-page overlay (no visibilitychange), so its

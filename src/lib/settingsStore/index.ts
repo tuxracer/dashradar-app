@@ -124,6 +124,7 @@ export const createSettingsStore = (): SettingsStore => {
           cameraPreview: stored.cameraPreview,
           detectionView: stored.detectionView,
           rawConfidence: stored.rawConfidence,
+          consoleDiagnostics: stored.consoleDiagnostics,
         }
       : DEVELOPER_OPTIONS_OFF),
     developerOptions: stored.developerOptions,

@@ -49,6 +49,7 @@ export type SettingsContextValue = SettingsSnapshot & {
   setSceneFov: (deg: number) => void;
   toggleZoomIndicator: () => void;
   toggleRoundTripIndicator: () => void;
+  toggleConsoleDiagnostics: () => void;
   toggleCameraPreview: () => void;
   toggleDetectionView: () => void;
   toggleRawConfidence: () => void;

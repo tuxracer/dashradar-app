@@ -110,6 +110,7 @@ const DEFAULT_ENGINE_SETTINGS: EngineSettings = {
   sceneGate: true,
   zoom: ZOOM_OFF,
   confidenceThreshold: CONFIDENCE_THRESHOLD,
+  consoleDiagnostics: false,
 };
 
 /**
