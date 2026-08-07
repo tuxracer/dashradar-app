@@ -21,6 +21,10 @@ So one of the challenges this app takes on is doing the detection on-device: in 
 - **Screen wake lock** so the phone doesn't sleep mid-drive.
 - **Runs on a recorded drive too**: drop a video file onto the window, or pick one in settings, and the detector scans that instead of the camera. Handy for trying it without leaving the desk.
 
+## Known issue: iPhone stability
+
+We are unfortunately seeing frequent, intermittent crashes on iPhones: Safari sometimes kills and reloads the page mid-scan, and can give up entirely after repeated kills. Every Android device we have tested runs fine. The root cause is not yet fully pinned down; mitigations and diagnostics have shipped, and [docs/iPhone.md](docs/iPhone.md) tracks the evidence, what has been ruled out, and the remaining suspects.
+
 ## Getting started
 
 ```bash
