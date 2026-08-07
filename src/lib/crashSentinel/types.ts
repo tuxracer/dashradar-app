@@ -120,6 +120,15 @@ export type SentinelRecord = {
    */
   ownedBitmaps?: number;
   /**
+   * Size of the worker's wasm heap at its last reply, in bytes. The runtime's
+   * heap is the prime suspect for iOS killing the page over WebContent's
+   * per-process memory limit (a jetsam kill runs no JS, so the size at death
+   * survives only by having been written down): read against uptime and the
+   * scan count, this says whether the heap was still at its post-load
+   * baseline or had grown toward the cap.
+   */
+  wasmHeapBytes?: number;
+  /**
    * The rolling log, oldest first, capped at MAX_SESSION_EVENTS. Rewritten
    * whole on every beat, which is what bounds it: the cap is the only thing
    * between this and a record that grows for the length of a drive.
@@ -142,6 +151,7 @@ export const isSentinelRecord = (value: unknown): value is SentinelRecord => {
     (value.recycles === undefined || isNumber(value.recycles)) &&
     (value.workerAgeMs === undefined || isNumber(value.workerAgeMs)) &&
     (value.ownedBitmaps === undefined || isNumber(value.ownedBitmaps)) &&
+    (value.wasmHeapBytes === undefined || isNumber(value.wasmHeapBytes)) &&
     // Strict, like every other field here: a log that does not parse comes
     // from a build that wrote a different record shape, and the rest of that
     // record cannot be read with any more confidence than this part of it.
@@ -171,5 +181,6 @@ export type PreviousSessionEnd = {
   recycles?: number;
   workerAgeMs?: number;
   ownedBitmaps?: number;
+  wasmHeapBytes?: number;
   events?: readonly SessionEvent[];
 };

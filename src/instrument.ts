@@ -83,6 +83,7 @@ if (!import.meta.env.DEV && isTrackingOptedOut() === false) {
       recycles,
       workerAgeMs,
       ownedBitmaps,
+      wasmHeapBytes,
       events,
     } = previousSessionEnd;
     // Replayed before the report is captured, which is what attaches them to
@@ -129,6 +130,7 @@ if (!import.meta.env.DEV && isTrackingOptedOut() === false) {
         scansProcessed,
         workerAgeMs,
         ownedBitmaps,
+        wasmHeapBytes,
       },
     });
   }

@@ -35,6 +35,7 @@ import {
 } from "./inference";
 import type { DetectionCrop, WorkerResponse } from "./types";
 import { DetectionError, isDetectionError, isWorkerRequest } from "./types";
+import { installWasmMemoryCapture, wasmHeapBytes } from "./wasmMemory";
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -42,6 +43,10 @@ declare const self: DedicatedWorkerGlobalScope;
 // the ortRuntime Vite plugin) instead of cdn.jsdelivr.net, so cross-origin
 // isolation does not block it and there is no live CDN dependency.
 env.wasm.wasmPaths = `${import.meta.env.BASE_URL}ort/`;
+
+// Before the runtime can instantiate: the heap it creates is what
+// wasmHeapBytes() reads for the crash sentinel (see ./wasmMemory).
+installWasmMemoryCapture();
 
 /** ORT wasm-runtime thread count for this device, capped for big.LITTLE. */
 const wasmThreads = Math.min(
@@ -610,6 +615,7 @@ const loadModel = async (requested: DetectionModel | undefined) => {
         headWidth: model.detectionModel.headWidth,
         classes: model.detectionModel.classes,
       },
+      wasmHeapBytes: wasmHeapBytes(),
     });
   } catch (error) {
     // The probe acquired a device but the session still failed to build (a
@@ -715,7 +721,12 @@ const detect = async ({
       // frame would restart the drift measurement on every skip, so a scene
       // changing slower than the threshold per frame would never accumulate
       // enough to trip and the gate would suppress scanning indefinitely.
-      post({ type: "scan-skipped", gateMs, delta: scene.delta });
+      post({
+        type: "scan-skipped",
+        gateMs,
+        delta: scene.delta,
+        wasmHeapBytes: wasmHeapBytes(),
+      });
       return;
     }
     lastScanned = signature;
@@ -817,6 +828,7 @@ const detect = async ({
         timing: { preprocessMs, inferenceMs, decodeMs },
         crop,
         sceneDelta: scene?.delta,
+        wasmHeapBytes: wasmHeapBytes(),
       },
       transfer,
     );

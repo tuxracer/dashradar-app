@@ -84,12 +84,14 @@ describe("writeHeartbeat / readPreviousSessionEnd", () => {
       scansProcessed: 2,
       activeView: "scene",
       model: "custom",
+      wasmHeapBytes: 268_435_456,
     });
     expect(readPreviousSessionEnd(100)).toMatchObject({
       framesProcessed: 5,
       scansProcessed: 2,
       activeView: "scene",
       model: "custom",
+      wasmHeapBytes: 268_435_456,
     });
   });
 

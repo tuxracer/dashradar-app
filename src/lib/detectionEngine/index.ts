@@ -302,6 +302,16 @@ export const createDetectionEngine = ({
    * would keep the leak it is meant to detect alive.
    */
   let ownedBitmaps = 0;
+  /**
+   * Size of the worker's wasm heap as of its last reply that carried one, for
+   * the crash sentinel. iOS kills the page over WebContent's per-process
+   * memory limit without running any JS, so whether the runtime's heap was
+   * huge at death can only be known if it was written down while the session
+   * was alive. Engine-scoped like ownedBitmaps: it is a measurement of the
+   * page, not a per-scanning-window counter, and the last known value stays
+   * reportable across a pause.
+   */
+  let wasmHeapBytes: number | undefined;
 
   /**
    * The rolling log of what this engine did, oldest first and capped at
@@ -430,6 +440,7 @@ export const createDetectionEngine = ({
         recycles: Math.max(0, workersStarted - 1),
         workerAgeMs: Math.round(performance.now() - workerStartedAt),
         ownedBitmaps,
+        wasmHeapBytes,
         // Copied, not referenced: the record is serialized on the spot, but a
         // shared array would let a later push edit what a caller believes it
         // already wrote down.
@@ -696,6 +707,17 @@ export const createDetectionEngine = ({
     };
   });
 
+  /**
+   * Note the heap size a worker reply carried; a reply without one leaves the
+   * last reading in place rather than blanking a value the sentinel already
+   * had.
+   */
+  const recordWasmHeap = (bytes: number | undefined): void => {
+    if (bytes !== undefined) {
+      wasmHeapBytes = bytes;
+    }
+  };
+
   const handleMessage = (session: WorkerSession, message: WorkerResponse) => {
     switch (message.type) {
       case "model-load-start": {
@@ -727,6 +749,7 @@ export const createDetectionEngine = ({
       }
       case "ready": {
         session.loaded$.next(true);
+        recordWasmHeap(message.wasmHeapBytes);
         recordEvent("load");
         telemetry.modelReady();
         // Republished by every recycle, which loads the same entry again, so a
@@ -740,6 +763,7 @@ export const createDetectionEngine = ({
       }
       case "scan-skipped": {
         framesTotal += 1;
+        recordWasmHeap(message.wasmHeapBytes);
         recordEvent("skip");
         // A skip publishes nothing. Everything is left exactly as the last
         // real scan published it: a frame that did not change cannot have lost
@@ -757,6 +781,7 @@ export const createDetectionEngine = ({
       case "detections": {
         framesTotal += 1;
         scansTotal += 1;
+        recordWasmHeap(message.wasmHeapBytes);
         // A crop rides in on the message, transferred, so this thread owns it
         // the moment it arrives. processDetectionResult below hands it back as
         // exactly one of contact (kept, released by the next swap) or

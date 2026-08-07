@@ -394,6 +394,19 @@ describe("crash sentinel heartbeat", () => {
     });
   });
 
+  it("reports the wasm heap size the worker last carried on a reply", async () => {
+    const { worker } = scanning();
+    await vi.advanceTimersByTimeAsync(0);
+    worker.emit({ ...emptyResult, wasmHeapBytes: 123_456_789 });
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+    expect(readSentinel()).toMatchObject({ wasmHeapBytes: 123_456_789 });
+    // A reply without the field keeps the last reading rather than blanking
+    // a value the sentinel already had.
+    worker.emit(emptyResult);
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+    expect(readSentinel()).toMatchObject({ wasmHeapBytes: 123_456_789 });
+  });
+
   // The count is only worth reading if it comes back down: a number that only
   // ever climbs would report every healthy session as leaking.
   it("counts the bitmaps this thread owns, and lets them go again", async () => {

@@ -100,6 +100,7 @@ export const readPreviousSessionEnd = (
     recycles: parsed.recycles,
     workerAgeMs: parsed.workerAgeMs,
     ownedBitmaps: parsed.ownedBitmaps,
+    wasmHeapBytes: parsed.wasmHeapBytes,
     events: parsed.events,
   };
 };

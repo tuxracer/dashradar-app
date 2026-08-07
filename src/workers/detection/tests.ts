@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
   centerCropRegion,
   cropRect,
@@ -21,6 +21,10 @@ import {
   isWorkerRequest,
   isWorkerResponse,
 } from "@/workers/detection/types";
+import {
+  installWasmMemoryCapture,
+  wasmHeapBytes,
+} from "@/workers/detection/wasmMemory";
 import { DEFAULT_MODEL } from "@/lib/detectionModels";
 import type { LoadedModel } from "@/lib/detectionModels";
 import type { RawDetection } from "@/types";
@@ -155,6 +159,37 @@ describe("isWorkerResponse", () => {
     ).toBe(false);
   });
 
+  it("accepts a wasm heap size on the replies that report one", () => {
+    expect(isWorkerResponse({ type: "ready", wasmHeapBytes: 1024 })).toBe(true);
+    expect(
+      isWorkerResponse({
+        type: "detections",
+        detections: [],
+        timing: { preprocessMs: 1, inferenceMs: 2, decodeMs: 3 },
+        wasmHeapBytes: 1024,
+      }),
+    ).toBe(true);
+    expect(
+      isWorkerResponse({
+        type: "scan-skipped",
+        gateMs: 1,
+        delta: 0,
+        wasmHeapBytes: 1024,
+      }),
+    ).toBe(true);
+    expect(isWorkerResponse({ type: "ready", wasmHeapBytes: "big" })).toBe(
+      false,
+    );
+    expect(
+      isWorkerResponse({
+        type: "scan-skipped",
+        gateMs: 1,
+        delta: 0,
+        wasmHeapBytes: "big",
+      }),
+    ).toBe(false);
+  });
+
   it("rejects malformed messages", () => {
     expect(isWorkerResponse(null)).toBe(false);
     expect(isWorkerResponse({ type: "detections" })).toBe(false);
@@ -174,6 +209,34 @@ describe("isWorkerResponse", () => {
     expect(isWorkerResponse({ type: "model-progress", progress: {} })).toBe(
       false,
     );
+  });
+});
+
+describe("wasmHeapBytes", () => {
+  const NativeMemory = WebAssembly.Memory;
+  afterAll(() => {
+    // Undo the capture's global patch so nothing outside this suite runs on
+    // the recording subclass.
+    (WebAssembly as { Memory: typeof WebAssembly.Memory }).Memory =
+      NativeMemory;
+  });
+
+  const PAGE_BYTES = 65_536;
+
+  // One sequential test on purpose: the module records into shared state, so
+  // the empty reading is only observable before anything has been captured.
+  it("reports the largest captured memory at its current size", () => {
+    expect(wasmHeapBytes()).toBeUndefined();
+    installWasmMemoryCapture();
+    const heap = new WebAssembly.Memory({ initial: 2, maximum: 4 });
+    expect(wasmHeapBytes()).toBe(2 * PAGE_BYTES);
+    // Growth must show up in later readings, not the size at creation.
+    heap.grow(1);
+    expect(wasmHeapBytes()).toBe(3 * PAGE_BYTES);
+    // A zero-page feature probe (the runtime creates these) must not shadow
+    // the real heap.
+    new WebAssembly.Memory({ initial: 0, maximum: 0 });
+    expect(wasmHeapBytes()).toBe(3 * PAGE_BYTES);
   });
 });
 

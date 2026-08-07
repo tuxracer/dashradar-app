@@ -298,12 +298,20 @@ export type WorkerResponse =
    */
   | { type: "model-downloaded"; durationMs: number }
   | { type: "backend-probe"; probe: BackendProbe }
-  | { type: "ready"; loaded?: LoadedSummary }
+  /**
+   * `wasmHeapBytes` (here and on both scan replies) is the current size of
+   * onnxruntime-web's wasm heap, the crash sentinel's prime suspect for iOS
+   * killing the page over its per-process memory limit. On `ready` it is the
+   * post-load baseline, so a report can separate what loading the model cost
+   * from what scanning grew. Absent when the capture could not see the heap.
+   */
+  | { type: "ready"; loaded?: LoadedSummary; wasmHeapBytes?: number }
   | {
       type: "detections";
       detections: RawDetection[];
       timing: FrameTiming;
       crop?: DetectionCrop;
+      wasmHeapBytes?: number;
       /**
        * How far the scene-change gate measured this frame from the last one
        * scanned. Present on results as well as skips so the threshold can be
@@ -323,7 +331,12 @@ export type WorkerResponse =
    * cost and the measurement behind the verdict keeps every consumer of a
    * detection result untouched by a skip.
    */
-  | { type: "scan-skipped"; gateMs: number; delta: number }
+  | {
+      type: "scan-skipped";
+      gateMs: number;
+      delta: number;
+      wasmHeapBytes?: number;
+    }
   | {
       type: "worker-error";
       code: DetectionErrorCode;
@@ -357,17 +370,25 @@ export const isWorkerResponse = (value: unknown): value is WorkerResponse => {
     case "backend-probe":
       return isBackendProbe(value.probe);
     case "ready":
-      return value.loaded === undefined || isLoadedSummary(value.loaded);
+      return (
+        (value.loaded === undefined || isLoadedSummary(value.loaded)) &&
+        (value.wasmHeapBytes === undefined || isNumber(value.wasmHeapBytes))
+      );
     case "detections":
       return (
         Array.isArray(value.detections) &&
         value.detections.every(isRawDetection) &&
         isFrameTiming(value.timing) &&
         (value.crop === undefined || isDetectionCrop(value.crop)) &&
-        (value.sceneDelta === undefined || isNumber(value.sceneDelta))
+        (value.sceneDelta === undefined || isNumber(value.sceneDelta)) &&
+        (value.wasmHeapBytes === undefined || isNumber(value.wasmHeapBytes))
       );
     case "scan-skipped":
-      return isNumber(value.gateMs) && isNumber(value.delta);
+      return (
+        isNumber(value.gateMs) &&
+        isNumber(value.delta) &&
+        (value.wasmHeapBytes === undefined || isNumber(value.wasmHeapBytes))
+      );
     case "worker-error":
       return (
         isDetectionErrorCode(value.code) &&
