@@ -51,6 +51,8 @@ import { centerCropRegion } from "@/workers/detection/inference";
 import type { WorkerResponse, ZoomLevel } from "@/workers/detection/types";
 import { isWorkerResponse } from "@/workers/detection/types";
 import {
+  BYTES_PER_MIB,
+  CONSOLE_DIAGNOSTICS_STORAGE_KEY,
   FRAME_RETRY_MS,
   INITIAL_DEBUG,
   INITIAL_SNAPSHOT,
@@ -329,6 +331,27 @@ export const createDetectionEngine = ({
   const eventBeat$ = new Subject<void>();
 
   /**
+   * Mirror a session-log line (or an extra diagnostic beside one) to the
+   * console, for a tethered Web Inspector session. Silent unless the
+   * CONSOLE_DIAGNOSTICS_STORAGE_KEY flag is in localStorage; the flag is read
+   * per line so flipping it from the inspector takes effect without a reload.
+   * Unlike the sentinel log this never leaves the device, so free-text detail
+   * is allowed here.
+   */
+  const consoleDiagnostic = (line: string): void => {
+    try {
+      if (
+        window.localStorage.getItem(CONSOLE_DIAGNOSTICS_STORAGE_KEY) === null
+      ) {
+        return;
+      }
+    } catch {
+      return;
+    }
+    console.info(`[dashradar] ${line}`);
+  };
+
+  /**
    * Append to the log, and for everything except the per-frame kinds, ask for
    * a heartbeat on the spot.
    *
@@ -343,6 +366,15 @@ export const createDetectionEngine = ({
     if (sessionEvents.length > MAX_SESSION_EVENTS) {
       sessionEvents.shift();
     }
+    const line = detail ? `${kind} ${detail}` : kind;
+    // The per-frame lines carry what a memory investigation reads against the
+    // scan count: the worker's wasm heap, the bitmaps this thread still owns,
+    // and which round trip this was.
+    consoleDiagnostic(
+      kind === "scan" || kind === "skip"
+        ? `${line} · heap ${wasmHeapBytes === undefined ? "?" : `${(wasmHeapBytes / BYTES_PER_MIB).toFixed(1)} MiB`} · bitmaps ${ownedBitmaps} · frame ${framesTotal}`
+        : line,
+    );
     if (kind !== "scan" && kind !== "skip") {
       eventBeat$.next();
     }
@@ -774,6 +806,13 @@ export const createDetectionEngine = ({
         break;
       }
       case "backend-probe": {
+        const { graphCapture, threads, sessionError, graphCaptureError } =
+          message.probe;
+        consoleDiagnostic(
+          `backend-probe · graphCapture ${String(graphCapture)} · threads ${threads}` +
+            (sessionError ? ` · sessionError ${sessionError}` : "") +
+            (graphCaptureError ? ` · captureError ${graphCaptureError}` : ""),
+        );
         publish({ backendProbe: message.probe });
         break;
       }
@@ -905,6 +944,11 @@ export const createDetectionEngine = ({
           "error",
           message.reason ? `${message.code} ${message.reason}` : message.code,
         );
+        // The platform's free text stays out of the shipped log but is the
+        // most useful line a tethered console can show for a failure.
+        if (message.detail) {
+          consoleDiagnostic(`worker-error detail: ${message.detail}`);
+        }
         telemetry.error(message.code, message.detail);
         publish({ error: message.code });
         setStatus("error");

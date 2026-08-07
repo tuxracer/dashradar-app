@@ -20,6 +20,21 @@ const TRACES_SAMPLE_RATE = 1.0;
  */
 const previousSessionEnd = readPreviousSessionEnd();
 
+// Replay a dirty end to the console unconditionally, ahead of any reporting
+// gate. When iOS kills the page, a tethered Web Inspector loses the dead
+// process's console with it; this is what puts the tail of that session in
+// front of the person who reattaches after the reload, and it works where
+// Sentry does not (dev builds, opted-out visitors).
+if (previousSessionEnd) {
+  const { events, ...summary } = previousSessionEnd;
+  console.info("[dashradar] previous session ended dirty", summary);
+  for (const { at, kind, detail } of events ?? []) {
+    console.info(
+      `[dashradar] ${new Date(at).toISOString()} ${detail ? `${kind} ${detail}` : kind}`,
+    );
+  }
+}
+
 /**
  * Initialize Sentry as a side effect at import time, so instrumentation is in
  * place before the rest of the app's modules load (main.tsx imports this file

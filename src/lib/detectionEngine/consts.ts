@@ -173,6 +173,19 @@ export const WORKER_REPLY_TIMEOUT_MS = 30_000;
  */
 export const WORKER_LOAD_TIMEOUT_MS = 60_000;
 
+/**
+ * localStorage key that turns on the console mirror of the session log, for
+ * tethered Web Inspector sessions (set any value from the inspector console;
+ * remove it to go quiet). A storage flag rather than a setting or a variable
+ * on purpose: its audience always has a console open to set it from, it needs
+ * no UI in a 10-second crash-reproduction window, and it survives the
+ * crash-reload loop being debugged, which resets every in-page value.
+ */
+export const CONSOLE_DIAGNOSTICS_STORAGE_KEY = "consoleDiagnostics";
+
+/** Bytes in one mebibyte, for the console mirror's memory figures. */
+export const BYTES_PER_MIB = 1_048_576;
+
 /** Published state before the worker reports anything. */
 export const INITIAL_SNAPSHOT: DetectionSnapshot = {
   status: "loading-model",

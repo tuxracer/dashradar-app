@@ -48,6 +48,11 @@ env.wasm.wasmPaths = `${import.meta.env.BASE_URL}ort/`;
 // wasmHeapBytes() reads for the crash sentinel (see ./wasmMemory).
 installWasmMemoryCapture();
 
+// Reachable by hand from a tethered Web Inspector's worker context
+// (`dashradarWasmHeapBytes()`), so the heap can be polled between scans
+// without waiting for the next reply to carry it.
+Object.assign(self, { dashradarWasmHeapBytes: wasmHeapBytes });
+
 /** ORT wasm-runtime thread count for this device, capped for big.LITTLE. */
 const wasmThreads = Math.min(
   navigator.hardwareConcurrency || WASM_THREAD_CAP,
