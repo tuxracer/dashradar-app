@@ -12,10 +12,8 @@ import {
 export * from "./consts";
 
 /**
- * True until the current intro version has been dismissed. A stored value that
- * is missing, not a number, or older than INTRO_VERSION shows the intro again,
- * so a reworked intro reaches returning users too. When localStorage is
- * unavailable (private mode / quota) the intro shows again each visit, which
+ * True until the current intro version has been dismissed, so a reworked intro
+ * reaches returning users too. Without localStorage it shows every visit, which
  * beats silently skipping onboarding for a genuine first open.
  */
 export const shouldShowIntro = (): boolean => {
@@ -42,18 +40,14 @@ type IntroScreenProps = {
 };
 
 /**
- * Full-screen first-open intro. Rendered instead of the radar screen until
- * dismissed, so the camera permission prompt fires right after the START tap
- * instead of cold on page load. On a phone the model download proceeds
- * underneath in DetectionProvider while the user reads; on a desktop it waits
- * for the screen to be dismissed. The copy powers on in the same
- * one-shot staggered cascade as the permission ask and error screens, so the
- * whole panel family enters the same way. On a desktop the START button is
- * replaced by the `ShareTarget` handoff, since the app is built for a phone on
- * a dash: scanning the code (or sending the link) moves the user to mobile,
- * and a small link below still lets them continue on the desktop. That cluster
- * is shared with the unsupported-device screen so the app's two handoffs look
- * and behave identically.
+ * Full-screen first-open intro, rendered instead of the radar screen until
+ * dismissed so the camera prompt fires right after the START tap rather than
+ * cold on page load. A phone downloads the model underneath while someone reads;
+ * a desktop waits. The copy powers on in the same staggered cascade as the
+ * permission ask and error screens.
+ *
+ * On a desktop the START button becomes the `ShareTarget` handoff, since the app
+ * is built for a phone on a dash, with a small link below to continue anyway.
  */
 export const IntroScreen = ({ onStart }: IntroScreenProps) => {
   const desktop = isDesktopDevice();

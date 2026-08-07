@@ -29,18 +29,13 @@ export const initialTrackerState = (): TrackerState => ({
 });
 
 /**
- * One frame of the coasting tracker. Greedily matches this frame's detections
- * to existing tracks by IoU, shows every detection immediately (whether it
- * matched an existing track or is brand new), and coasts an unmatched track
- * for up to `maxCoastMs` after its last match so its box does not flicker off
- * when the model briefly loses the object. The budget is elapsed time, taken
- * from `atMs` (the result's own timestamp), not a count of processed results:
- * results arrive at whatever cadence the pacing chooses, and a stale track
- * holds its full score while it coasts, so a count would keep a vanished
- * vehicle driving the alert several times longer on a slow device than on a
- * fast one. `visible` is the full Track set, so consumers get a stable id per
- * object for as long as the tracker holds it. Pure: all tuning comes in via
- * `config`.
+ * One frame of the coasting tracker: greedily match this frame's detections to
+ * existing tracks by IoU, show every detection immediately, and coast an
+ * unmatched track for up to `maxCoastMs` so its box does not flicker off when
+ * the model briefly loses the object. The budget is elapsed time rather than a
+ * count of results, because results arrive at whatever cadence the pacing
+ * chooses and a coasting track holds its full score: a count would keep a
+ * vanished vehicle driving the alert far longer on a slow device.
  */
 export const stepTracker = (
   state: TrackerState,
@@ -80,15 +75,10 @@ export const stepTracker = (
     const track = tracks[i];
     const detection = matchedDetByTrack.get(i);
     if (detection) {
-      // Same-class match: ease the score toward the new raw value instead of
-      // adopting it outright, so per-frame model jitter does not whipsaw
-      // downstream readouts (the radar detector percentage in particular). A
-      // label change means IoU matched this track to a different class than
-      // the one its eased score describes (stepTracker matches purely by
-      // box overlap, with no label check), so track.score is meaningless for
-      // the new class and blending it in would leak the old class's
-      // confidence into the new one's readout. Adopt the new detection's own
-      // score outright instead.
+      // Ease toward the new score rather than adopting it, so per-frame model
+      // jitter does not whipsaw the readouts. Not across a label change, though:
+      // matching is purely by box overlap, so the eased score describes the old
+      // class and blending it would leak that confidence into the new one.
       const score =
         detection.label === track.label
           ? track.score +
@@ -102,9 +92,8 @@ export const stepTracker = (
         lastSeenAt: atMs,
       });
     } else if (atMs - track.lastSeenAt <= config.maxCoastMs) {
-      // Coasting: keep the stale box AND stale score as-is (anti-flicker).
-      // Do not refresh the score from anywhere here, there is no new
-      // detection this frame to refresh it from.
+      // Coasting: keep the stale box and score. There is no detection this
+      // frame to refresh either from.
       nextTracks.push(track);
     }
     // Past the coast budget: dropped.
@@ -126,20 +115,18 @@ export const stepTracker = (
 };
 
 /**
- * The tracks a detection actually matched on the scan at `atMs`, dropping the
- * ones the tracker is coasting through a miss. Consumers that smooth over
- * misses on purpose (the meter, the contact card) want the full coasted set;
- * a consumer that draws where something is standing right now wants this one,
- * because a held track is a claim the latest scan does not support.
+ * The tracks a detection actually matched at `atMs`, dropping the coasted ones.
+ * The meter and the contact card want the full set; a consumer drawing where
+ * something stands right now wants this one, since a held track is a claim the
+ * latest scan does not support.
  */
 export const tracksSeenAt = (tracks: Track[], atMs: number): Track[] =>
   tracks.filter((track) => track.lastSeenAt === atMs);
 
 /**
- * Stateful wrapper that holds tracker state across frames. The engine keeps
- * one instance and calls `update` with each result's detections and its
- * timestamp; it returns the tracks to render (this frame's, plus any
- * coasting), each carrying the stable id it keeps for as long as it lives.
+ * Stateful wrapper holding tracker state across frames. `update` returns the
+ * tracks to render, this frame's plus any coasting, each carrying the stable id
+ * it keeps for as long as it lives.
  */
 export const createDetectionTracker = (
   config: TrackerConfig = DEFAULT_TRACKER_CONFIG,

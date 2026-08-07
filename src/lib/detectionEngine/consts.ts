@@ -5,91 +5,44 @@ import type { DebugSnapshot, DetectionSnapshot } from "./types";
 export const FRAME_RETRY_MS = 100;
 
 /**
- * Minimum interval between frame captures: detection runs at most once per
- * second. Without a floor the pump sends the next frame the instant a
- * result returns, so detection runs at whatever rate the device manages: fast
- * WebGPU phones end up running inference back-to-back, pegging the GPU
- * continuously and thermal-throttling a dash-mounted phone (or draining the
- * battery hard enough to shut down). A once-per-second sweep is enough
- * for spotting police vehicles ahead, and the coasting tracker plus motion
- * stabilization keep the HUD steady between results; anything faster mostly
- * spends battery and heat. Devices whose adaptive rest (see PACING_REST_RATIO
- * below) already spaces captures wider than this are unaffected.
+ * Floor on the interval between frame captures. Without it a fast phone runs
+ * inference back-to-back and cooks itself on the dash; once a second is enough
+ * to spot a vehicle ahead, and the coasting tracker covers the gaps.
  */
 export const MIN_FRAME_INTERVAL_MS = 1_000;
 
 /**
- * Baseline fraction of a result's round-trip time the pump idles before
- * starting the next capture. Resting a full round trip puts captures 2x the
- * round trip apart, so the GPU is idle at least half the time. The absolute
- * floor above only paces devices whose round trip is under half of it; a
- * device slower than that would otherwise run the GPU back-to-back with little
- * idle, the worst case for heat and battery on a dash-mounted phone.
- *
- * This ratio alone is not enough, which is what PACING_REST_RAMP_MS below
- * exists to fix. What heats a phone is the fraction of wall time the GPU spends
- * busy, not how many milliseconds of idle sit between runs, and a flat ratio
- * holds that fraction constant: at ratio 1 the duty cycle is round trip over
- * twice the round trip, or 50%, for every round trip past half the floor. A
- * phone that is already throttling gets more absolute cool-down but no smaller
- * share of busy time, so the pacing never actually backs off the load that
- * caused the throttling.
+ * Baseline fraction of a result's round trip the pump idles before the next
+ * capture, holding the GPU busy at most half the time. Ratios rather than fixed
+ * delays because a ratio of r caps the busy fraction at 1/(1+r) everywhere.
  */
 export const PACING_REST_RATIO = 1;
 
 /**
- * Round-trip time at which the rest ratio starts climbing above
- * PACING_REST_RATIO, rising in proportion to the round trip until
- * PACING_REST_RATIO_MAX. This is what makes the duty cycle fall as a device
- * slows down instead of sitting at a flat 50%: at twice this figure the pump
- * rests twice the round trip (33% busy), at three times it rests three (25%).
- *
- * Set to half MIN_FRAME_INTERVAL_MS on purpose. That is exactly where resting
- * the whole round trip stops leaving the floor in charge, so every device fast
- * enough for the floor to govern is paced precisely as it was before the ramp
- * existed and only devices already in the proportional regime see any change.
+ * Round trip at which the rest ratio starts climbing toward
+ * PACING_REST_RATIO_MAX, so a slowing device's duty cycle falls instead of
+ * sitting at a flat 50%. Half the floor is where the floor stops governing, so
+ * every device fast enough to be paced by it is unaffected by the ramp.
  */
 export const PACING_REST_RAMP_MS = MIN_FRAME_INTERVAL_MS / 2;
 
-/**
- * Ceiling on the ramped rest ratio, bounding the duty cycle at roughly 25%.
- * Past this the pacing has backed off as far as it usefully can, and letting
- * the ratio keep climbing would only push the gap between scans out further for
- * a diminishing thermal return.
- */
+/** Ceiling on the ramped rest ratio, bounding the GPU duty cycle near 25%. */
 export const PACING_REST_RATIO_MAX = 3;
 
 /**
- * Hard ceiling on the delay between captures, whatever the rest ratio asks
- * for. The ramp above trades detection rate for heat, and without a bound that
- * trade eventually reaches the outcome this project already rejected once: a
- * detector scanning so rarely that it misses most of what the car drives past
- * is worse than no detector, because it still looks like it is working. Five
- * seconds is the point where backing off further stops being worth having.
- *
- * A device slow enough to hit this cap is one where both failure modes are in
- * play at once and neither can be fully avoided; the cap picks staying useful.
+ * Hard ceiling on the delay between captures. The ramp trades detection rate
+ * for heat, and unbounded that trade ends at a detector which misses most of
+ * what the car drives past while still looking like it works.
  */
 export const MAX_FRAME_INTERVAL_MS = 5_000;
 
 /**
- * Longest the scene-change gate may go without the model running, after which
- * the pump demands a scan whatever the gate makes of the picture.
- *
- * The gate's safety argument is that nothing can enter the frame without
- * changing the pixels in it, and that argument holds only as far as the
- * threshold is calibrated and the frames are real. Neither is guaranteed on a
- * device nobody has measured: a threshold set above the change a distant
- * vehicle produces, or a camera that has quietly stopped delivering new frames,
- * both turn the gate into a detector that scans the road never while showing
- * every sign of working. That is the failure this project already refused once
- * in the wasm fallback, where scanning too rarely was judged worse than not
- * shipping, so the gate is not trusted to be its own backstop.
- *
- * Ten seconds bounds how blind a miscalibration can leave a drive while
- * keeping almost all of the win: a minute stopped at a light costs six
- * inferences instead of sixty, and raising the bound further buys a few
- * percent more for a proportionally worse worst case.
+ * Longest the scene-change gate may go without the model running before the
+ * pump demands a scan anyway. A threshold set above what a distant vehicle
+ * produces and a camera that has frozen both look exactly like a still scene
+ * from inside the app, so the gate is not trusted to be its own backstop. Ten
+ * seconds keeps nearly all of the win: a minute at a light costs six inferences
+ * instead of sixty.
  */
 export const SCENE_GATE_MAX_SKIP_MS = 10_000;
 
@@ -123,53 +76,31 @@ export const INITIAL_DEBUG: DebugSnapshot = {
 export const SW_CONTROL_TIMEOUT_MS = 3_000;
 
 /**
- * How long a detection worker may run before it is recycled (terminated and
- * recreated) at the next result boundary. onnxruntime-web and the browser GPU
- * stacks accumulate native memory over thousands of runs that JS cannot observe
- * or free: ORT arenas, GPU buffer pools, and the WASM heap all grow invisibly.
- * Recreating the worker resets all of that, turning unbounded growth into
- * bounded growth. iOS kills the whole page near a hard memory cap, so this is
- * the primary crash mitigation for the long scanning sessions this app is built
- * for (hours on a dash-mounted phone). The weights are cached, so a recycle
- * re-loads from CacheStorage without a network download or visible loading UI.
- *
- * A recycle is cheap enough that this interval is not a thermal question.
- * Measured in desktop Chrome with the weights cached and graph capture on, a
- * terminate to the next session reporting ready takes about 250 ms, and the gap
- * between the last result of one session and the first of the next is about
- * 320 ms, which is shorter than a normal scan interval because the fresh pump
- * fires immediately instead of pacing. Rebuilding the session evidently reuses
- * the browser's compiled shaders rather than paying for them again. A phone is
- * slower and WebKit runs no graph capture, so treat those figures as a floor,
- * but the shape of the answer is that recycling costs about one scan.
+ * How long a detection worker may run before it is recycled at the next result
+ * boundary. ORT arenas, GPU buffer pools, and the WASM heap all grow natively
+ * where JS can neither see nor free them, and iOS kills the page at a hard
+ * memory cap, so recycling turns unbounded growth into bounded growth over the
+ * hours-long sessions this app is built for. Measured cost is roughly one
+ * scan: the weights come back from CacheStorage and the browser reuses its
+ * compiled shaders.
  */
 export const WORKER_RECYCLE_AFTER_MS = 900_000;
 
 /**
  * How long the pump waits for a posted frame's result before treating the
- * worker as hung and recycling it. A healthy WebGPU round trip measures around
- * half a second and even a heavily throttled phone stays within a few seconds,
- * so a reply this late means the worker is wedged (a stuck GPU queue, a
- * runtime deadlock) in a way that fires neither a worker-error message nor
- * onerror. Without the bound the pump would await the reply forever, and
- * scanning would silently stop for the rest of the drive; recycling gives it
- * a fresh worker within a bearable gap instead.
+ * worker as wedged and recycling it. A hang fires neither a worker-error
+ * message nor onerror, so without this the pump awaits a reply that never comes
+ * and scanning stops silently for the rest of the drive.
  */
 export const WORKER_REPLY_TIMEOUT_MS = 30_000;
 
 /**
  * Longest a loading worker may go without posting any message before it is
- * treated as wedged and recycled. This is an inactivity bound, not a load
- * budget: a healthy load posts something at every stage (the probe verdict,
- * load-start, a progress message per downloaded chunk, ready), so a slow
- * network resets the clock continuously and never trips it, while a load that
- * hangs in CacheStorage or session creation posts nothing at all. Without the
- * bound, a wedged load after the 15-minute recycle parks the pump behind a
- * ready that never comes and scanning silently stops for the rest of the
- * drive; the reply watchdog cannot catch it because no frame is ever posted.
- * Twice the reply timeout, because the slowest legitimate silent stretch
- * (building the session and warming it up on a throttled phone) is longer
- * than any legitimate silence mid-scan.
+ * recycled. An inactivity bound, not a load budget: a healthy load posts at
+ * every stage down to each downloaded chunk, so a slow network keeps resetting
+ * the clock while a load wedged in CacheStorage or session creation says
+ * nothing. The reply watchdog cannot cover this, since no frame is posted until
+ * the worker reports ready.
  */
 export const WORKER_LOAD_TIMEOUT_MS = 60_000;
 

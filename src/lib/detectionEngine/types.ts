@@ -16,12 +16,9 @@ export type DetectionStatus = "loading-model" | "ready" | "running" | "error";
 export type ModelProgress = { loadedBytes: number; totalBytes: number };
 
 /**
- * Which pacing rule set the delay before the next capture: the absolute
- * MIN_FRAME_INTERVAL_MS floor ("floor", fast devices), the proportional rest
- * ("rest", devices whose round trip is long enough that resting it exceeds the
- * remainder of the floor), or the MAX_FRAME_INTERVAL_MS ceiling ("capped", the
- * slowest devices, where the ramped rest would space scans further apart than
- * the detector can stay useful at).
+ * Which pacing rule set the delay before the next capture: the absolute floor
+ * (fast devices), the proportional rest (slower ones), or the ceiling that stops
+ * the ramp spacing scans further apart than the detector stays useful at.
  */
 export type PacingRule = "floor" | "rest" | "capped";
 
@@ -46,18 +43,12 @@ export type DebugSnapshot = {
   filteredCount: number;
   /** Detections after the coasting tracker (what the HUD renders). */
   shownCount: number;
-  /**
-   * Time inside the round trip not spent in the worker's three stages:
-   * postMessage delivery each way plus scheduling. Isolates worker-boundary
-   * cost from model compute.
-   */
+  /** Round-trip time outside the worker's three stages: delivery and scheduling. */
   overheadMs: number;
   /**
-   * Consecutive frame captures that failed since the last successful one.
-   * The pump retries a failed capture forever (the expected cause, a video
-   * element with no frame data yet, resolves itself moments later), so a
-   * value that keeps climbing is the one visible sign the pump is spinning
-   * on a video that never delivers.
+   * Consecutive failed captures. The pump retries forever, so a value that keeps
+   * climbing is the one visible sign it is spinning on a video that never
+   * delivers a frame.
    */
   captureFailures: number;
   /** Idle delay scheduled after the last result before the next capture. */
@@ -67,19 +58,15 @@ export type DebugSnapshot = {
   /** Crop factor the frame was scanned at (ZOOM_OFF or ZOOM_2X). */
   zoom: number;
   /**
-   * Largest per-tile luma shift the scene-change gate measured on the last
-   * frame, whether it skipped or scanned. The number the threshold is tuned
-   * against: point the camera at something still to read the noise floor, wave
-   * a hand through the frame to read what real movement produces, and the
-   * threshold belongs between them.
+   * Largest per-tile luma shift the gate measured on the last frame, skip or
+   * scan. The number the threshold is tuned against: something still reads the
+   * noise floor, a hand through the frame reads real movement, and the threshold
+   * belongs between them.
    */
   sceneDelta: number;
   /**
-   * Inferences the gate has skipped since the last one it let through. Climbs
-   * while the view is still and resets the moment something moves, so it reads
-   * as how long the detector has been coasting. Bounded by the forced rescan,
-   * which is what stops a threshold set too high from reading as a healthy
-   * scanning session while the model has not run in minutes.
+   * Inferences skipped since the last one the gate let through, so it reads as
+   * how long the detector has been coasting. Bounded by the forced rescan.
    */
   scanSkips: number;
   /** Scans since the engine activated that the model actually ran. */
@@ -89,21 +76,15 @@ export type DebugSnapshot = {
 };
 
 /**
- * One completed scan as the detection view draws it: the frame's own
- * detections after class enrichment and the confidence filter, before the
- * coasting tracker, so a box on screen means the model saw it on that frame
- * rather than that a track is being held through a miss. The frame geometry
- * and crop factor travel with them, because the boxes must be mapped against
- * the frame that produced them and not against whatever the video element
- * measures a second later, after a rotation.
+ * One completed scan. The detections are the frame's own, before the coasting
+ * tracker, so a box on screen means the model saw it on that frame rather than
+ * that a track is being held through a miss. The geometry travels with them
+ * because the boxes must map against the frame that produced them, not against
+ * whatever the video element measures a second later after a rotation.
  */
 export type ScanResult = {
   detections: Detection[];
-  /**
-   * The coasted tracker output with stable per-object ids, what the scene
-   * view places (`detections` above stays the raw per-frame model output the
-   * detection view draws).
-   */
+  /** The coasted tracker output with stable ids, what the scene view places. */
   tracks: Track[];
   /** Intrinsic size of the captured frame, in pixels. */
   frame: Size;
@@ -122,9 +103,9 @@ export type DetectionSnapshot = {
   /** How the detector's backend came up; undefined until the session builds. */
   backendProbe: BackendProbe | undefined;
   /**
-   * What the running checkpoint says it looks for, as its own file named it on
-   * load, which is the only place those words exist. Undefined until a session
-   * reports ready, and undefined afterwards for a file that names nothing.
+   * What the running checkpoint looks for, as its own file named it on load,
+   * which is the only place those words exist. Undefined until ready, and
+   * afterwards for a file that names nothing.
    */
   loadedClasses: readonly DetectionClass[] | undefined;
   /** True only while the weights stream over the network (never for cache). */
@@ -135,19 +116,16 @@ export type DetectionSnapshot = {
   scan: ScanResult | undefined;
   error: DetectionErrorCode | undefined;
   /**
-   * Latest cutout with its score, remapped signal, and direction. Replaced
-   * when a new crop arrives; left untouched by detection-free frames so the
-   * contact card lingers through the meter's decay tail. Cleared on worker
-   * errors and deactivation.
+   * Latest cutout with its score, signal, and direction. Left untouched by
+   * detection-free frames, so the card lingers through the meter's decay tail.
    */
   contact: Contact | undefined;
 };
 
 /**
  * The world state the owner pushes in. The first three are what the running
- * state derives from: the pump runs exactly while a video source is attached,
- * the page is visible, and the settings panel is closed, and there is no
- * imperative pause or resume. The last is carried rather than acted on.
+ * state derives from, with no imperative pause or resume; the last is carried
+ * rather than acted on.
  */
 export type EngineInputs = {
   /** The video element frames are captured from; undefined detaches it. */
@@ -157,10 +135,9 @@ export type EngineInputs = {
   /** Whether the full-screen settings panel is open. */
   settingsOpen: boolean;
   /**
-   * Which view is on screen. Changes nothing about scanning and never reaches
-   * `wantsToRun`; the engine holds it only to stamp onto the crash heartbeat,
-   * which has to record what was on screen at the moment a session died and is
-   * the one thing no later launch can reconstruct.
+   * Which view is on screen. Held only to stamp onto the crash heartbeat, since
+   * what was on screen when a session died is the one thing no later launch can
+   * reconstruct.
    */
   activeView: ActiveView;
 };
@@ -175,9 +152,8 @@ export type EngineSettings = {
   /** Apply the pacing floor and rest; false is the debug-only escape hatch. */
   throttled: boolean;
   /**
-   * Let the worker skip inference on a frame that has not changed since the
-   * one it last scanned; false is the debug-only escape hatch that makes every
-   * frame a forced scan, which is what the gate's cost and benefit are measured
+   * Let the worker skip a frame that has not changed since the one it last
+   * scanned; false forces every frame, which is what the gate is measured
    * against on a device.
    */
   sceneGate: boolean;
@@ -185,20 +161,15 @@ export type EngineSettings = {
   zoom: ZoomLevel;
   /** Minimum detection confidence for decode and enrichment. */
   confidenceThreshold: number;
-  /**
-   * Mirror the session log to the browser console, for tethered Web
-   * Inspector sessions. The Console diagnostics developer row, gated like
-   * every other developer option.
-   */
+  /** Mirror the session log to the console, for tethered Inspector sessions. */
   consoleDiagnostics: boolean;
 };
 
 /**
  * The frame pump and worker lifecycle behind detection, framework-free. The
- * owner activates it, pushes inputs and settings, and reads snapshots; the
- * getSnapshot/subscribe pair is the useSyncExternalStore contract, and is
- * equally the shape a stream-based implementation exposes for free, so the
- * interface survives an internal rewrite.
+ * getSnapshot/subscribe pair is the useSyncExternalStore contract and equally
+ * what a stream-based implementation exposes for free, so this interface
+ * survives an internal rewrite.
  */
 export type DetectionEngine = {
   /** Current published state; a stable reference until something changes. */
@@ -212,15 +183,13 @@ export type DetectionEngine = {
   /** Latest per-frame diagnostics, read on demand (never published). */
   getDebugSnapshot: () => DebugSnapshot;
   /**
-   * Let the worker fetch the weights, for an engine built with the download
-   * held back (`deferModelLoad`). Idempotent, and a no-op on an engine that was
-   * never holding them: the gate only ever opens.
+   * Let the worker fetch the weights, for an engine built with `deferModelLoad`.
+   * Idempotent: the gate only ever opens.
    */
   allowModelLoad: () => void;
   /**
-   * Spawn the worker and start loading the model. Resets published state, so
-   * a deactivate/activate pair behaves like a fresh mount (which is what
-   * StrictMode's double-invoked effects do to the owner).
+   * Spawn the worker and start loading the model. Resets published state, so a
+   * deactivate/activate pair behaves like the fresh mount StrictMode makes it.
    */
   activate: () => void;
   /** Terminate the worker and release everything activate acquired. */
@@ -228,13 +197,10 @@ export type DetectionEngine = {
 };
 
 /**
- * Structural worker type so tests can inject a fake.
- *
- * `postMessage` uses method-shorthand syntax (not an arrow-typed property)
- * so a real `new Worker(...)` return value structurally satisfies this type:
- * TypeScript checks method signatures bivariantly but checks property
- * function types contravariantly, and the real DOM `Worker.postMessage`
- * overload set only satisfies the bivariant check.
+ * Structural worker type so tests can inject a fake. `postMessage` is
+ * method-shorthand rather than an arrow-typed property because TypeScript checks
+ * methods bivariantly, and the real DOM `Worker.postMessage` overload set only
+ * satisfies the bivariant check.
  */
 export type DetectionWorkerLike = {
   postMessage(message: WorkerRequest, transfer?: Transferable[]): void;

@@ -20,9 +20,8 @@ import {
 export * from "./consts";
 
 /**
- * A rejection's `name`, or {@link WAKE_LOCK_UNKNOWN_REASON}. Read off the value
- * rather than through `instanceof Error`, because the platforms that refuse a
- * wake lock reject with a DOMException, which does not inherit from Error
+ * A rejection's `name`, read off the value rather than through `instanceof
+ * Error`: these reject with a DOMException, which does not inherit from Error
  * everywhere it is implemented.
  */
 const rejectionName = (error: unknown): string => {
@@ -33,19 +32,15 @@ const rejectionName = (error: unknown): string => {
 };
 
 /**
- * Request a lock and drop it again, from inside the handler of a tap the user
- * just made. Nothing here holds the screen open; the point is the permission it
- * leaves behind.
+ * Request a lock and drop it again from inside a tap handler. Nothing here holds
+ * the screen open; the point is the permission it leaves behind.
  *
- * WebKit refuses a wake lock requested without transient activation, and grants
- * a later gesture-less one only because a gesture-backed request already landed
- * on this document (`m_wasPreviouslyAuthorizedDueToTransientActivation` in
- * WebKit's `WakeLock.cpp`). The engine asks for its lock once scanning starts,
- * several awaits past the tap that set the app going, so on iOS it is refused
- * and stays refused for the life of the page. Spending one throwaway request
- * inside a tap is what lets the real one succeed. The flag is per document, so
- * this belongs on the gestures a session passes through on its way to scanning,
- * and it has to happen again on every page load.
+ * WebKit refuses a lock requested without transient activation, and grants a
+ * later gesture-less one only because a gesture-backed request already landed on
+ * this document. The engine asks once scanning starts, several awaits past the
+ * tap that set the app going, so on iOS it is refused for the life of the page
+ * without this. The flag is per document, so it has to be spent again on every
+ * page load.
  */
 export const primeScreenWakeLock = () => {
   void navigator.wakeLock?.request("screen").then(
@@ -66,39 +61,28 @@ export const primeScreenWakeLock = () => {
 type ReportedOutcome = "nothing" | "refused" | "settled";
 
 /**
- * Keeps the screen awake for exactly as long as the returned stream is
- * subscribed: subscribing requests a lock, unsubscribing releases it. It never
- * emits and never completes, so it is a resource to scope under whatever
- * should hold the screen open rather than an acquire/release protocol a caller
- * has to hold correctly.
+ * Keeps the screen awake while the returned stream is subscribed. It never emits
+ * and never completes, so it is a resource to scope under whatever should hold
+ * the screen open rather than a protocol a caller has to hold correctly.
  *
- * Wake locks are auto-released when the tab is hidden, so becoming visible
- * again requests a fresh one and drops the previous holder.
+ * The platform auto-releases when the tab is hidden, so becoming visible
+ * requests a fresh lock. A refused one waits for the next tap and asks again,
+ * since on WebKit a gesture-backed request is the one that can still succeed:
+ * priming covers a session that reaches scanning through the intro, this covers
+ * a returning one that reaches it through no taps at all.
  *
- * A refused lock waits for the next tap and asks again, because on WebKit a
- * request made from inside a gesture is the one that can still succeed (see
- * {@link primeScreenWakeLock}). Priming covers the session that reaches
- * scanning through the intro; this covers the returning one that reaches it
- * through no taps at all, taking the driver's first touch of the screen,
- * whenever it comes, as the chance to try again.
- *
- * The reporting gate lives in this closure rather than in a subscription, so
- * one stream subscribed and unsubscribed once per scanning window reports a
- * platform once for the page load, not once per window.
+ * The reporting gate lives in this closure rather than a subscription, so a
+ * platform is reported once per page load rather than once per scanning window.
  */
 export const screenWakeLock = (): Observable<never> => {
   let reported: ReportedOutcome = "nothing";
 
   /**
-   * Report a refusal, once. A refused lock is the app's worst silent failure:
-   * the screen sleeps mid-drive and the detector stops seeing the road while
-   * the driver has no reason to think anything changed. It is reported when it
-   * happens rather than held open pending a retry, because a session whose
-   * driver never touches the screen has no later answer to report and must not
-   * go missing from the count.
-   *
-   * The rejection name (NotAllowedError, AbortError) is the whole payload: a
-   * handful of values, none of them describing the device or the user.
+   * Report a refusal, once. It is the app's worst silent failure: the screen
+   * sleeps mid-drive and the detector stops seeing the road with no sign anything
+   * changed. Reported when it happens rather than pending a retry, since a driver
+   * who never touches the screen has no later answer and must not go uncounted.
+   * The rejection name is the whole payload.
    */
   const reportRefusal = (reason: string) => {
     if (reported !== "nothing") {
@@ -109,11 +93,9 @@ export const screenWakeLock = (): Observable<never> => {
   };
 
   /**
-   * Report a grant, once, tagging the ones that arrive after a refusal so a
-   * recovered session reads as more than a contradiction of the refusal already
-   * counted. A platform answers the same way every time, and a lock is
-   * re-requested for the length of a drive, so reporting every grant would be
-   * one event per app switch.
+   * Report a grant, once, tagging the ones after a refusal so a recovered session
+   * reads as more than a contradiction of the refusal already counted. A lock is
+   * re-requested all drive, so reporting every grant is one event per app switch.
    */
   const reportGrant = () => {
     if (reported === "settled") {
@@ -129,14 +111,13 @@ export const screenWakeLock = (): Observable<never> => {
 
   /**
    * One held lock, released when unsubscribed. The `released` flag covers the
-   * teardown window every pending request has: unsubscribing while the
-   * platform is still deciding has to let the grant go rather than store it,
-   * or the screen stays awake after scanning stopped.
+   * teardown window every pending request has: unsubscribing while the platform
+   * is still deciding must let the grant go rather than store it, or the screen
+   * stays awake after scanning stopped.
    *
-   * Completing on a refusal is what hands the stream to the gesture retry
-   * below. A held lock deliberately never completes, so a healthy session
-   * subscribes no gesture listeners at all, and neither does a platform with no
-   * API, where there is nothing a tap could change.
+   * Completing on a refusal is what hands the stream to the gesture retry below.
+   * A held lock never completes, so a healthy session subscribes no gesture
+   * listeners, and neither does a platform with no API for a tap to change.
    */
   const heldLock$ = new Observable<never>((subscriber) => {
     if (!navigator.wakeLock) {
@@ -147,8 +128,8 @@ export const screenWakeLock = (): Observable<never> => {
     let released = false;
     void navigator.wakeLock.request("screen").then(
       (granted) => {
-        // Reported before the teardown check, because the platform granting is
-        // the answer being counted whether or not this stream still wants it.
+        // Before the teardown check: the platform granting is the answer being
+        // counted whether or not this stream still wants it.
         reportGrant();
         if (released) {
           void granted.release().catch(() => {

@@ -7,9 +7,8 @@ import { CAMERA_PROMPT_STORAGE_KEY, PERMISSION_POINTS } from "./consts";
 export * from "./consts";
 
 /**
- * True until the user has accepted the in-app camera permission ask. When
- * localStorage is unavailable (private mode / quota) the ask shows again each
- * visit, which beats silently skipping the explanation before the browser's
+ * True until the in-app camera ask has been accepted. Without localStorage it
+ * shows every visit, which beats skipping the explanation before the browser's
  * own prompt.
  */
 export const shouldShowCameraPrompt = (): boolean => {
@@ -48,17 +47,11 @@ type CameraPermissionScreenProps = {
 };
 
 /**
- * Full-screen camera permission ask, shown between the intro and the first
- * getUserMedia call. It explains why the camera is needed before the browser's
- * own permission prompt appears, so that prompt never lands cold: the camera
- * is only requested after the ALLOW CAMERA tap. Laid out like the error
- * screens (scope beside the copy in landscape, stacked in portrait) with the
- * intact-camera glyph, so accepting and declining stay in one visual language.
- * The copy is kept to a glance: the intro one tap earlier already introduced
- * the app, so this screen only says why the camera is needed and that it stays
- * private. Content powers on in a one-shot staggered cascade (scope first,
- * then copy, then buttons) instead of cutting in all at once; the shared
- * backdrop stays constant across the intro-to-ask transition.
+ * Full-screen camera ask, between the intro and the first getUserMedia call, so
+ * the browser's own prompt never lands cold. Laid out like the error screens with
+ * the intact-camera glyph, so accepting and declining stay in one visual
+ * language. The copy is kept to a glance, since the intro one tap earlier already
+ * introduced the app: only why the camera is needed and that it stays private.
  */
 export const CameraPermissionScreen = ({
   onAllow,

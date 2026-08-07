@@ -1,12 +1,8 @@
 /**
- * Empties both web storages. localStorage is where the app's own state lives:
- * the settings blob, the intro and camera-prompt flags, the PWA-install
- * analytics guard, the last-run build record, the crash-sentinel record, and
- * the install id (so a reset device reports as a new one, which is the point).
- * The app writes nothing to sessionStorage today, but it is cleared anyway,
- * since a reset that leaves a dependency's key behind is not a reset. Each
- * store is cleared on its own, so an unavailable one (private mode / quota)
- * still lets the other go.
+ * Empties both web storages. localStorage holds all of the app's own state, down
+ * to the install id, so a reset device reports as a new one. sessionStorage is
+ * cleared too although nothing writes to it, since a reset that leaves a
+ * dependency's key behind is not a reset.
  */
 const clearWebStorage = (): void => {
   try {
@@ -22,10 +18,8 @@ const clearWebStorage = (): void => {
 };
 
 /**
- * Deletes every Cache Storage bucket: the Workbox precache, the `ort-runtime`
- * and `model-cache` runtime caches (the ~54 MB weights live here), and the dev
- * model cache. Deleting by key rather than by name so a cache this build no
- * longer knows about still goes.
+ * Deletes every Cache Storage bucket, by key rather than by name so a cache this
+ * build no longer knows about still goes.
  */
 const clearCacheStorage = async (): Promise<void> => {
   if (!("caches" in window)) {
@@ -36,11 +30,9 @@ const clearCacheStorage = async (): Promise<void> => {
 };
 
 /**
- * Deletes every IndexedDB database this origin owns. The app stores nothing
- * there itself, but onnxruntime-web and the browser's own PWA plumbing can, and
- * a reset that leaves a store behind is not a reset. `databases()` is missing
- * on older WebKit, where there is no way to enumerate them and the step is a
- * no-op.
+ * Deletes every IndexedDB database this origin owns. The app stores nothing there
+ * itself, but onnxruntime-web and the browser's PWA plumbing can. A no-op on
+ * older WebKit, where `databases()` does not exist to enumerate them.
  */
 const clearIndexedDatabases = async (): Promise<void> => {
   if (!window.indexedDB?.databases) {
@@ -80,18 +72,14 @@ const unregisterServiceWorkers = async (): Promise<void> => {
 };
 
 /**
- * Wipes every client-side store this origin owns, returning the app to a
- * first-run state: web storage, Cache Storage, IndexedDB, and the service
- * worker registrations.
+ * Wipes every client-side store this origin owns, back to a first-run state.
  *
- * The steps are isolated from each other on purpose. One store rejecting
- * (private mode, quota, a blocked IndexedDB delete) must not strand the rest
- * half-cleared, which would leave a state neither the developer nor the app
- * has ever seen, so every step settles on its own and its failure is dropped.
- * Resolving means the clearing pass ran, not that every store was writable.
+ * The steps are isolated on purpose: one store rejecting must not strand the rest
+ * half-cleared, which is a state neither the developer nor the app has ever seen.
+ * Resolving means the pass ran, not that every store was writable.
  *
- * Reloading is the caller's job and must happen after this resolves: the
- * unregistered worker only stops serving once the page it controls goes away.
+ * Reloading is the caller's job and must follow this, since the unregistered
+ * worker only stops serving once the page it controls goes away.
  */
 export const resetAppData = async (): Promise<void> => {
   clearWebStorage();

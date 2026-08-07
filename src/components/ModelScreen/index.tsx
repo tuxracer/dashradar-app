@@ -42,11 +42,9 @@ const analyticsSource = (model: DetectionModel): string =>
   model.weightsUrl === undefined ? "huggingface" : "url";
 
 /**
- * The add-flow's state, one discriminated union so the row renders from a
- * single value. The pasted url lives here too (on the phases that can show
- * an input), so it is the only source of truth for what the field holds; the
- * "failed" phase keeps it so a rejected paste can be corrected instead of
- * retyped.
+ * The add flow's state, one union so the row renders from a single value. The
+ * pasted url lives here on the phases that show an input, and the failed phase
+ * keeps it so a rejected paste can be corrected rather than retyped.
  */
 type AddPhase =
   | { phase: "closed" }
@@ -67,40 +65,24 @@ type AddPhase =
 type ModelScreenProps = {
   /** Returns to the settings panel, discarding the draft. */
   onClose: () => void;
-  /**
-   * Registry to list. Defaults to the known models (the build's default plus
-   * stored additions); overridable so tests can drive a fixed list.
-   */
+  /** Registry to list; overridable so tests can drive a fixed one. */
   models?: readonly DetectionModel[];
-  /**
-   * Applies a committed selection. Defaults to a real page reload and is
-   * overridable because jsdom cannot navigate, so a test asserting the reload
-   * would otherwise have to stub an unforgeable global.
-   */
+  /** Applies a committed selection; a real page reload, overridable for jsdom. */
   reload?: () => void;
-  /**
-   * Runs the candidate's trial load. Defaults to the real one, which spawns a
-   * detection worker; overridable because jsdom cannot run a worker.
-   */
+  /** Runs the trial load; overridable because jsdom cannot run a worker. */
   trialLoad?: typeof trialLoadModel;
 };
 
 /**
- * Full-screen picker for the model the detector runs, opened from the Detection
- * model row of the settings panel.
+ * Full-screen picker for the model the detector runs. A row opens that model's
+ * card rather than selecting it, so choosing one happens after reading what it
+ * is, and the card is also where a model is removed.
  *
- * A row opens that model's card rather than selecting it, so choosing one is
- * something you do after reading what it is; the card is also where a model is
- * removed. The list keeps the amber mark on the selected entry, since it is
- * what says which of several near-identical names is running.
- *
- * Nothing here is staged. Taking a model from its card confirms, writes the
- * selection, and reloads on the spot, and adding one from a URL registers it as
- * soon as the trial load proves it runs. There is no save step, because there
- * was never a second decision for it to carry: every action on this screen is
- * already an answer to a question the screen just asked. The reload is how a
- * choice reaches the detector, which is also why no row says a restart is
- * needed; the screen performs it.
+ * Nothing is staged: taking a model from its card confirms, writes, and reloads
+ * on the spot, and a pasted URL registers as soon as the trial load proves it
+ * runs. There is no save step because every action here already answers a
+ * question the screen just asked. The reload is how a choice reaches the
+ * detector, which is why no row says a restart is needed.
  */
 export const ModelScreen = ({
   onClose,
@@ -112,27 +94,23 @@ export const ModelScreen = ({
   const [models, setModels] = useState<readonly DetectionModel[]>(
     () => modelsProp ?? knownModels(),
   );
-  // Resolved rather than read raw, so a stale id left by an older build marks
-  // the model that would actually run instead of no row at all. Removing a
-  // model therefore moves the mark to the shipping entry on its own, which is
-  // exactly what the next load would do with the id left behind.
+  // Resolved rather than raw, so a stale id marks the model that would actually
+  // run instead of no row at all. Removing one therefore moves the mark to the
+  // shipping entry, which is what the next load would do anyway.
   const selected = resolveModels(modelIds, models);
   const selectedIds = selected.map((model) => model.id);
 
-  // Which model's card is open, if any. An id rather than the entry, so a card
-  // left open over a model that has just been removed closes itself instead of
-  // describing something the registry no longer holds.
+  // An id rather than the entry, so a card left open over a model that was just
+  // removed closes itself rather than describing something gone.
   const [openId, setOpenId] = useState<string | undefined>(undefined);
   const [add, setAdd] = useState<AddPhase>({ phase: "closed" });
   // The row currently collapsing out. Its model is already gone from storage;
   // this only keeps the element on screen for the length of the animation.
   const [leavingId, setLeavingId] = useState<string | undefined>(undefined);
-  // Aborts a trial in flight when the screen unmounts, so BACK does not leave
-  // a worker downloading tens of megabytes for a screen nobody is on. Created
-  // at the very top of handleAdd, before the URL is even resolved, so an
-  // unmount during the Hugging Face lookup is caught too: resolveModelFromUrl
-  // has no signal of its own to cancel, but every continuation after an
-  // await checks this controller before touching state or starting a trial.
+  // Aborts a trial in flight on unmount, so BACK does not leave a worker
+  // downloading tens of megabytes for a screen nobody is on. Created before the
+  // URL is even resolved, so an unmount during the lookup is caught too: every
+  // continuation after an await checks it before touching state.
   const abortRef = useRef<AbortController | undefined>(undefined);
   useEffect(() => () => abortRef.current?.abort(), []);
   // The row-exit collapse timer, cleared on unmount so a removal followed
@@ -140,17 +118,14 @@ export const ModelScreen = ({
   const rowExitRef = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(rowExitRef.current), []);
 
-  // How many people look at all, which is what every other number here is a
-  // fraction of. Sent once per opening of the screen, not once per load.
+  // How many people look at all, which every other number here is a fraction of.
   useEffect(() => {
     track("model_picker_open");
   }, []);
 
-  // Escape closes the open card and stops there, the same one-screen-at-a-time
-  // rule the settings panel follows backing out of this screen. The listener is
-  // on the capture phase and consumes the event, because the panel's own
-  // handler is on window too and was registered first: left to run, it would
-  // take the picker down with the card on a single press.
+  // One screen at a time, the same rule the settings panel follows. On the
+  // capture phase and consuming the event, because the panel's own window
+  // handler was registered first and would otherwise close both at once.
   useEffect(() => {
     if (!openId) {
       return;
@@ -188,9 +163,9 @@ export const ModelScreen = ({
   };
 
   /**
-   * Offer the repo's files when the resolve could not pick one. The extra
-   * lookup is a second read of the same revision metadata, which is cheap
-   * next to making someone find and paste the exact file URL themselves.
+   * Offer the repo's files when the resolve could not pick one. A second read of
+   * the same revision metadata, cheap next to making someone find and paste the
+   * exact file URL themselves.
    */
   const openChoice = async (
     candidateUrl: string,
@@ -224,8 +199,8 @@ export const ModelScreen = ({
   };
 
   const handleAdd = async (candidateUrl: string) => {
-    // A trial still in flight loses its place in the ref here; abort it so
-    // its worker dies and its late settle cannot write over this add.
+    // A trial still in flight loses its place in the ref, so abort it before its
+    // late settle can write over this add.
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -289,15 +264,14 @@ export const ModelScreen = ({
       return;
     }
     if (!result.ok) {
-      // The reason itself is a message out of onnxruntime about someone else's
-      // file, so only the fact that the trial rejected it travels.
+      // The reason is an onnxruntime message about someone else's file, so only
+      // the fact of the rejection travels.
       track("model_add_failed", { reason: "TRIAL_FAILED" });
       setAdd({ phase: "failed", url: candidateUrl, message: result.reason });
       return;
     }
-    // The trial's own classes are stored with the entry, since this load is the
-    // only time anything reads them out of these exact bytes until the model is
-    // run; the card shows them from here.
+    // This load is the only time anything reads these exact bytes until the model
+    // runs, so its classes are stored with the entry for the card to show.
     if (!addStoredModel({ ...entry, classes: result.loaded?.classes })) {
       track("model_add_failed", { reason: "STORAGE_FAILED" });
       setAdd({
@@ -309,8 +283,8 @@ export const ModelScreen = ({
     }
     refreshModels();
     const labels = (result.loaded?.classes ?? []).map((c) => c.label);
-    // The whole download-build-run sequence has already passed at this point,
-    // so this counts checkpoints that actually run here rather than pastes.
+    // Past the whole download-build-run sequence, so this counts checkpoints that
+    // actually run here rather than pastes.
     track("model_add", {
       source: analyticsSource(entry),
       classes: labels.length,
@@ -334,9 +308,8 @@ export const ModelScreen = ({
     removeStoredModel(model.id);
     // Back to the list, where the row this card was opened from collapses out.
     setOpenId(undefined);
-    // The row stays mounted long enough to collapse out, so the rows below it
-    // travel into the space instead of jumping. Storage is already updated, so
-    // a screen unmounted mid-collapse loses nothing but the animation.
+    // Stays mounted long enough to collapse out, so the rows below travel into
+    // the space instead of jumping. Storage is already updated.
     setLeavingId(model.id);
     rowExitRef.current = window.setTimeout(
       () => {
@@ -348,12 +321,11 @@ export const ModelScreen = ({
   };
 
   /**
-   * Apply a model straight from its card: confirm, write the selection, reload.
-   * There is no draft to keep and no save step, because there is nothing a
-   * second screen could add to a decision already made by tapping the model and
-   * answering the confirm. The reload is how a choice reaches the detector at
-   * all: a running worker holds a session built from the model it loaded, and
-   * swapping that under a live drive is not something this app does.
+   * Apply a model straight from its card: confirm, write, reload. No draft and no
+   * save step, since nothing a second screen could add to a decision already made
+   * by tapping the model and answering the confirm. The reload is how a choice
+   * reaches the detector: a running worker holds a session built from the model
+   * it loaded, and swapping that under a live drive is not something this does.
    */
   const chooseModel = (id: string) => {
     // Past the cap the oldest pick drops, so a single-select list behaves like

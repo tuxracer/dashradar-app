@@ -12,13 +12,10 @@ type PendingOrientationAsk = {
 };
 
 /**
- * `DeviceOrientationEvent.requestPermission`, bound and typed, where the
- * browser defines it. Apple's engines are the only ones that put an ask in
- * front of the sensors and the only ones that define this, so its presence is
- * the whole feature test: everywhere else `deviceorientation` fires unasked
- * and there is nothing to request. Read off the constructor rather than
- * branched on a user-agent check, because the question is whether this build
- * of the engine gates the sensors, not which brand of browser is running.
+ * `DeviceOrientationEvent.requestPermission`, bound and typed, where it exists.
+ * Its presence is the whole feature test, since the only engines that gate the
+ * sensors are the ones that define it. Read off the constructor rather than a
+ * user-agent branch, because the question is whether this build gates them.
  */
 const orientationAccessAsk = (): OrientationAccessAsk | undefined => {
   if (typeof DeviceOrientationEvent === "undefined") {
@@ -31,33 +28,26 @@ const orientationAccessAsk = (): OrientationAccessAsk | undefined => {
 };
 
 /**
- * Whether this browser hands over the orientation sensors only after being
- * asked from inside a gesture. False everywhere the sensors are simply open,
- * which is every engine except Apple's, so a control whose only job is to
- * offer that gesture can stay off the screens that never needed one.
+ * Whether this browser hands over the orientation sensors only after a
+ * gesture-scoped ask, so a control whose only job is to offer that gesture can
+ * stay off the screens that never needed one.
  */
 export const orientationAccessGated = (): boolean =>
   orientationAccessAsk() !== undefined;
 
 /**
- * Asks for the orientation sensors at the next tap or key press, and keeps
- * waiting for one until `stop`. On a browser that does not gate them it wires
- * up nothing at all.
+ * Asks for the orientation sensors at the next tap or key press and keeps waiting
+ * until `stop`; wires up nothing where they are not gated.
  *
- * WebKit refuses the ask outside a gesture, and until it is answered no
- * `deviceorientation` event ever fires, which is why the scene camera follows
- * the phone on Android and sits still on iOS. Nothing on the way into the app
- * is a usable hook: the camera prompt is the browser's own, not a tap on the
- * page, and a driver returning to a view the app remembered reaches it through
- * no taps whatsoever. So the ask rides whatever the driver touches first while
- * the view that needs it is on screen, and `request` is there for a control
- * that offers the tap outright.
+ * WebKit refuses the ask outside a gesture and fires no event until it is
+ * answered, which is why the scene camera follows the phone on Android and sits
+ * still on iOS. Nothing on the way into the app is a usable hook, since the
+ * camera prompt is the browser's own and a returning driver reaches the view
+ * through no taps at all, so the ask rides whatever they touch first.
  *
- * `onAnswer` fires once the driver has answered, granted and denied alike,
- * since either way nothing more can be asked for on this page load. A rejected
- * ask is not an answer: that is the engine refusing a call that never reached
- * the driver, so the waiting continues and the next gesture is a fresh chance
- * at one.
+ * `onAnswer` fires on any answer, granted or denied, since nothing more can be
+ * asked this page load either way. A rejected ask is not an answer: that is the
+ * engine refusing a call that never reached the driver, so waiting continues.
  */
 export const askForOrientationAccess = (
   onAnswer: () => void,

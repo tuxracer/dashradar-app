@@ -24,18 +24,13 @@ type DetectionViewProps = {
 };
 
 /**
- * Developer-only overlay drawing the model's bounding boxes over the live
- * feed, for checking aim, framing, and false positives against what the
- * detector actually sees rather than against the meter's summary of it. Boxes
- * lag the video by up to a scan: they are drawn where the model saw them, on
- * footage that has moved on since, and there is no interpolation because a
- * box's real position is the only honest thing to show. Every box is drawn in
- * one color, with the class named on its label. The faint outline is
- * the region the model is shown at all (the centered square crop, narrowed by
- * the zoom); without it, a vehicle the crop never covered looks like a miss.
- * Geometry goes through mapBoxToViewport, so the feed underneath must be
- * rendered object-fit: contain, which is what CameraView does in this mode.
- * pointer-events are off so the settings button underneath stays reachable.
+ * Developer-only overlay drawing the model's boxes over the live feed, for
+ * checking aim and false positives against what the detector sees rather than
+ * the meter's summary of it. Boxes lag the video by up to a scan and are not
+ * interpolated, because a box's real position is the only honest thing to show.
+ * The faint outline is the region the model is shown at all; without it, a
+ * vehicle the crop never covered looks like a miss. Geometry goes through
+ * mapBoxToViewport, so the feed underneath has to be object-fit: contain.
  */
 export const DetectionView = ({
   detections,

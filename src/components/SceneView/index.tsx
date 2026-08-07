@@ -252,17 +252,14 @@ const motionPositionAt = (
 };
 
 /**
- * The glyphs and their animator. Lives inside the Canvas because it needs
- * invalidate(): the canvas runs frameloop="demand", so nothing renders unless
- * something asks, and this is the only thing that asks. Each new set of
- * placements diffs against the live motion map (new ids fade in, moved ids
- * retarget their tween from wherever they currently are, absent ids fade
- * out), then invalidates once; the frame loop advances every active tween and
- * re-invalidates only while any remains unfinished, so the last settling
- * frame is the last frame drawn and a static scene costs zero GPU work until
- * the next scan. That self-parking invalidation is the thermal contract of
- * this view; never replace it with frameloop="always" or an unconditional
- * invalidate. Under reduced motion every change snaps in a single frame.
+ * The glyphs and their animator, inside the Canvas because it needs
+ * invalidate(): the canvas runs frameloop="demand" and this is the only thing
+ * that asks for a frame. Each set of placements diffs against the live motion
+ * map (new ids fade in, moved ids retarget mid-tween, absent ids fade out) and
+ * invalidates once; the loop re-invalidates only while a tween is unfinished, so
+ * a static scene costs nothing until the next scan. That self-parking
+ * invalidation is this view's thermal contract, never frameloop="always" or an
+ * unconditional invalidate. Under reduced motion changes snap in one frame.
  */
 const SceneGlyphs = ({
   placements,
@@ -401,43 +398,32 @@ const SceneGlyphs = ({
 };
 
 /**
- * The user-facing 3D scene: detected objects placed on a ground plane in
- * ego-relative meters, rendered as low-poly glyphs under a chase camera. The
- * rendering register is deliberately abstract because the placement math is
- * coarse: range comes from a per-class height prior through a pinhole model
- * (see lib/scenePlacement) and is good to tens of percent, while bearing is
- * accurate, so glyphs and a fogged grid claim exactly as much as the data
- * supports. Glyph motion is last-scan truth: objects appear when a scan finds
- * them, glide to each new fix, and fade out as soon as a scan comes back
- * without them, which means positions update at the scan cadence (1 to 5 s)
- * rather than continuously, and the radar dial, which rides the tracker's
- * coasting and its own peak-hold decay, will disagree with this view by
- * design. That is the trade this view takes on purpose: a dial reading high
- * for a moment after a vehicle is gone costs nothing, while a glyph left
- * standing on the ground plane is a false statement about where something is.
+ * The 3D scene: detected objects placed on a ground plane in ego-relative
+ * meters, as low-poly glyphs under a chase camera. The abstract register is
+ * deliberate, because the placement math is coarse: range comes from a per-class
+ * height prior through a pinhole model and is good to tens of percent, while
+ * bearing is accurate, so the glyphs claim exactly as much as the data supports.
  *
- * This is also the one view that follows the phone's color scheme: a light
- * scheme puts the scene on a white ground, tracked live so a phone that
- * switches itself at dusk switches the scene with it (see useScenePalette).
- * Everything else in the app stays a dark instrument, so the chrome drawn
- * over this view picks its ink through the scene-light variant in globals.css
- * rather than a scheme query of its own.
+ * Glyph motion is last-scan truth: objects appear when a scan finds them and
+ * fade the moment one comes back without them, so positions move at the scan
+ * cadence and the dial, which rides the tracker's coasting and its own decay,
+ * disagrees with this view by design. A dial reading high for a moment after a
+ * vehicle is gone costs nothing; a glyph left standing on the ground plane is a
+ * false statement about where something is.
  *
- * Thermal behavior mirrors the radar screen's parked loop: the canvas runs
- * frameloop="demand" with a dpr ceiling and a low-power context, glyph
- * animation re-invalidates only while a tween or fade is unfinished (see
- * SceneGlyphs), and the beeper's driver loop parks whenever the signal is
- * silent and is woken by prop changes, so an idle scanning session schedules
- * no animation frames and renders nothing. The beeper lives exactly as long
- * as this view and is fed the raw signal, matching the radar screen's audio
- * contract.
+ * The one view that follows the phone's color scheme, tracked live so a phone
+ * that switches at dusk switches the scene with it. Everything else stays a dark
+ * instrument, so chrome drawn over this view picks its ink through the
+ * scene-light variant rather than a scheme query of its own.
  *
- * Render failure has a three-rung ladder for the thermally stressed phones
- * this app runs on: a lost WebGL context first waits for the browser's
- * restore, then remounts the canvas once, and only then reports
- * onRenderFailure, which the app answers by switching the view mode back to
- * the radar dial. Where WebGL is missing entirely (jsdom, or a broken GPU
- * process) the failure fires on mount and nothing renders.
+ * Thermal behavior mirrors the radar screen's parked loop: demand frameloop, a
+ * dpr ceiling, a low-power context, invalidation only while a tween is
+ * unfinished, and a beeper that parks on silence, so an idle session renders
+ * nothing.
+ *
+ * Render failure has three rungs for a thermally stressed phone: wait for the
+ * browser to restore a lost context, remount the canvas once, then report
+ * onRenderFailure, which the app answers by falling back to the radar dial.
  */
 export const SceneView = ({
   tracks,

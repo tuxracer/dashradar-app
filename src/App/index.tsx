@@ -90,10 +90,9 @@ const RadarScreen = () => {
     showDebug,
     commitModelIds,
   } = useSettings();
-  // A dropped or picked clip outranks every screen below that exists because
-  // of the camera. No check on it in the initializers, though: a session
-  // always starts on the camera, since both ways to reach a file need the app
-  // running first.
+  // A dropped or picked clip outranks every screen below that exists because of
+  // the camera. Not checked in the initializers, since both ways to reach a file
+  // need the app running first.
   const { source, feedId, clearVideoFile } = useVideoSource();
   const [showIntro, setShowIntro] = useState(shouldShowIntro);
   // The in-app permission ask sits between the intro and the first
@@ -105,21 +104,18 @@ const RadarScreen = () => {
   const [videoSize, setVideoSize] = useState<Size>();
   const viewportSize = useViewportSize();
 
-  // Both of these belong to one feed rather than to the session, so both are
-  // stamped with the feed that produced them and read back only while that
-  // feed is still the one on screen. The camera failure is why: a clip
-  // standing in for a camera that would not open unmounts CameraView, and
-  // clearing the clip mounts a fresh one whose getUserMedia call has to get
-  // to answer for itself. Carrying the old refusal over would put the error
-  // screen back up without ever asking the camera again.
+  // Both belong to one feed rather than the session, so they are stamped with
+  // the feed that produced them. The camera failure is why: clearing a clip that
+  // stood in for a camera which would not open mounts a fresh CameraView, and
+  // carrying the old refusal over would show the error screen without ever
+  // asking the camera again.
   const [feedFailure, setFeedFailure] = useState<{
     feedId: number;
     error: CameraError;
   }>();
   const cameraError =
     feedFailure?.feedId === feedId ? feedFailure.error : undefined;
-  // The element the detector is capturing from, kept so the developer camera
-  // preview can mirror it.
+  // Kept so the developer camera preview can mirror it.
   const [feedElement, setFeedElement] = useState<{
     feedId: number;
     video: HTMLVideoElement;
@@ -138,25 +134,21 @@ const RadarScreen = () => {
   // return below.
   const introVisible = showIntro && !source;
 
-  // On a desktop the model download waits for this, because the intro there is
-  // a handoff to a phone rather than a way in: tens of megabytes of weights are
-  // worth fetching once someone has decided to run the detector on this
-  // machine, not while they are being offered the QR code. A phone never defers
-  // (see the DetectionProvider below), so this is a no-op there, and a
-  // returning visitor, who is shown no intro at all, releases it at mount.
+  // A desktop holds the download until here, because its intro is a handoff to a
+  // phone rather than a way in: the weights are worth fetching once someone has
+  // decided to run the detector on this machine, not while they are being offered
+  // the QR code. A phone never defers, so this is a no-op there.
   useEffect(() => {
     if (!introVisible) {
       allowModelLoad();
     }
   }, [allowModelLoad, introVisible]);
 
-  // iOS forgets camera permission between launches of an installed web app,
-  // so every launch re-prompts. When an app update is found at launch, the
-  // silent auto-update reload lands right after the driver taps Allow and
-  // prompts them a second time. Holding the camera until the launch update
-  // check settles reorders that launch to reload first, one prompt total;
-  // with no update pending, the check resolves during the model load and
-  // delays nothing.
+  // iOS forgets camera permission between launches of an installed web app, so
+  // every launch re-prompts, and an update found at launch reloads right after
+  // Allow and prompts a second time. Waiting for the update check reorders that
+  // launch to reload first; with no update pending it resolves during the model
+  // load and delays nothing.
   const [updateSettled, setUpdateSettled] = useState(false);
   useEffect(() => {
     let disposed = false;
@@ -173,11 +165,9 @@ const RadarScreen = () => {
     };
   }, []);
 
-  // Report a camera failure to analytics once when it occurs. Detection-side
-  // failures (model load, worker crash) are tracked at their source in
-  // DetectionContext; camera errors only surface here, where getUserMedia's
-  // result reaches the UI. Camera permission-denied rate is the app's most
-  // valuable funnel signal, and with no backend this is the only view into it.
+  // Camera errors surface only here, where getUserMedia's result reaches the UI;
+  // detection-side failures are tracked at their source. The permission-denied
+  // rate is the app's most valuable funnel signal and its only view into one.
   useEffect(() => {
     if (cameraError) {
       track("error", { code: cameraError.code });
@@ -188,9 +178,8 @@ const RadarScreen = () => {
     setVideoSize({ width: video.videoWidth, height: video.videoHeight });
   }, []);
 
-  // Both feeds report the same events, so one handler covers whichever of them
-  // is on: the pump only ever learns that some element is live and how big its
-  // frames are.
+  // Both feeds report the same events, so one handler covers either: the pump
+  // only learns that some element is live and how big its frames are.
   const handleFeedEvent = useCallback(
     (event: CameraFeedEvent | VideoFileFeedEvent) => {
       updateVideoSize(event.video);
@@ -207,10 +196,9 @@ const RadarScreen = () => {
       <IntroScreen
         onStart={() => {
           track("intro_start");
-          // Every tap on the way to scanning primes the wake lock, since any
-          // of them can be the last one of the drive. A returning launch shows
-          // neither this screen nor the permission ask, which is why the lock
-          // itself also retries on the first gesture it sees.
+          // Every tap on the way to scanning primes the wake lock, since any of
+          // them can be the last of the drive. A returning launch sees neither
+          // this screen nor the ask, so the lock also retries on its own.
           primeScreenWakeLock();
           markIntroSeen();
           setShowIntro(false);
@@ -218,16 +206,12 @@ const RadarScreen = () => {
       />
     );
   }
-  // This device cannot run inference at all, so nothing past here has anything
-  // to show. Sits directly after the intro and ahead of
-  // every camera screen: everyone still gets told what the app is for, but
-  // nobody is asked for camera access their phone can't make use of. The
-  // worker's GPU probe answers within milliseconds of mount, well inside the
-  // time the intro is on screen, so in practice this is the screen the START
-  // tap lands on rather than a late interruption. Its own screen rather than an
-  // ErrorScreen code, since there is nothing to retry here, only somewhere
-  // better to go; narrowing it here is also what lets the ErrorScreen below
-  // typecheck, as AppErrorCode excludes it.
+  // After the intro and ahead of every camera screen: everyone is still told what
+  // the app is for, but nobody is asked for camera access their phone cannot use.
+  // The GPU probe answers within milliseconds of mount, so in practice this is
+  // what the START tap lands on rather than a late interruption. Its own screen
+  // rather than an ErrorScreen code, since there is nothing to retry, only
+  // somewhere better to go.
   if (error === "WEBGPU_UNSUPPORTED") {
     return <UnsupportedScreen />;
   }
@@ -257,11 +241,9 @@ const RadarScreen = () => {
     return <ErrorScreen code={cameraError.code} />;
   }
   if (status === "error" && error) {
-    // A selected model that will not load has a better recovery than retrying
-    // it: run the default. Committed through commitModelIds for the same
-    // reason the model screen uses it: it confirms the write landed, and the
-    // reload only happens when it did, or the page would come back running
-    // the very model this button exists to escape.
+    // A model that will not load has a better recovery than retrying it. Through
+    // commitModelIds so the reload only happens once the write landed, or the
+    // page comes back running the very model this button exists to escape.
     const revertAction =
       error === "MODEL_LOAD_FAILED" && activeModel.id !== DEFAULT_MODEL.id
         ? {
@@ -276,14 +258,12 @@ const RadarScreen = () => {
     return <ErrorScreen code={error} action={revertAction} />;
   }
 
-  // The camera is acquired only once the model is loaded and warmed, never
-  // alongside it. Session creation plus the worker's warm-up run is the
-  // heaviest moment the GPU process sees, and a live 1024x1024 stream holds
-  // buffers of its own throughout; overlapping the two put both peaks on the
-  // same instant, which is where every field crash landed (DASHRADAR-2). The
-  // cost is that the browser's permission prompt now follows the model load
-  // rather than racing it, which on a first visit means it appears after the
-  // download screen instead of over it.
+  // The camera is acquired only once the model is loaded and warmed. Session
+  // creation plus warm-up is the heaviest moment the GPU process sees, and a live
+  // stream holds buffers of its own throughout; overlapping the two put both
+  // peaks on the same instant, which is where every field crash landed. The cost
+  // is that the browser's prompt now follows the download screen instead of
+  // landing over it.
   const modelLoading = status === "loading-model";
 
   // The developer detection view overrides both user-facing views; the
@@ -291,20 +271,17 @@ const RadarScreen = () => {
   const sceneMode = !detectionView && viewMode === "scene";
 
   return (
-    // The marker class is what the scene-light variant hangs off: the scene
-    // view is the only one that follows the phone's color scheme, so the
-    // chrome above it needs to know which view it is drawn over before it can
-    // pick its ink (see globals.css).
+    // The marker class the scene-light variant hangs off: the chrome above the
+    // scene has to know which view it is drawn over before it can pick its ink.
     <main
       className={`fixed inset-0 bg-surface ${sceneMode ? "scene-view" : ""}`}
     >
       {!detectionView && !sceneMode && <RadarBackdrop />}
       {source ? (
-        // Not held back the way the camera below is: that gate is about the
-        // permission prompt and the buffers a live 1024px stream holds through
-        // the model's compile, and a local file the user just handed over has
-        // neither. Gating it would also strand the sessions this feed exists
-        // for, the ones with no camera to fall back to.
+        // Not held back the way the camera is: that gate is about the permission
+        // prompt and the buffers a live stream holds through the model's compile,
+        // and a local file has neither. Gating it would also strand the sessions
+        // this feed exists for, the ones with no camera to fall back to.
         <VideoFileView
           key={source.url}
           src={source.url}
@@ -313,12 +290,10 @@ const RadarScreen = () => {
           onError={clearVideoFile}
         />
       ) : (
-        /* Held back until the model is ready (see modelLoading above) and the
-           launch update check settles (see updateSettled above). The "ready"
-           handler parks at status "ready" when no camera has started, and this
-           mount's start() is what advances it to "running", so the ordering
-           has no deadlock. A worker recycle never returns status to
-           "loading-model", so it cannot tear the camera back down mid-drive. */
+        /* Held back until the model is ready and the update check settles. No
+           deadlock: the worker parks at "ready" when no camera has started, and
+           this mount is what advances it to "running". A recycle never returns
+           to "loading-model", so it cannot tear the camera down mid-drive. */
         !modelLoading &&
         updateSettled && (
           <CameraView
@@ -328,15 +303,10 @@ const RadarScreen = () => {
           />
         )
       )}
-      {/* In the radar-meter branch below, the meter mounts immediately so the
-          first paint past the permission flow is the instrument reading
-          INITIALIZING, not a blank backdrop; the sweep advances one arc step
-          per completed scan once detection is running. The
-          detection-view branch has no such instrument, so its
-          pre-camera frames are a blank backdrop until the first scan lands. A
-          first-visit download is still covered by the opaque ModelLoadScreen
-          below. The scene branch mounts like the meter: grid and ego render
-          at once with the status strip reading INITIALIZING. */}
+      {/* The meter and the scene both mount immediately, so the first paint past
+          the permission flow is an instrument reading INITIALIZING rather than a
+          blank backdrop. The detection view has no such instrument and stays
+          blank until the first scan lands. */}
       {detectionView ? (
         <DetectionView
           detections={scan?.detections ?? []}
@@ -354,9 +324,8 @@ const RadarScreen = () => {
           audioEnabled={radarAudio}
           initializing={status !== "running"}
           debug={showDebug}
-          // Falling back mutates the persisted setting on purpose: leaving it
-          // on "scene" while the radar renders would show a toggle claiming a
-          // view the screen is not in.
+          // Mutates the persisted setting on purpose: leaving it on "scene"
+          // while the radar renders would show a toggle claiming the wrong view.
           onRenderFailure={() => setViewMode("radar")}
         />
       ) : (
@@ -370,12 +339,10 @@ const RadarScreen = () => {
         />
       )}
 
-      {/* The zoom mirrors the zoom field the engine posts on each detect
-          message, so the preview always narrows to the region the next
-          capture actually scans. */}
-      {/* Not in the detection view: the full feed is already on screen behind
-          it, so the inset would be a second live video surface cropping from
-          the one underneath it. */}
+      {/* The zoom mirrors what the engine posts on each detect message, so the
+          preview narrows to the region the next capture actually scans. Never in
+          the detection view, where the full feed is already on screen and the
+          inset would be a second live video surface cropping the first. */}
       {!modelLoading && cameraPreview && !detectionView && feedVideo && (
         <CameraPreview
           source={feedVideo}
@@ -412,14 +379,12 @@ const RadarScreen = () => {
 const App = () => {
   return (
     <SettingsProvider>
-      {/* A phone starts downloading the weights the moment the app loads, under
-          the intro someone is still reading, since that download is the longest
-          part of a first visit. A desktop holds them until RadarScreen says the
-          intro is behind it. */}
+      {/* A phone downloads the weights under the intro someone is still reading,
+          since that download is the longest part of a first visit. A desktop
+          holds them until RadarScreen says the intro is behind it. */}
       <DetectionProvider deferModelLoad={isDesktopDevice()}>
-        {/* VideoSourceProvider sits inside DetectionProvider, which it
-            consumes: a feed swap detaches the engine's video before the
-            element it was capturing from unmounts. */}
+        {/* Inside DetectionProvider, which it consumes: a feed swap detaches the
+            engine's video before the element it captured from unmounts. */}
         <VideoSourceProvider>
           <VideoDropTarget />
           <RadarScreen />

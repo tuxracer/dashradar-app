@@ -1,12 +1,10 @@
 import { isArray, isBoolean, isNumber, isPlainObject, isString } from "remeda";
 
 /**
- * Which view was on screen when a session ended. Recorded because the three
- * cost very different things to keep running: the scene view holds a WebGL
- * context open beside the WebGPU one the detector runs on, and the detection
- * view draws the full camera feed. A crash that only ever happens under one of
- * them is a different bug from one that happens under all three, and there is
- * no way to tell those apart after the fact without writing it down first.
+ * Which view was on screen when a session ended. The three cost very different
+ * things to run (the scene holds a WebGL context beside the detector's WebGPU
+ * one, the detection view draws the whole feed), and a crash under only one of
+ * them is a different bug, which nothing after the fact can tell apart.
  */
 export type ActiveView = "radar" | "scene" | "detection";
 
@@ -40,22 +38,17 @@ const SESSION_EVENT_KINDS: readonly SessionEventKind[] = [
 ];
 
 /**
- * One thing the engine did, kept in a short rolling log so a crash report can
- * say what was happening just before the page died rather than only how long
- * it had been alive. "Died at 8.0 s" and "died 340 ms after switching to the
- * scene view" are the same crash and different bugs.
+ * One thing the engine did, in a short rolling log so a report can say what was
+ * happening before the page died rather than only how long it lived. "Died at
+ * 8.0 s" and "died 340 ms after switching to the scene" are different bugs.
  */
 export type SessionEvent = {
-  /**
-   * Date.now() epoch ms, never performance.now(), which restarts every page
-   * load and so cannot be read against the heartbeat at the next launch.
-   */
+  /** Epoch ms; performance.now() restarts per page load and cannot be compared. */
   at: number;
   kind: SessionEventKind;
   /**
-   * A short bounded value for the kinds that have one (a round trip, a view
-   * name, an error code). Never a URL, a message, or anything anyone typed:
-   * this travels off the device.
+   * A short bounded value for the kinds that have one. Never a URL, a message,
+   * or anything anyone typed: this travels off the device.
    */
   detail?: string;
 };
@@ -69,69 +62,55 @@ export const isSessionEvent = (value: unknown): value is SessionEvent =>
   (value.detail === undefined || isString(value.detail));
 
 /**
- * Snapshot of an in-progress detection session, written to localStorage on a
- * heartbeat cadence while scanning runs so the next launch can tell whether
- * this one ended cleanly. `startedAt`/`lastBeatAt` are `Date.now()` epoch ms
- * (never `performance.now()`, which resets every page load and so cannot be
- * compared across launches). `graphCapture` is absent until the worker has
- * reported it. `release` is the build that wrote the record (optional only for
- * records written by builds predating the field), reported alongside the
- * reporting build's own release so a crash can be attributed to the deploy
- * that produced it.
+ * Snapshot of an in-progress session, written on a heartbeat cadence so the next
+ * launch can tell whether this one ended cleanly. The timestamps are epoch ms,
+ * since performance.now() cannot be compared across launches. `release` is the
+ * build that wrote the record, reported alongside the reporting build's own so a
+ * crash lands on the deploy that produced it.
  */
 export type SentinelRecord = {
   startedAt: number;
   lastBeatAt: number;
   /**
-   * Round trips the pump completed, counting the ones the scene-change gate
-   * answered without running the model. Keeps that meaning rather than
-   * narrowing to real scans, because reports already in hand were written
-   * under it and a field that quietly changes what it counts makes every
+   * Round trips the pump completed, gate skips included. Keeps that meaning
+   * rather than narrowing to real scans, because reports already in hand were
+   * written under it and a field that quietly changes what it counts makes every
    * comparison across the change wrong without looking wrong.
    */
   framesProcessed: number;
   /**
-   * How many of those actually ran the model. Absent on records written by
-   * builds that counted only the total; the difference against
-   * framesProcessed is how many frames the gate answered for free.
+   * How many of those ran the model; the difference is what the gate answered for
+   * free. Absent on records from builds that counted only the total.
    */
   scansProcessed?: number;
   graphCapture?: boolean;
   release?: string;
   activeView?: ActiveView;
-  /**
-   * The running model, named the way anything leaving the device has to name
-   * one: a built-in by its slug, anything added as "custom".
-   */
+  /** The running model: a built-in by its slug, anything added as "custom". */
   model?: string;
   /** Worker recycles this page load had done, not counting the first worker. */
   recycles?: number;
   /**
-   * Age of the worker session that was running. A kill landing just short of
-   * WORKER_RECYCLE_AFTER_MS, or just after one of these wrapped around, points
-   * at the teardown and rebuild rather than at steady-state scanning.
+   * Age of the running worker session. A kill landing either side of a recycle
+   * boundary points at the teardown and rebuild rather than steady-state scanning.
    */
   workerAgeMs?: number;
   /**
-   * ImageBitmaps the page still owned. Each one has a single owner and a
-   * single release, so this rests at 0 or at 1 while a contact is on screen;
-   * a number climbing past that is a per-frame leak, which on a session that
-   * runs for hours is the shape an out-of-memory kill arrives in.
+   * ImageBitmaps the page still owned, which rests at 0 or at 1 while a contact
+   * is on screen. Anything climbing past that is a per-frame leak, the shape an
+   * out-of-memory kill arrives in over an hours-long session.
    */
   ownedBitmaps?: number;
   /**
-   * Size of the worker's wasm heap at its last reply, in bytes. The runtime's
-   * heap is the prime suspect for iOS killing the page over WebContent's
-   * per-process memory limit (a jetsam kill runs no JS, so the size at death
-   * survives only by having been written down): read against uptime and the
-   * scan count, this says whether the heap was still at its post-load
-   * baseline or had grown toward the cap.
+   * The worker's wasm heap at its last reply, the prime suspect for an iOS memory
+   * kill. Such a kill runs no JS, so the size at death survives only by having
+   * been written down; read against uptime and the scan count it says whether the
+   * heap was still at its post-load baseline or had grown toward the cap.
    */
   wasmHeapBytes?: number;
   /**
-   * The rolling log, oldest first, capped at MAX_SESSION_EVENTS. Rewritten
-   * whole on every beat, which is what bounds it: the cap is the only thing
-   * between this and a record that grows for the length of a drive.
+   * The rolling log, oldest first. Rewritten whole on every beat, so the cap is
+   * the only thing between this and a record that grows for a whole drive.
    */
   events?: readonly SessionEvent[];
 };
@@ -152,18 +131,17 @@ export const isSentinelRecord = (value: unknown): value is SentinelRecord => {
     (value.workerAgeMs === undefined || isNumber(value.workerAgeMs)) &&
     (value.ownedBitmaps === undefined || isNumber(value.ownedBitmaps)) &&
     (value.wasmHeapBytes === undefined || isNumber(value.wasmHeapBytes)) &&
-    // Strict, like every other field here: a log that does not parse comes
-    // from a build that wrote a different record shape, and the rest of that
-    // record cannot be read with any more confidence than this part of it.
+    // Strict like every other field: a log that does not parse comes from a
+    // build with a different record shape, and the rest of it is no more
+    // trustworthy than this part.
     (value.events === undefined ||
       (isArray(value.events) && value.events.every(isSessionEvent)))
   );
 };
 
 /**
- * How the previous session ended: "crash" when the OS killed the page and
- * relaunched it almost immediately, "unclean" when the last heartbeat is
- * older than that (battery death, manual restart, deliberate shutdown).
+ * How the previous session ended: "crash" when the OS killed and relaunched the
+ * page almost immediately, "unclean" when the last heartbeat is older than that.
  */
 export type SessionEndOutcome = "crash" | "unclean";
 

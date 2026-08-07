@@ -16,17 +16,10 @@ import {
 import { DetectionError } from "./types";
 
 /**
- * The centered square source region of a frame: the region the worker draws
- * onto the model input under center-crop preprocessing, matching the
- * Fill-with-center-crop resize the model trains with. At the default zoom of 1
- * this is the largest centered square, and a square frame yields the whole
- * frame (sx/sy 0).
- *
- * `zoom` shrinks that square by its factor while keeping it centered, which is
- * how the 2x zoom works: the same 512x512 model input then covers
- * half the field of view, so a distant vehicle occupies twice the linear size
- * in the input grid. Values below 1 would crop outside the frame, so they are
- * clamped away rather than honored.
+ * The centered square drawn onto the model input, matching the
+ * fill-with-center-crop resize the model trains with. `zoom` shrinks that square
+ * while keeping it centered, so the same input covers a narrower field of view;
+ * values below 1 would crop outside the frame and are clamped away.
  */
 export const centerCropRegion = (
   width: number,
@@ -38,13 +31,9 @@ export const centerCropRegion = (
 };
 
 /**
- * Map a box normalized to the centered square crop of a frame back into
- * coordinates normalized to the full frame. Under center-crop preprocessing
- * the model's boxes describe the crop, but every downstream consumer (the
- * contact-card cutout, direction shaping, HUD area math) works in full-frame
- * coordinates, so the worker remaps each detection through this before
- * posting it. `zoom` must match the value the crop was taken with, or the
- * boxes land in the wrong place.
+ * Map a box normalized to the crop back into full-frame coordinates, which is
+ * what every consumer downstream works in. `zoom` must match the value the crop
+ * was taken with or the boxes land in the wrong place.
  */
 export const mapCropBoxToFrame = (
   box: NormalizedBox,
@@ -62,15 +51,10 @@ export const mapCropBoxToFrame = (
 };
 
 /**
- * Convert a 512x512 RGBA frame into the model's `[1,3,512,512]` NCHW float32
- * input: per-channel ImageNet normalization laid out as all R values, then all
- * G, then all B.
- *
- * Pass `out` to write into a preallocated buffer instead of allocating a fresh
- * `Float32Array` each call: the worker reuses one buffer across frames to avoid
- * ~3 MB of per-frame garbage on the detection hot path. Callers that omit it
- * (e.g. tests) get a freshly allocated tensor. `out` must have length
- * `3 * INPUT_SIZE * INPUT_SIZE`.
+ * Convert an RGBA frame into the model's NCHW float32 input: per-channel ImageNet
+ * normalization laid out as all R, then all G, then all B. Pass `out` to write
+ * into a preallocated buffer, which is how the worker keeps ~3 MB of garbage per
+ * frame off the hot path.
  */
 export const preprocess = (
   imageData: ImageData,
@@ -95,29 +79,22 @@ const sigmoid = (x: number): number => 1 / (1 + Math.exp(-x));
 const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
 
 /**
- * Pair a registry entry with what the session built from it turned out to hold:
- * the head width from the `dims` of the `labels` tensor its first run produced,
- * and the classes from the `names` map stamped into the weights.
+ * Pair a registry entry with what its session turned out to hold: the head width
+ * off the `labels` tensor's dims, and the classes off the `names` map in the
+ * weights. Both measured rather than declared, which is what makes it safe: a
+ * hand-written table can be paired with the wrong checkpoint and report POLICE at
+ * every pedestrian, while labels from the same file as the logits they index
+ * cannot disagree with them.
  *
- * Both are measured rather than declared, and the pairing is what makes that
- * safe. A hand-written class table can be paired with the wrong checkpoint and
- * report POLICE at every pedestrian off a 91-wide COCO head; labels read from
- * the same file as the logits they index cannot disagree with them, so the
- * failure mode a declared head width used to catch no longer exists to catch.
- * Indices the head cannot hold are dropped during derivation, which is where a
- * `names` map that disagrees with its own graph loses.
- *
- * What is left to fail on is a `labels` output that is not shaped like a
- * classification head at all, which throws MODEL_LOAD_FAILED at load, before
- * the camera is asked for, rather than on the first decoded frame.
+ * What is left to fail on is a `labels` output not shaped like a classification
+ * head, which throws at load rather than on the first decoded frame.
  */
 export const resolveLoadedModel = (
   labelsDims: readonly number[],
   model: DetectionModel,
   metadata?: OnnxMetadata,
 ): LoadedModel => {
-  // [batch, queries, classes]. Anything else is not a head this decode can read
-  // its per-query stride out of.
+  // [batch, queries, classes]; anything else has no per-query stride to read.
   if (labelsDims.length !== 3) {
     throw new DetectionError("MODEL_LOAD_FAILED");
   }
@@ -133,25 +110,19 @@ export const resolveLoadedModel = (
 };
 
 /**
- * Decode the model's raw outputs into normalized detections.
+ * Decode the model's raw outputs into normalized detections. `dets` is cxcywh
+ * boxes, `labels` is raw class logits with an unused slot at index 0. Each query
+ * takes its highest-scoring named class and is emitted when that class's
+ * sigmoid clears `threshold`. One box gets one class: the head is multi-label in
+ * principle, but a HUD box carrying two names is no use to a driver. RF-DETR is
+ * set-based, so no NMS.
  *
- * `dets` is `[1,N,4]` cxcywh boxes (normalized 0..1). `labels` is
- * `[1,N,headWidth]` raw class logits, where slot 0 is an unused background
- * slot. Each query takes the highest-scoring class the model's table names,
- * and is emitted when that class's `sigmoid(logit)` clears `threshold`. One box
- * gets one class: the head is multi-label in principle, but a HUD box carrying
- * two names is no use to a driver glancing at it. RF-DETR is set-based, so no
- * NMS is applied.
- *
- * The model arrives already reconciled with the session it was loaded from (see
- * resolveLoadedModel), so the table and its width are not re-checked per frame.
- * What is still checked here is that the two tensors agree with each other: a
- * `labels` length that is not the query count times the stride means the head
- * would be read at the wrong offset from the second query on, so this throws
- * MODEL_LOAD_FAILED rather than emitting plausible garbage. The query count
- * comes from the tensor lengths rather than their dims, which keeps this
- * function pure and works the same on the graph-capture path, where outputs
- * arrive through getData().
+ * The model arrives already reconciled with its session, so the table is not
+ * re-checked per frame. What is checked is that the two tensors agree: a
+ * `labels` length that is not the query count times the stride would read the
+ * head at the wrong offset from the second query on. The query count comes from
+ * tensor lengths rather than dims, which keeps this pure and works the same on
+ * the graph-capture path.
  */
 export const decodeDetections = (
   dets: Float32Array,
@@ -185,11 +156,10 @@ export const decodeDetections = (
     const cy = dets[q * 4 + 1];
     const w = dets[q * 4 + 2];
     const h = dets[q * 4 + 3];
-    // A non-finite box is dropped here, at the one place that knows it came
-    // off the tensor. `dets` and `labels` are independent outputs, so an fp16
-    // pathology can hand a valid above-threshold score a NaN box; clamp01
-    // passes NaN through, and the resulting detection reads as the frame's
-    // strongest while carrying geometry no consumer can draw, crop, or match.
+    // `dets` and `labels` are independent outputs, so an fp16 pathology can hand
+    // an above-threshold score a NaN box. clamp01 passes NaN through, and the
+    // detection then reads as the frame's strongest while carrying geometry no
+    // consumer can draw, crop, or match.
     if (
       !Number.isFinite(cx) ||
       !Number.isFinite(cy) ||
@@ -257,12 +227,9 @@ export const cropRect = (
 };
 
 /**
- * Return a buffer with capacity for `needed` bytes, preserving the first
- * `loaded` bytes already written. Used by the worker's model download: the
- * final buffer is preallocated from Content-Length so streamed chunks land in
- * place with no end-of-download copy, and this growth path only runs when
- * Content-Length was absent or understated the body. Growth at least doubles
- * the capacity so repeated growth stays amortized-linear.
+ * A buffer with capacity for `needed` bytes, preserving the first `loaded`. The
+ * download preallocates from Content-Length, so this only runs when that was
+ * absent or understated the body. Growth at least doubles, staying amortized.
  */
 export const ensureCapacity = (
   buffer: Uint8Array<ArrayBuffer>,

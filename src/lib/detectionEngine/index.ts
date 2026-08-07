@@ -43,9 +43,8 @@ import { processDetectionResult } from "@/lib/processDetectionResult";
 import { waitForServiceWorkerControl } from "@/lib/serviceWorker";
 import { screenWakeLock } from "@/lib/wakeLock";
 import { INPUT_SIZE, ZOOM_OFF } from "@/workers/detection/consts";
-// The one module outside the worker that imports its inference helpers. Safe
-// where the worker's own index is not: this file pulls in no onnxruntime, and
-// the crop geometry has to be identical on both sides of the message or a
+// Safe where the worker's own index is not (no onnxruntime behind it), and the
+// crop geometry has to be identical on both sides of the message or a
 // pre-cropped frame and the boxes mapped back out of it disagree.
 import { centerCropRegion } from "@/workers/detection/inference";
 import type { WorkerResponse, ZoomLevel } from "@/workers/detection/types";
@@ -82,24 +81,14 @@ export * from "./consts";
 export * from "./types";
 
 /**
- * How long the pump idles after a result before starting the next capture.
+ * How long the pump idles after a result before the next capture. Two rules
+ * compete and the longer wins: the floor paces a device fast enough that
+ * back-to-back inference would peg its GPU, the rest paces everything slower.
  *
- * Two rules compete and the longer wins. The floor keeps captures at least
- * MIN_FRAME_INTERVAL_MS apart, which is what paces a device fast enough that
- * back-to-back inference would peg its GPU. The rest keeps the GPU idle for a
- * multiple of the work it just did, which is what paces everything slower.
- *
- * The rest's multiple is not fixed. Heat tracks the share of wall time the GPU
- * spends busy, and a fixed multiple holds that share constant no matter how
- * slow the device gets: resting one round trip is 50% busy at a 500 ms round
- * trip and still 50% busy at 4 s. So the multiple climbs with the round trip
- * past PACING_REST_RAMP_MS, which turns a slower device into a genuinely
- * lighter load rather than the same load stretched out. A phone that throttles
- * therefore backs off the work that made it throttle, instead of settling into
- * the flat 50% duty cycle that got it there.
- *
- * MAX_FRAME_INTERVAL_MS bounds the result, because the ramp trades scan rate
- * away and that trade has a floor of usefulness.
+ * The rest's multiple climbs with the round trip past PACING_REST_RAMP_MS. A
+ * fixed multiple would hold the GPU's busy share constant however slow the
+ * device got, so a throttling phone would stretch the same load out rather than
+ * back off the load that made it throttle.
  */
 export const pacingDelay = (roundTripMs: number): PacingDecision => {
   const floorDelay = Math.max(0, MIN_FRAME_INTERVAL_MS - roundTripMs);
@@ -118,17 +107,12 @@ export const pacingDelay = (roundTripMs: number): PacingDecision => {
 };
 
 /**
- * Capture the region the model actually reads, already scaled to its input:
- * the centered square the zoom selects, resized to INPUT_SIZE on the way out.
- *
- * Doing the crop and the scale here rather than in the worker is what keeps a
- * full-resolution frame off the hot path when nothing needs one. The bitmap
- * that crosses to the worker is the model's input rather than four times it,
- * and the resample runs in the browser's own scaler instead of a software
- * downscale into the CPU-backed canvas the worker reads pixels out of.
- *
- * The resize is a request the platform may decline, so the worker scales
- * whatever arrives onto the input rather than trusting the size.
+ * Capture the region the model reads, already scaled to its input. Cropping and
+ * scaling here rather than in the worker keeps a full-resolution frame off the
+ * hot path: the bitmap that crosses is the model's input rather than four times
+ * it, resampled by the browser's scaler instead of a software downscale. The
+ * resize is a request the platform may decline, so the worker scales whatever
+ * arrives rather than trusting the size.
  */
 const captureModelInput = (
   video: HTMLVideoElement,
@@ -146,24 +130,17 @@ const captureModelInput = (
 };
 
 /**
- * Build the detection engine: the worker lifecycle and frame-pump stream
- * graph, with no React anywhere in it. One engine spans one page load of
- * scanning; `activate` spawns the worker and `deactivate` releases it, so
- * the owner can treat the pair like mount and unmount.
+ * Build the detection engine: the worker lifecycle and frame-pump stream graph,
+ * with no React in it. One engine spans one page load; `activate` spawns the
+ * worker and `deactivate` releases it, so the owner treats the pair like mount
+ * and unmount.
  *
- * Whether the pump runs is derived, never commanded: running$ is true
- * exactly while the inputs say a video is attached, the page is visible,
- * and settings are closed, and everything scoped to a running span is
- * subscribed under it, so a falling edge tears the span down and there is
- * no pause/resume protocol to hold correctly at call sites.
- *
- * The race invariants the old imperative pump guarded with counters are
- * mostly structural here: no stale capture after a stop because teardown is
- * unsubscription, and no frame posted to a still loading worker because
- * each session's pump starts behind its ready. One frame in flight is the
- * sequential loop (capture, post, await result, pace, repeat) plus a single
- * non-structural residue, a session-scoped awaiting-result flag that covers
- * a stop/start landing while a reply is still outstanding.
+ * Whether the pump runs is derived, never commanded, and everything scoped to a
+ * running span is subscribed under running$, so a falling edge tears the span
+ * down and no call site has to hold a pause/resume protocol correctly. The race
+ * invariants follow from that scoping rather than from counters: no stale
+ * capture after a stop, no frame posted to a still-loading worker, one frame in
+ * flight from the sequential loop.
  */
 export const createDetectionEngine = ({
   model,
@@ -204,17 +181,12 @@ export const createDetectionEngine = ({
   const active$ = new BehaviorSubject(false);
 
   /**
-   * Whether the worker may fetch the weights yet. Open from the start unless
-   * the owner asked otherwise, because the download is the longest part of a
-   * first visit and the app has a screen of its own to show while it runs.
-   *
-   * An owner holds it shut when the bytes are not wanted yet, and opens it with
-   * `allowModelLoad`. The GPU probe deliberately stays outside the gate, so a
-   * device that cannot run the detector is still turned away immediately rather
-   * than behind a wait for something the answer does not depend on.
-   *
-   * Monotonic: once open it stays open for the life of the engine, so a worker
-   * recycle never waits on it a second time.
+   * Whether the worker may fetch the weights yet, opened by `allowModelLoad`.
+   * Open from the start unless the owner asked otherwise, since the download is
+   * the longest part of a first visit. The GPU probe stays outside the gate, so
+   * a device that cannot run the detector is turned away without waiting on
+   * something the answer does not depend on. Monotonic, so a recycle never waits
+   * on it twice.
    */
   const modelLoadAllowed$ = new BehaviorSubject(!deferModelLoad);
 
@@ -225,14 +197,10 @@ export const createDetectionEngine = ({
   ) => isActive && video !== undefined && visible && !settingsOpen;
 
   /**
-   * The derived running state. Everything scoped to a running span hangs off
-   * this stream, so a falling edge tears it all down by unsubscription.
-   *
-   * Cold by design, not an oversight to fix with shareReplay: each subscriber
-   * (a session's pump, the edge watcher below) runs its own cheap
-   * combineLatest over the BehaviorSubject sources, which is what hands a
-   * late subscriber, like a recycled session's pump, the current value the
-   * moment it subscribes.
+   * The derived running state; everything scoped to a running span hangs off it.
+   * Cold by design, not an oversight to fix with shareReplay: a fresh
+   * combineLatest per subscriber is what hands a late one, like a recycled
+   * session's pump, the current value the moment it subscribes.
    */
   const running$ = combineLatest([active$, inputs$]).pipe(
     map(([isActive, inputs]) => wantsToRun(isActive, inputs)),
@@ -241,15 +209,11 @@ export const createDetectionEngine = ({
 
   // ---- pump state ----
   /**
-   * The most recently posted frame: the crop factor and dimensions a
-   * result's boxes must be mapped against, plus the capture cost and post
-   * time behind the debug snapshot's timings. Worker replies do not echo
-   * the frame they answer, so this record is how a result learns about its
-   * frame; it stays correct because only one frame is ever in flight. Like
-   * the pump's `awaitingResult` flag, it is deliberate imperative state
-   * alongside the streams (the flag covers control flow across a stop/start,
-   * this covers the data riding with the outstanding frame). Never cleared:
-   * a result no post preceded reads it guardedly instead.
+   * The most recently posted frame. Worker replies do not echo the frame they
+   * answer, so this is how a result learns the geometry to map its boxes
+   * against; it stays correct because only one frame is ever in flight. One of
+   * the two deliberate pieces of imperative state beside the streams. Never
+   * cleared, so a result no post preceded reads it guardedly.
    */
   let postedFrame:
     | {
@@ -260,82 +224,63 @@ export const createDetectionEngine = ({
         postedAt: number;
       }
     | undefined;
-  // Coasting tracker: shows each detection immediately and holds a stale box
-  // for a few frames when the model briefly loses it. Recreated on every
-  // pump stop, so a resumed session re-earns confirmation from scratch.
+  // Recreated on every pump stop, so a resumed session re-earns track
+  // confirmation from scratch.
   let tracker = createDetectionTracker();
   const fileProgress = new Map<string, ModelProgress>();
-  // Running total of scans this engine completed, counting the ones the
-  // scene-change gate answered without running the model; the crash sentinel
-  // reads it against a baseline captured when scanning starts. Skips count
-  // because what the sentinel measures is whether the pump kept turning over,
-  // and a gated session parked at a light is turning over perfectly well.
+  // Frames the pump completed, gate skips included, read by the crash sentinel
+  // against a baseline taken when scanning starts. Skips count because what the
+  // sentinel measures is whether the pump kept turning over, which a session
+  // parked at a light is doing perfectly well.
   let framesTotal = 0;
   /**
-   * Running total of the subset of those that actually ran the model. Kept
-   * apart from framesTotal because the two answer different questions and one
-   * number cannot answer both: the total says the pump kept turning over,
-   * while this says how much GPU work the session had done by the time it
-   * died. A session that skipped its way to twenty round trips and one that
-   * inferred twenty times look identical in the total and are nothing alike.
+   * The subset of those that actually ran the model. Separate from framesTotal
+   * because a session that skipped its way to twenty round trips and one that
+   * inferred twenty times are identical in the total and nothing alike.
    */
   let scansTotal = 0;
   /**
-   * Worker sessions this engine has started, the first one included, so the
-   * recycles behind it are one fewer. Engine-scoped with no per-window
-   * baseline, unlike the frame counts: what a recycle bounds is native memory
-   * across the whole page load, so the question a report has to answer is how
-   * many this page has done, not how many landed inside the last scanning
-   * span.
+   * Worker sessions started, the first included, so recycles are one fewer.
+   * Engine-scoped with no per-window baseline, unlike the frame counts, since a
+   * recycle bounds native memory across the whole page load.
    */
   let workersStarted = 0;
   /**
-   * When the current worker session started. Its age is what says whether a
-   * kill landed near the WORKER_RECYCLE_AFTER_MS boundary, which is the one
-   * moment the engine tears a session down and builds another.
+   * When the current worker session started; its age says whether a kill landed
+   * near the recycle boundary.
    */
   let workerStartedAt = performance.now();
   /**
-   * ImageBitmaps this thread currently owns: incremented where one is
-   * captured or arrives from the worker, decremented where it is closed or
-   * transferred away. Every bitmap has exactly one owner, so this sits at 0
-   * with no contact published and 1 while one is on screen, and a capture in
-   * flight adds one for the moment between capture and transfer. It is a
-   * count rather than a collection on purpose: a set holding the bitmaps
-   * would keep the leak it is meant to detect alive.
+   * ImageBitmaps this thread owns, tracked at every acquire and release. A count
+   * rather than a collection on purpose: a set holding the bitmaps would keep
+   * the leak it is meant to detect alive.
    */
   let ownedBitmaps = 0;
   /**
-   * Size of the worker's wasm heap as of its last reply that carried one, for
-   * the crash sentinel. iOS kills the page over WebContent's per-process
-   * memory limit without running any JS, so whether the runtime's heap was
-   * huge at death can only be known if it was written down while the session
-   * was alive. Engine-scoped like ownedBitmaps: it is a measurement of the
-   * page, not a per-scanning-window counter, and the last known value stays
-   * reportable across a pause.
+   * The worker's wasm heap as of its last reply carrying one. iOS kills the page
+   * over the per-process memory limit without running any JS, so a huge heap at
+   * death is only knowable if it was written down while the session was alive.
    */
   let wasmHeapBytes: number | undefined;
 
   /**
-   * The rolling log of what this engine did, oldest first and capped at
-   * MAX_SESSION_EVENTS. Engine-scoped rather than scoped to the scanning
-   * window, so the entries leading up to scanning (the model load, a view
-   * chosen before the camera came up) are still there to read.
+   * Rolling log of what this engine did, oldest first, capped at
+   * MAX_SESSION_EVENTS. Engine-scoped rather than per scanning window, so the
+   * entries leading up to scanning are still there to read.
    */
   const sessionEvents: SessionEvent[] = [];
   /**
    * Fires when an event lands that should not wait for the next scheduled
-   * heartbeat. The crash sentinel subscribes to it while scanning; nothing
-   * else listens, so recording outside a scanning window is free.
+   * heartbeat. Only the crash sentinel listens, and only while scanning, so
+   * recording outside a scanning window is free.
    */
   const eventBeat$ = new Subject<void>();
 
   /**
-   * Mirror a session-log line (or an extra diagnostic beside one) to the
-   * console, for a tethered Web Inspector session. The Console diagnostics
-   * developer row is its one switch; being a setting, it persists across the
-   * crash-reload loop being debugged. Unlike the sentinel log this never
-   * leaves the device, so free-text detail is allowed here.
+   * Mirror a line to the console for a tethered Web Inspector session, behind
+   * the Console diagnostics developer row (a setting, so it survives the
+   * crash-reload loop being debugged). Unlike the sentinel log this never leaves
+   * the device, so free-text detail is allowed.
    */
   const consoleDiagnostic = (line: string): void => {
     if (!settings$.value.consoleDiagnostics) {
@@ -345,14 +290,11 @@ export const createDetectionEngine = ({
   };
 
   /**
-   * Append to the log, and for everything except the per-frame kinds, ask for
-   * a heartbeat on the spot.
-   *
-   * The split is the whole cost control. Scans and skips arrive about once a
-   * second and would double the write rate for entries the next beat picks up
-   * anyway; the rest are rare deliberate moments, and those are exactly the
-   * ones whose timing has to survive, since an event recorded but never
-   * written is lost precisely when the page dies right after it.
+   * Append to the log, and for everything except the per-frame kinds, ask for a
+   * heartbeat on the spot. The split is the cost control: scans and skips arrive
+   * about once a second and the next beat picks them up anyway, while the rare
+   * deliberate moments are exactly the ones whose timing has to survive the page
+   * dying right after them.
    */
   const recordEvent = (kind: SessionEventKind, detail?: string): void => {
     sessionEvents.push({ at: Date.now(), kind, detail });
@@ -360,9 +302,8 @@ export const createDetectionEngine = ({
       sessionEvents.shift();
     }
     const line = detail ? `${kind} ${detail}` : kind;
-    // The per-frame lines carry what a memory investigation reads against the
-    // scan count: the worker's wasm heap, the bitmaps this thread still owns,
-    // and which round trip this was.
+    // Per-frame lines carry what a memory investigation reads against the scan
+    // count.
     consoleDiagnostic(
       kind === "scan" || kind === "skip"
         ? `${line} · heap ${wasmHeapBytes === undefined ? "?" : `${(wasmHeapBytes / BYTES_PER_MIB).toFixed(1)} MiB`} · bitmaps ${ownedBitmaps} · frame ${framesTotal}`
@@ -374,11 +315,9 @@ export const createDetectionEngine = ({
   };
 
   /**
-   * Close a bitmap this thread owns and drop it from the outstanding count.
-   * Every close of an owned bitmap goes through here, so the count cannot
-   * drift from the closes; the one deliberate exception is the teardown
-   * doorman below, which closes a crop that arrived after its session's
-   * subscribers were gone and so was never counted as owned.
+   * Close a bitmap this thread owns and drop it from the count. Every close of
+   * an owned bitmap goes through here so the two cannot drift; the teardown
+   * doorman below is the one exception, closing a crop that was never counted.
    */
   const releaseBitmap = (bitmap: ImageBitmap | undefined): void => {
     if (!bitmap) {
@@ -388,21 +327,18 @@ export const createDetectionEngine = ({
     ownedBitmaps -= 1;
   };
   /**
-   * performance.now() of the last scan the model actually ran, or undefined
-   * when it has not run since the pump last started. This is the whole of the
-   * engine's side of the scene-change gate: it decides when skipping has gone
-   * on long enough to demand a scan regardless, and it is kept here rather than
-   * in the worker because the worker cannot see a pause, a resume, or a recycle
-   * for what they are.
+   * When the model last actually ran, or undefined since the pump last started.
+   * The engine's whole side of the scene-change gate, kept here rather than in
+   * the worker because the worker cannot see a pause, a resume, or a recycle for
+   * what they are.
    */
   let lastScanAt: number | undefined;
   let debug: DebugSnapshot = INITIAL_DEBUG;
 
   /**
-   * Close the published contact's crop bitmap and hand back its replacement.
-   * Every path that swaps the contact goes through this one close: callers
-   * publish the returned value themselves, so the detections handler can
-   * batch the swap into a larger patch.
+   * Close the published contact's crop and hand back its replacement, the single
+   * close site for contact bitmaps. Callers publish the returned value
+   * themselves, so the detections handler can batch the swap into a larger patch.
    */
   const swapContact = (next: Contact | undefined): Contact | undefined => {
     releaseBitmap(snapshot$.value.contact?.image);
@@ -422,13 +358,9 @@ export const createDetectionEngine = ({
   };
 
   // ---- the scanning window ----
-  // Three resources live with the engine's scanning: the telemetry clock, the
-  // crash sentinel, and the screen wake lock. Each is a stream whose teardown
-  // is its own release, so a window is a subscribe and an unsubscribe rather
-  // than paired start/stop calls with timers, listeners, and flags kept
-  // alongside them. The clock and the lock live exactly while status is
-  // "running"; the sentinel also rides out an error that halted scanning (see
-  // its window below).
+  // The telemetry clock, the crash sentinel, and the wake lock each live with
+  // scanning as a stream whose teardown is its own release, so a window is a
+  // subscribe and an unsubscribe rather than paired start/stop calls.
 
   /** The telemetry scanning clock, running while subscribed. */
   const scanClock$ = new Observable<never>(() => {
@@ -440,9 +372,9 @@ export const createDetectionEngine = ({
 
   /**
    * The crash sentinel: while subscribed, write a timestamped record to
-   * localStorage on a cadence so the NEXT launch can tell whether this session
-   * ended cleanly. Unsubscribing clears the record, so only an OS-level kill
-   * mid-scan (no JS runs) leaves the last heartbeat behind to be reported.
+   * localStorage on a cadence so the next launch can tell whether this session
+   * ended cleanly. Unsubscribing clears it, so only an OS-level kill mid-scan,
+   * where no JS runs, leaves a heartbeat behind to report.
    */
   const crashSentinel$ = defer(() => {
     const startedAt = Date.now();
@@ -455,63 +387,52 @@ export const createDetectionEngine = ({
         framesProcessed: framesTotal - baseline,
         scansProcessed: scansTotal - scanBaseline,
         graphCapture: snapshot$.value.backendProbe?.graphCapture,
-        // Stamp the writing build, so a crash report names the deploy that
-        // produced it rather than the one that happens to read the record.
+        // The writing build, so a report names the deploy that produced the
+        // crash rather than the one that happens to read the record.
         release: APP_RELEASE,
-        // Read per beat rather than captured when the session started: the
-        // view changes under a running session, and the one that explains a
-        // kill is whichever was on screen when it happened.
+        // Read per beat: the view changes under a running session, and the one
+        // that explains a kill is whichever was on screen when it happened.
         activeView: inputs$.value.activeView,
-        // Fixed for the engine's life (the provider pins the selection at
-        // mount), so this only has to travel far enough to reach the record.
         model: reportedModel,
         recycles: Math.max(0, workersStarted - 1),
         workerAgeMs: Math.round(performance.now() - workerStartedAt),
         ownedBitmaps,
         wasmHeapBytes,
-        // Copied, not referenced: the record is serialized on the spot, but a
-        // shared array would let a later push edit what a caller believes it
-        // already wrote down.
+        // Copied, not referenced: a shared array would let a later push edit
+        // what a caller believes it already wrote down.
         events: [...sessionEvents],
       });
     };
     beat();
     return merge(
-      // Each repeat re-defers, so the delay is recomputed against the current
-      // uptime rather than fixed at subscribe: heartbeatDelayMs beats every
-      // second through the startup window and every five after it, buying
-      // one-second resolution on where in startup a crash landed without
-      // extra writes to hours of scanning.
+      // Re-deferred per repeat so the delay tracks current uptime:
+      // heartbeatDelayMs beats every second through startup and every five
+      // after, buying resolution on where in startup a crash landed without
+      // extra writes across hours of scanning.
       defer(() => timer(heartbeatDelayMs(Date.now() - startedAt))).pipe(
         repeat(),
         tap(beat),
       ),
-      // Beat when a notable event lands, rather than waiting for the next
-      // scheduled one. Without this the record trails reality by up to a beat,
-      // so a crash moments after switching into the scene reads as a crash in
-      // the radar view: the thing these fields exist to show, reported
-      // backwards. recordEvent decides what qualifies.
+      // Without this the record trails reality by up to a beat, so a crash
+      // moments after switching into the scene reads as a crash in the radar
+      // view: the thing these fields exist to show, reported backwards.
       eventBeat$.pipe(tap(beat)),
-      // A reload or navigation away mid-scan can outrun any teardown path, so
-      // pagehide is the last synchronous chance to clear the record; a real
-      // crash never fires pagehide, so genuine kills still leave it behind.
-      // The engine-level pagehide teardown also ends the activation (and this
-      // window with it), but this tap is what covers the error phase, whose
-      // activation is already gone while the sentinel keeps watching; a
-      // bfcache return re-arms coverage through reactivation.
+      // A reload mid-scan can outrun any teardown path, so pagehide is the last
+      // synchronous chance to clear the record; a real crash never fires it, so
+      // genuine kills still leave it behind. The engine-level pagehide teardown
+      // covers the scanning case, this tap covers the error phase, whose
+      // activation is already gone while the sentinel keeps watching.
       fromEvent(window, "pagehide").pipe(tap(clearSentinel)),
     );
   }).pipe(ignoreElements(), finalize(clearSentinel));
 
-  // Keeps the screen awake while scanning; a dash-mounted phone that sleeps
-  // mid-drive stops seeing the road with no sign anything changed. Built once
-  // per engine rather than per window, so a platform that refuses the lock is
-  // reported once for the page load.
+  // A dash-mounted phone that sleeps mid-drive stops seeing the road with no
+  // sign anything changed. Built once per engine rather than per window, so a
+  // platform that refuses the lock is reported once for the page load.
   const wakeLock$ = screenWakeLock();
 
-  // The windows open and close on the published status, so they cannot miss a
-  // transition no matter which code path publishes it. The clock and the wake
-  // lock live exactly while scanning runs; a screen held awake in front of an
+  // Keyed on the published status so no code path can publish a transition
+  // these miss. Both end with scanning; a screen held awake in front of an
   // error screen would burn the battery for nothing.
   snapshot$
     .pipe(
@@ -523,17 +444,13 @@ export const createDetectionEngine = ({
     )
     .subscribe();
 
-  // The crash sentinel additionally rides out an error that halted scanning.
-  // Torn down with the scanning window, the record died microseconds after
-  // the halting error was written into its log, so a page killed on the error
-  // screen reported nothing at the next launch: exactly the GPU-process-death
-  //-then-OS-kill chain the record exists to witness. Staying subscribed keeps
-  // the heartbeat running there (so the kill-vs-shutdown gap classification
-  // stays sharp) and keeps pagehide armed to clear on any exit that runs JS;
-  // the next activation resets the status, closing the window and clearing
-  // the record before a new session writes its own. An error with no scanning
-  // window behind it (a model that failed to load) never opens the window:
-  // there is no record to keep.
+  // The sentinel additionally rides out an error that halted scanning. Torn
+  // down with the scanning window, the record died microseconds after the
+  // halting error reached its log, so a page killed on the error screen
+  // reported nothing: exactly the GPU-death-then-OS-kill chain the record
+  // exists to witness. The next activation resets the status, closing this
+  // window before a new session writes its own record. An error with no
+  // scanning behind it, such as a model that failed to load, never opens it.
   snapshot$
     .pipe(
       map((s) => s.status),
@@ -548,21 +465,14 @@ export const createDetectionEngine = ({
     .subscribe();
 
   /**
-   * Capture one frame as an ImageBitmap. Waits for the camera to present a
-   * new frame first, so inference never runs twice on the same frame when
-   * detection outpaces the camera. Cancellation-aware: teardown mid-wait
-   * abandons the capture, and a bitmap that resolves after teardown is closed
-   * instead of leaked, which is what the `cancelled` flag exists to protect
-   * against.
+   * Capture one frame as an ImageBitmap, waiting for a new camera frame first so
+   * inference never runs twice on the same one. The `cancelled` flag is what
+   * keeps a bitmap resolving after teardown from leaking.
    *
-   * Two shapes come out of here. When a cutout is wanted the whole video frame
-   * is captured, because the contact card is cut from its original pixels.
-   * Otherwise the zoom crop and the scale down to the model's input are asked
-   * of `createImageBitmap` directly, which hands the worker a bitmap a quarter
-   * the size to transfer and leaves it a straight copy onto the input instead
-   * of a software resample of a frame four times larger. The emitted `source`
-   * is the video's own size either way, so a result maps its boxes against the
-   * frame rather than against whatever was captured.
+   * A cutout needs the whole video frame, since the contact card is cut from its
+   * original pixels; otherwise the crop and scale happen in `createImageBitmap`.
+   * The emitted `source` is the video's own size either way, so a result maps
+   * its boxes against the frame rather than whatever was captured.
    */
   const captureFrame = (
     video: HTMLVideoElement,
@@ -624,25 +534,13 @@ export const createDetectionEngine = ({
   };
 
   /**
-   * Whether this frame must be scanned whatever the scene-change gate makes of
-   * it. Three cases, all of them the engine's to see and none of them the
-   * worker's:
-   *
-   * The gate is off, a developer option, so every frame is scanned and the
-   * gate's effect on heat and on detections can be measured against its absence
-   * on a real device.
-   *
-   * Nothing has been scanned since the pump last started. A pump starts on a
-   * fresh worker, after a recycle, and on every resume from a pause, and in the
-   * last of those the world has had an unbounded amount of time to move while
-   * nobody was looking. The first frame of a span is the one frame the gate has
-   * no honest baseline for.
-   *
-   * Or skipping has run past SCENE_GATE_MAX_SKIP_MS, the backstop against the
-   * gate being wrong in the direction that matters. A threshold set above what
-   * a distant vehicle produces, or a camera feed that has frozen, both look
-   * from in here exactly like a scene that is genuinely still, and neither can
-   * be told apart from it by measuring the frames harder.
+   * Whether this frame must be scanned whatever the gate makes of it. Three
+   * cases, all of them the engine's to see and none of them the worker's: the
+   * gate is off; nothing has been scanned since the pump started, so there is no
+   * honest baseline (a resume can sit on any amount of unobserved movement); or
+   * skipping has run past SCENE_GATE_MAX_SKIP_MS, the backstop for a
+   * miscalibrated threshold or a frozen feed, neither of which can be told apart
+   * from a still scene by measuring the frames harder.
    */
   const forceScan = (sceneGate: boolean): boolean =>
     !sceneGate ||
@@ -662,10 +560,9 @@ export const createDetectionEngine = ({
   // passes WORKER_RECYCLE_AFTER_MS.
   const recycle$ = new Subject<void>();
 
-  // Engine-lifetime recording of the world state changes worth a log entry.
-  // Both are read off inputs$ rather than from setInputs, so a change is
-  // logged once per actual change however many times it is pushed, and the
-  // current value at subscribe is not logged as if it had just happened.
+  // Read off inputs$ rather than from setInputs, so a change is logged once
+  // however many times it is pushed, and the value present at subscribe is not
+  // logged as if it had just happened.
   recycle$.subscribe(() => recordEvent("recycle"));
   inputs$
     .pipe(
@@ -683,12 +580,10 @@ export const createDetectionEngine = ({
     .subscribe((attached) => recordEvent("video", attached ? "on" : "off"));
 
   /**
-   * End the activation after a worker error by flipping active$ off, the same
-   * falling edge deactivate() rides, which unsubscribes the session and
-   * terminates its worker. It has to be this edge and not a separate halt
-   * signal: activate() early-returns while active$ is true, so a halt that
-   * left it true could never be restarted. The error snapshot stays
-   * published; a later activate() is what resets it.
+   * End the activation after a worker error by riding the same falling edge
+   * deactivate() does, which terminates the worker. It has to be this edge
+   * rather than a separate halt signal: activate() early-returns while active$
+   * is true, so a halt that left it true could never be restarted.
    */
   const haltForError = () => {
     replaceContact(undefined);
@@ -696,11 +591,10 @@ export const createDetectionEngine = ({
   };
 
   /**
-   * One worker lifetime as an Observable: subscribing spawns the worker,
-   * posts the probe synchronously (the GPU verdict must not wait on anything),
-   * and requests the model load once both of the load's gates are open.
-   * Unsubscribing terminates the worker and abandons a pending load wait, which
-   * is what retires the old activation-counter guard.
+   * One worker lifetime as an Observable: subscribing spawns it, posts the probe
+   * synchronously (the GPU verdict must not wait on anything), and requests the
+   * load once both gates are open. Unsubscribing terminates it and abandons a
+   * pending load wait.
    */
   const workerSession$ = new Observable<WorkerSession>((subscriber) => {
     workersStarted += 1;
@@ -722,11 +616,10 @@ export const createDetectionEngine = ({
       haltForError();
     };
     target.postMessage({ type: "probe" });
-    // Two independent waits, run side by side rather than in sequence: the
-    // owner's go-ahead, and in production a service worker controlling the page
-    // so a first visit's fetch lands in the runtime cache (dev has none, so it
-    // resolves at once). Unsubscribing on teardown is what stops a terminated
-    // worker from being posted to, which a cancelled flag used to cover.
+    // Two independent waits, side by side: the owner's go-ahead, and in
+    // production a service worker controlling the page so a first visit's fetch
+    // lands in the runtime cache (dev has none, so it resolves at once).
+    // Unsubscribing is what stops a terminated worker from being posted to.
     const loadRequest = combineLatest([
       modelLoadAllowed$.pipe(filter(Boolean)),
       defer(() =>
@@ -749,11 +642,9 @@ export const createDetectionEngine = ({
     });
     return () => {
       loadRequest.unsubscribe();
-      // A message the worker posted before this teardown can still be
-      // dispatched after it, when the session's subscribers are gone; a
-      // detections message carrying a crop would then have no owner. Swap in
-      // a doorman that closes the crop instead of feeding the
-      // subscriber-less subject.
+      // A message posted before this teardown can still be dispatched after it,
+      // when the subscribers are gone, leaving a crop with no owner. This
+      // doorman closes it instead of feeding the subscriber-less subject.
       target.onmessage = (event: MessageEvent) => {
         const message: unknown = event.data;
         if (isWorkerResponse(message) && message.type === "detections") {
@@ -765,9 +656,8 @@ export const createDetectionEngine = ({
   });
 
   /**
-   * Note the heap size a worker reply carried; a reply without one leaves the
-   * last reading in place rather than blanking a value the sentinel already
-   * had.
+   * A reply without a heap size leaves the last reading in place rather than
+   * blanking a value the sentinel already had.
    */
   const recordWasmHeap = (bytes: number | undefined): void => {
     if (bytes !== undefined) {
@@ -816,9 +706,8 @@ export const createDetectionEngine = ({
         recordWasmHeap(message.wasmHeapBytes);
         recordEvent("load");
         telemetry.modelReady();
-        // Republished by every recycle, which loads the same entry again, so a
-        // session that comes back naming nothing is reported as naming nothing
-        // rather than keeping the last session's words.
+        // Republished per recycle, so a session that comes back naming nothing
+        // is reported that way rather than keeping the last session's words.
         publish({ loadedClasses: message.loaded?.classes });
         setStatus(
           wantsToRun(active$.value, inputs$.value) ? "running" : "ready",
@@ -829,11 +718,9 @@ export const createDetectionEngine = ({
         framesTotal += 1;
         recordWasmHeap(message.wasmHeapBytes);
         recordEvent("skip");
-        // A skip publishes nothing. Everything is left exactly as the last
-        // real scan published it: a frame that did not change cannot have lost
-        // what the last one found, so the tracker is not advanced (which would
-        // coast the detection toward being dropped), the HUD is not rebuilt,
-        // and the contact card keeps the picture it is showing.
+        // A skip publishes nothing: a frame that did not change cannot have lost
+        // what the last one found, and advancing the tracker would coast the
+        // detection toward being dropped.
         debug = {
           ...debug,
           sceneDelta: message.delta,
@@ -846,11 +733,10 @@ export const createDetectionEngine = ({
         framesTotal += 1;
         scansTotal += 1;
         recordWasmHeap(message.wasmHeapBytes);
-        // A crop rides in on the message, transferred, so this thread owns it
-        // the moment it arrives. processDetectionResult below hands it back as
-        // exactly one of contact (kept, released by the next swap) or
-        // discardedCrop (released immediately), so it is counted once here and
-        // released once either way.
+        // A crop arrives transferred, so this thread owns it on arrival.
+        // processDetectionResult hands it back as exactly one of contact (kept,
+        // released by the next swap) or discardedCrop (released below), so it is
+        // counted once here and released once either way.
         if (message.crop) {
           ownedBitmaps += 1;
         }
@@ -868,11 +754,9 @@ export const createDetectionEngine = ({
         const patch: Partial<DetectionSnapshot> = {
           hud: result.hud,
         };
-        // Publish this scan's own detections for the detection view. Raw
-        // per-frame output, not the coasted set, since the view exists to
-        // show what the model saw on each frame. Skipped when no frame was
-        // recorded (a result no capture preceded), since mapping boxes
-        // needs the frame's geometry.
+        // Raw per-frame output for the detection view, not the coasted set,
+        // since the view exists to show what the model saw. Skipped when no
+        // frame was recorded, since mapping boxes needs its geometry.
         if (frame) {
           patch.scan = {
             detections: result.detections,
@@ -885,11 +769,9 @@ export const createDetectionEngine = ({
         if (result.contact) {
           patch.contact = swapContact(result.contact);
         }
-        // Closed before the publish on purpose: the discarded crop is not in
-        // the patch, so nothing downstream can want it, and closing it first
-        // keeps its cleanup from depending on how the publish's subscribers
-        // behave. (rxjs isolates a throwing subscriber from this call today,
-        // but the ordering should not need that.)
+        // Closed before the publish: nothing downstream can want a crop that is
+        // not in the patch, and this keeps the cleanup from depending on how the
+        // publish's subscribers behave.
         releaseBitmap(result.discardedCrop);
         publish(patch);
         const { preprocessMs, inferenceMs, decodeMs } = message.timing;
@@ -900,9 +782,9 @@ export const createDetectionEngine = ({
           inferenceMs,
           decodeMs,
           roundTripMs,
-          // Round-trip time not accounted for by the worker's three stages:
-          // postMessage delivery each way plus scheduling. Clamped at 0 to
-          // absorb sub-millisecond cross-thread clock noise.
+          // What the worker's three stages do not account for: postMessage
+          // delivery each way plus scheduling. Clamped at 0 to absorb
+          // sub-millisecond cross-thread clock noise.
           overheadMs: Math.max(
             0,
             roundTripMs - (preprocessMs + inferenceMs + decodeMs),
@@ -911,16 +793,14 @@ export const createDetectionEngine = ({
           filteredCount: result.detections.length,
           shownCount: result.tracked.length,
           zoom: frame?.zoom ?? ZOOM_OFF,
-          // Owned by the pump's capture retry loop; carried through so a
-          // result never erases an in-progress failure streak readout.
+          // Owned by the pump's retry loop, so a result never erases an
+          // in-progress failure streak.
           captureFailures: debug.captureFailures,
-          // Carried forward for one line; the pump's paceDelay writes this
-          // frame's actual pacing decision.
+          // Carried for one line; paceDelay writes this frame's own decision.
           pacingDelayMs: debug.pacingDelayMs,
           pacingRule: debug.pacingRule,
-          // A scan the gate let through, so the run of skips it ended is over.
-          // The delta is reported all the same: the readings above the
-          // threshold are half of what tuning it needs.
+          // The run of skips is over, but the delta is still reported: readings
+          // above the threshold are half of what tuning it needs.
           sceneDelta: message.sceneDelta ?? debug.sceneDelta,
           scanSkips: 0,
           scansTotal: debug.scansTotal + 1,
@@ -931,16 +811,14 @@ export const createDetectionEngine = ({
         break;
       }
       case "worker-error": {
-        // The code plus the bounded loss reason, when one rode along.
-        // message.detail carries what the platform said, which is free text
-        // and does not belong in something this log ships; message.reason is
-        // guard-enforced to the WebGPU enum, so it may.
+        // message.reason is guard-enforced to the WebGPU enum so it may ship;
+        // message.detail is whatever the platform said, so it may not.
         recordEvent(
           "error",
           message.reason ? `${message.code} ${message.reason}` : message.code,
         );
-        // The platform's free text stays out of the shipped log but is the
-        // most useful line a tethered console can show for a failure.
+        // Out of the shipped log, but the most useful line a tethered console
+        // can show for a failure.
         if (message.detail) {
           consoleDiagnostic(`worker-error detail: ${message.detail}`);
         }
@@ -954,26 +832,20 @@ export const createDetectionEngine = ({
   };
 
   /**
-   * The frame pump for one worker session: runs exactly while running$ is
-   * true, starts only after this session's model reports ready (a still
-   * loading worker silently drops frames), and loops a scan forever. A
-   * falling running edge unsubscribes mid-anything: a pending capture closes
-   * its bitmap and a pending pace timer dies. The one exception is a frame
-   * already posted and awaiting a reply: `awaitingResult` tracks that across
-   * the edge (cleared by `resultLanded$` below, which stays subscribed
-   * through a pause) so a stop/start that outraces the worker's reply
-   * re-primes at depth one instead of posting a second frame while the first
-   * is still out, keeping at most one frame in flight at a time.
+   * The frame pump for one worker session: runs while running$ is true, starts
+   * only after this session reports ready (a still-loading worker silently drops
+   * frames), and loops forever. A falling edge unsubscribes mid-anything. The
+   * exception is a frame already posted: `awaitingResult` tracks it across the
+   * edge so a stop/start that outraces the reply re-primes at depth one instead
+   * of putting a second frame in flight.
    */
   const pumpFor = (session: WorkerSession) => {
     let awaitingResult = false;
 
     /**
-     * Every reply that closes out a posted frame. A gate skip counts: it costs
-     * the worker a frame and answers it, so to the pump it is a completed scan
-     * that happens to carry no detections. Treating only results as replies
-     * would leave the pump waiting on a frame that was already answered, and
-     * the reply watchdog would recycle a worker doing exactly what it should.
+     * Every reply that closes out a posted frame. A gate skip counts: treating
+     * only results as replies would leave the pump waiting on a frame that was
+     * already answered, and the watchdog would recycle a healthy worker.
      */
     const replies$ = session.messages$.pipe(
       filter(
@@ -993,13 +865,10 @@ export const createDetectionEngine = ({
     );
 
     /**
-     * The next detections result this session delivers, bounded by the reply
-     * watchdog: a worker that answers with neither a result nor an error
-     * within WORKER_REPLY_TIMEOUT_MS is wedged in a way no other signal
-     * reports (onerror covers crashes, the crash sentinel covers OS kills),
-     * so the timeout recycles it instead of awaiting the reply forever. The
-     * outstanding frame dies with the terminated worker; the fresh session's
-     * ready re-primes the pump.
+     * The next reply, bounded by the watchdog: a worker silent past
+     * WORKER_REPLY_TIMEOUT_MS is wedged in a way no other signal reports
+     * (onerror covers crashes, the sentinel covers OS kills), so recycle rather
+     * than await forever. The fresh session's ready re-primes the pump.
      */
     const nextResult$ = replies$.pipe(
       take(1),
@@ -1015,20 +884,16 @@ export const createDetectionEngine = ({
     );
 
     /**
-     * Capture a frame, then post it with the reply listener already in
-     * place: merge subscribes nextResult$ before the deferred post runs, so
-     * the reply cannot race the listener. The pump would otherwise depend on
-     * worker replies arriving on a later macrotask, a scheduling guarantee
-     * rather than a structural one, and a responder that answered
-     * synchronously (a test fake, a same-thread worker shim) would emit into
-     * nothing and stall the pump forever.
+     * Capture a frame, then post it with the reply listener already in place:
+     * merge subscribes nextResult$ before the deferred post runs. Otherwise the
+     * pump would rest on replies arriving on a later macrotask, and a responder
+     * that answered synchronously would emit into nothing and stall it forever.
      */
     const postFrame = (video: HTMLVideoElement) => {
-      // One settings read for the whole scan, taken before the capture rather
-      // than after it. The crop geometry and the zoom the message declares have
-      // to be the same value or the worker maps the boxes back out of a crop it
-      // was never told about, and only a single read can guarantee that across
-      // the capture's await.
+      // One settings read for the whole scan, before the capture. The crop
+      // geometry and the zoom the message declares must be the same value or the
+      // worker maps boxes out of a crop it was never told about, and only a
+      // single read guarantees that across the capture's await.
       const { zoom, includeContact, confidenceThreshold, sceneGate } =
         settings$.value;
       return captureFrame(video, includeContact ? undefined : zoom).pipe(
@@ -1036,9 +901,9 @@ export const createDetectionEngine = ({
           merge(
             nextResult$,
             defer(() => {
-              // The video's size, not the bitmap's: a pre-cropped capture is
-              // the model's input, while everything downstream of a result
-              // works against the frame it came from.
+              // The video's size, not the bitmap's: a pre-cropped capture is the
+              // model's input, while everything downstream of a result works
+              // against the frame it came from.
               postedFrame = {
                 zoom,
                 width: source.width,
@@ -1061,8 +926,7 @@ export const createDetectionEngine = ({
                 },
                 [frame],
               );
-              // Transferred, not closed: the bitmap is the worker's now, and
-              // this thread must stop counting it as one it has to release.
+              // Transferred, not closed: the bitmap is the worker's now.
               ownedBitmaps -= 1;
               return EMPTY;
             }),
@@ -1072,11 +936,9 @@ export const createDetectionEngine = ({
     };
 
     /**
-     * One pump iteration: capture and post, then await the reply (a frame
-     * from before an interruption still outstanding skips straight to the
-     * awaiting), then either pace the next capture or complete the session
-     * for recycle. A capture failure (video not delivering frames yet,
-     * typically mid-attach) retries after FRAME_RETRY_MS.
+     * One pump iteration: capture and post, await the reply, then either pace
+     * the next capture or complete the session for recycle. A frame still
+     * outstanding from before an interruption skips straight to the awaiting.
      */
     const scanOnce = () =>
       defer(() => {
@@ -1084,20 +946,17 @@ export const createDetectionEngine = ({
           return nextResult$;
         }
         const video = inputs$.value.video;
-        // running$ implies a video is attached, so this branch is believed
-        // unreachable. The timer is a belt-and-braces guard: if that
-        // coupling ever breaks, it stops repeat() from spinning
-        // synchronously on a missing video instead of retrying quietly.
+        // running$ implies a video is attached, so this branch should be
+        // unreachable; the timer stops repeat() from spinning synchronously if
+        // that coupling ever breaks.
         return video
           ? postFrame(video)
           : timer(FRAME_RETRY_MS).pipe(ignoreElements());
       }).pipe(
         switchMap(() => {
-          // Recycle at this result boundary, where nothing is in flight, once
-          // the worker has run long enough; terminating and recreating it
-          // resets the native memory ORT and the GPU stack leak across
-          // thousands of runs. Status stays "running" so one-shot analytics
-          // gates never re-fire; the new session's ready re-primes the pump.
+          // Recycle at this result boundary, where nothing is in flight. Status
+          // stays "running" so one-shot analytics gates never re-fire; the new
+          // session's ready re-primes the pump.
           if (
             performance.now() - session.createdAt >=
             WORKER_RECYCLE_AFTER_MS
@@ -1109,12 +968,10 @@ export const createDetectionEngine = ({
             paceDelay(performance.now() - (postedFrame?.postedAt ?? 0)),
           );
         }),
-        // A failed capture retries forever: the expected cause is a video
-        // element with no frame data yet (typically mid-attach), which
-        // resolves itself moments later. The retry is deliberately quiet
-        // beyond the debug counter; stall detection and recovery were
-        // removed on purpose, so a persistent failure shows up as a climbing
-        // captureFailures readout rather than an alert.
+        // A failed capture retries forever, the expected cause being a video
+        // element with no frame data yet, which resolves itself moments later.
+        // Deliberately quiet beyond the debug counter, so a persistent failure
+        // shows up as a climbing captureFailures readout rather than an alert.
         retry({
           delay: () => {
             debug = { ...debug, captureFailures: debug.captureFailures + 1 };
@@ -1127,9 +984,8 @@ export const createDetectionEngine = ({
       switchMap((isRunning) =>
         isRunning
           ? session.loaded$.pipe(
-              // Unbounded on purpose: the session's load watchdog bounds how
-              // long a worker may sit unloaded, so a ready that never comes
-              // recycles the session out from under this wait.
+              // Unbounded on purpose: the load watchdog recycles the session out
+              // from under this wait if ready never comes.
               filter(Boolean),
               take(1),
               switchMap(() => scanOnce().pipe(repeat())),
@@ -1142,21 +998,14 @@ export const createDetectionEngine = ({
   };
 
   /**
-   * The load watchdog for one worker session: until the model reports ready,
-   * some message must arrive every WORKER_LOAD_TIMEOUT_MS or the session is
-   * recycled as wedged. An inactivity bound rather than a load budget, because
-   * a load can be legitimately slow (a first visit streams the weights over
-   * whatever network the car is on) but never legitimately silent: every stage
-   * posts something, so only a hang resets nothing. This is the load-time
-   * counterpart of the pump's reply watchdog, which cannot cover loading
-   * because it only arms once a frame is posted, and a frame is never posted
-   * to a session that never reports ready. Ready ends the watch; from there
-   * silence is normal idling and the reply watchdog owns wedge detection.
+   * The load-time counterpart of the reply watchdog, which cannot cover loading
+   * because it only arms once a frame is posted. Until ready, some message must
+   * arrive every WORKER_LOAD_TIMEOUT_MS. An inactivity bound rather than a load
+   * budget: a load can be legitimately slow but never legitimately silent.
    *
-   * The watch starts when the download is allowed rather than when the session
-   * is created, because a load the owner is deliberately holding back is not a
-   * load that has gone silent: watching it from creation would recycle a
-   * perfectly healthy worker every minute for as long as it is held.
+   * The watch starts when the download is allowed rather than at creation, since
+   * a load the owner is deliberately holding back would otherwise recycle a
+   * healthy worker every minute.
    */
   const loadWatchdogFor = (session: WorkerSession) =>
     modelLoadAllowed$.pipe(
@@ -1180,13 +1029,10 @@ export const createDetectionEngine = ({
       ignoreElements(),
     );
 
-  // One activation's worker chain: sessions repeat on recycle; flipping
-  // active$ off (deactivate, or a halt after a worker error) unsubscribes the
-  // current session, which is what terminates its worker. The merge order is
-  // load-bearing: the message
-  // handler subscribes to messages$ before the pump, so it processes a
-  // result (publishing hud/scan/contact and writing the debug timings)
-  // before the pump's take(1) computes pacing.
+  // One activation's worker chain: sessions repeat on recycle, and flipping
+  // active$ off unsubscribes the current session, terminating its worker. The
+  // merge order is load-bearing: the message handler subscribes before the pump,
+  // so a result is fully processed before the pump computes pacing from it.
   const sessionLoop$ = workerSession$.pipe(
     switchMap((session) =>
       merge(
@@ -1209,9 +1055,8 @@ export const createDetectionEngine = ({
     )
     .subscribe();
 
-  // Act on the edges of the derived running state. running$'s BehaviorSubject
-  // sources emit at subscribe, so this fires immediately with the initial
-  // false; those "falling edge" actions are all no-ops against fresh state,
+  // running$'s sources emit at subscribe, so this fires immediately with the
+  // initial false; the falling-edge actions are all no-ops against fresh state,
   // so no skip is needed.
   running$.subscribe((isRunning) => {
     if (isRunning) {
@@ -1220,10 +1065,9 @@ export const createDetectionEngine = ({
       }
       return;
     }
-    // A resumed session must re-earn track confirmation from scratch, and for
-    // the same reason it must re-look at the road: a pause of any length can
-    // sit between these two frames, so the next one is scanned rather than
-    // measured against a baseline from before it.
+    // A pause of any length can sit between these two frames, so a resumed
+    // session re-earns track confirmation and scans its first frame rather than
+    // measuring it against a baseline from before the pause.
     tracker = createDetectionTracker();
     lastScanAt = undefined;
     if (snapshot$.value.status === "running") {
@@ -1255,20 +1099,14 @@ export const createDetectionEngine = ({
   };
 
   // A departing page never runs React cleanups, so pagehide is the one
-  // synchronous chance to end the activation, which terminates the worker.
-  // This exists for memory, not tidiness: WebKit reuses one WebContent
-  // process across same-site reloads and reclaims a departed page's worker
-  // (its wasm memory, ORT session, GPU handles) lazily at best, so each
-  // reload otherwise stacks a dead page's residue onto the process until iOS
-  // kills whichever page is running at the per-process memory cap, which is
-  // DASHRADAR-2's jetsam signature. Terminating before departure hands the
-  // memory back deterministically. pagehide also fires on the way into the
-  // bfcache, so a restored page would come back to a dead worker: the
-  // switchMap arms a one-shot pageshow wait scoped to the pagehide this
-  // handler acted on, reactivating on the restore, and the takeUntil stands
-  // down if something else (a new mount) has already activated the engine.
-  // An engine that was not active (deactivated, or halted on an error) is
-  // deliberately left alone by both halves.
+  // synchronous chance to terminate the worker. This is for memory, not
+  // tidiness: WebKit reuses one WebContent process across same-site reloads and
+  // reclaims a departed page's wasm memory, ORT session, and GPU handles lazily
+  // at best, so each reload otherwise stacks residue onto the process until iOS
+  // kills it at the per-process cap. pagehide also fires into the bfcache, so
+  // the switchMap arms a one-shot pageshow wait to reactivate on a restore,
+  // standing down if a new mount already activated the engine. An engine that
+  // was not active is left alone by both halves.
   fromEvent(window, "pagehide")
     .pipe(
       filter(() => active$.value),
@@ -1290,9 +1128,8 @@ export const createDetectionEngine = ({
   return {
     getSnapshot: () => snapshot$.value,
     subscribe: (onChange) => {
-      // Skip the BehaviorSubject's replay: the seam's contract is
-      // notify-on-change, and useSyncExternalStore reads the current value
-      // itself via getSnapshot.
+      // Skip the BehaviorSubject's replay: the contract is notify-on-change, and
+      // useSyncExternalStore reads the current value itself via getSnapshot.
       const subscription = snapshot$.pipe(skip(1)).subscribe(onChange);
       return () => {
         subscription.unsubscribe();
@@ -1302,10 +1139,9 @@ export const createDetectionEngine = ({
       inputs$.next({ ...inputs$.value, ...next });
     },
     updateSettings: (next) => {
-      // Turning the detection image off retires the published contact here,
-      // at the settings edge: the worker stops producing crops the moment the
-      // setting lands, so no later result would ever swap the pinned bitmap
-      // out, and it would stay open for the rest of the session.
+      // Retired at the settings edge because the worker stops producing crops
+      // the moment the setting lands, so no later result would swap the pinned
+      // bitmap out and it would stay open for the rest of the session.
       if (!next.includeContact && snapshot$.value.contact) {
         replaceContact(undefined);
       }

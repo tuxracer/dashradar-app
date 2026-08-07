@@ -3,11 +3,10 @@ import type { OnnxMetadata } from "./types";
 export * from "./types";
 
 /**
- * Protobuf wire types. An `.onnx` file is a serialized `ModelProto`, and the
- * top-level fields this reader wants are all length-delimited (2), so the rest
- * exist only to be skipped correctly. Groups (3 and 4) are deprecated, absent
- * from onnx.proto, and carry no length to skip by, so meeting one means the
- * bytes are not what we think they are.
+ * Protobuf wire types. Every top-level field this reader wants is
+ * length-delimited, so the rest exist only to be skipped correctly. Groups (3
+ * and 4) are absent from onnx.proto and carry no length to skip by, so meeting
+ * one means the bytes are not a ModelProto.
  */
 const WIRE_VARINT = 0;
 const WIRE_FIXED64 = 1;
@@ -26,12 +25,10 @@ const ENTRY_KEY = 1;
 const ENTRY_VALUE = 2;
 
 /**
- * Longest run of bytes this reader will decode as text. Nothing a release
- * stamps comes close, while the graph it walks past is tens of megabytes, so
- * the cap is what keeps a corrupt length or a field number that means something
- * else in a future opset from turning into a huge string allocation inside the
- * worker at the exact moment memory is tightest (see createModel's note on the
- * weights buffer). An oversized field is skipped, not fatal.
+ * Longest run of bytes decoded as text. Nothing a release stamps comes close,
+ * while the graph walked past is tens of megabytes, so this keeps a corrupt
+ * length from becoming a huge allocation at the moment memory is tightest. An
+ * oversized field is skipped, not fatal.
  */
 const MAX_STRING_BYTES = 64 * 1024;
 
@@ -41,9 +38,8 @@ type Cursor = { readonly bytes: Uint8Array; pos: number };
 const decoder = new TextDecoder();
 
 /**
- * Read one base-128 varint, advancing the cursor past it. Values accumulate by
- * multiplication rather than `<<`, which is a 32-bit operation in JS and would
- * wrap on the byte lengths in a 54 MB file.
+ * Read one base-128 varint. Values accumulate by multiplication rather than
+ * `<<`, which is 32-bit in JS and would wrap on this file's byte lengths.
  */
 const readVarint = (cursor: Cursor, end: number): number => {
   let value = 0;
@@ -66,12 +62,10 @@ const readVarint = (cursor: Cursor, end: number): number => {
 };
 
 /**
- * Decode the span from the cursor to `end` as UTF-8, without moving the cursor
- * (the walk sets the position from the field's declared length either way).
- * Returns undefined for a span past {@link MAX_STRING_BYTES}, so one absurd
- * field costs that field and not the whole read. A subarray, never a slice:
- * this runs on the model weights, where an extra copy is the thing being
- * avoided.
+ * Decode the span to `end` as UTF-8 without moving the cursor, which the walk
+ * sets from the field's declared length anyway. An oversized span returns
+ * undefined, costing that field and not the read. A subarray, never a slice:
+ * this runs on the weights, where an extra copy is the thing being avoided.
  */
 const readString = (cursor: Cursor, end: number): string | undefined => {
   if (end - cursor.pos > MAX_STRING_BYTES) {
@@ -81,14 +75,10 @@ const readString = (cursor: Cursor, end: number): string | undefined => {
 };
 
 /**
- * Walk the fields of one message, calling `visit` for each length-delimited
- * field with the cursor at the value's first byte and the position its value
- * ends at. Fields of other wire types are skipped, as is anything the visitor
- * chooses not to read: this is what lets the walk step over the graph, tens of
- * megabytes of weights included, by reading its length and jumping.
- *
- * Throws on anything malformed rather than guessing, so the caller can treat a
- * file that is not a ModelProto as simply having no metadata.
+ * Walk one message, calling `visit` per length-delimited field with the cursor at
+ * the value's first byte. Anything the visitor does not read is skipped by
+ * length, which is what lets the walk step over tens of megabytes of graph.
+ * Throws on anything malformed rather than guessing.
  */
 const walkMessage = (
   cursor: Cursor,
@@ -149,17 +139,11 @@ const readProp = (
 };
 
 /**
- * Read what an `.onnx` file says about itself out of its own bytes.
- *
- * Only the top-level ModelProto fields are read; the graph is stepped over by
- * length rather than parsed, so this costs a few dozen varint reads no matter
- * how large the file is. Per-tensor doc strings would need a descent into the
- * graph and nothing needs them yet.
- *
- * Returns undefined when the bytes are not a ModelProto: either they do not
- * parse as protobuf at all, or they parse but carry no graph, which is the one
- * field every real model has and the check that stops arbitrary bytes from
- * decoding into a plausible-looking empty result.
+ * Read what an `.onnx` file says about itself. Only top-level ModelProto fields;
+ * the graph is stepped over by length rather than parsed, so this costs a few
+ * dozen varint reads whatever the file size. Returns undefined when the bytes do
+ * not parse or carry no graph, the one field every real model has and the check
+ * that stops arbitrary bytes decoding into a plausible empty result.
  */
 export const readOnnxMetadata = (
   bytes: Uint8Array,

@@ -12,20 +12,17 @@ import { ERROR_DETAIL_MAX_LENGTH, TIMING_BUCKET_MS } from "./consts";
 export * from "./consts";
 
 /**
- * Milliseconds to seconds, rounded to the nearest half second: 1488 ms reads
- * as 1.5, 1986 ms as 2. Coarse on purpose, so a reported timing says how fast
- * a device is without the noise of an exact per-frame number.
+ * Milliseconds to seconds, rounded to the nearest half. Coarse on purpose, so a
+ * timing says how fast a device is without the noise of an exact number.
  */
 const toBucketedSeconds = (ms: number): number =>
   Math.round(ms / TIMING_BUCKET_MS) / 2;
 
 /**
- * The detection pipeline's analytics sink, extracted from the frame-pump code
- * so every once-per-page-load gate lives in one place instead of a ref per
- * event. The pump reports what happened (a load started, a result arrived);
- * this module decides what to emit. All gating is internal: the periodic
- * worker recycle produces repeat `ready` and load events for the same page
- * load, and none of them may re-fire a one-shot event.
+ * The detection pipeline's analytics sink. The pump reports what happened and
+ * this decides what to emit, so every once-per-page-load gate lives in one place
+ * rather than a ref per event. That gating is load-bearing: the periodic worker
+ * recycle produces repeat load and ready events for the same page load.
  */
 export type DetectionTelemetry = {
   /** The weights started loading; `fromCache` feeds the later ready event. */
@@ -45,19 +42,17 @@ export type DetectionTelemetry = {
   /** The pump left its running state; stops the scanning clock. */
   scanningStopped: () => void;
   /**
-   * Report the drive's scanned time so far and mark it reported. Called when
-   * the page goes hidden or unloads; draining the clock keeps the two
-   * listeners from double-counting one drive, and an OS kill (which fires
-   * neither) deliberately reports nothing, leaving that session to the crash
-   * sentinel.
+   * Report the drive's scanned time and mark it reported, which is what keeps the
+   * hidden and unload listeners from double-counting one drive. An OS kill fires
+   * neither and reports nothing, leaving that session to the crash sentinel.
    */
   reportScanSession: () => void;
 };
 
 /**
- * Builds the sink for one page load, bound to the model the session runs so
- * download events name the slug and revision that actually reached the device
- * (the only signal that makes a bad rollout visible before it errors).
+ * Builds the sink for one page load, bound to the running model so download
+ * events name the revision that reached the device, which is the only signal
+ * that makes a bad rollout visible before it errors.
  */
 export const createDetectionTelemetry = (
   model: DetectionModel,
@@ -73,9 +68,8 @@ export const createDetectionTelemetry = (
     emit();
   };
   let modelFromCache = false;
-  // Scanning time this page load, which is not page time: the pump reports
-  // its running window, so the settings panel and a hidden page are excluded.
-  // Drained by reportScanSession.
+  // Scanning time, not page time: the pump reports its running window, so the
+  // settings panel and a hidden page are excluded.
   const scanClock = createScanClock();
 
   return {
@@ -83,9 +77,9 @@ export const createDetectionTelemetry = (
       modelFromCache = fromCache;
     },
     modelDownloaded: (durationMs) => {
-      // Which model actually reached this device, and how long the bytes took
-      // to arrive. A device whose cache never sticks would re-download on
-      // every worker recycle, so the gate keeps the count at one per load.
+      // Which model reached this device and how long the bytes took. A device
+      // whose cache never sticks would re-download on every recycle, so the gate
+      // keeps the count at one per load.
       once("model_downloaded", () => {
         track("model_downloaded", {
           model: model.slug,
@@ -95,35 +89,31 @@ export const createDetectionTelemetry = (
       });
     },
     modelReady: () => {
-      // Whether the session started from cached bytes or a fresh download.
-      // With no backend there is no other view into the runtime cache's hit
-      // rate, which is the difference between an instant start and a 54 MB
-      // wait.
+      // With no backend, the only view into the runtime cache's hit rate, which
+      // is the difference between an instant start and a long wait.
       once("model_ready", () => {
         track("model_ready", { fromCache: modelFromCache });
       });
     },
     result: ({ inferenceMs, roundTripMs }) => {
-      // The one event that says every startup gate was cleared: intro
-      // dismissed, camera granted, model loaded, and a frame made it through
-      // inference. Carries the cold numbers (session compile, cold GPU) the
-      // rolling medians below never see.
+      // The one event saying every startup gate cleared: intro dismissed, camera
+      // granted, model loaded, frame through inference. Carries the cold numbers
+      // a steady-state measurement never sees.
       once("first_result", () => {
         track("first_inference", { seconds: toBucketedSeconds(inferenceMs) });
         track("first_round_trip", { seconds: toBucketedSeconds(roundTripMs) });
       });
     },
     workerHung: () => {
-      // Once per page load: a device whose GPU wedges again after the recycle
-      // would otherwise report every reply-timeout window for the whole drive.
+      // A GPU that wedges again after the recycle would otherwise report every
+      // reply-timeout window for the whole drive.
       once("worker_hung", () => {
         track("worker_hung");
       });
     },
     error: (code, detail) => {
-      // The cause rides along only for codes that carry one (the GPUDevice
-      // lost reason today), truncated because a platform string is not
-      // something to hand an analytics property unbounded.
+      // Only for the codes that carry a cause, truncated because a platform
+      // string is not something to hand an analytics property unbounded.
       track("error", {
         code,
         ...(detail && { detail: detail.slice(0, ERROR_DETAIL_MAX_LENGTH) }),
@@ -142,9 +132,8 @@ export const createDetectionTelemetry = (
       }
       track("scan_session", {
         minutes: toBucketedMinutes(scannedMs),
-        // Whether the drive ran from the installed PWA or a browser tab. The
-        // one-shot `pwa_installed` event counts installs, never use, so this
-        // is the only read on which of the two the app is actually used from.
+        // The `pwa_installed` event counts installs, never use, so this is the
+        // only read on whether drives happen in the PWA or a browser tab.
         standalone: isStandalone(),
       });
     },

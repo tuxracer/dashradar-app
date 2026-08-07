@@ -3,10 +3,9 @@ import { isFunction } from "remeda";
 import type { ZoomLevel } from "@/workers/detection/types";
 
 /**
- * A video element that can mirror its playback into a MediaStream.
- * captureStream lives on HTMLMediaElement in Chromium but not in TypeScript's
- * DOM lib, and not in WebKit at all, so the video file feed narrows to it
- * through this guard.
+ * A video element that can mirror its playback into a MediaStream. captureStream
+ * is Chromium-only and absent from TypeScript's DOM lib, so the file feed
+ * narrows to it through this guard.
  */
 type CaptureStreamVideo = HTMLVideoElement & {
   captureStream: () => MediaStream;
@@ -20,37 +19,26 @@ const hasCaptureStream = (
 /** Props for CameraPreview. */
 type CameraPreviewProps = {
   /**
-   * The hidden CameraView element the detector captures frames from. The
-   * preview plays that element's MediaStream in a second video element, so
-   * the capture path is untouched and the preview can be sized and placed
-   * independently of the source, which is itself only a hidden pixel.
+   * The hidden element the detector captures from. Its stream is played in a
+   * second video element, so the capture path is untouched and the preview can be
+   * sized independently of a source that is itself a hidden pixel.
    */
   source: HTMLVideoElement;
-  /**
-   * Crop factor the next capture scans at (ZOOM_OFF or ZOOM_2X). The preview
-   * narrows to the same region.
-   */
+  /** Crop factor the next capture scans at; the preview narrows to match. */
   zoom: ZoomLevel;
 };
 
 /**
- * Developer-only live view of exactly what the detector is scanning, for
- * checking aim and framing on a dash mount without leaving the meter. Shows
- * the model's capture region rather than the whole feed, mirroring the
- * worker's centerCropRegion: the square container's object-cover video shows
- * the largest centered square of the frame, and scaling the video by the crop
- * factor narrows that to the centered 1/zoom region the 2x digital zoom
- * actually samples. Sits clear of the rest of the HUD: on the left edge in
- * landscape, mirroring the contact card on the right, and top center under
- * the status-bar pills in portrait, clear of the portrait contact card at the
- * bottom. pointer-events are disabled so the meter underneath stays
- * interactive. On the camera path the preview plays the source's own
- * MediaStream; with a video file as the feed the source plays a file instead
- * of a stream, so the preview mirrors it via captureStream. That is Chromium
- * only: on iOS Safari captureStream does not exist, the null guard below
- * leaves the preview without a stream, and it renders an empty box. The file
- * player shows the whole clip anyway, so the preview still earns its place on
- * the browsers where it works by showing the crop.
+ * Developer-only live view of what the detector is scanning, for checking aim on
+ * a dash mount without leaving the meter. Shows the capture region rather than
+ * the whole feed, mirroring the worker's centerCropRegion: an object-cover video
+ * in a square container is the largest centered square, and scaling it by the
+ * crop factor narrows that to the region the zoom samples.
+ *
+ * On the camera path it plays the source's own stream. With a file feed the
+ * source plays a file rather than a stream, so it mirrors through captureStream,
+ * which is Chromium only; on WebKit the guard below leaves it empty, and the
+ * file player shows the whole clip anyway.
  */
 export const CameraPreview = ({ source, zoom }: CameraPreviewProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -60,11 +48,9 @@ export const CameraPreview = ({ source, zoom }: CameraPreviewProps) => {
     if (!video) {
       return;
     }
-    // On the camera path the preview borrows the stream the source already
-    // plays; on the file path it mints its own via captureStream. Ownership
-    // follows creation: a minted stream's tracks are stopped on teardown or
-    // the capture tap outlives the preview, while the borrowed stream belongs
-    // to the engine and must be left running.
+    // Ownership follows creation: a minted stream's tracks are stopped on
+    // teardown or the capture tap outlives the preview, while a borrowed one
+    // belongs to the engine and must be left running.
     const minted =
       !source.srcObject && hasCaptureStream(source)
         ? source.captureStream()
@@ -75,8 +61,8 @@ export const CameraPreview = ({ source, zoom }: CameraPreviewProps) => {
     }
     video.srcObject = stream;
     video.play().catch(() => {
-      // Muted autoplay of a live stream is reliable; a rejection here means
-      // the element unmounted mid-play() and there is nothing to recover.
+      // Muted autoplay of a live stream is reliable, so a rejection means the
+      // element unmounted mid-play() and there is nothing to recover.
     });
     return () => {
       video.srcObject = null;

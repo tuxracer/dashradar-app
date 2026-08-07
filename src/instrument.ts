@@ -4,27 +4,20 @@ import { readPreviousSessionEnd, uptimeBucket } from "@/lib/crashSentinel";
 import { readInstallId } from "@/lib/installId";
 import { isTrackingOptedOut } from "privacy-signals";
 
-/**
- * Fraction of traces sampled. Kept at 1.0 everywhere, production included: the
- * app has only a handful of users, so full sampling costs little and dropping
- * any traces would just discard data worth keeping.
- */
+/** 1.0 everywhere: with a handful of users, sampling would only discard data. */
 const TRACES_SAMPLE_RATE = 1.0;
 
 /**
- * Consume the previous session's crash sentinel, if any, before the DNT gate
- * below so a dirty record is always read and cleared regardless of whether
- * this session reports it. iOS sometimes kills the page mid-scan with no JS
- * running at kill time, so Sentry never sees the crash itself; this is the
- * only chance the NEXT launch gets to notice and report it.
+ * Read and clear the previous session's sentinel ahead of the tracking gate, so
+ * a dirty record is consumed whether or not this session reports it. An iOS kill
+ * runs no JS, so Sentry never sees the crash and the next launch is the only
+ * chance to notice one.
  */
 const previousSessionEnd = readPreviousSessionEnd();
 
-// Replay a dirty end to the console unconditionally, ahead of any reporting
-// gate. When iOS kills the page, a tethered Web Inspector loses the dead
-// process's console with it; this is what puts the tail of that session in
-// front of the person who reattaches after the reload, and it works where
-// Sentry does not (dev builds, opted-out visitors).
+// Unconditional, ahead of any reporting gate. A tethered Web Inspector loses the
+// dead process's console with it, so this is what puts the tail of that session
+// in front of whoever reattaches, and it works where Sentry does not.
 if (previousSessionEnd) {
   const { events, ...summary } = previousSessionEnd;
   console.info("[dashradar] previous session ended dirty", summary);
@@ -36,17 +29,10 @@ if (previousSessionEnd) {
 }
 
 /**
- * Initialize Sentry as a side effect at import time, so instrumentation is in
- * place before the rest of the app's modules load (main.tsx imports this file
- * first). Reporting is skipped entirely when the user has asked not to be
- * tracked: no camera images ever leave the device, and the diagnostics that do
- * honor Do Not Track / Global Privacy Control the same way
- * src/main.tsx already gates Vercel Analytics: only a definitive "not opted
- * out" (=== false) initializes the SDK, since null means the signals could
- * not be read, which is not consent. Dev builds are treated the same as an
- * active opt-out, so a dev session never reports to Sentry either.
- * An empty VITE_SENTRY_DSN also disables the SDK, so a build without it
- * configured stays silent.
+ * Initialize at import time, so instrumentation is in place before the rest of
+ * the app loads. Gated on Do Not Track exactly as analytics is: only a
+ * definitive "not opted out" initializes the SDK, since null means the signals
+ * were unreadable and is not consent. Dev builds and an empty DSN stay silent.
  */
 if (!import.meta.env.DEV && isTrackingOptedOut() === false) {
   Sentry.init({
@@ -54,36 +40,29 @@ if (!import.meta.env.DEV && isTrackingOptedOut() === false) {
     environment: import.meta.env.MODE,
     release: APP_RELEASE,
 
-    // Errors plus tracing, the Sentry-recommended baseline. Session Replay is
-    // deliberately left off: it would record the live camera feed and
-    // detections, which must not leave the device.
+    // Session Replay is deliberately left off: it would record the live camera
+    // feed and the detections, which must not leave the device.
     integrations: [Sentry.browserTracingIntegration()],
 
     tracesSampleRate: TRACES_SAMPLE_RATE,
-    // tracePropagationTargets is left at its same-origin default on purpose. The
-    // Hugging Face model download is cross-origin, so it never receives
-    // sentry-trace/baggage headers, which would otherwise trip a CORS preflight
-    // and break the download under the app's cross-origin-isolation headers.
+    // tracePropagationTargets stays at its same-origin default: trace headers on
+    // the cross-origin model download would trip a CORS preflight and break it
+    // under the app's cross-origin-isolation headers.
 
     // Never attach IP addresses or other PII to events.
     sendDefaultPii: false,
   });
 
-  // Tag every event with the install it came from. The id is random and means
-  // nothing outside this project, but it is what separates one phone crashing
-  // five times from five phones crashing once, which the crash sentinel cannot
-  // tell apart on its own. Minted here rather than at import time so a visitor
-  // who has opted out never has one written.
+  // A random id meaning nothing outside this project, but what separates one
+  // phone crashing five times from five phones crashing once. Minted here rather
+  // than at import time so an opted-out visitor never has one written.
   const installId = readInstallId();
   if (installId) {
     Sentry.setUser({ id: installId });
   }
 
-  // Report a dirty previous session now that Sentry is initialized. Level
-  // distinguishes an OS-level kill ("crash", the page relaunched almost
-  // immediately) from a longer gap ("unclean": battery death, manual
-  // restart, deliberate shutdown), which cannot be told apart from a genuine
-  // crash by gap alone but is far less likely to be one.
+  // Level separates an OS-level kill, where the page relaunched almost
+  // immediately, from a longer gap that is far less likely to be a crash.
   if (previousSessionEnd) {
     const {
       outcome,
@@ -101,10 +80,9 @@ if (!import.meta.env.DEV && isTrackingOptedOut() === false) {
       wasmHeapBytes,
       events,
     } = previousSessionEnd;
-    // Replayed before the report is captured, which is what attaches them to
-    // it. Oldest first, each keeping the time it actually happened rather than
-    // the time it is being replayed, so the trail reads against the moment the
-    // page died instead of against this launch. Sentry takes seconds here.
+    // Before the capture, which is what attaches them to it. Each keeps the time
+    // it happened rather than the time it is replayed, so the trail reads against
+    // the moment the page died. Sentry takes seconds here.
     for (const { at, kind, detail } of events ?? []) {
       Sentry.addBreadcrumb({
         category: "session",
@@ -113,29 +91,24 @@ if (!import.meta.env.DEV && isTrackingOptedOut() === false) {
         timestamp: at / 1_000,
       });
     }
-    // Tags are the only part of an event that can be grouped, filtered, and
-    // charted, so anything a question gets asked of has to be one. That rules
-    // out the raw counts below, which are distinct per session and would each
-    // answer for exactly one report; uptime earns a tag through a bucket
-    // instead, which is what lets "did crashes move earlier in this build" be
-    // a chart rather than a stack of reports opened one at a time.
+    // Only tags can be grouped, filtered, and charted, so anything a question
+    // gets asked of has to be one. That rules out the raw counts below, distinct
+    // per session and answering for exactly one report each; uptime earns a tag
+    // through a bucket instead.
     Sentry.captureMessage("Previous session terminated while scanning", {
       level: outcome === "crash" ? "error" : "warning",
       tags: {
         sessionEnd: outcome,
         graphCapture: String(graphCapture ?? "unknown"),
-        // The build that wrote the record, versus the event's own release
-        // tag (the build reporting it): they differ when a deploy landed
-        // between the dirty session and this launch.
+        // The build that wrote the record, against the event's own release tag:
+        // they differ when a deploy landed between the two launches.
         sentinelRelease: release ?? "unknown",
         activeView: activeView ?? "unknown",
         model: model ?? "unknown",
         uptimeBucket: uptimeBucket(uptimeMs),
-        // Small and bounded in practice (a drive recycles four times an
-        // hour), so it can be a tag and answer whether crashes follow a
-        // rebuilt worker. The worker's age cannot: it is a fresh number every
-        // session, so it rides along as detail and would need a bucket of its
-        // own to become a question.
+        // Bounded in practice, so it can be a tag and answer whether crashes
+        // follow a rebuilt worker. The worker's age is a fresh number every
+        // session, so it rides along as detail instead.
         recycles: String(recycles ?? "unknown"),
       },
       extra: {

@@ -17,19 +17,12 @@ export * from "./consts";
 type SubScreen = "model" | "developer";
 
 /**
- * Full-screen settings panel built for driver-first use on a dash mount, in
- * landscape. Renders nothing until the panel is opened. Large, full-width rows
- * with big tap targets: the Audio alerts and Detection image toggles, the
- * Developer options row, and the About row.
- * Developer options is the one row that leads somewhere: it opens
- * DeveloperScreen, which owns the master switch, everything behind it, and the
- * model picker it opens in turn. Sub-screens render in place of this panel, one
- * at a time, and the panel owns the stack so backing out of the picker lands on
- * the screen that opened it.
- * Closes on the large close button or Escape, and Escape backs out of a
- * sub-screen first rather than dismissing both. While it is open the detection
- * pump is paused (DetectionContext watches `settingsOpen`) and resumes on
- * close.
+ * Full-screen settings panel, built for driver-first use on a dash mount in
+ * landscape: large full-width rows with big tap targets. Developer options is the
+ * one row that leads somewhere, opening the screen that owns the master switch
+ * and the model picker beyond it. Sub-screens render in place of this panel one
+ * at a time, and the panel owns the stack, so backing out lands on the screen
+ * that opened each one. Scanning pauses while it is open.
  */
 export const SettingsScreen = () => {
   const {
@@ -51,12 +44,9 @@ export const SettingsScreen = () => {
       if (event.key !== "Escape") {
         return;
       }
-      // Backs out one screen at a time rather than dismissing the lot, which is
-      // what a stack of screens makes someone expect and is also what keeps it
-      // from outliving the panel. This component is rendered unconditionally
-      // and only returns null while the panel is closed, so it never unmounts:
-      // closing settings straight from a sub-screen would leave the stack set
-      // and reopen settings onto it.
+      // One screen at a time, which is what a stack makes someone expect and also
+      // what keeps it from outliving the panel: this component never unmounts, so
+      // closing settings from a sub-screen would reopen onto that sub-screen.
       if (stack.length > 0) {
         setStack((previous) => previous.slice(0, -1));
         return;

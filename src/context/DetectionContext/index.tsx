@@ -41,10 +41,8 @@ const createDetectionWorker = (): DetectionWorkerLike => {
 type DetectionProviderProps = {
   children: ReactNode;
   /**
-   * Hold the weights back at mount instead of downloading them straight away;
-   * the download then starts on the first `allowModelLoad()`. The GPU probe
-   * goes out immediately either way, so an unsupported device is still turned
-   * away at once.
+   * Hold the weights back until the first `allowModelLoad()`. The GPU probe goes
+   * out immediately either way, so an unsupported device is still turned away.
    */
   deferModelLoad?: boolean;
   /** Test seam: defaults to the real detection worker. */
@@ -52,13 +50,10 @@ type DetectionProviderProps = {
 };
 
 /**
- * Thin React adapter over the detection engine (src/lib/detectionEngine),
- * which owns the worker lifecycle and the frame pump. This provider creates
- * the engine, mirrors its snapshots into React via useSyncExternalStore, and
- * pushes the world state the engine derives its running state from: the
- * attached video element, page visibility, whether the settings panel is
- * open, and the effective settings. Nothing here pumps frames or holds pump
- * state.
+ * Thin React adapter over the detection engine, which owns the worker lifecycle
+ * and the frame pump. This creates the engine, mirrors its snapshots through
+ * useSyncExternalStore, and pushes in the world state it derives running from.
+ * Nothing here pumps frames or holds pump state.
  */
 export const DetectionProvider = ({
   children,
@@ -77,20 +72,17 @@ export const DetectionProvider = ({
     detectionView,
     viewMode,
   } = useSettings();
-  // Pinned at mount, not tracked. Changing the model applies by reloading the
-  // page (the model screen reloads on save), so a selection changed underneath
-  // a live session must not reach it; the pin also covers the engine's
-  // periodic worker recycle, which rebuilds a session 15 minutes in.
+  // Pinned at mount, not tracked: a model change applies by reloading the page,
+  // so a selection changed underneath a live session must not reach it. The pin
+  // also covers the engine's periodic worker recycle.
   const [activeModel] = useState(() => resolveModels(modelIds)[0]);
-  // The analytics sink for this page load; owns every once-per-load gate and
+  // The analytics sink for this page load, owning every once-per-load gate and
   // the scanning clock. Creating it has no side effects, so a discarded
-  // StrictMode duplicate costs nothing. The same goes for the engine, which
-  // is inert until the activation effect below spawns its worker.
+  // StrictMode duplicate costs nothing; the engine is inert until activated.
   const [telemetry] = useState(() => createDetectionTelemetry(activeModel));
   const [engine] = useState(() =>
-    // deferModelLoad is read here and never again: the download has to be
-    // withheld before the first worker exists, which is earlier than any effect
-    // runs. Releasing it later is what allowModelLoad below is for.
+    // Read here and never again: the download has to be withheld before the
+    // first worker exists, which is earlier than any effect runs.
     createDetectionEngine({
       model: activeModel,
       createWorker,
@@ -99,9 +91,8 @@ export const DetectionProvider = ({
     }),
   );
 
-  // Mount and unmount the engine with the provider. StrictMode runs this
-  // effect, its cleanup, and the effect again; the engine's activate resets
-  // published state so the pair behaves like a fresh mount.
+  // StrictMode runs this effect, its cleanup, and the effect again; activate
+  // resets published state so the pair behaves like a fresh mount.
   useEffect(() => {
     engine.activate();
     return () => {
@@ -111,9 +102,8 @@ export const DetectionProvider = ({
 
   const snapshot = useSyncExternalStore(engine.subscribe, engine.getSnapshot);
 
-  // Push the effective settings; the engine reads them per capture. The
-  // provider maps the zoom mode to the crop factor so the engine never learns
-  // the settings vocabulary.
+  // Read per capture. The zoom mode is mapped to a crop factor here so the
+  // engine never learns the settings vocabulary.
   useEffect(() => {
     engine.updateSettings({
       includeContact: detectionImage,
@@ -133,28 +123,23 @@ export const DetectionProvider = ({
     consoleDiagnostics,
   ]);
 
-  // The settings panel is a same-page overlay (no visibilitychange), so its
-  // open state is an explicit input; the engine pauses scanning behind it,
-  // which would otherwise burn battery on results nobody can see.
+  // The settings panel is a same-page overlay, so nothing else reports it. The
+  // engine pauses behind it rather than burning battery on unseen results.
   useEffect(() => {
     engine.setInputs({ settingsOpen });
   }, [engine, settingsOpen]);
 
-  // Which view is up, derived here for the same reason the zoom mode is: the
-  // engine should not have to learn that the detection view outranks the
-  // radar/scene choice, only which of the three is drawing. It changes no
-  // behavior and is carried purely so a crash report can name it. The scene
-  // view's render failure resets viewMode itself, so this follows a fallback
-  // to the radar rather than claiming a scene that never mounted.
+  // Derived here so the engine never learns that the detection view outranks the
+  // radar/scene choice, only which of the three is drawing. Changes no behavior
+  // and is carried purely so a crash report can name it.
   useEffect(() => {
     engine.setInputs({
       activeView: detectionView ? "detection" : viewMode,
     });
   }, [engine, detectionView, viewMode]);
 
-  // Page visibility (app switched away, screen off). Without this the pump
-  // would keep capturing and running inference in the background until the OS
-  // froze the tab.
+  // Without this the pump would keep running inference in the background until
+  // the OS froze the tab.
   useEffect(() => {
     const update = () => {
       engine.setInputs({ visible: document.visibilityState !== "hidden" });
@@ -166,12 +151,9 @@ export const DetectionProvider = ({
     };
   }, [engine]);
 
-  // Report how long this drive actually scanned, when it goes away. Both
-  // listeners fire the same report, because neither alone covers the ways a
-  // drive ends: `pagehide` catches a navigation or reload, and a page going
-  // hidden catches the far more common one, the phone backgrounded or locked
-  // at the end of a trip. The telemetry sink drains its clock per report, so
-  // the two never double-count one drive.
+  // Neither listener alone covers how a drive ends: pagehide catches a
+  // navigation or reload, hidden catches the far more common phone backgrounded
+  // or locked. The sink drains its clock per report, so they cannot double-count.
   useEffect(() => {
     const reportScanSession = () => {
       telemetry.reportScanSession();
@@ -199,10 +181,9 @@ export const DetectionProvider = ({
     engine.setInputs({ video: undefined });
   }, [engine]);
 
-  // The detection-image setting decides whether there is a contact card at
-  // all, so the gate lives here rather than in the consumer: turning it off
-  // drops the card already on screen the same instant it stops the worker
-  // from cutting new ones, and every consumer sees one answer.
+  // Gated here rather than in the consumer, so turning the setting off drops the
+  // card already on screen the same instant it stops new cutouts, and every
+  // consumer sees one answer.
   const shownContact = detectionImage ? snapshot.contact : undefined;
 
   const value = useMemo(

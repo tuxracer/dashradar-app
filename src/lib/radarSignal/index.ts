@@ -35,10 +35,9 @@ const mixColor = (
 };
 
 /**
- * Remap a raw detection score onto the meter's [0, 1] signal band. Scores at
- * or below SIGNAL_FLOOR read as zero; the [floor, 1] band stretches over the
- * full range. Shared by the dial (via hudSignal) and the contact card so the
- * two readouts always agree on what a percent means.
+ * Remap a raw score onto the meter's signal band: at or below SIGNAL_FLOOR reads
+ * as zero, and the rest stretches over the full range. Shared by the dial and
+ * the contact card so the two always agree on what a percent means.
  */
 export const signalFromScore = (score: number): number => {
   if (score <= SIGNAL_FLOOR) {
@@ -60,20 +59,13 @@ export const contactDirection = (box: NormalizedBox): ContactDirection => {
 };
 
 /**
- * Highest detection score in a HUD frame, in [0, 1], before the SIGNAL_FLOOR
- * remap the meter applies. Returns 0 for no HUD or no detections. This is what
- * the raw-confidence developer option puts in the dial readout in place of the
- * remapped percentage.
+ * Highest detection score in a HUD frame, before the meter's remap. What the
+ * raw-confidence option puts in the dial in place of the percentage.
  */
 export const hudScore = (hud: HudModel | undefined): number =>
   hud?.top?.score ?? 0;
 
-/**
- * Current signal strength for a HUD frame, in [0, 1]. Takes the highest
- * detection score in the frame and remaps the [SIGNAL_FLOOR, 1] score band
- * onto [0, 1] so the ladder uses its full range. Returns 0 for no HUD, no
- * detections, or a max score at or below the floor.
- */
+/** The frame's highest score, remapped so the ladder uses its full range. */
 export const hudSignal = (hud: HudModel | undefined): number =>
   signalFromScore(hudScore(hud));
 
@@ -104,11 +96,9 @@ export type MeterState = {
   /** Peak-held meter level in [0, 1], decaying toward the live signal. */
   level: number;
   /**
-   * The class name the status word is naming. Held across the dial's decay
-   * tail: the live label clears the instant the raw signal does, but the
-   * peak-held level keeps reading a number for about a second after, and the
-   * word must not snap back while the dial still shows one. Released once the
-   * meter fully decays to zero.
+   * The class the status word is naming, held across the decay tail: the live
+   * label clears the instant the raw signal does, while the peak-held level keeps
+   * reading a number, and the word must not snap back while the dial shows one.
    */
   heldLabel: string | undefined;
 };
@@ -134,11 +124,10 @@ export type MeterDisplay = {
 };
 
 /**
- * One step of the meter's display state machine: peak-hold decay, the
- * held-label rule, and the threshold gates, pure so the rendering loop that
- * calls it per animation frame is nothing but "step, write, park when
- * quiescent". The quiescence test is the caller's (raw signal zero and level
- * zero), since only the caller knows the raw signal.
+ * One step of the meter's display state machine: peak-hold decay, the held-label
+ * rule, and the threshold gates. Pure, so the rendering loop is nothing but
+ * step, write, park. The quiescence test stays the caller's, since only it knows
+ * the raw signal.
  */
 export const stepMeter = (
   state: MeterState,

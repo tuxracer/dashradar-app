@@ -25,11 +25,9 @@ const handleReset = () => {
   if (!window.confirm(RESET_CONFIRM_MESSAGE)) {
     return;
   }
-  // Sent before the clearing pass rather than after it: the reload can cut an
-  // in-flight request, so the pass (deleting the ~54 MB weights among the rest)
-  // is the widest window this event will get. It is also the only signal that
-  // separates a fresh install from a wiped one, which otherwise look
-  // identical in the funnel.
+  // Before the clearing pass rather than after: the reload can cut an in-flight
+  // request, so the pass is the widest window this event gets. It is also the
+  // only thing separating a fresh install from a wiped one in the funnel.
   track("reset");
   void resetAppData().finally(() => window.location.reload());
 };
@@ -47,21 +45,15 @@ type DeveloperScreenProps = {
 };
 
 /**
- * Full-screen home for the developer options, opened from the settings panel's
- * Developer options row. Nothing here is meant for someone driving; the rows
- * are named with the words this codebase uses rather than the plain ones the
+ * Full-screen home for the developer options. Nothing here is meant for someone
+ * driving, so the rows use this codebase's words rather than the plain ones the
  * driver-facing panel is held to.
  *
- * The master switch is the top row and everything else is hidden behind it, so
- * the screen opens saying what it is before it says what it can do. That switch
- * is the same `developerOptions` the settings store gates on, which is why a row
- * turned on here goes back to its off value the moment it is flipped: the rows
- * below are not merely hidden, they stop applying.
- *
- * Detection model is the exception, and deliberately so: the picker applies a
- * choice by confirming it and reloading the app, so the choice outlives the
- * switch rather than being quietly undone by it. `modelIds` is not gated for
- * that reason.
+ * The master switch is the top row and hides everything else, so the screen says
+ * what it is before it says what it can do. It is the same flag the settings
+ * store gates on, so flipping it off does not merely hide the rows below, they
+ * stop applying. Detection model is the exception, ungated because the picker
+ * confirms and reloads and that choice must outlive the switch.
  */
 export const DeveloperScreen = ({
   onClose,

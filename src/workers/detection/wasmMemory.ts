@@ -1,18 +1,13 @@
 /**
- * Measures the wasm heap onnxruntime-web is running on, for the crash
- * sentinel. iOS kills the page for exceeding WebContent's per-process memory
- * limit with no JS running at kill time, and WebKit exposes no memory API, so
- * the only way to know how big the runtime's heap was when a session died is
- * to have written it down while the session was alive.
+ * Measures the wasm heap onnxruntime-web runs on, for the crash sentinel. An iOS
+ * memory kill runs no JS and WebKit exposes no memory API, so the heap's size at
+ * death is only knowable if it was written down while the session was alive.
  *
- * onnxruntime-web offers no public accessor for its heap, but its Emscripten
- * runtime creates the heap in this worker's scope with `new
- * WebAssembly.Memory(...)`. Replacing the constructor with a recording
- * subclass before the runtime initializes (instantiation happens on the first
- * session build, long after module evaluation) captures the instance, and
- * `memory.buffer.byteLength` then reads the heap's current committed size on
- * demand. Instances behave identically to native ones; the subclass only
- * remembers them.
+ * ORT offers no accessor, but its Emscripten runtime creates the heap in this
+ * scope with `new WebAssembly.Memory(...)`. Replacing the constructor with a
+ * recording subclass before the runtime initializes captures the instance, and
+ * `buffer.byteLength` then reads its committed size on demand. The subclass only
+ * remembers; the instances behave identically.
  */
 
 const captured: WebAssembly.Memory[] = [];
@@ -20,10 +15,8 @@ const captured: WebAssembly.Memory[] = [];
 let installed = false;
 
 /**
- * Replace `WebAssembly.Memory` in this worker's scope with the recording
- * subclass. Must run before onnxruntime-web instantiates its runtime; a
- * failure to patch degrades to `wasmHeapBytes()` reporting nothing rather
- * than breaking the worker.
+ * Must run before onnxruntime-web instantiates its runtime. A failed patch
+ * degrades to `wasmHeapBytes()` reporting nothing rather than breaking anything.
  */
 export const installWasmMemoryCapture = (): void => {
   if (installed) {
@@ -36,9 +29,8 @@ export const installWasmMemoryCapture = (): void => {
     }
   }
   try {
-    // lib.dom types WebAssembly as a namespace, whose members TS will not
-    // assign through; the runtime object underneath is an ordinary mutable
-    // global.
+    // lib.dom types WebAssembly as a namespace, which TS will not assign
+    // through; the runtime object underneath is an ordinary mutable global.
     (WebAssembly as { Memory: typeof WebAssembly.Memory }).Memory =
       CapturingMemory;
     installed = true;
@@ -48,11 +40,9 @@ export const installWasmMemoryCapture = (): void => {
 };
 
 /**
- * Current size in bytes of the largest memory created since the capture was
- * installed, or undefined when none has been. The largest rather than a sum
- * because the runtime also creates throwaway zero-page memories probing for
- * feature support, and only the real heap answers the question this exists
- * for.
+ * Current size of the largest memory created since the capture was installed.
+ * The largest rather than a sum, because the runtime also creates throwaway
+ * zero-page memories probing for feature support.
  */
 export const wasmHeapBytes = (): number | undefined => {
   let largest: number | undefined;

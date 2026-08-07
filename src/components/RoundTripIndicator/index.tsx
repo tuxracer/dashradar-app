@@ -11,23 +11,15 @@ type RoundTripIndicatorProps = {
 };
 
 /**
- * Amber pill showing how long the last scan's detect round trip took: the
- * whole capture-to-result message trip, not the model time alone, so it also
- * carries the crop, thumbnail, and JPEG encode work the frame-saving options
- * add. The on-glass counterpart of the debug overlay's round-trip row, for
- * watching pacing on a dash-mounted phone without the full panel covering the
- * meter. Visibility is the caller's job: RadarScreen renders it only while the
- * round-trip developer option is on, and places it in StatusBar's center slot.
+ * Amber pill showing the last scan's whole detect round trip, not the model time
+ * alone. The on-glass counterpart of the debug overlay's round-trip row, for
+ * watching pacing on a phone without the panel covering the meter; the caller
+ * owns its visibility.
  *
- * The value is polled from the debug snapshot ref rather than read from React
- * state, the same way DebugOverlay reads it: the snapshot deliberately lives
- * outside state so a per-result update doesn't re-render every consumer. Only
- * the number is held here, so an unchanged reading bails out of re-rendering.
- *
- * An interval rather than an animation frame, because the readout is paced in
- * wall time and has nothing to say between ticks. The frame loop this replaced
- * woke at the display's refresh rate to answer "has the interval elapsed yet",
- * which is 240 wake-ups a second to take four readings.
+ * Polled from the debug snapshot rather than React state, which is where the
+ * snapshot deliberately lives so a per-result update does not re-render every
+ * consumer. An interval rather than an animation frame, because the readout is
+ * paced in wall time and has nothing to say between ticks.
  */
 export const RoundTripIndicator = ({ getDebug }: RoundTripIndicatorProps) => {
   const [roundTripMs, setRoundTripMs] = useState(() => getDebug().roundTripMs);
@@ -38,8 +30,7 @@ export const RoundTripIndicator = ({ getDebug }: RoundTripIndicatorProps) => {
     return () => window.clearInterval(readout);
   }, [getDebug]);
 
-  // A scan has yet to land, so there is no round trip to report. Zero would
-  // read as an impossibly fast one.
+  // No scan yet; zero would read as an impossibly fast round trip.
   const label =
     roundTripMs > 0 ? `RT · ${Math.round(roundTripMs)} MS` : "RT · -- MS";
   return (

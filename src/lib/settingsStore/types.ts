@@ -40,155 +40,93 @@ export const isViewMode = (value: unknown): value is ViewMode => {
   return isString(value) && VIEW_MODES.includes(value as ViewMode);
 };
 
-/** User-controlled display options for the HUD. Serialized to localStorage. */
+/**
+ * User-controlled display options for the HUD, serialized to localStorage.
+ * Everything in `DeveloperOptions` below is gated: while `developerOptions` is
+ * off, SettingsProvider reports those at their DEVELOPER_OPTIONS_OFF value
+ * whatever is stored, so a tweak left enabled cannot alter a normal drive.
+ */
 export type Settings = {
   /**
-   * Master switch for the development-only settings (showDebug,
-   * throttleInference, sceneChangeGate, zoomMode, confidenceThreshold,
-   * sceneFov, zoomIndicator, roundTripIndicator, cameraPreview,
-   * detectionView, rawConfidence, consoleDiagnostics). Off by default. While it is off,
-   * SettingsProvider reports each of those at its DEVELOPER_OPTIONS_OFF value
-   * no matter what is stored, so a development tweak left enabled cannot alter
-   * a normal drive.
-   * Their stored values survive, so turning this back on restores the tweaks
-   * rather than resetting them. Turning it on has no other effect: every
-   * developer option starts at its off value, so the switch reveals the rows
-   * and nothing more until someone taps one.
+   * Master switch for the developer options. Their stored values survive it, so
+   * turning it back on restores the tweaks rather than resetting them. Turning
+   * it on has no other effect, since every developer option starts at its off
+   * value: the switch reveals the rows and nothing more.
    */
   developerOptions: boolean;
-  /**
-   * When true, an on-screen debug overlay renders performance and development
-   * diagnostics (timing, detection counts, system info). A developer option, so
-   * it only takes effect while developerOptions is on, and off until asked for
-   * there.
-   */
+  /** Whether the on-screen debug overlay renders. */
   showDebug: boolean;
   /**
-   * When true, radar detector mode beeps as a police vehicle is detected:
-   * the beeps pulse faster (and higher-pitched) the stronger the signal, and
-   * stop entirely when nothing is detected. On by default.
+   * Whether the meter beeps at a detection, faster and higher the stronger the
+   * signal.
    */
   radarAudio: boolean;
   /**
-   * When true, a detection puts a card on the glass showing the picture the
-   * detector cut out of the frame. Off by default: the meter alone is what a
-   * driver reads at a glance, and the card costs a crop on every detection.
-   * Off turns the card off outright rather than hiding it, so no image of what
-   * was detected is ever produced.
+   * Whether a detection puts a card on the glass showing the picture cut out of
+   * the frame. Off turns the card off outright rather than hiding it, so no
+   * image of what was detected is ever produced.
    */
   detectionImage: boolean;
-  /**
-   * Which main view the driver sees: the radar dial or the 3D scene. The
-   * status-bar view button is its only control; there is no settings row.
-   */
+  /** Which main view the driver sees; the status-bar button is its only control. */
   viewMode: ViewMode;
   /**
-   * When false, the detection pump runs inference flat-out with no pacing
-   * floor. A developer option, so it only takes effect while developerOptions
-   * is on and a phone can never run unthrottled otherwise. On by default: the
-   * 2s pacing floor is the app's thermal/battery safeguard.
+   * Whether the pump paces itself. Off runs inference flat-out, which is why it
+   * is gated: the pacing floor is the app's thermal safeguard.
    */
   throttleInference: boolean;
   /**
-   * When false, every frame goes through the model even when the picture has
-   * not moved since the last one scanned. On by default: idling at a light or
-   * parked is otherwise a full inference per second spent re-deriving an answer
-   * about a scene that cannot have changed, which is the app's worst heat for
-   * its least value. A developer option so the gate's effect can be measured
-   * against its absence on a device; a normal drive always runs it.
+   * Whether frames whose picture has not moved skip the model. Gated so the
+   * gate's effect can be measured against its absence on a device; a normal
+   * drive always runs it.
    */
   sceneChangeGate: boolean;
-  /**
-   * Crop factor the worker scans at. "2x" halves the centered square fed to
-   * the model, so the same 512x512 input covers half the field of view and
-   * distant vehicles occupy twice the linear size in the input grid. A digital
-   * crop rather than the camera's own zoom, because native zoom is unavailable
-   * on iOS Safari and uses device-defined units on Chrome Android; cropping
-   * ourselves is the only way one setting means the same thing on both. A
-   * developer option: it only takes effect while developerOptions is on, and a
-   * normal drive always scans the full 1x square.
-   */
+  /** Crop factor the worker scans at; "2x" halves the square fed to the model. */
   zoomMode: ZoomMode;
   /**
    * Which detection models the app runs, by registry id. A list rather than a
-   * single id so multi-model selection needs no settings migration later, even
-   * though MAX_SELECTED_MODELS caps it at one today. Ids are stored unresolved
-   * and resolved through resolveModels at the point of use, so an id left by a
-   * build that had a model this one does not degrades to the shipping model
-   * instead of invalidating the whole blob. Driver-facing rather than gated:
-   * the model picker both shows this selection and applies it, so gating it
-   * would let someone save a model the app then refused to load.
+   * single id so multi-model selection needs no migration later, though
+   * MAX_SELECTED_MODELS caps it at one today. Stored unresolved and resolved at
+   * the point of use, so an id from a build with a model this one lacks degrades
+   * to the shipping model instead of invalidating the whole blob. Ungated,
+   * because the picker both shows and applies the selection and a gate would let
+   * someone save a model the app then refused to load.
    */
   modelIds: readonly string[];
-  /**
-   * Minimum detection confidence. Detections scoring below this are discarded.
-   * A developer option, so it only takes effect while developerOptions is on and
-   * reports the production floor (DEVELOPER_OPTIONS_OFF.confidenceThreshold)
-   * otherwise, so a lowered value cannot loosen a normal drive. Constrained to
-   * CONFIDENCE_LEVELS (0.1 to 0.9).
-   */
+  /** Minimum detection confidence, constrained to CONFIDENCE_LEVELS. */
   confidenceThreshold: number;
   /**
-   * The camera's full-frame horizontal field of view in degrees, which
-   * calibrates how far away the scene view places what it detects. A developer
-   * option, so it only takes effect while developerOptions is on and reports
-   * SCENE_FOV_DEG_DEFAULT otherwise. Constrained to whole degrees in
-   * [SCENE_FOV_DEG_MIN, SCENE_FOV_DEG_MAX].
+   * The camera's full-frame horizontal field of view in whole degrees, which
+   * calibrates how far away the scene view places what it detects.
    */
   sceneFov: number;
-  /**
-   * When true, an amber pill on the status bar line shows the crop factor the
-   * detector is scanning at. A developer option, so it only takes effect
-   * while developerOptions is on, and off until asked for there: it is the
-   * on-glass counterpart of the debug overlay's zoom row.
-   */
+  /** Whether a status-bar pill shows the crop factor being scanned at. */
   zoomIndicator: boolean;
   /**
-   * When true, an amber pill on the status bar line shows the last scan's
-   * round-trip time, the whole detect message round trip rather than the model
-   * time alone. A developer option, so it only takes effect while
-   * developerOptions is on, and off until asked for there: it is the on-glass
-   * counterpart of the debug overlay's round-trip row, for watching pacing on
-   * a phone without the full panel covering the meter.
+   * Whether a status-bar pill shows the last scan's round trip, for watching
+   * pacing on a phone without the debug panel covering the meter.
    */
   roundTripIndicator: boolean;
   /**
-   * When true, a small live view of the region the detector is scanning (the
-   * centered square crop, narrowed further under the digital zoom) renders on
-   * the glass: on the left edge in landscape, top center under the status
-   * pills in portrait. A developer option, so it only takes effect while
-   * developerOptions is on: the app deliberately never shows the feed, and a
-   * second live video surface costs compositing on a thermally constrained
-   * device.
+   * Whether a small live view of the scanned region renders on the glass. Gated:
+   * the app deliberately never shows the feed, and a second video surface costs
+   * compositing on a thermally constrained device.
    */
   cameraPreview: boolean;
   /**
-   * When true, the radar meter is replaced by the live feed at full screen
-   * with the model's detection boxes drawn over it, plus an outline of the
-   * region the model is actually shown. For checking aim, framing, and false
-   * positives against what the detector really sees. A developer option, so it
-   * only takes effect while developerOptions is on: the app deliberately never
-   * shows the feed, and the meter is what a driver reads. Replacing the meter
-   * also takes the beeper and the contact card off, since both live inside it.
+   * Whether the meter is replaced by the full-screen feed with the model's boxes
+   * drawn over it, for checking aim and false positives. Takes the beeper and
+   * the contact card with it, since both live inside the meter.
    */
   detectionView: boolean;
   /**
-   * When true, the dial readout shows the model's raw detection score in
-   * [0, 1] instead of the percentage. The percentage derives from a remapped
-   * signal band (the [SIGNAL_FLOOR, 1] score band stretched over the full
-   * meter, see radarSignal), so it never matches the model's own confidence;
-   * this row shows the score before that remap, for judging the model rather
-   * than the meter. The ladder segments keep tracking the remapped signal
-   * either way. A developer option, so it only takes effect while
-   * developerOptions is on, and off until asked for there.
+   * Whether the dial reads out the model's raw score instead of the percentage.
+   * The percentage comes off a remapped signal band, so it never matches the
+   * model's own confidence; this is for judging the model rather than the meter.
    */
   rawConfidence: boolean;
   /**
-   * When true, the engine mirrors its session log to the browser console
-   * (what the crash sentinel would report, live: scans with their round trip
-   * and the worker's wasm heap, view switches, errors), for tethered Web
-   * Inspector sessions. A developer option, so it only takes effect while
-   * developerOptions is on, and off until asked for there.
+   * Whether the engine mirrors its session log to the console, for tethered Web
+   * Inspector sessions.
    */
   consoleDiagnostics: boolean;
 };
@@ -267,12 +205,10 @@ export type SettingsStore = {
   /** Sets the scene field of view in degrees, snapped to the allowed range. */
   setSceneFov: (deg: number) => void;
   /**
-   * Writes a model selection straight to localStorage and reports whether the
-   * write landed. Deliberately synchronous: the caller reloads the page
-   * immediately afterwards to apply the change. The in-memory value follows a
-   * write that landed, so a caller that decides not to reload is not left out
-   * of step. A false return means storage refused the write (private mode,
-   * quota), so the caller must not reload.
+   * Writes a model selection straight to localStorage and reports whether it
+   * landed. Synchronous because the caller reloads on the next line: a false
+   * return means storage refused the write, so it must not. The in-memory value
+   * follows a write that landed, so a caller that skips the reload stays in step.
    */
   commitModelIds: (ids: readonly string[]) => boolean;
   /** Open or close the full-screen settings panel (ephemeral state). */
@@ -284,12 +220,9 @@ const isModelIds = (value: unknown): value is readonly string[] =>
   isArray(value) && value.every(isString);
 
 /**
- * How each field of the persisted blob is checked, one entry per key.
- *
- * The mapped type is the whole point: a new setting with no entry here is a
- * compile error. The hand-written chain this replaced could not say that, so
- * forgetting a line let the new field through unvalidated and into app state,
- * which is a silent failure a person has to notice.
+ * How each field of the persisted blob is checked. The mapped type is the point:
+ * a new setting with no entry here is a compile error rather than a field that
+ * reaches app state unvalidated.
  */
 const FIELD_VALIDATORS: {
   [K in keyof PersistedSettings]: (
@@ -318,11 +251,9 @@ const FIELD_VALIDATORS: {
 
 /**
  * Validates a value parsed from localStorage before it is trusted as settings.
- * Each known field is optional-but-typed so a blob written by an older or newer
- * build (for example one predating showDebug) still validates; loadSettings
- * fills any missing field from DEFAULT_SETTINGS. A field that is present and
- * the wrong type rejects the whole blob, which falls back to defaults, rather
- * than poisoning app state. Keys this build does not know about are ignored.
+ * Fields are optional-but-typed, so a blob from an older or newer build still
+ * validates and loadSettings fills the gaps from DEFAULT_SETTINGS; a field
+ * present with the wrong type rejects the whole blob back to defaults.
  */
 export const isPersistedSettings = (
   value: unknown,
@@ -333,10 +264,9 @@ export const isPersistedSettings = (
   );
 
 /**
- * Normalizes any number to the nearest allowed confidence step. A non-finite
- * input (NaN, Infinity) resolves to the production floor rather than an
- * arbitrary end of the range, so a corrupt stored value lands on the setting a
- * normal drive runs at instead of the loosest or strictest step there is.
+ * Snaps to the nearest allowed confidence step. A non-finite input resolves to
+ * the production floor, so a corrupt stored value lands on the setting a normal
+ * drive runs at rather than the loosest or strictest step there is.
  */
 export const snapConfidence = (value: number): number => {
   if (!Number.isFinite(value)) {
@@ -348,10 +278,9 @@ export const snapConfidence = (value: number): number => {
 };
 
 /**
- * Normalizes any number to a whole degree inside the scene FoV range. A
- * non-finite input (NaN, Infinity) resolves to SCENE_FOV_DEG_DEFAULT, so a
- * corrupt stored value lands on the lens a normal drive assumes instead of an
- * arbitrary end of the range.
+ * Snaps to a whole degree inside the scene FoV range. A non-finite input
+ * resolves to the default, so a corrupt stored value lands on the lens a normal
+ * drive assumes rather than an arbitrary end of the range.
  */
 export const snapSceneFov = (value: number): number => {
   if (!Number.isFinite(value)) {

@@ -53,35 +53,27 @@ type BeeperNodes = {
 const UNLOCK_EVENTS = ["pointerdown", "touchend", "keydown"] as const;
 
 /**
- * Creates the radar-detector beeper: discrete beeps whose cadence rises with
- * the signal level at a fixed pitch, and silence when there is no signal. Each
- * beep is a short self-terminating envelope, so there is never a sustained tone.
+ * The radar-detector beeper: discrete beeps at a fixed pitch whose cadence rises
+ * with the signal, each a short self-terminating envelope so there is never a
+ * sustained tone. The context and its oscillator are built lazily on the first
+ * audible update, so a muted session never touches Web Audio, and a one-shot
+ * gesture listener resumes a context the autoplay policy suspended.
  *
- * The AudioContext and a single persistent oscillator are created lazily on the
- * first audible update, so a muted or signal-free session never touches Web
- * Audio. Browsers keep a context created outside a user gesture suspended;
- * a one-shot gesture listener resumes it, so at worst the first beeps of a
- * session are dropped until the user has touched the page once. Graceful no-op
- * when Web Audio is unavailable.
- *
- * Once built, the context is suspended again after IDLE_SUSPEND_MS of silence
- * and resumed on the next contact. Without that, one alert early in a drive
- * would leave the audio thread running for every quiet hour after it, which on
- * a dash-mounted phone is hours of power spent on nothing.
+ * The context is suspended again after IDLE_SUSPEND_MS of silence. Without it,
+ * one alert early in a drive leaves the audio thread running for every quiet
+ * hour after.
  */
 export const createRadarBeeper = (): RadarBeeper => {
   let nodes: BeeperNodes | undefined;
   let disposed = false;
-  // Monotonic-clock time the next beep may start. 0 means "beep immediately",
-  // so the first contact after silence sounds without waiting out an interval.
+  // When the next beep may start; 0 means immediately, so the first contact
+  // after silence sounds without waiting out an interval.
   let nextBeepAtMs = 0;
   // Pending idle-suspend timer, armed while the signal is inaudible.
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
-  // Whether the suspension in effect is ours rather than the browser's. Only a
-  // context we suspended may be resumed without a user gesture: resuming one
-  // the autoplay policy is holding down is rejected, and the beeper is fed
-  // every animation frame, so guessing wrong means a rejected promise per
-  // frame. The gesture listeners in ensureNodes own that other case.
+  // Whether the suspension is ours rather than the browser's. Only ours may be
+  // resumed without a gesture, and the beeper is fed every frame, so guessing
+  // wrong means a rejected promise per frame.
   let idleSuspended = false;
 
   const handleUnlock = () => {
@@ -112,8 +104,7 @@ export const createRadarBeeper = (): RadarBeeper => {
     oscillator.start();
     nodes = { context, oscillator, gain };
     if (context.state === "suspended") {
-      // Try immediately in case a gesture already happened this session, and
-      // fall back to unlocking on the next one.
+      // In case a gesture already happened; otherwise unlock on the next one.
       void context.resume();
       for (const eventName of UNLOCK_EVENTS) {
         window.addEventListener(eventName, handleUnlock);
@@ -133,9 +124,8 @@ export const createRadarBeeper = (): RadarBeeper => {
   };
 
   const armIdleSuspend = () => {
-    // Nothing to suspend until the first audible signal builds the graph, and
-    // an already-armed timer must keep its original deadline rather than being
-    // pushed out by every frame of continuing silence.
+    // Nothing to suspend before the graph exists, and an armed timer keeps its
+    // deadline rather than being pushed out by every frame of silence.
     if (idleTimer !== undefined || !nodes) {
       return;
     }
@@ -164,10 +154,9 @@ export const createRadarBeeper = (): RadarBeeper => {
       return;
     }
     if (idleSuspended) {
-      // Resuming is asynchronous, so this frame stays silent and the next one
-      // finds a running context. nextBeepAtMs is already 0 from the silence
-      // that led here, so the beep lands on that frame rather than waiting out
-      // an interval.
+      // Resuming is asynchronous, so this frame stays silent and the next finds
+      // a running context. nextBeepAtMs is already 0 from the silence that led
+      // here, so the beep lands on that frame.
       idleSuspended = false;
       void active.context.resume();
       return;

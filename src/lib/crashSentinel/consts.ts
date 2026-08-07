@@ -2,15 +2,11 @@
 export const SENTINEL_STORAGE_KEY = "sessionSentinel";
 
 /**
- * How many entries the rolling session log keeps. The whole log is rewritten
- * on every heartbeat, so this is what decides the cost of a beat: twenty short
- * entries is on the order of a kilobyte, which a synchronous localStorage
- * write absorbs without being felt on a cadence of one per second.
- *
- * Twenty is also about what the log needs to be useful. At the pump's one
- * round trip a second it covers the last twenty seconds, and every OS kill
- * seen in the field landed inside the first half minute of scanning, so the
- * window reaches back past the start of the ones being explained.
+ * Entries the rolling session log keeps. The whole log is rewritten per
+ * heartbeat, so this decides the cost of a beat: twenty short entries is about a
+ * kilobyte, which a synchronous write absorbs at one per second. It is also
+ * about twenty seconds of scanning, which reaches back past the start of the
+ * kills it exists to explain.
  */
 export const MAX_SESSION_EVENTS = 20;
 
@@ -18,43 +14,29 @@ export const MAX_SESSION_EVENTS = 20;
 export const HEARTBEAT_INTERVAL_MS = 5_000;
 
 /**
- * Heartbeat cadence for the first STARTUP_HEARTBEAT_WINDOW_MS of scanning.
- * Every OS-level kill observed in the field so far (DASHRADAR-2, all of them on
- * WebKit) landed within ~21 s of the pump starting, and several before the
- * second beat ever ran. At the steady cadence alone that whole population
- * collapses onto three uptime values (0, 5001, 10002), which says the page died
- * early but nothing about where in startup, and startup is where the session
- * compiles shaders, allocates its GPU buffers, and brings the camera up. One
- * second tells those apart. The extra writes are bounded to the window and stop
- * on their own, so a multi-hour drive still pays only the steady cadence.
+ * Heartbeat cadence through the startup window. Every OS kill observed so far
+ * landed within about 21 s of the pump starting, and at the steady cadence that
+ * whole population collapses onto three uptime values, which says the page died
+ * early but nothing about where in startup, the stretch that compiles shaders,
+ * allocates GPU buffers, and brings the camera up. The extra writes stop with
+ * the window, so a long drive pays only the steady cadence.
  */
 export const STARTUP_HEARTBEAT_INTERVAL_MS = 1_000;
 
 /**
- * How long after scanning starts the faster cadence above applies. Set well
- * past the ~21 s worst case observed so the window covers the known crash
- * population with headroom instead of sitting at its edge.
+ * How long the faster cadence applies, set well past the observed 21 s worst
+ * case so the window has headroom rather than sitting at its edge.
  */
 export const STARTUP_HEARTBEAT_WINDOW_MS = 30_000;
 
 /**
- * How a session's uptime is labelled for reporting, as ordered upper bounds in
- * milliseconds paired with the label a session under that bound gets. Anything
- * past the last bound takes UPTIME_BUCKET_OVERFLOW.
- *
- * A bucket exists because the raw millisecond count cannot be charted: a
- * reporting backend can group and filter on a handful of labels, but not on a
- * number that is distinct for every session, so a question as basic as whether
- * crashes moved earlier between two builds has to be answered by opening
- * reports one at a time. Bucketing trades resolution the answer never needed
- * for the ability to ask at all.
- *
- * The boundaries are fine early and coarse late because that is where the
- * evidence is: every kill observed so far landed inside the first half minute,
- * which is also the stretch the heartbeat covers at one-second resolution
- * (STARTUP_HEARTBEAT_INTERVAL_MS). Past the startup window the beat itself is
- * five seconds wide and a session that survived minutes did not die of
- * whatever startup does, so the labels widen to match.
+ * How a session's uptime is labelled for reporting: ordered upper bounds paired
+ * with the label a session under each gets, with UPTIME_BUCKET_OVERFLOW past the
+ * last. Buckets exist because a raw millisecond count cannot be charted, so
+ * "did crashes move earlier in this build" would mean opening reports one at a
+ * time. The bounds are fine early and coarse late because that is where the
+ * evidence is, and it matches the heartbeat's own resolution either side of the
+ * startup window.
  */
 export const UPTIME_BUCKETS: readonly {
   readonly under: number;
@@ -72,11 +54,9 @@ export const UPTIME_BUCKETS: readonly {
 export const UPTIME_BUCKET_OVERFLOW = "5m+";
 
 /**
- * A dirty sentinel record found at next launch classifies as a "crash" when
- * the gap since its last heartbeat is within this window: iOS auto-reloads a
- * crashed foreground tab within seconds, so a short gap means the OS killed
- * and immediately relaunched the page. A longer gap (battery death, manual
- * restart, deliberate shutdown some time later) classifies as "unclean"
- * instead, since nothing points specifically at an OS-level kill.
+ * A dirty record whose last heartbeat is this recent classifies as a crash: iOS
+ * auto-reloads a killed foreground tab within seconds, so a short gap means the
+ * OS killed and relaunched the page. A longer one is "unclean", since nothing
+ * points specifically at an OS-level kill.
  */
 export const CRASH_RELAUNCH_WINDOW_MS = 60_000;

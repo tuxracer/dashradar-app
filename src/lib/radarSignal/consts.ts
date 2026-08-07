@@ -4,27 +4,19 @@ import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 export const SEGMENT_COUNT = 14;
 
 /**
- * Peak-hold falloff rate, in signal-fraction per second. The held peak eases
- * back down at this rate once the raw signal drops. Detection results arrive
- * at most once per second (MIN_FRAME_INTERVAL_MS), and slow devices' rest
- * ratio can stretch the gap to two seconds or more, so this must be small
- * enough that the peak meaningfully bridges consecutive results: at 0.15 a
- * full-scale peak takes over 6 seconds to drain, so the meter falls about 30
- * points across a two-second gap, where the old 0.6 let it fall 60 points in a
- * single second and whipsaw on score jitter. Attack stays instant (see
- * decayPeak), matching real radar detectors: latch on fast, fall off slow.
- * Tune on-device.
+ * Peak-hold falloff, in signal-fraction per second. Results land a second or more
+ * apart, so this has to be slow enough for the peak to bridge consecutive ones:
+ * at 0.15 the meter falls about 30 points across a two-second gap, where a rate
+ * four times faster whipsawed on score jitter. Attack stays instant, matching a
+ * real radar detector: latch on fast, fall off slow. Tune on-device.
  */
 export const DECAY_PER_SEC = 0.15;
 
 /**
- * Scores at or below this fraction map to zero signal. It is the detection
- * confidence threshold rather than a copy of its number: anything the
- * confidence filter keeps is already above it, so the ladder maps its full
- * range onto the meaningful [floor, 1] score band. Held to that value by
- * import because the two failure modes are silent. A floor left below the
- * threshold wastes the bottom of the ladder on scores that never arrive, and a
- * floor left above it reads real detections as no signal at all.
+ * Scores at or below this map to zero signal, so the ladder spends its full range
+ * on the band that can actually arrive. Imported rather than copied because both
+ * failure modes are silent: below the threshold wastes the bottom of the ladder,
+ * above it reads real detections as no signal at all.
  */
 export const SIGNAL_FLOOR = CONFIDENCE_THRESHOLD;
 
@@ -56,9 +48,7 @@ export const DIRECTION_RIGHT_MIN = 2 / 3;
 export const ALERT_THRESHOLD = 0.8;
 
 /**
- * Signal level at or above which the meter registers a contact: the readout
- * and status word take the signal color and the status word leaves SCANNING.
- * Just above zero so the idle meter stays quiet while any real signal
- * registers immediately.
+ * Where the meter registers a contact and the status word leaves SCANNING. Just
+ * above zero, so the idle meter stays quiet and any real signal registers at once.
  */
 export const CONTACT_THRESHOLD = 0.01;

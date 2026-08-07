@@ -25,28 +25,18 @@ type RadarDetectorScreenProps = {
   audioEnabled: boolean;
   /** Latest cutout to render as the contact card, if any. */
   contact?: Contact;
-  /**
-   * Whether detection has not started yet (model loading, session warm-up).
-   * The status word reads INITIALIZING instead of SCANNING, and the sweep
-   * wedge is not rendered.
-   */
+  /** Detection has not started yet; no sweep, and the word reads INITIALIZING. */
   initializing?: boolean;
   /**
-   * Raw model score in [0, 1] to show in the dial readout in place of the
-   * percentage (the raw-confidence developer option). The percentage derives
-   * from the confidence prop, a remapped signal band that never matches the
-   * model's own score, so this is the readout for judging the model rather
-   * than the meter. Shown live with no peak-hold, so it drops to zero the
-   * moment the detection clears while the dial decays behind it. Undefined
-   * (the option off) shows the percentage.
+   * Raw model score to show in place of the percentage, which comes off a
+   * remapped signal band and never matches it. Shown live with no peak-hold, so
+   * it drops to zero the moment the detection clears.
    */
   rawConfidence?: number;
   /**
-   * Display label of the class the meter is alerting on (the HUD's
-   * highest-scoring detection), which the status word names in place of the
-   * generic ALERT. Undefined when nothing is detected, and also for the whole
-   * decay tail after a detection clears, which is why the loop holds the last
-   * one rather than reading this directly.
+   * Class the meter is alerting on, named by the status word in place of ALERT.
+   * Clears for the whole decay tail, which is why the loop holds the last one
+   * rather than reading this directly.
    */
   detectedLabel?: string;
 };
@@ -58,49 +48,25 @@ const segmentAngleDeg = (index: number): number =>
 const ALERT_RING_COLOR = `rgb(${SIGNAL_HIGH_COLOR.join(", ")})`;
 
 /**
- * Fullscreen radar-detector instrument. The ladder segments are radial ticks
- * on a tachometer-style arc around a large percentage readout, over a faint
- * radar grid with a scanning sweep turning inside the dial. As the
- * signal climbs
- * the ticks, readout, and a central glow flood green through amber to red; at
- * ALERT_THRESHOLD a red ring around the dial pulses. The status word under the
- * readout names the class being detected (the detectedLabel prop, which is
- * the HUD's highest-scoring detection), falling back to ALERT for a signal
- * with no class to name. It keeps naming that class for as long as the meter
- * registers a contact at all, which means through the dial's decay tail
- * rather than only while the detection is live: the prop clears the instant
- * the raw signal does, so the loop holds the last label instead of reading
- * the prop directly. Below CONTACT_THRESHOLD the word reverts to SCANNING,
- * and the held label is dropped once the meter reaches zero so the next
- * detection starts clean. A requestAnimationFrame loop applies peak-hold +
- * decay to the incoming confidence and writes the lit segments, colors,
- * readout, status word, and glow straight to the DOM, off React's render
- * path. Before detection has started (the initializing prop) the instrument
- * still renders in full, but the status word reads INITIALIZING and the sweep
- * wedge is not rendered, so the first paint is the dial rather than a blank
- * screen and the sweep's arrival signals that scanning is actually live. From
- * there it turns at a steady pace of its own rather than tracking the scan
- * rate, which it never usefully could: at floor pacing scans land about a
- * second apart, so a wedge stepped or gated per scan reads as a stutter, not
- * as a sweep. Under reduced motion it stays dark for the whole session and the
- * status word carries the liveness signal alone. The rAF loop
- * runs off React's render path, so smoothness does not depend on the
- * detector's frame rate. It parks itself once the meter is
- * quiescent (no raw signal and a fully decayed peak) and any prop change
- * wakes it, so the idle scanning state, which dominates a session, schedules
- * no animation frames and does no per-frame work; while awake it also skips
- * DOM writes whenever the values behind them have not changed. The camera
- * feed and bounding boxes are intentionally not shown in this mode. The same
- * loop feeds a radar-detector beeper (see lib/radarAudio) the raw signal
- * rather than the peak-held level, so the beeps cut off as soon as the
- * detection is gone while the dial decays smoothly behind them; the beeper
- * exists only while this mode is mounted, and audioEnabled false feeds it
- * silence instead. The contact card's direction row follows the same rule as
- * the audio: it renders only while the raw signal is nonzero (a live
- * detection), so a stale heading is never shown while the card lingers
- * through the dial's decay tail. A developer option swaps the dial's
- * percentage for the raw model score (the rawConfidence prop) while the
- * ladder keeps tracking the peak-held signal.
+ * Fullscreen radar-detector instrument: radial ticks on a tachometer arc around
+ * a percentage readout, over a faint grid with a sweep turning inside the dial.
+ * A rAF loop applies peak-hold and decay to the incoming confidence and writes
+ * segments, colors, readout, status word, and glow straight to the DOM, off
+ * React's render path. It parks itself once the meter is quiescent and any prop
+ * change wakes it, so the idle scanning state that dominates a session schedules
+ * no frames at all; while awake it skips writes whose values have not changed.
+ *
+ * The status word names the detected class, holding the last one through the
+ * dial's decay tail rather than reading the prop, which clears the instant the
+ * raw signal does. The beeper and the contact card's direction row take the raw
+ * signal instead, so both cut off with the detection while the dial decays
+ * behind them.
+ *
+ * The sweep turns at a steady pace of its own rather than tracking the scan
+ * rate, which it never usefully could: scans land about a second apart, so a
+ * wedge stepped per scan reads as a stutter. It is withheld until scanning is
+ * live, which is what makes its arrival mean something, and stays dark under
+ * reduced motion with the status word carrying liveness alone.
  */
 export const RadarDetectorScreen = ({
   confidence,
@@ -123,21 +89,16 @@ export const RadarDetectorScreen = ({
   const glowRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef<HTMLDivElement>(null);
   const cropCanvasRef = useRef<HTMLCanvasElement>(null);
-  // Restarts the rAF loop when it has parked itself on an idle meter (see the
-  // loop effect below). A no-op while the loop is already running, so the
-  // mirror effects can call it unconditionally on every prop change.
+  // Restarts the rAF loop when it has parked itself on an idle meter. A no-op
+  // while it is already running, so the mirror effects call it unconditionally.
   const wakeRef = useRef<() => void>(() => {});
 
-  // The beeper lives exactly as long as this screen: leaving radar detector
-  // mode (or unmounting for any reason) tears the audio graph down. It is fed
-  // the raw signal rather than the peak-held meter level below, so the beeps
-  // cut off as soon as the detection is gone while the dial decays behind them.
+  // Lives exactly as long as this screen, and takes the raw signal rather than
+  // the peak-held level, so the beeps cut off with the detection.
   useRadarBeeper(confidence, audioEnabled);
 
-  // Refs may not be written during render; mirror the latest prop in via an
-  // effect so the persistent rAF loop reads the current value without
-  // re-subscribing. Each mirror also wakes the parked loop so the change is
-  // flushed to the DOM even when the meter is idle.
+  // Refs may not be written during render, so each prop is mirrored in through
+  // an effect that also wakes the loop, flushing the change even when idle.
   useEffect(() => {
     confidenceRef.current = confidence;
     wakeRef.current();
@@ -163,8 +124,7 @@ export const RadarDetectorScreen = ({
     wakeRef.current();
   }, [detectedLabel]);
 
-  // Draw the cutout into the card's canvas whenever it changes. The canvas
-  // takes the bitmap's intrinsic size; CSS scales it to fit the card.
+  // The canvas takes the bitmap's intrinsic size; CSS scales it to the card.
   useEffect(() => {
     const canvas = cropCanvasRef.current;
     if (!canvas || !contact) {
@@ -187,14 +147,13 @@ export const RadarDetectorScreen = ({
     let disposed = false;
     let running = false;
     let frame = 0;
-    // Values behind the last DOM flush. While all hold, every write below
-    // would rewrite an identical value, so the flush is skipped and a steady
-    // alert does not churn styles and text at display refresh rate.
+    // Values behind the last flush. While all hold, every write would rewrite an
+    // identical value, so a steady alert does not churn the DOM at refresh rate.
     let writtenLevel: number | undefined;
     let writtenContactShown: boolean | undefined;
     let writtenStatus: string | undefined;
-    // Sentinel distinct from any real prop value (a number or undefined), so
-    // the first tick always flushes the readout mode.
+    // A sentinel distinct from any real prop value, so the first tick always
+    // flushes the readout mode.
     let writtenRawConfidence: number | undefined | null = null;
 
     const tick = (now: number) => {
@@ -203,8 +162,8 @@ export const RadarDetectorScreen = ({
       const dtSec = Math.min(0.05, (now - last) / 1000);
       lastTimeRef.current = now;
 
-      // The display state machine (peak-hold decay, held label, thresholds)
-      // is the pure stepMeter; this loop only writes what it says and parks.
+      // The display state machine is the pure stepMeter; this loop only writes
+      // what it says and parks.
       const { state, display } = stepMeter(
         meterRef.current,
         {
@@ -217,20 +176,15 @@ export const RadarDetectorScreen = ({
       meterRef.current = state;
       const { level, hasSignal, contactShown } = display;
 
-      // The status word flips between INITIALIZING and SCANNING at a zero
-      // meter, so the initializing flag gates the flush alongside the level.
+      // Flips the status word at a zero meter, so it gates the flush too.
       const isInitializing = initializingRef.current === true;
 
-      // The raw model score shown in place of the percentage when the
-      // raw-confidence developer option is on (undefined otherwise). Gates the
-      // flush alongside the level because it can change while the peak-held
-      // level does not (a new same-strength detection, or the option toggling
-      // at an idle meter).
+      // Gates the flush too, since it can change while the peak-held level does
+      // not: a new same-strength detection, or the option toggling while idle.
       const raw = rawConfidenceRef.current;
 
-      // ALERT is the fallback for a signal with no class to name, which the
-      // real app does not produce (a nonzero signal means a detection, and a
-      // detection has a class) but which keeps the word honest if it ever does.
+      // ALERT is the fallback for a signal with no class to name, which the real
+      // app does not produce but which keeps the word honest if it ever does.
       const statusText = hasSignal
         ? display.heldLabel !== undefined
           ? `${display.heldLabel} DETECTED`
@@ -286,8 +240,7 @@ export const RadarDetectorScreen = ({
           glow.style.opacity = String(0.04 + 0.26 * level);
         }
 
-        // The pulsing alert ring is CSS-driven off this data attribute (see
-        // the group-data-[alert=true] classes below).
+        // The pulsing alert ring is CSS-driven off this attribute.
         const screen = screenRef.current;
         if (screen) {
           screen.dataset.alert = String(display.alert);
@@ -295,12 +248,10 @@ export const RadarDetectorScreen = ({
         }
       }
 
-      // Park the loop once the meter is quiescent: no raw signal and a fully
-      // decayed peak make every write above a fixed point, so further frames
-      // would only spend battery. This is the dominant state of a scanning
-      // session on a dash-mounted phone. The mirror effects wake the loop on
-      // any prop change, so it always runs at least one tick to flush the
-      // change (and the beeper) before parking again.
+      // Park once the meter is quiescent, which is the dominant state of a
+      // scanning session: every write above is a fixed point, so further frames
+      // would only spend battery. The mirror effects wake the loop on any prop
+      // change, so it always runs one more tick to flush it.
       if (confidenceRef.current === 0 && level === 0) {
         running = false;
         lastTimeRef.current = undefined;
