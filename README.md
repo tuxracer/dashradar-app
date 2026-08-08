@@ -47,6 +47,10 @@ A custom **RF-DETR Nano** checkpoint, published as ONNX at [`tuxracer/las-vegas-
 
 The model is not baked in. [docs/Models.md](docs/Models.md) describes what a checkpoint has to look like to run here: tensor signature, head layout, precision, and how to register it.
 
+## History
+
+This started in 2022 as a hand-written prototype built on TensorFlow.js and a stock COCO object detector, and was rewritten from scratch in 2026 around a purpose-trained model on WebGPU. [docs/Legacy.md](docs/Legacy.md) covers where it came from and what changed.
+
 ## Contact
 
 Mastodon: [@tuxracer@fosstodon.org](https://fosstodon.org/@tuxracer)
