@@ -115,6 +115,27 @@ describe("DetectionView", () => {
     expect(first.querySelector("span")?.style.color).toBe("rgb(255, 0, 0)");
   });
 
+  it("shows the raw class beside the normalized one only where a fold happened", () => {
+    render(
+      <DetectionView
+        detections={[
+          detection({ label: "vehicle", rawLabel: "truck" }),
+          detection({
+            label: "police",
+            box: { xmin: 0.1, ymin: 0.1, xmax: 0.2, ymax: 0.2 },
+          }),
+        ]}
+        frame={square}
+        viewport={square}
+        zoom={ZOOM_OFF}
+      />,
+    );
+    const [folded, direct] = screen.getAllByTestId("detection-box");
+    expect(folded.textContent).toContain("vehicle (truck)");
+    expect(direct.textContent).toContain("police");
+    expect(direct.textContent).not.toContain("(");
+  });
+
   it("gives two boxes clamped to the same corner distinct keys", () => {
     // Two boxes of one class both clamped to the top-left edge produced an
     // identical key under `label:xmin:ymin`. React still renders both, so the

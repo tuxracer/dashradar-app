@@ -89,13 +89,16 @@ export const enrichDetections = (
     if (scanRegion && isOwnHood(candidate.box, scanRegion)) {
       return [];
     }
-    return [
-      {
-        label: normalizeClassLabel(candidate.label),
-        score: candidate.score,
-        box: candidate.box,
-      },
-    ];
+    const label = normalizeClassLabel(candidate.label);
+    const detection: Detection = {
+      label,
+      score: candidate.score,
+      box: candidate.box,
+    };
+    if (label !== candidate.label) {
+      detection.rawLabel = candidate.label;
+    }
+    return [detection];
   });
 };
 

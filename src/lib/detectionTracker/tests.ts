@@ -446,6 +446,19 @@ describe("createDetectionTracker", () => {
     expect(fresh?.id).not.toBe(first.id);
   });
 
+  it("shows the latest sighting's raw word on a matched track, not the birth one", () => {
+    const tracker = createDetectionTracker(testConfig());
+    tracker.update([detection({ label: "vehicle", rawLabel: "car" })], 0);
+    // Same object, but the model now calls it a truck: the track's identity
+    // holds while its presentation word follows the current sighting.
+    const { tracks } = tracker.update(
+      [detection({ label: "vehicle", rawLabel: "truck" })],
+      FLOOR_CADENCE_MS,
+    );
+    expect(tracks).toHaveLength(1);
+    expect(tracks[0].rawLabel).toBe("truck");
+  });
+
   it("keeps an object's color with its id and gives a newcomer its own", () => {
     const tracker = createDetectionTracker(testConfig());
     const first = tracker.update(

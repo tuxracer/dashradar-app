@@ -39,6 +39,12 @@ export type Detection = {
   label: string;
   score: number;
   box: NormalizedBox;
+  /**
+   * The checkpoint's own word for the class, present only where `label` is a
+   * normalized fold of it. Presentation only: every class decision reads
+   * `label`, and this exists so a box chip can read "vehicle (truck)".
+   */
+  rawLabel?: string;
 };
 
 /** A detection carrying the identity of the object it re-detects. */

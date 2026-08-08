@@ -88,6 +88,9 @@ export const stepTracker = (
         ...track,
         score,
         box: detection.box,
+        // The latest sighting's word, not the birth one: a vehicle seen as a
+        // car and then a truck should read as what the model says now.
+        rawLabel: detection.rawLabel,
         lastSeenAt: atMs,
       });
     } else if (atMs - track.lastSeenAt <= config.maxCoastMs) {
@@ -118,6 +121,7 @@ export const stepTracker = (
       label: detection.label,
       score: detection.score,
       box: detection.box,
+      rawLabel: detection.rawLabel,
       lastSeenAt: atMs,
     });
   }

@@ -69,7 +69,10 @@ export const DetectionView = ({
               className="absolute left-0 top-full whitespace-nowrap bg-surface/80 px-1 text-sm font-semibold uppercase tracking-[0.08em]"
               style={{ color: detection.color }}
             >
-              {detection.label} {Math.round(detection.score * 100)}%
+              {detection.rawLabel
+                ? `${detection.label} (${detection.rawLabel})`
+                : detection.label}{" "}
+              {Math.round(detection.score * 100)}%
             </span>
           </div>
         );
