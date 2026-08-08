@@ -1,4 +1,4 @@
-import type { Detection, NormalizedBox } from "@/types";
+import type { Detection, IdentifiedDetection, NormalizedBox } from "@/types";
 import { DEFAULT_TRACKER_CONFIG } from "./consts";
 import type { Track, TrackerConfig, TrackerState } from "./types";
 
@@ -24,30 +24,39 @@ export const iou = (a: NormalizedBox, b: NormalizedBox): number => {
 
 export const initialTrackerState = (): TrackerState => ({
   tracks: [],
-  nextId: 0,
 });
 
 /**
- * One frame of the coasting tracker: match this frame's detections to existing
+ * One frame of the coasting tracker: match this frame's detections to same-class
  * tracks by IoU, show every detection immediately, and coast an unmatched track
  * for up to `maxCoastMs` so its box does not flicker off through a brief miss.
+ * `identified` is the input detections in order, each carrying the id of the
+ * track it matched or the fresh one it spawned; `tracks` adds the coasted set.
  */
 export const stepTracker = (
   state: TrackerState,
   detections: Detection[],
   config: TrackerConfig,
   atMs: number,
-): { state: TrackerState; visible: Track[] } => {
+): {
+  state: TrackerState;
+  identified: IdentifiedDetection[];
+  tracks: Track[];
+} => {
   const { tracks } = state;
   const claimed = new Array<boolean>(tracks.length).fill(false);
   const matchedDetByTrack = new Map<number, Detection>();
-  const unmatched: Detection[] = [];
+  /** Index of the track each detection matched, aligned with `detections`. */
+  const matchByDetection: number[] = [];
 
   for (const detection of detections) {
     let bestIndex = -1;
     let bestIou = -1;
     for (let i = 0; i < tracks.length; i += 1) {
-      if (claimed[i]) {
+      // Same class only: identity means the same object still there, and an
+      // object does not change class. A different-class box in the same place
+      // is a new contact, not this one relabeled.
+      if (claimed[i] || tracks[i].label !== detection.label) {
         continue;
       }
       const value = iou(tracks[i].box, detection.box);
@@ -59,8 +68,9 @@ export const stepTracker = (
     if (bestIndex >= 0 && bestIou >= config.iouMatchThreshold) {
       claimed[bestIndex] = true;
       matchedDetByTrack.set(bestIndex, detection);
+      matchByDetection.push(bestIndex);
     } else {
-      unmatched.push(detection);
+      matchByDetection.push(-1);
     }
   }
 
@@ -69,17 +79,13 @@ export const stepTracker = (
     const track = tracks[i];
     const detection = matchedDetByTrack.get(i);
     if (detection) {
-      // Ease toward the new score, so model jitter does not whipsaw the readouts.
-      // Not across a label change: matching is purely by box overlap, so the eased
-      // score describes the old class.
+      // Ease toward the new score, so model jitter does not whipsaw the
+      // readouts. Matching is class-gated, so the blend never crosses classes.
       const score =
-        detection.label === track.label
-          ? track.score +
-            (detection.score - track.score) * config.scoreSmoothingAlpha
-          : detection.score;
+        track.score +
+        (detection.score - track.score) * config.scoreSmoothingAlpha;
       nextTracks.push({
         ...track,
-        label: detection.label,
         score,
         box: detection.box,
         lastSeenAt: atMs,
@@ -92,19 +98,28 @@ export const stepTracker = (
     // Past the coast budget: dropped.
   }
 
-  let nextId = state.nextId;
-  for (const detection of unmatched) {
+  const identified: IdentifiedDetection[] = [];
+  for (let i = 0; i < detections.length; i += 1) {
+    const detection = detections[i];
+    const matched = matchByDetection[i];
+    if (matched >= 0) {
+      // The raw score, not the track's eased one: identity is the only
+      // enrichment here, and smoothing stays a presentation concern.
+      identified.push({ ...detection, id: tracks[matched].id });
+      continue;
+    }
+    const id = config.mintId();
+    identified.push({ ...detection, id });
     nextTracks.push({
-      id: nextId,
+      id,
       label: detection.label,
       score: detection.score,
       box: detection.box,
       lastSeenAt: atMs,
     });
-    nextId += 1;
   }
 
-  return { state: { tracks: nextTracks, nextId }, visible: nextTracks };
+  return { state: { tracks: nextTracks }, identified, tracks: nextTracks };
 };
 
 /**
@@ -118,18 +133,21 @@ export const tracksSeenAt = (tracks: Track[], atMs: number): Track[] =>
 
 /**
  * Stateful wrapper holding tracker state across frames. `update` returns the
- * tracks to render, this frame's plus any coasting, each carrying the stable id
- * it keeps for as long as it lives.
+ * frame's detections with their assigned ids, and the tracks to render (this
+ * frame's plus any coasting), each keeping its id for as long as it lives.
  */
 export const createDetectionTracker = (
   config: TrackerConfig = DEFAULT_TRACKER_CONFIG,
 ) => {
   let state = initialTrackerState();
   return {
-    update: (detections: Detection[], atMs: number): Track[] => {
+    update: (
+      detections: Detection[],
+      atMs: number,
+    ): { identified: IdentifiedDetection[]; tracks: Track[] } => {
       const result = stepTracker(state, detections, config, atMs);
       state = result.state;
-      return result.visible;
+      return { identified: result.identified, tracks: result.tracks };
     },
   };
 };

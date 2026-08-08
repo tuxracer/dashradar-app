@@ -23,11 +23,18 @@ const detection = (overrides: Partial<Detection> = {}): Detection => ({
   ...overrides,
 });
 
-const config: TrackerConfig = {
-  iouMatchThreshold: 0.3,
-  maxCoastMs: 2_500,
-  scoreSmoothingAlpha: 0.5,
+/** Deterministic ids, so a test can assert on relationships without stubbing. */
+const testConfig = (): TrackerConfig => {
+  let minted = 0;
+  return {
+    iouMatchThreshold: 0.3,
+    maxCoastMs: 2_500,
+    scoreSmoothingAlpha: 0.5,
+    mintId: () => `id-${(minted += 1)}`,
+  };
 };
+
+const config = testConfig();
 
 /** Result cadence at the pacing floor: one result per second. */
 const FLOOR_CADENCE_MS = 1_000;
@@ -50,29 +57,29 @@ describe("iou", () => {
 
 describe("stepTracker", () => {
   it("shows a detection immediately on its first sighting", () => {
-    const { visible } = stepTracker(
+    const { tracks } = stepTracker(
       initialTrackerState(),
       [detection()],
       config,
       0,
     );
-    expect(visible).toHaveLength(1);
-    expect(visible[0].label).toBe("police");
+    expect(tracks).toHaveLength(1);
+    expect(tracks[0].label).toBe("police");
   });
 
   it("coasts a track through brief misses at the floor cadence, then drops it", () => {
     let state = initialTrackerState();
     const shown = stepTracker(state, [detection()], config, 0);
-    expect(shown.visible).toHaveLength(1);
+    expect(shown.tracks).toHaveLength(1);
     state = shown.state;
     // Misses at 1 s and 2 s: inside the coast budget, still visible.
     const miss1 = stepTracker(state, [], config, FLOOR_CADENCE_MS);
-    expect(miss1.visible).toHaveLength(1);
+    expect(miss1.tracks).toHaveLength(1);
     const miss2 = stepTracker(miss1.state, [], config, 2 * FLOOR_CADENCE_MS);
-    expect(miss2.visible).toHaveLength(1);
+    expect(miss2.tracks).toHaveLength(1);
     // 3 s: past the budget, dropped.
     const miss3 = stepTracker(miss2.state, [], config, 3 * FLOOR_CADENCE_MS);
-    expect(miss3.visible).toHaveLength(0);
+    expect(miss3.tracks).toHaveLength(0);
     expect(miss3.state.tracks).toHaveLength(0);
   });
 
@@ -84,7 +91,7 @@ describe("stepTracker", () => {
     let state = initialTrackerState();
     state = stepTracker(state, [detection()], config, 0).state;
     const missed = stepTracker(state, [], config, 5_000);
-    expect(missed.visible).toHaveLength(0);
+    expect(missed.tracks).toHaveLength(0);
     expect(missed.state.tracks).toHaveLength(0);
   });
 
@@ -94,7 +101,7 @@ describe("stepTracker", () => {
     // Re-matched at 4 s: the budget restarts from there.
     state = stepTracker(state, [detection()], config, 4_000).state;
     const missed = stepTracker(state, [], config, 6_000);
-    expect(missed.visible).toHaveLength(1);
+    expect(missed.tracks).toHaveLength(1);
   });
 
   it("keeps one track as its box drifts across frames (IoU match)", () => {
@@ -112,7 +119,7 @@ describe("stepTracker", () => {
       FLOOR_CADENCE_MS,
     );
     expect(drifted.state.tracks).toHaveLength(1);
-    expect(drifted.visible).toHaveLength(1);
+    expect(drifted.tracks).toHaveLength(1);
   });
 
   it("adopts a matched detection's box outright but eases its score by scoreSmoothingAlpha", () => {
@@ -125,8 +132,8 @@ describe("stepTracker", () => {
       FLOOR_CADENCE_MS,
     );
     // Alpha 0.5 moves the score halfway from 0.8 toward 0.95.
-    expect(updated.visible[0].score).toBeCloseTo(0.875);
-    expect(updated.visible[0].box.xmin).toBeCloseTo(0.41);
+    expect(updated.tracks[0].score).toBeCloseTo(0.875);
+    expect(updated.tracks[0].box.xmin).toBeCloseTo(0.41);
   });
 
   it("damps alternating score jitter instead of passing it through", () => {
@@ -146,14 +153,17 @@ describe("stepTracker", () => {
         at,
       );
       state = stepped.state;
-      shown.push(stepped.visible[0].score);
+      shown.push(stepped.tracks[0].score);
     }
     const swings = shown.slice(1).map((score, i) => Math.abs(score - shown[i]));
     expect(Math.max(...swings)).toBeLessThan(0.18 / 2 + 0.001);
   });
 
   it("adopts the raw score outright when scoreSmoothingAlpha is 1", () => {
-    const unsmoothed: TrackerConfig = { ...config, scoreSmoothingAlpha: 1 };
+    const unsmoothed: TrackerConfig = {
+      ...testConfig(),
+      scoreSmoothingAlpha: 1,
+    };
     let state = initialTrackerState();
     state = stepTracker(
       state,
@@ -167,47 +177,74 @@ describe("stepTracker", () => {
       unsmoothed,
       FLOOR_CADENCE_MS,
     );
-    expect(updated.visible[0].score).toBe(0.95);
+    expect(updated.tracks[0].score).toBe(0.95);
   });
 
-  it("adopts the new detection's raw score outright when the matched label changes, instead of easing from the old class's score", () => {
-    // A POLICE track eases up to a high score.
+  it("gives an overlapping detection of a different class its own track", () => {
+    // A POLICE track is established.
     let state = initialTrackerState();
-    state = stepTracker(
+    const first = stepTracker(
       state,
       [detection({ label: "police", score: 0.95 })],
       config,
       0,
-    ).state;
-    // Next frame the model reports a PERSON, not a POLICE, in an overlapping
-    // box. They match by IoU (stepTracker never checks label), but the score
-    // that was eased for POLICE describes nothing about this PERSON.
+    );
+    state = first.state;
+    // Next frame the model reports a PERSON in an overlapping box. Same place,
+    // different class: a new object, never the police track relabeled.
     const stepped = stepTracker(
       state,
-      [
-        detection({
-          label: "person",
-          score: 0.55,
-        }),
-      ],
+      [detection({ label: "person", score: 0.55 })],
       config,
       FLOOR_CADENCE_MS,
     );
-    // The visible score must be the new detection's own value, not a blend
-    // of the stale POLICE confidence (0.95) and the new PERSON score (which
-    // alpha 0.5 would put at 0.75).
-    expect(stepped.visible[0].label).toBe("person");
-    expect(stepped.visible[0].score).toBe(0.55);
+    expect(stepped.tracks).toHaveLength(2);
+    const person = stepped.tracks.find((track) => track.label === "person");
+    const police = stepped.tracks.find((track) => track.label === "police");
+    // The person carries its own fresh id and raw score; the police track
+    // coasts unmatched behind it rather than adopting the person's box.
+    expect(person?.id).toBeDefined();
+    expect(person?.id).not.toBe(police?.id);
+    expect(person?.score).toBe(0.55);
+    expect(police?.lastSeenAt).toBe(0);
   });
 
   it("shows a brand-new track's first score unsmoothed", () => {
-    const { visible } = stepTracker(
+    const { tracks } = stepTracker(
       initialTrackerState(),
       [detection({ score: 0.91 })],
       config,
       0,
     );
-    expect(visible[0].score).toBe(0.91);
+    expect(tracks[0].score).toBe(0.91);
+  });
+
+  it("returns each detection with its assigned id, in input order", () => {
+    let state = initialTrackerState();
+    const first = stepTracker(
+      state,
+      [detection({ box: box(0.4, 0.5, 0.6, 0.8) })],
+      config,
+      0,
+    );
+    state = first.state;
+    // A drifted re-detection plus a newcomer, newcomer listed first: each
+    // identified entry sits at its own detection's index, so order survives.
+    const stepped = stepTracker(
+      state,
+      [
+        detection({ box: box(0.0, 0.0, 0.1, 0.1), score: 0.5 }),
+        detection({ box: box(0.42, 0.52, 0.62, 0.82), score: 0.7 }),
+      ],
+      config,
+      FLOOR_CADENCE_MS,
+    );
+    expect(stepped.identified).toHaveLength(2);
+    expect(stepped.identified[1].id).toBe(first.identified[0].id);
+    expect(stepped.identified[0].id).not.toBe(first.identified[0].id);
+    // Identity is the only enrichment: the raw score passes through even
+    // though the track behind the id smooths its own.
+    expect(stepped.identified[1].score).toBe(0.7);
   });
 
   it("matches two detections to two separate tracks greedily without double-claiming", () => {
@@ -237,13 +274,13 @@ describe("stepTracker", () => {
 
     // Both tracks matched and visible, not one, not three.
     expect(stepped.state.tracks).toHaveLength(2);
-    expect(stepped.visible).toHaveLength(2);
+    expect(stepped.tracks).toHaveLength(2);
 
     // Each track should have adopted the correct detection's box.
-    const track1 = stepped.visible.find(
+    const track1 = stepped.tracks.find(
       (t) => t.box.xmin > 0.1 && t.box.xmin < 0.15,
     );
-    const track2 = stepped.visible.find(
+    const track2 = stepped.tracks.find(
       (t) => t.box.xmin > 0.6 && t.box.xmin < 0.65,
     );
     expect(track1).toBeDefined();
@@ -276,10 +313,10 @@ describe("stepTracker", () => {
     // detection spawns its own new track instead of stealing the old one.
     // Both are visible (each detection registers immediately).
     expect(stepped.state.tracks).toHaveLength(2);
-    expect(stepped.visible).toHaveLength(2);
+    expect(stepped.tracks).toHaveLength(2);
 
-    const coasted = stepped.visible.find((t) => t.box.xmin > 0.35);
-    const fresh = stepped.visible.find((t) => t.box.xmin < 0.05);
+    const coasted = stepped.tracks.find((t) => t.box.xmin > 0.35);
+    const fresh = stepped.tracks.find((t) => t.box.xmin < 0.05);
     expect(coasted?.box.xmin).toBeCloseTo(0.4);
     expect(fresh?.box.xmin).toBeCloseTo(0.0);
   });
@@ -311,7 +348,7 @@ describe("stepTracker", () => {
     // One detection matched the existing track; the other spawned a new track
     // instead of also claiming it. Two tracks total, not one merged.
     expect(stepped.state.tracks).toHaveLength(2);
-    expect(stepped.visible).toHaveLength(2);
+    expect(stepped.tracks).toHaveLength(2);
   });
 });
 
@@ -326,7 +363,7 @@ describe("tracksSeenAt", () => {
     const coasted = tracker.update(
       [detection({ box: stayer })],
       FLOOR_CADENCE_MS,
-    );
+    ).tracks;
     expect(coasted).toHaveLength(2);
 
     const seen = tracksSeenAt(coasted, FLOOR_CADENCE_MS);
@@ -342,14 +379,14 @@ describe("tracksSeenAt", () => {
     const both = tracker.update(
       [detection({ box: first }), detection({ box: second })],
       FLOOR_CADENCE_MS,
-    );
+    ).tracks;
     expect(tracksSeenAt(both, FLOOR_CADENCE_MS)).toHaveLength(2);
   });
 
   it("drops everything on a scan that found nothing at all", () => {
     const tracker = createDetectionTracker(config);
     tracker.update([detection()], 0);
-    const coasted = tracker.update([], FLOOR_CADENCE_MS);
+    const coasted = tracker.update([], FLOOR_CADENCE_MS).tracks;
     expect(coasted).toHaveLength(1);
     expect(tracksSeenAt(coasted, FLOOR_CADENCE_MS)).toHaveLength(0);
   });
@@ -359,17 +396,17 @@ describe("createDetectionTracker", () => {
   it("holds state across update calls", () => {
     const tracker = createDetectionTracker(config);
     // First sighting is shown immediately.
-    expect(tracker.update([detection()], 0)).toHaveLength(1);
+    expect(tracker.update([detection()], 0).tracks).toHaveLength(1);
     // A prompt empty result still coasts the track (anti-flicker).
-    expect(tracker.update([], FLOOR_CADENCE_MS)).toHaveLength(1);
+    expect(tracker.update([], FLOOR_CADENCE_MS).tracks).toHaveLength(1);
   });
 
   it("drops a stale track by elapsed time under the default tuning", () => {
     const tracker = createDetectionTracker();
-    expect(tracker.update([detection()], 0)).toHaveLength(1);
+    expect(tracker.update([detection()], 0).tracks).toHaveLength(1);
     // One empty result 5 s later, the pacing cap's cadence: a results-counted
     // coast would still show the stale track here; the time budget does not.
-    expect(tracker.update([], 5_000)).toHaveLength(0);
+    expect(tracker.update([], 5_000).tracks).toHaveLength(0);
   });
 
   it("keeps a matched object's id stable across update calls", () => {
@@ -377,12 +414,12 @@ describe("createDetectionTracker", () => {
     const [first] = tracker.update(
       [detection({ box: box(0.4, 0.5, 0.6, 0.8) })],
       0,
-    );
+    ).tracks;
     // The next frame's box drifts but matches by IoU: same object, same id.
     const [second] = tracker.update(
       [detection({ box: box(0.42, 0.52, 0.62, 0.82) })],
       FLOOR_CADENCE_MS,
-    );
+    ).tracks;
     expect(second.id).toBe(first.id);
   });
 
@@ -391,10 +428,10 @@ describe("createDetectionTracker", () => {
     const [first] = tracker.update(
       [detection({ box: box(0.4, 0.5, 0.6, 0.8) })],
       0,
-    );
+    ).tracks;
     // A detection far from the existing track spawns a fresh track; the
     // established one keeps its id and the newcomer gets a different one.
-    const tracks = tracker.update(
+    const { tracks } = tracker.update(
       [
         detection({ box: box(0.42, 0.52, 0.62, 0.82) }),
         detection({ box: box(0.0, 0.0, 0.1, 0.1) }),
@@ -406,5 +443,20 @@ describe("createDetectionTracker", () => {
     expect(matched?.id).toBe(first.id);
     expect(fresh?.id).toBeDefined();
     expect(fresh?.id).not.toBe(first.id);
+  });
+
+  it("mints distinct string ids under the default config", () => {
+    // The default mint is the platform GUID; what matters here is that two
+    // objects never share one, not what the string looks like.
+    const tracker = createDetectionTracker();
+    const { identified } = tracker.update(
+      [
+        detection({ box: box(0.1, 0.1, 0.3, 0.3) }),
+        detection({ box: box(0.6, 0.6, 0.8, 0.8) }),
+      ],
+      0,
+    );
+    expect(identified[0].id).toEqual(expect.any(String));
+    expect(identified[0].id).not.toBe(identified[1].id);
   });
 });

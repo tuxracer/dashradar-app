@@ -3,7 +3,12 @@ import { buildHudModel, enrichDetections } from "@/lib/detection";
 import type { Track } from "@/lib/detectionTracker";
 import type { ContactDirection } from "@/lib/radarSignal";
 import { contactDirection, signalFromScore } from "@/lib/radarSignal";
-import type { Detection, NormalizedBox, RawDetection } from "@/types";
+import type {
+  Detection,
+  IdentifiedDetection,
+  NormalizedBox,
+  RawDetection,
+} from "@/types";
 import type { DetectionCrop } from "@/workers/detection/types";
 
 /**
@@ -26,8 +31,9 @@ export type Contact = {
 
 /** Everything one detections result contributes to the UI. */
 export type ProcessedDetectionResult = {
-  /** The frame's detections after validation and the confidence filter. */
-  detections: Detection[];
+  /** The frame's detections after validation and the confidence filter, each
+   * carrying the id of the object it re-detects. */
+  detections: IdentifiedDetection[];
   /** The coasted tracker output (what the HUD renders), with stable ids. */
   tracked: Track[];
   hud: HudModel;
@@ -42,7 +48,8 @@ export type ProcessedDetectionResult = {
 
 /**
  * Turn one raw detections result into everything the UI consumes. Pure apart from
- * `updateTracks`, so the whole per-result pipeline is testable without a worker.
+ * `identifyDetections`, so the whole per-result pipeline is testable without a
+ * worker.
  * The crop goes through the same filter as the detections, so one whose detection
  * was filtered out is discarded rather than shown as evidence the HUD would not
  * count.
@@ -51,19 +58,22 @@ export const processDetectionResult = ({
   detections: raw,
   crop,
   confidenceThreshold,
-  updateTracks,
+  identifyDetections,
   includeContact,
   at,
 }: {
   detections: RawDetection[];
   crop: DetectionCrop | undefined;
   confidenceThreshold: number;
-  updateTracks: (detections: Detection[]) => Track[];
+  identifyDetections: (detections: Detection[]) => {
+    detections: IdentifiedDetection[];
+    tracks: Track[];
+  };
   includeContact: boolean;
   at: number;
 }): ProcessedDetectionResult => {
-  const detections = enrichDetections(raw, confidenceThreshold);
-  const tracked = updateTracks(detections);
+  const filtered = enrichDetections(raw, confidenceThreshold);
+  const { detections, tracks: tracked } = identifyDetections(filtered);
   const hud = buildHudModel(tracked);
   let contact: Contact | undefined;
   let discardedCrop: ImageBitmap | undefined;

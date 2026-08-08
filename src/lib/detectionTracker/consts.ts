@@ -28,4 +28,5 @@ export const DEFAULT_TRACKER_CONFIG: TrackerConfig = {
   iouMatchThreshold: IOU_MATCH_THRESHOLD,
   maxCoastMs: MAX_COAST_MS,
   scoreSmoothingAlpha: SCORE_SMOOTHING_ALPHA,
+  mintId: () => crypto.randomUUID(),
 };

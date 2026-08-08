@@ -32,7 +32,7 @@ export type HeightPrior = {
 /** One tracked object placed on the ground plane in ego-relative meters. */
 export type ScenePlacement = {
   /** The source track's stable id, for keying scene objects across frames. */
-  id: number;
+  id: string;
   /** Kind resolved from the label via the height priors. */
   kind: PlacedKind;
   /** The detection label as the model produced it. */

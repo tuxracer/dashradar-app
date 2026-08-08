@@ -1,9 +1,10 @@
+import type { Observable } from "rxjs";
 import type { ActiveView } from "@/lib/crashSentinel";
 import type { HudModel, Size } from "@/lib/detection";
 import type { DetectionClass } from "@/lib/detectionModels";
 import type { Track } from "@/lib/detectionTracker";
 import type { Contact } from "@/lib/processDetectionResult";
-import type { Detection } from "@/types";
+import type { Detection, IdentifiedDetection } from "@/types";
 import type {
   BackendProbe,
   DetectionErrorCode,
@@ -72,6 +73,27 @@ export type DebugSnapshot = {
   scansTotal: number;
   /** Scans since the engine activated that the gate answered without it. */
   skipsTotal: number;
+};
+
+/** One completed scan's detections before identity: what the model reported,
+ * validated and confidence-filtered, stamped with the result's arrival time. */
+export type RawDetections = {
+  detections: Detection[];
+  /** performance.now() when the result arrived. */
+  at: number;
+};
+
+/**
+ * A rawDetections$ scan after identity: the same detections, each carrying the
+ * stable id of the object it re-detects, plus the coasted track set those ids
+ * live in. Data inferred about a detection later belongs here, not on the raw
+ * stream.
+ */
+export type IdentifiedDetections = {
+  detections: IdentifiedDetection[];
+  tracks: Track[];
+  /** performance.now() when the result arrived. */
+  at: number;
 };
 
 /**
@@ -179,6 +201,10 @@ export type DetectionEngine = {
   updateSettings: (settings: EngineSettings) => void;
   /** Latest per-frame diagnostics, read on demand (never published). */
   getDebugSnapshot: () => DebugSnapshot;
+  /** One emission per completed scan: the frame's detections before identity. */
+  rawDetections$: Observable<RawDetections>;
+  /** Derived from rawDetections$: the same scans with per-object identity. */
+  identifiedDetections$: Observable<IdentifiedDetections>;
   /**
    * Let the worker fetch the weights, for an engine built with `deferModelLoad`.
    * Idempotent: the gate only ever opens.

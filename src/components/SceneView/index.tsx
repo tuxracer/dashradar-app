@@ -226,14 +226,14 @@ const SceneGlyphs = ({
   reducedMotion: boolean;
 }) => {
   const invalidate = useThree((state) => state.invalidate);
-  const motionsRef = useRef(new Map<number, GlyphMotion>());
-  const groupsRef = useRef(new Map<number, Group>());
+  const motionsRef = useRef(new Map<string, GlyphMotion>());
+  const groupsRef = useRef(new Map<string, Group>());
   const [glyphs, setGlyphs] = useState<ScenePlacement[]>([]);
 
   useEffect(() => {
     const now = performance.now();
     const motions = motionsRef.current;
-    const seen = new Set<number>();
+    const seen = new Set<string>();
     for (const placement of placements) {
       seen.add(placement.id);
       const target = toScenePosition(placement);

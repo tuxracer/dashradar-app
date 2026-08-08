@@ -14,7 +14,7 @@ import {
 
 /** A police track whose box is centered and 100 px tall in the test frame. */
 const track = (overrides: Partial<Track> = {}): Track => ({
-  id: 1,
+  id: "track-1",
   label: "police",
   score: 0.9,
   box: { xmin: 0.45, ymin: 0.4, xmax: 0.55, ymax: 0.5 },
@@ -163,14 +163,14 @@ describe("placeTrack", () => {
 
 describe("placeTracks", () => {
   it("derives the focal length from the field of view and drops unknown labels", () => {
-    const tracks = [track(), track({ id: 2, label: "dog" })];
+    const tracks = [track(), track({ id: "track-2", label: "dog" })];
     const placements = placeTracks({
       tracks,
       frame,
       fovDeg: SCENE_FOV_DEG_DEFAULT,
     });
     expect(placements).toHaveLength(1);
-    expect(placements[0].id).toBe(1);
+    expect(placements[0].id).toBe("track-1");
     expect(placements[0].zM).toBeCloseTo(
       placeTrack(
         track(),

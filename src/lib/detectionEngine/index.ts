@@ -14,6 +14,7 @@ import {
   repeat,
   retry,
   scan,
+  share,
   skip,
   Subject,
   switchMap,
@@ -48,6 +49,7 @@ import { INPUT_SIZE, ZOOM_OFF } from "@/workers/detection/consts";
 import { centerCropRegion } from "@/workers/detection/inference";
 import type { WorkerResponse, ZoomLevel } from "@/workers/detection/types";
 import { isWorkerResponse } from "@/workers/detection/types";
+import type { Detection } from "@/types";
 import {
   BYTES_PER_MIB,
   FRAME_RETRY_MS,
@@ -72,8 +74,10 @@ import type {
   DetectionWorkerLike,
   EngineInputs,
   EngineSettings,
+  IdentifiedDetections,
   ModelProgress,
   PacingDecision,
+  RawDetections,
 } from "./types";
 
 export * from "./consts";
@@ -206,6 +210,42 @@ export const createDetectionEngine = ({
     | undefined;
   // Recreated on every pump stop, so a resumed session re-earns confirmation.
   let tracker = createDetectionTracker();
+
+  /** One emission per completed scan, feeding the identity stream below. */
+  const rawDetections = new Subject<RawDetections>();
+  /**
+   * rawDetections with identity assigned. share() makes the tracker step run
+   * once per scan however many consumers listen, so every subscriber sees the
+   * same ids the snapshot publishes.
+   */
+  const identifiedDetections$ = rawDetections.pipe(
+    map(({ detections, at }) => {
+      const { identified, tracks } = tracker.update(detections, at);
+      return { detections: identified, tracks, at };
+    }),
+    share(),
+  );
+
+  /**
+   * Run one scan through the identity stream and capture its emission:
+   * subscribe before next (the request/reply rule), so the synchronous delivery
+   * lands in the capture and the result handler publishes one atomic patch
+   * built from the same values every stream subscriber saw.
+   */
+  const identifyScan = (
+    detections: Detection[],
+    at: number,
+  ): IdentifiedDetections => {
+    // Subject delivery is synchronous, so the capture is filled before next()
+    // returns; the assertion states that, not a hope.
+    let emitted!: IdentifiedDetections;
+    const capture = identifiedDetections$.subscribe((scanned) => {
+      emitted = scanned;
+    });
+    rawDetections.next({ detections, at });
+    capture.unsubscribe();
+    return emitted;
+  };
   const fileProgress = new Map<string, ModelProgress>();
   // Frames the pump completed, gate skips included: what the sentinel measures is
   // whether the pump kept turning over, which a session at a light is doing.
@@ -663,7 +703,7 @@ export const createDetectionEngine = ({
           detections: message.detections,
           crop: message.crop,
           confidenceThreshold: settings$.value.confidenceThreshold,
-          updateTracks: (detections) => tracker.update(detections, at),
+          identifyDetections: (detections) => identifyScan(detections, at),
           includeContact: settings$.value.includeContact,
           at,
         });
@@ -1034,6 +1074,8 @@ export const createDetectionEngine = ({
       settings$.next(next);
     },
     getDebugSnapshot: () => debug,
+    rawDetections$: rawDetections.asObservable(),
+    identifiedDetections$,
     allowModelLoad: () => {
       modelLoadAllowed$.next(true);
     },

@@ -25,6 +25,8 @@ import type {
   DetectionEngine,
   DetectionWorkerLike,
   EngineSettings,
+  IdentifiedDetections,
+  RawDetections,
 } from "./types";
 
 /**
@@ -1029,7 +1031,9 @@ describe("the scene-change gate", () => {
     const { engine, worker } = await scanning();
     worker.emit({ type: "detections", detections: [police], timing });
     const tracks = engine.getSnapshot().scan?.tracks;
-    expect(tracks).toMatchObject([{ id: 0, box: { xmin: 0.4 } }]);
+    expect(tracks).toMatchObject([
+      { id: expect.any(String) as string, box: { xmin: 0.4 } },
+    ]);
     // More skips than the tracker's coasting tolerance, so a tracker being
     // advanced would have dropped the track (and its id) by now.
     await skipAndAdvance(worker);
@@ -1365,13 +1369,12 @@ describe("the frame pump", () => {
   it("publishes tracks whose id stays with the same box across results", async () => {
     const { engine, worker } = await scanning();
     worker.emit({ type: "detections", detections: [car], timing });
-    expect(engine.getSnapshot().scan?.tracks).toMatchObject([
-      { id: 0, box: { xmin: 0.4 } },
-    ]);
+    const [firstTrack] = engine.getSnapshot().scan?.tracks ?? [];
+    expect(firstTrack).toMatchObject({ box: { xmin: 0.4 } });
     await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
     // The next result sees the same object drifted slightly (an IoU match)
-    // plus a brand-new one across the frame: the drifted box keeps id 0, the
-    // newcomer gets its own id.
+    // plus a brand-new one across the frame: the drifted box keeps its id, the
+    // newcomer gets its own.
     worker.emit({
       type: "detections",
       detections: [
@@ -1380,10 +1383,69 @@ describe("the frame pump", () => {
       ],
       timing,
     });
-    expect(engine.getSnapshot().scan?.tracks).toMatchObject([
-      { id: 0, box: { xmin: 0.42 } },
-      { id: 1, box: { xmin: 0.05 } },
+    const tracks = engine.getSnapshot().scan?.tracks ?? [];
+    expect(tracks).toMatchObject([
+      { box: { xmin: 0.42 } },
+      { box: { xmin: 0.05 } },
     ]);
+    expect(tracks[0].id).toBe(firstTrack.id);
+    expect(tracks[1].id).not.toBe(firstTrack.id);
+  });
+
+  it("emits each scan's filtered detections on rawDetections$ and nothing on a skip", async () => {
+    const { engine, worker } = await scanning();
+    const emissions: RawDetections[] = [];
+    const subscription = engine.rawDetections$.subscribe((scanned) => {
+      emissions.push(scanned);
+    });
+    worker.emit({
+      type: "detections",
+      detections: [
+        car,
+        {
+          label: "police",
+          score: 0.2,
+          box: { xmin: 0.1, ymin: 0.1, xmax: 0.2, ymax: 0.2 },
+        },
+      ],
+      timing,
+    });
+    // One emission per completed scan, already confidence-filtered, and
+    // without identity: that is the derived stream's job.
+    expect(emissions).toHaveLength(1);
+    expect(emissions[0].detections).toMatchObject([{ label: "car" }]);
+    expect("id" in emissions[0].detections[0]).toBe(false);
+    // A skip publishes nothing here either: a frame that did not change
+    // cannot have changed what the last one found.
+    await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    worker.emit({ type: "scan-skipped", gateMs: 1, delta: 0 });
+    expect(emissions).toHaveLength(1);
+    subscription.unsubscribe();
+  });
+
+  it("derives identifiedDetections$ from the raw scans, sharing ids with the snapshot", async () => {
+    const { engine, worker } = await scanning();
+    const identified: IdentifiedDetections[] = [];
+    const subscription = engine.identifiedDetections$.subscribe((scanned) => {
+      identified.push(scanned);
+    });
+    worker.emit({ type: "detections", detections: [car], timing });
+    await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    worker.emit({
+      type: "detections",
+      detections: [
+        { ...car, box: { xmin: 0.42, ymin: 0.52, xmax: 0.62, ymax: 0.82 } },
+      ],
+      timing,
+    });
+    expect(identified).toHaveLength(2);
+    // The drifted re-detection carries the id minted at first sighting.
+    expect(identified[1].detections[0].id).toBe(identified[0].detections[0].id);
+    // One tracker step per scan however many subscribers: the emission this
+    // external subscription saw is the very object the snapshot published,
+    // so stream consumers and the HUD can never disagree about identity.
+    expect(engine.getSnapshot().scan?.tracks).toBe(identified[1].tracks);
+    subscription.unsubscribe();
   });
 
   it("retries frame capture after createImageBitmap fails once", async () => {

@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Track } from "@/lib/detectionTracker";
 import { processDetectionResult } from "@/lib/processDetectionResult";
 import { SIGNAL_FLOOR } from "@/lib/radarSignal";
 import type { Detection, RawDetection } from "@/types";
@@ -7,9 +6,17 @@ import type { Detection, RawDetection } from "@/types";
 /** Fake bitmap; the function only carries or discards it, never draws it. */
 const bitmap = () => ({ close: vi.fn() }) as unknown as ImageBitmap;
 
-/** Pass-through tracker fake: each detection becomes a track as-is. */
-const asTracks = (detections: Detection[]): Track[] =>
-  detections.map((detection, id) => ({ ...detection, id, lastSeenAt: 0 }));
+/** Pass-through identity fake: each detection keeps its index as its id. */
+const identity = (detections: Detection[]) => {
+  const identified = detections.map((detection, index) => ({
+    ...detection,
+    id: `det-${index}`,
+  }));
+  return {
+    detections: identified,
+    tracks: identified.map((detection) => ({ ...detection, lastSeenAt: 0 })),
+  };
+};
 
 const police = (
   score: number,
@@ -22,7 +29,7 @@ describe("processDetectionResult", () => {
       detections: [police(0.9), police(0.3)],
       crop: undefined,
       confidenceThreshold: 0.5,
-      updateTracks: asTracks,
+      identifyDetections: identity,
       includeContact: true,
       at: 0,
     });
@@ -33,14 +40,14 @@ describe("processDetectionResult", () => {
   });
 
   it("hands the HUD the tracker's output, not the raw frame's", () => {
-    const coasted = asTracks([police(0.8)]);
+    const coasted = identity([police(0.8)]).tracks;
     const result = processDetectionResult({
       detections: [],
       crop: undefined,
       confidenceThreshold: 0.5,
       // A coasting tracker legitimately returns a held track for an empty
       // frame; the HUD must read that, while `detections` stays per-frame.
-      updateTracks: () => coasted,
+      identifyDetections: () => ({ detections: [], tracks: coasted }),
       includeContact: true,
       at: 0,
     });
@@ -55,7 +62,7 @@ describe("processDetectionResult", () => {
       detections: [police(midBand)],
       crop: { image, detectionIndex: 0 },
       confidenceThreshold: 0.5,
-      updateTracks: asTracks,
+      identifyDetections: identity,
       includeContact: true,
       at: 42,
     });
@@ -77,7 +84,7 @@ describe("processDetectionResult", () => {
       detections: [police(0.3)],
       crop: { image, detectionIndex: 0 },
       confidenceThreshold: 0.5,
-      updateTracks: asTracks,
+      identifyDetections: identity,
       includeContact: true,
       at: 0,
     });
@@ -91,7 +98,7 @@ describe("processDetectionResult", () => {
       detections: [police(0.9)],
       crop: { image, detectionIndex: 5 },
       confidenceThreshold: 0.5,
-      updateTracks: asTracks,
+      identifyDetections: identity,
       includeContact: true,
       at: 0,
     });
@@ -105,7 +112,7 @@ describe("processDetectionResult", () => {
       detections: [police(0.9)],
       crop: { image, detectionIndex: 0 },
       confidenceThreshold: 0.5,
-      updateTracks: asTracks,
+      identifyDetections: identity,
       includeContact: false,
       at: 0,
     });

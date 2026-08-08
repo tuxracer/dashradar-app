@@ -40,3 +40,13 @@ export type Detection = {
   score: number;
   box: NormalizedBox;
 };
+
+/** A detection carrying the identity of the object it re-detects. */
+export type IdentifiedDetection = Detection & {
+  /**
+   * GUID minted at the object's first sighting and shared by every later
+   * detection of the same class whose box overlaps it enough to be the same
+   * object still there.
+   */
+  id: string;
+};

@@ -1,18 +1,15 @@
-import type { Detection } from "@/types";
+import type { IdentifiedDetection } from "@/types";
 
 /** A detection tracked across frames, with anti-flicker bookkeeping. */
-export type Track = Detection & {
-  /** Stable id for the life of the track. */
-  id: number;
+export type Track = IdentifiedDetection & {
   /** Result timestamp (performance.now() ms) a detection last matched this
    * track, which is what its coasting budget is measured from. */
   lastSeenAt: number;
 };
 
-/** All tracks currently held, plus the next id to assign. */
+/** All tracks currently held. */
 export type TrackerState = {
   tracks: Track[];
-  nextId: number;
 };
 
 export type TrackerConfig = {
@@ -27,4 +24,6 @@ export type TrackerConfig = {
    * disables smoothing (adopt the raw score outright).
    */
   scoreSmoothingAlpha: number;
+  /** Mints the id a brand-new track is born with. */
+  mintId: () => string;
 };
