@@ -31,6 +31,6 @@ export const DEFAULT_TRACKER_CONFIG: TrackerConfig = {
   scoreSmoothingAlpha: SCORE_SMOOTHING_ALPHA,
   mintId: () => crypto.randomUUID(),
   // Seeded with the id, so an object's color is a function of its identity
-  // rather than a second piece of state; bright reads on the dark HUD.
-  mintColor: (id) => randomColor({ seed: id, luminosity: "bright" }),
+  // rather than a second piece of state.
+  mintColor: (id) => randomColor({ seed: id }),
 };
