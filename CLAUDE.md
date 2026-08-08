@@ -84,6 +84,10 @@ Task-scoped procedures live in `.agents/skills/`, one directory each. Read the m
 
 **Everything a person reads is plain English written for a working engineer who has never seen this codebase**: the TRD, the README, code comments, commit messages, PR descriptions, in-app copy. Explain the why rather than transcribing the code, cut something nearby before adding, and never point a human-facing document at an agent-facing path (this file, `.claude/`, `.agents/skills/`, plans under `docs/superpowers/`). The `writing-docs` skill has the full standards; read it before editing the README, the TRD, or anything under `docs/`.
 
+**A code comment states its constraint and stops.** Comments are the one prose that rots invisibly, since nothing tests them and every extra sentence is more that can quietly stop being true. Most earn a single line; a module or exported-symbol doc earns two to four sentences, and anything running past about 80 words wants cutting rather than another paragraph. Write only what the code cannot: the reason behind a non-obvious choice, the invariant that is load-bearing, the thing someone could break by accident. Two sweeps have now had to cut this file's own habit back, from 65,000 words of comments to 43,000, so treat a comment that has grown into a wall as a bug rather than a style to match.
+
+**A comment is not a changelog.** What was tried, what it measured, what was retired, and which incident prompted a fix belong in `git log`, not above the code. Keep the rule someone could break and drop the story that produced it: "Don't reintroduce a WebKit skip" earns its line while two paragraphs on how that exclusion was disproved do not, and a benchmark figure earns one only where it still bounds a decision rather than merely explaining a past one. Delete outright any comment that restates the line under it, rather than rewording it: `/** Props for Foo. */` above `type FooProps`, or a field doc that only re-spells the field's own name.
+
 ## Git Workflow
 
 - **Always rebase when integrating to `main`, never create merge commits** (`git rebase`, `git merge --ff-only`). Keep history linear.
