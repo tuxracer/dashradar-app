@@ -23,6 +23,14 @@ export const NORMALIZED_CLASSES: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Minimum IoU at which two same-class boxes in one frame count as one object.
+ * Higher than the tracker's cross-frame match floor on purpose: two real
+ * vehicles side by side can overlap moderately, while a double-fired query
+ * pair sits almost on top of itself.
+ */
+export const DUPLICATE_IOU_THRESHOLD = 0.5;
+
+/**
  * Own-hood geometry, all fractions of the scanned region (never the full
  * frame: on a landscape frame the model sees only the centered square, so a
  * hood spanning everything it can see is nowhere near full-frame width).

@@ -131,6 +131,38 @@ describe("enrichDetections", () => {
     expect(result.some((detection) => "rawLabel" in detection)).toBe(false);
   });
 
+  it("collapses overlapping same-class boxes to the strongest, with its raw word", () => {
+    const result = enrichDetections([
+      { label: "truck", score: 0.7, box: box(0.42, 0.52, 0.62, 0.82) },
+      { label: "car", score: 0.9, box: box(0.4, 0.5, 0.6, 0.8) },
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      label: "vehicle",
+      rawLabel: "car",
+      score: 0.9,
+    });
+  });
+
+  it("keeps same-class neighbors whose boxes only brush each other", () => {
+    // Two real cars side by side overlap a little; only near-coincident boxes
+    // are the double-fired pair the dedupe exists for.
+    const result = enrichDetections([
+      { label: "car", score: 0.9, box: box(0.2, 0.5, 0.45, 0.8) },
+      { label: "car", score: 0.8, box: box(0.4, 0.5, 0.65, 0.8) },
+    ]);
+    expect(result).toHaveLength(2);
+  });
+
+  it("keeps overlapping boxes of different classes", () => {
+    // A person standing in front of a vehicle is two objects, not a duplicate.
+    const result = enrichDetections([
+      { label: "car", score: 0.9, box: box(0.4, 0.5, 0.6, 0.8) },
+      { label: "person", score: 0.8, box: box(0.42, 0.52, 0.62, 0.82) },
+    ]);
+    expect(result).toHaveLength(2);
+  });
+
   it("drops a hood-shaped box when given the scan region, keeps it without", () => {
     // A landscape frame's centered square region, the world the model saw.
     const region = scanRegionBox({ width: 1280, height: 720 });

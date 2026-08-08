@@ -3,8 +3,10 @@ import { isRawDetection } from "@/types";
 import type { ZoomLevel } from "@/workers/detection/types";
 import { ZOOM_OFF } from "@/workers/detection/consts";
 import { centerCropRegion } from "@/workers/detection/inference";
+import { iou } from "@/lib/detectionTracker";
 import {
   CONFIDENCE_THRESHOLD,
+  DUPLICATE_IOU_THRESHOLD,
   NORMALIZED_CLASSES,
   OWN_HOOD_MAX_BOTTOM_GAP,
   OWN_HOOD_MAX_HEIGHT,
@@ -68,11 +70,35 @@ export const normalizeClassLabel = (label: string): string =>
   NORMALIZED_CLASSES[label.toLowerCase()] ?? label;
 
 /**
+ * Collapse same-class boxes sitting on one object into the strongest one. The
+ * head scores classes independently, so a vehicle the model is torn about can
+ * fire as overlapping car and truck queries in a single frame; after the class
+ * fold those are the same class, and the extra one would spawn a parallel
+ * track whose id and color then trade places with the original every flicker.
+ * Only the fold makes this dedupe possible: before it the pair disagreed on
+ * class, which is exactly why it survived the model's own suppression.
+ */
+const dedupeDetections = (detections: Detection[]): Detection[] => {
+  const kept: Detection[] = [];
+  for (const candidate of [...detections].sort((a, b) => b.score - a.score)) {
+    const duplicate = kept.some(
+      (winner) =>
+        winner.label === candidate.label &&
+        iou(winner.box, candidate.box) >= DUPLICATE_IOU_THRESHOLD,
+    );
+    if (!duplicate) {
+      kept.push(candidate);
+    }
+  }
+  return kept;
+};
+
+/**
  * Validate raw worker output and keep what clears the threshold. There is no
  * allowlist: every label the model emits is kept, though it surfaces as its
- * normalized class. With a `scanRegion`, boxes shaped like the camera car's
- * own hood are dropped too, whatever their class, so the driver's own car
- * never drives the alert.
+ * normalized class and same-class duplicates collapse to the strongest box.
+ * With a `scanRegion`, boxes shaped like the camera car's own hood are dropped
+ * too, whatever their class, so the driver's own car never drives the alert.
  */
 export const enrichDetections = (
   raw: unknown,
@@ -82,7 +108,7 @@ export const enrichDetections = (
   if (!Array.isArray(raw)) {
     return [];
   }
-  return raw.filter(isRawDetection).flatMap((candidate) => {
+  const enriched = raw.filter(isRawDetection).flatMap((candidate) => {
     if (candidate.score < threshold) {
       return [];
     }
@@ -100,6 +126,7 @@ export const enrichDetections = (
     }
     return [detection];
   });
+  return dedupeDetections(enriched);
 };
 
 /** Shape one frame's detections into what the HUD renders. */

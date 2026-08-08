@@ -1392,6 +1392,64 @@ describe("the frame pump", () => {
     expect(tracks[1].id).not.toBe(firstTrack.id);
   });
 
+  it("keeps a parked vehicle's id across a span of gate skips", async () => {
+    const { engine, worker } = await scanning();
+    worker.emit({ type: "detections", detections: [car], timing });
+    const [firstTrack] = engine.getSnapshot().scan?.tracks ?? [];
+    // The scene holds still, so the gate skips for longer than the coast
+    // budget. Matching runs before coast pruning on purpose, so when the
+    // forced rescan finally sees the same vehicle (now called a truck), it
+    // keeps the id and color it has had all along however stale the track.
+    for (let i = 0; i < 4; i += 1) {
+      await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+      worker.emit({ type: "scan-skipped", gateMs: 1, delta: 0 });
+    }
+    await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    worker.emit({
+      type: "detections",
+      detections: [{ ...car, label: "truck" }],
+      timing,
+    });
+    const tracks = engine.getSnapshot().scan?.tracks ?? [];
+    expect(tracks).toHaveLength(1);
+    expect(tracks[0].id).toBe(firstTrack.id);
+    expect(tracks[0].color).toBe(firstTrack.color);
+  });
+
+  it("keeps one id when car and truck queries fire on one vehicle in one frame", async () => {
+    const { engine, worker } = await scanning();
+    worker.emit({ type: "detections", detections: [car], timing });
+    const [firstTrack] = engine.getSnapshot().scan?.tracks ?? [];
+    await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    // The head scores classes independently, so a vehicle the model is torn
+    // about comes back as overlapping car and truck boxes in a single frame.
+    // Folded, both read "vehicle": they must collapse into one detection, or
+    // the extra box spawns a parallel track whose id and color then trade
+    // places with the original on every later flicker.
+    const truckBox = { xmin: 0.42, ymin: 0.52, xmax: 0.62, ymax: 0.82 };
+    worker.emit({
+      type: "detections",
+      detections: [
+        { ...car, score: 0.9 },
+        { label: "truck", score: 0.7, box: truckBox },
+      ],
+      timing,
+    });
+    expect(engine.getSnapshot().scan?.detections).toHaveLength(1);
+    expect(engine.getSnapshot().scan?.tracks).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    // The next frame settles on truck alone; it must still be the same object.
+    worker.emit({
+      type: "detections",
+      detections: [{ label: "truck", score: 0.8, box: truckBox }],
+      timing,
+    });
+    const tracks = engine.getSnapshot().scan?.tracks ?? [];
+    expect(tracks).toHaveLength(1);
+    expect(tracks[0].id).toBe(firstTrack.id);
+    expect(tracks[0].color).toBe(firstTrack.color);
+  });
+
   it("keeps one id through a car/truck label flicker on a still vehicle", async () => {
     const { engine, worker } = await scanning();
     worker.emit({ type: "detections", detections: [car], timing });
