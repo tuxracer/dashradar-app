@@ -32,6 +32,9 @@ const testConfig = (): TrackerConfig => {
     iouMatchThreshold: 0.3,
     proximityScoreCeiling: 0.6,
     proximityRadiusDiagonals: 2,
+    matchGateFloor: 0.15,
+    matchGateTightMs: 1_000,
+    matchGateLooseMs: 5_000,
     maxCoastMs: 2_500,
     scoreSmoothingAlpha: 0.5,
     mintId: () => `id-${(minted += 1)}`,
@@ -491,6 +494,68 @@ describe("stepTracker", () => {
     );
     expect(shifted.identified[0].id).toBe(first.identified[0].id);
     expect(shifted.state.tracks).toHaveLength(1);
+  });
+
+  it("accepts a weaker match for a track it has been coasting a while", () => {
+    // A stationary track missed for 2.4 s, then a detection displaced 1.55
+    // box widths: zero overlap and a nearness score of ~0.27, under the full
+    // threshold. A fixed gate would mint a fresh id here; the gate relaxed
+    // for 2.4 s unseen accepts it, because after that long a coast this is
+    // exactly how far a real reacquisition can land from the stale fix.
+    let state = initialTrackerState();
+    const first = stepTracker(
+      state,
+      [detection({ box: box(0.4, 0.4, 0.6, 0.6) })],
+      config,
+      0,
+    );
+    state = first.state;
+    state = stepTracker(
+      state,
+      [detection({ box: box(0.4, 0.4, 0.6, 0.6) })],
+      config,
+      1_000,
+    ).state;
+    state = stepTracker(state, [], config, 2_000).state;
+    state = stepTracker(state, [], config, 3_000).state;
+    const reacquired = stepTracker(
+      state,
+      [detection({ box: box(0.71, 0.4, 0.91, 0.6) })],
+      config,
+      3_400,
+    );
+    expect(reacquired.identified[0].id).toBe(first.identified[0].id);
+    expect(reacquired.state.tracks).toHaveLength(1);
+  });
+
+  it("still demands the full threshold of a track seen one scan ago", () => {
+    // Guard on the relaxing gate: the same 1.55-width displacement one
+    // floor-cadence scan after the last sighting stays a fresh object. The
+    // gate only loosens with unseen time, never at the cadence scans
+    // normally arrive at.
+    let state = initialTrackerState();
+    const first = stepTracker(
+      state,
+      [detection({ box: box(0.4, 0.4, 0.6, 0.6) })],
+      config,
+      0,
+    );
+    state = first.state;
+    state = stepTracker(
+      state,
+      [detection({ box: box(0.4, 0.4, 0.6, 0.6) })],
+      config,
+      1_000,
+    ).state;
+    const displaced = stepTracker(
+      state,
+      [detection({ box: box(0.71, 0.4, 0.91, 0.6) })],
+      config,
+      2_000,
+    );
+    expect(displaced.identified[0].id).not.toBe(first.identified[0].id);
+    // The old track coasts behind the newcomer rather than being claimed.
+    expect(displaced.state.tracks).toHaveLength(2);
   });
 
   it("does not invent motion for an object seen only once", () => {

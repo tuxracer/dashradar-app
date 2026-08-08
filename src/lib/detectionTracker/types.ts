@@ -43,6 +43,12 @@ export type TrackerConfig = {
    * error on a close vehicle and a different object on a distant one.
    */
   proximityRadiusDiagonals: number;
+  /** What the match threshold relaxes to for a track unseen the longest. */
+  matchGateFloor: number;
+  /** Unseen-for duration at or under which the full threshold applies. */
+  matchGateTightMs: number;
+  /** Unseen-for duration at which the relaxing gate reaches its floor. */
+  matchGateLooseMs: number;
   /** Elapsed ms since a track's last match it may coast before being dropped. */
   maxCoastMs: number;
   /**

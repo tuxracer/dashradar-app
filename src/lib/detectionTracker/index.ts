@@ -108,6 +108,31 @@ const pairScore = (
 };
 
 /**
+ * The score a candidate must beat to match a track unseen for `unseenMs`: the
+ * full threshold within one floor-cadence scan, sliding linearly to the gate
+ * floor by the pacing cap. The predicted box a candidate is scored against
+ * gets less certain the longer it extrapolates, so a fixed gate rejects
+ * exactly the matches a long gap still permits.
+ */
+const matchGateAt = (unseenMs: number, config: TrackerConfig): number => {
+  const {
+    iouMatchThreshold,
+    matchGateFloor,
+    matchGateTightMs,
+    matchGateLooseMs,
+  } = config;
+  if (unseenMs <= matchGateTightMs) {
+    return iouMatchThreshold;
+  }
+  if (unseenMs >= matchGateLooseMs) {
+    return matchGateFloor;
+  }
+  const progress =
+    (unseenMs - matchGateTightMs) / (matchGateLooseMs - matchGateTightMs);
+  return iouMatchThreshold + (matchGateFloor - iouMatchThreshold) * progress;
+};
+
+/**
  * One frame of the coasting tracker: match this frame's detections to
  * same-class tracks by pair score, show every detection immediately, and coast
  * an unmatched track for up to `maxCoastMs` so its box does not flicker off
@@ -146,7 +171,7 @@ export const stepTracker = (
         continue;
       }
       const score = pairScore(predicted[t], detections[d].box, config);
-      if (score >= config.iouMatchThreshold) {
+      if (score >= matchGateAt(atMs - tracks[t].lastSeenAt, config)) {
         candidates.push({ trackIndex: t, detectionIndex: d, score });
       }
     }

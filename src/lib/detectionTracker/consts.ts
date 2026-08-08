@@ -22,6 +22,26 @@ export const PROXIMITY_SCORE_CEILING = 0.6;
 export const PROXIMITY_RADIUS_DIAGONALS = 2;
 
 /**
+ * What the match threshold relaxes to for a track that has gone unseen
+ * longest. The prediction a candidate is scored against gets less certain the
+ * longer it extrapolates, so demanding the fresh-track score of a stale one
+ * rejects exactly the matches a long gap still permits. Tune on-device.
+ */
+export const MATCH_GATE_FLOOR = 0.15;
+
+/**
+ * Unseen-for duration at or under which the full match threshold applies: the
+ * pacing floor, one scan at the detector's fastest cadence.
+ */
+export const MATCH_GATE_TIGHT_MS = 1_000;
+
+/**
+ * Unseen-for duration at which the relaxing gate bottoms out at its floor:
+ * the pacing cap, one scan at the slowest cadence.
+ */
+export const MATCH_GATE_LOOSE_MS = 5_000;
+
+/**
  * Longest a track may coast unmatched, so a box does not flicker off when the
  * model briefly loses it. A time budget rather than a miss count: results arrive
  * anywhere from every second to every five, so a count would keep a vanished
@@ -42,6 +62,9 @@ export const DEFAULT_TRACKER_CONFIG: TrackerConfig = {
   iouMatchThreshold: IOU_MATCH_THRESHOLD,
   proximityScoreCeiling: PROXIMITY_SCORE_CEILING,
   proximityRadiusDiagonals: PROXIMITY_RADIUS_DIAGONALS,
+  matchGateFloor: MATCH_GATE_FLOOR,
+  matchGateTightMs: MATCH_GATE_TIGHT_MS,
+  matchGateLooseMs: MATCH_GATE_LOOSE_MS,
   maxCoastMs: MAX_COAST_MS,
   scoreSmoothingAlpha: SCORE_SMOOTHING_ALPHA,
   mintId: () => crypto.randomUUID(),
