@@ -20,6 +20,7 @@ const track = (overrides: Partial<Track> = {}): Track => ({
   score: 0.9,
   box: { xmin: 0.45, ymin: 0.4, xmax: 0.55, ymax: 0.5 },
   lastSeenAt: 0,
+  velocity: { centerX: 0, centerY: 0, width: 0, height: 0 },
   ...overrides,
 });
 

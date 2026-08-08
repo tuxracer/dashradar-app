@@ -1,6 +1,6 @@
 import type { Detection, IdentifiedDetection, NormalizedBox } from "@/types";
 import { DEFAULT_TRACKER_CONFIG } from "./consts";
-import type { Track, TrackerConfig, TrackerState } from "./types";
+import type { BoxVelocity, Track, TrackerConfig, TrackerState } from "./types";
 
 export * from "./consts";
 export * from "./types";
@@ -25,6 +25,60 @@ export const iou = (a: NormalizedBox, b: NormalizedBox): number => {
 export const initialTrackerState = (): TrackerState => ({
   tracks: [],
 });
+
+const zeroVelocity = (): BoxVelocity => ({
+  centerX: 0,
+  centerY: 0,
+  width: 0,
+  height: 0,
+});
+
+/** A corner box as center plus size, the frame velocity is expressed in. */
+const boxGeometry = (box: NormalizedBox) => ({
+  centerX: (box.xmin + box.xmax) / 2,
+  centerY: (box.ymin + box.ymax) / 2,
+  width: box.xmax - box.xmin,
+  height: box.ymax - box.ymin,
+});
+
+const measureVelocity = (
+  from: NormalizedBox,
+  to: NormalizedBox,
+  elapsedMs: number,
+): BoxVelocity => {
+  const a = boxGeometry(from);
+  const b = boxGeometry(to);
+  return {
+    centerX: (b.centerX - a.centerX) / elapsedMs,
+    centerY: (b.centerY - a.centerY) / elapsedMs,
+    width: (b.width - a.width) / elapsedMs,
+    height: (b.height - a.height) / elapsedMs,
+  };
+};
+
+/**
+ * Where a track's box should be at `atMs`, extrapolating its velocity from
+ * where it was last seen. Matching scores detections against this box rather
+ * than the stale one: at the pacing cadence a vehicle with real relative speed
+ * moves far enough between scans that its old box may not overlap its new one
+ * at all. A box shrinking through extrapolation clamps at zero size (its IoU
+ * with anything is then 0) rather than inverting.
+ */
+export const predictBox = (track: Track, atMs: number): NormalizedBox => {
+  const elapsed = atMs - track.lastSeenAt;
+  const { centerX, centerY, width, height } = boxGeometry(track.box);
+  const { velocity } = track;
+  const predictedWidth = Math.max(0, width + velocity.width * elapsed);
+  const predictedHeight = Math.max(0, height + velocity.height * elapsed);
+  const predictedCenterX = centerX + velocity.centerX * elapsed;
+  const predictedCenterY = centerY + velocity.centerY * elapsed;
+  return {
+    xmin: predictedCenterX - predictedWidth / 2,
+    ymin: predictedCenterY - predictedHeight / 2,
+    xmax: predictedCenterX + predictedWidth / 2,
+    ymax: predictedCenterY + predictedHeight / 2,
+  };
+};
 
 /**
  * One frame of the coasting tracker: match this frame's detections to same-class
@@ -54,6 +108,7 @@ export const stepTracker = (
     detectionIndex: number;
     score: number;
   }> = [];
+  const predicted = tracks.map((track) => predictBox(track, atMs));
   for (let t = 0; t < tracks.length; t += 1) {
     for (let d = 0; d < detections.length; d += 1) {
       // Same class only: identity means the same object still there, and an
@@ -62,7 +117,7 @@ export const stepTracker = (
       if (tracks[t].label !== detections[d].label) {
         continue;
       }
-      const score = iou(tracks[t].box, detections[d].box);
+      const score = iou(predicted[t], detections[d].box);
       if (score >= config.iouMatchThreshold) {
         candidates.push({ trackIndex: t, detectionIndex: d, score });
       }
@@ -95,10 +150,15 @@ export const stepTracker = (
       const score =
         track.score +
         (detection.score - track.score) * config.scoreSmoothingAlpha;
+      const elapsed = atMs - track.lastSeenAt;
       nextTracks.push({
         ...track,
         score,
         box: detection.box,
+        velocity:
+          elapsed > 0
+            ? measureVelocity(track.box, detection.box, elapsed)
+            : track.velocity,
         // The latest sighting's word, not the birth one: a vehicle seen as a
         // car and then a truck should read as what the model says now.
         rawLabel: detection.rawLabel,
@@ -134,6 +194,7 @@ export const stepTracker = (
       box: detection.box,
       rawLabel: detection.rawLabel,
       lastSeenAt: atMs,
+      velocity: zeroVelocity(),
     });
   }
 

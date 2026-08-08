@@ -15,7 +15,11 @@ const identity = (detections: Detection[]) => {
   }));
   return {
     detections: identified,
-    tracks: identified.map((detection) => ({ ...detection, lastSeenAt: 0 })),
+    tracks: identified.map((detection) => ({
+      ...detection,
+      lastSeenAt: 0,
+      velocity: { centerX: 0, centerY: 0, width: 0, height: 0 },
+    })),
   };
 };
 

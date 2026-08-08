@@ -4,8 +4,10 @@ import {
   createDetectionTracker,
   initialTrackerState,
   iou,
+  predictBox,
   stepTracker,
   tracksSeenAt,
+  type Track,
   type TrackerConfig,
 } from "@/lib/detectionTracker";
 
@@ -409,6 +411,96 @@ describe("stepTracker", () => {
     expect(stepped.identified[1].id).toBe(t2Id);
     // Both tracks matched: nothing coasting, nothing minted.
     expect(stepped.state.tracks).toHaveLength(2);
+  });
+
+  it("keeps a steadily moving object's id across a missed scan by extrapolating its motion", () => {
+    // A vehicle crossing at 0.09 frame-widths per second, seen at 0 s and 1 s
+    // (learning its velocity), missed at 2 s, seen again at 3.5 s. By then it
+    // has moved 0.225: essentially no overlap with the box where it was last
+    // seen, so matching against the stale box mints a fresh id. Matching
+    // against the box extrapolated per elapsed millisecond lands on it. A
+    // per-result velocity fails here too: it would predict one result's worth
+    // of motion (0.09) across a 2.5 s gap and still miss the overlap gate.
+    let state = initialTrackerState();
+    const first = stepTracker(
+      state,
+      [detection({ box: box(0.1, 0.4, 0.3, 0.6) })],
+      config,
+      0,
+    );
+    state = first.state;
+    state = stepTracker(
+      state,
+      [detection({ box: box(0.19, 0.4, 0.39, 0.6) })],
+      config,
+      1_000,
+    ).state;
+    state = stepTracker(state, [], config, 2_000).state;
+    const reacquired = stepTracker(
+      state,
+      [detection({ box: box(0.415, 0.4, 0.615, 0.6) })],
+      config,
+      3_500,
+    );
+    expect(reacquired.identified[0].id).toBe(first.identified[0].id);
+    expect(reacquired.state.tracks).toHaveLength(1);
+  });
+
+  it("does not invent motion for an object seen only once", () => {
+    // Guard on the prediction branch: a newborn track has no velocity yet, so
+    // its predicted box is the box it was seen in, and a far detection still
+    // mints its own id instead of being pulled in.
+    let state = initialTrackerState();
+    const first = stepTracker(
+      state,
+      [detection({ box: box(0.1, 0.4, 0.3, 0.6) })],
+      config,
+      0,
+    );
+    state = first.state;
+    const far = stepTracker(
+      state,
+      [detection({ box: box(0.5, 0.4, 0.7, 0.6) })],
+      config,
+      1_000,
+    );
+    expect(far.identified[0].id).not.toBe(first.identified[0].id);
+  });
+});
+
+describe("predictBox", () => {
+  const track = (overrides: Partial<Track>): Track => ({
+    id: "id-track",
+    color: "#123456",
+    label: "vehicle",
+    score: 0.9,
+    box: box(0.4, 0.4, 0.6, 0.6),
+    lastSeenAt: 0,
+    velocity: { centerX: 0, centerY: 0, width: 0, height: 0 },
+    ...overrides,
+  });
+
+  it("extrapolates center and size per elapsed millisecond", () => {
+    const predicted = predictBox(
+      track({
+        velocity: { centerX: 0.0001, centerY: 0, width: 0.00004, height: 0 },
+      }),
+      2_000,
+    );
+    // Center moves 0.2 right; width grows 0.08, split across both edges.
+    expect(predicted.xmin).toBeCloseTo(0.56);
+    expect(predicted.xmax).toBeCloseTo(0.84);
+    expect(predicted.ymin).toBeCloseTo(0.4);
+    expect(predicted.ymax).toBeCloseTo(0.6);
+  });
+
+  it("clamps a shrinking box at zero size instead of inverting", () => {
+    const predicted = predictBox(
+      track({ velocity: { centerX: 0, centerY: 0, width: -0.001, height: 0 } }),
+      1_000,
+    );
+    expect(predicted.xmax - predicted.xmin).toBe(0);
+    expect(predicted.xmax).toBeCloseTo(0.5);
   });
 });
 
