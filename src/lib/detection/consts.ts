@@ -1,3 +1,5 @@
+import { IOU_MATCH_THRESHOLD } from "@/lib/detectionTracker";
+
 /**
  * Detections below this score are discarded: the operating point the shipping
  * checkpoint's release notes measured precision and recall at, rounded to the
@@ -24,11 +26,13 @@ export const NORMALIZED_CLASSES: Readonly<Record<string, string>> = {
 
 /**
  * Minimum IoU at which two same-class boxes in one frame count as one object.
- * Higher than the tracker's cross-frame match floor on purpose: two real
- * vehicles side by side can overlap moderately, while a double-fired query
- * pair sits almost on top of itself.
+ * Exactly the tracker's cross-frame match floor, and the equality is
+ * load-bearing: a duplicate that survives dedupe but overlaps above the match
+ * floor spawns a parallel track the next frames alternate between, flipping
+ * the object's id and color. Whatever the tracker would call "the same object
+ * moved" across frames must read as one object within a frame.
  */
-export const DUPLICATE_IOU_THRESHOLD = 0.5;
+export const DUPLICATE_IOU_THRESHOLD = IOU_MATCH_THRESHOLD;
 
 /**
  * Own-hood geometry, all fractions of the scanned region (never the full

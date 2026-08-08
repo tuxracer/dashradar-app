@@ -144,6 +144,17 @@ describe("enrichDetections", () => {
     });
   });
 
+  it("collapses a duplicate pair at any overlap the tracker calls one object", () => {
+    // IoU ~0.44 here: for the alternation bug to exist at all, the pair must
+    // overlap above the tracker's cross-frame match floor, so the dedupe floor
+    // has to sit exactly there, not at a higher round number.
+    const result = enrichDetections([
+      { label: "car", score: 0.9, box: box(0.4, 0.5, 0.6, 0.8) },
+      { label: "truck", score: 0.8, box: box(0.47, 0.52, 0.67, 0.82) },
+    ]);
+    expect(result).toHaveLength(1);
+  });
+
   it("keeps same-class neighbors whose boxes only brush each other", () => {
     // Two real cars side by side overlap a little; only near-coincident boxes
     // are the double-fired pair the dedupe exists for.
