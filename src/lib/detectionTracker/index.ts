@@ -81,9 +81,37 @@ export const predictBox = (track: Track, atMs: number): NormalizedBox => {
 };
 
 /**
- * One frame of the coasting tracker: match this frame's detections to same-class
- * tracks by IoU, show every detection immediately, and coast an unmatched track
- * for up to `maxCoastMs` so its box does not flicker off through a brief miss.
+ * How well a detection fits a track: the stronger of two signals, overlap
+ * with the track's predicted box and nearness to its center. Overlap is the
+ * precise signal, but a second of displacement can leave the true match with
+ * little or none, and an IoU of 0 cannot even rank the closer of two
+ * candidates; nearness, scaled by box size, keeps the score informative
+ * there. Taking the max keeps both in [0, 1] under one threshold.
+ */
+const pairScore = (
+  predicted: NormalizedBox,
+  detection: NormalizedBox,
+  config: TrackerConfig,
+): number => {
+  const overlap = iou(predicted, detection);
+  const p = boxGeometry(predicted);
+  const d = boxGeometry(detection);
+  const distance = Math.hypot(d.centerX - p.centerX, d.centerY - p.centerY);
+  const scale =
+    (Math.hypot(p.width, p.height) + Math.hypot(d.width, d.height)) / 2;
+  const reach = config.proximityRadiusDiagonals * scale;
+  const proximity =
+    reach > 0
+      ? config.proximityScoreCeiling * Math.max(0, 1 - distance / reach)
+      : 0;
+  return Math.max(overlap, proximity);
+};
+
+/**
+ * One frame of the coasting tracker: match this frame's detections to
+ * same-class tracks by pair score, show every detection immediately, and coast
+ * an unmatched track for up to `maxCoastMs` so its box does not flicker off
+ * through a brief miss.
  * `identified` is the input detections in order, each carrying the id of the
  * track it matched or the fresh one it spawned; `tracks` adds the coasted set.
  */
@@ -117,7 +145,7 @@ export const stepTracker = (
       if (tracks[t].label !== detections[d].label) {
         continue;
       }
-      const score = iou(predicted[t], detections[d].box);
+      const score = pairScore(predicted[t], detections[d].box, config);
       if (score >= config.iouMatchThreshold) {
         candidates.push({ trackIndex: t, detectionIndex: d, score });
       }

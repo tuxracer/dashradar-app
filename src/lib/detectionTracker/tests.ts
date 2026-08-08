@@ -30,6 +30,8 @@ const testConfig = (): TrackerConfig => {
   let minted = 0;
   return {
     iouMatchThreshold: 0.3,
+    proximityScoreCeiling: 0.6,
+    proximityRadiusDiagonals: 2,
     maxCoastMs: 2_500,
     scoreSmoothingAlpha: 0.5,
     mintId: () => `id-${(minted += 1)}`,
@@ -444,6 +446,51 @@ describe("stepTracker", () => {
     );
     expect(reacquired.identified[0].id).toBe(first.identified[0].id);
     expect(reacquired.state.tracks).toHaveLength(1);
+  });
+
+  it("keeps a closing vehicle's id when its box balloons between scans", () => {
+    // A vehicle being approached head-on: same center, but its box doubles in
+    // each dimension across one scan gap. The IoU of the two boxes is 0.25,
+    // under the match threshold, so overlap alone would mint a fresh id for
+    // the same car. Dead-center nearness carries the match instead.
+    let state = initialTrackerState();
+    const first = stepTracker(
+      state,
+      [detection({ box: box(0.4, 0.4, 0.6, 0.6) })],
+      config,
+      0,
+    );
+    state = first.state;
+    const closed = stepTracker(
+      state,
+      [detection({ box: box(0.3, 0.3, 0.7, 0.7) })],
+      config,
+      FLOOR_CADENCE_MS,
+    );
+    expect(closed.identified[0].id).toBe(first.identified[0].id);
+    expect(closed.state.tracks).toHaveLength(1);
+  });
+
+  it("keeps an id across a displacement that leaves no overlap at all", () => {
+    // Displaced by exactly one box width: zero overlap, but the boxes stand
+    // shoulder to shoulder. IoU scores this 0, indistinguishable from a
+    // detection across the frame; the nearness term ranks and matches it.
+    let state = initialTrackerState();
+    const first = stepTracker(
+      state,
+      [detection({ box: box(0.4, 0.4, 0.6, 0.6) })],
+      config,
+      0,
+    );
+    state = first.state;
+    const shifted = stepTracker(
+      state,
+      [detection({ box: box(0.6, 0.4, 0.8, 0.6) })],
+      config,
+      FLOOR_CADENCE_MS,
+    );
+    expect(shifted.identified[0].id).toBe(first.identified[0].id);
+    expect(shifted.state.tracks).toHaveLength(1);
   });
 
   it("does not invent motion for an object seen only once", () => {

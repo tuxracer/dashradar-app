@@ -28,8 +28,21 @@ export type TrackerState = {
 };
 
 export type TrackerConfig = {
-  /** Minimum IoU for a detection to match an existing track. */
+  /** Minimum pair score (see `pairScore`) for a detection to match a track. */
   iouMatchThreshold: number;
+  /**
+   * Score a detection earns sitting exactly on a track's predicted center
+   * with no overlap evidence, in (0, 1]. Kept below 1 so real overlap always
+   * outranks bare nearness; kept above the match threshold so nearness alone
+   * can carry a match once displacement has killed the overlap.
+   */
+  proximityScoreCeiling: number;
+  /**
+   * Center distance at which nearness stops scoring, in average box
+   * diagonals. Size-relative on purpose: a one-box-width miss is a rounding
+   * error on a close vehicle and a different object on a distant one.
+   */
+  proximityRadiusDiagonals: number;
   /** Elapsed ms since a track's last match it may coast before being dropped. */
   maxCoastMs: number;
   /**
