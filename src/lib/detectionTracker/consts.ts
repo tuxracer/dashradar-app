@@ -1,3 +1,4 @@
+import randomColor from "randomcolor";
 import type { TrackerConfig } from "./types";
 
 /**
@@ -29,4 +30,7 @@ export const DEFAULT_TRACKER_CONFIG: TrackerConfig = {
   maxCoastMs: MAX_COAST_MS,
   scoreSmoothingAlpha: SCORE_SMOOTHING_ALPHA,
   mintId: () => crypto.randomUUID(),
+  // Seeded with the id, so an object's color is a function of its identity
+  // rather than a second piece of state; bright reads on the dark HUD.
+  mintColor: (id) => randomColor({ seed: id, luminosity: "bright" }),
 };

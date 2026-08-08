@@ -15,6 +15,7 @@ import {
 /** A police track whose box is centered and 100 px tall in the test frame. */
 const track = (overrides: Partial<Track> = {}): Track => ({
   id: "track-1",
+  color: "#00ff00",
   label: "police",
   score: 0.9,
   box: { xmin: 0.45, ymin: 0.4, xmax: 0.55, ymax: 0.5 },

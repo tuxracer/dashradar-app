@@ -31,6 +31,7 @@ const testConfig = (): TrackerConfig => {
     maxCoastMs: 2_500,
     scoreSmoothingAlpha: 0.5,
     mintId: () => `id-${(minted += 1)}`,
+    mintColor: (id) => `color-${id}`,
   };
 };
 
@@ -445,9 +446,29 @@ describe("createDetectionTracker", () => {
     expect(fresh?.id).not.toBe(first.id);
   });
 
-  it("mints distinct string ids under the default config", () => {
+  it("keeps an object's color with its id and gives a newcomer its own", () => {
+    const tracker = createDetectionTracker(testConfig());
+    const first = tracker.update(
+      [detection({ box: box(0.4, 0.5, 0.6, 0.8) })],
+      0,
+    );
+    const again = tracker.update(
+      [
+        detection({ box: box(0.42, 0.52, 0.62, 0.82) }),
+        detection({ box: box(0.0, 0.0, 0.1, 0.1) }),
+      ],
+      FLOOR_CADENCE_MS,
+    );
+    // The re-detected object carries the color minted at its first sighting;
+    // the newcomer's differs because its id does.
+    expect(again.identified[0].color).toBe(first.identified[0].color);
+    expect(again.identified[1].color).not.toBe(first.identified[0].color);
+  });
+
+  it("mints distinct string ids and real CSS colors under the default config", () => {
     // The default mint is the platform GUID; what matters here is that two
-    // objects never share one, not what the string looks like.
+    // objects never share one, not what the string looks like. The color is
+    // asserted by shape because it goes straight into CSS.
     const tracker = createDetectionTracker();
     const { identified } = tracker.update(
       [
@@ -458,5 +479,6 @@ describe("createDetectionTracker", () => {
     );
     expect(identified[0].id).toEqual(expect.any(String));
     expect(identified[0].id).not.toBe(identified[1].id);
+    expect(identified[0].color).toMatch(/^#[0-9a-f]{6}$/i);
   });
 });

@@ -26,4 +26,6 @@ export type TrackerConfig = {
   scoreSmoothingAlpha: number;
   /** Mints the id a brand-new track is born with. */
   mintId: () => string;
+  /** Mints a new track's color from its just-minted id. */
+  mintColor: (id: string) => string;
 };

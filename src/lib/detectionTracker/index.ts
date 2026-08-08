@@ -105,13 +105,16 @@ export const stepTracker = (
     if (matched >= 0) {
       // The raw score, not the track's eased one: identity is the only
       // enrichment here, and smoothing stays a presentation concern.
-      identified.push({ ...detection, id: tracks[matched].id });
+      const { id, color } = tracks[matched];
+      identified.push({ ...detection, id, color });
       continue;
     }
     const id = config.mintId();
-    identified.push({ ...detection, id });
+    const color = config.mintColor(id);
+    identified.push({ ...detection, id, color });
     nextTracks.push({
       id,
+      color,
       label: detection.label,
       score: detection.score,
       box: detection.box,

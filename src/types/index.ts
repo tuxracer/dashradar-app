@@ -49,4 +49,7 @@ export type IdentifiedDetection = Detection & {
    * object still there.
    */
   id: string;
+  /** CSS color minted with the id, telling this object apart from its
+   * neighbors anywhere identity is drawn. */
+  color: string;
 };

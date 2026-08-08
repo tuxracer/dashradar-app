@@ -11,6 +11,7 @@ const identity = (detections: Detection[]) => {
   const identified = detections.map((detection, index) => ({
     ...detection,
     id: `det-${index}`,
+    color: `color-${index}`,
   }));
   return {
     detections: identified,
