@@ -49,6 +49,11 @@ describe("matchPlacedKind", () => {
     expect(matchPlacedKind("")).toBeUndefined();
   });
 
+  it("carries the track's color onto the placement", () => {
+    const placement = placeTrack(track(), frame, F_PX);
+    expect(placement?.color).toBe("#00ff00");
+  });
+
   it("places the normalized vehicle class with the car glyph", () => {
     // "car" and "truck" surface as "vehicle" upstream, so this term is what
     // keeps folded vehicles on the scene at all.

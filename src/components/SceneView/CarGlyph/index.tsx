@@ -179,20 +179,25 @@ const PoliceLightbar = ({
  * the wheels define it; tucking them inside hides them at any real range.
  *
  * Police get the black-and-white livery and the lightbar, which is what a driver
- * recognizes a patrol car by. The white panels go where the chase camera looks.
+ * recognizes a patrol car by; livery always beats `color`, since tinting a
+ * patrol car would erase the one thing the glyph exists to say. The white
+ * panels go where the chase camera looks.
  */
 export const CarGlyph = ({
   police,
+  color: bodyColor,
   width,
   height,
   length,
 }: {
   police?: boolean;
+  /** Body paint, the object's minted identity color; default plain gray. */
+  color?: string;
   width: number;
   height: number;
   length: number;
 }) => {
-  const color = police ? POLICE_BODY_COLOR : CAR_COLOR;
+  const color = police ? POLICE_BODY_COLOR : (bodyColor ?? CAR_COLOR);
 
   return (
     <>

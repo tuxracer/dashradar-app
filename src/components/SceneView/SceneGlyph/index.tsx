@@ -15,16 +15,20 @@ import { TruckGlyph } from "../TruckGlyph";
  */
 export const SceneGlyph = ({
   kind,
+  color,
   elevationM,
 }: {
   kind: PlacedKind;
+  /** The object's minted identity color; only the plain car wears it, since
+   * every other kind's colors are its silhouette's vocabulary. */
+  color?: string;
   elevationM: number;
 }): ReactElement => {
   switch (kind) {
     case "police":
       return <CarGlyph police width={1.9} height={1.6} length={5} />;
     case "car":
-      return <CarGlyph width={1.8} height={1.45} length={4.6} />;
+      return <CarGlyph color={color} width={1.8} height={1.45} length={4.6} />;
     case "truck":
       return <TruckGlyph width={2.1} height={2.5} length={6.5} />;
     case "bus":

@@ -33,6 +33,8 @@ export type HeightPrior = {
 export type ScenePlacement = {
   /** The source track's stable id, for keying scene objects across frames. */
   id: string;
+  /** The track's minted color, so a glyph can wear its object's identity. */
+  color: string;
   /** Kind resolved from the label via the height priors. */
   kind: PlacedKind;
   /** The detection label as the model produced it. */

@@ -76,6 +76,7 @@ export const placeTrack = (
   const xM = (zM * cxPx) / fPx;
   return {
     id: track.id,
+    color: track.color,
     kind: prior.kind,
     label: track.label,
     score: track.score,

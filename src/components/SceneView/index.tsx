@@ -344,7 +344,11 @@ const SceneGlyphs = ({
             }
           }}
         >
-          <SceneGlyph kind={placement.kind} elevationM={placement.elevationM} />
+          <SceneGlyph
+            kind={placement.kind}
+            color={placement.color}
+            elevationM={placement.elevationM}
+          />
         </group>
       ))}
     </group>
