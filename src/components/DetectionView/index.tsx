@@ -1,11 +1,7 @@
 import type { ZoomLevel } from "@/workers/detection/types";
 import type { Size } from "@/lib/detection";
-import {
-  mapBoxToViewport,
-  scanRegionBox,
-  DETECTION_COLOR,
-} from "@/lib/detection";
-import type { Detection } from "@/types";
+import { mapBoxToViewport, scanRegionBox } from "@/lib/detection";
+import type { IdentifiedDetection } from "@/types";
 
 type DetectionViewProps = {
   /**
@@ -13,7 +9,7 @@ type DetectionViewProps = {
    * coordinates. Boxes vanish on the first scan that stops seeing them: this
    * shows the model's own output, not the coasted tracks the meter reads.
    */
-  detections: Detection[];
+  detections: IdentifiedDetection[];
   /** Intrinsic size of the frame the detections were computed on. */
   frame: Size;
   /** Current viewport size, which the feed fits into with object-fit: contain. */
@@ -52,15 +48,13 @@ export const DetectionView = ({
           height: Math.round(region.height),
         }}
       />
-      {detections.map((detection, index) => {
+      {detections.map((detection) => {
         const drawn = mapBoxToViewport(detection.box, frame, viewport);
         return (
           <div
-            // The list is rebuilt whole on every scan and holds no state, so
-            // the index is a stable key here. A key built from the label and
-            // the box collides when two boxes of one class both clamp to a
-            // frame edge.
-            key={index}
+            // The object's identity, so a box that persists across scans keeps
+            // its DOM node even as the list reorders around it.
+            key={detection.id}
             data-testid="detection-box"
             className="absolute border-2"
             style={{
@@ -68,12 +62,12 @@ export const DetectionView = ({
               top: Math.round(drawn.top),
               width: Math.round(drawn.width),
               height: Math.round(drawn.height),
-              borderColor: DETECTION_COLOR,
+              borderColor: detection.color,
             }}
           >
             <span
               className="absolute left-0 top-full whitespace-nowrap bg-surface/80 px-1 text-sm font-semibold uppercase tracking-[0.08em]"
-              style={{ color: DETECTION_COLOR }}
+              style={{ color: detection.color }}
             >
               {detection.label} {Math.round(detection.score * 100)}%
             </span>

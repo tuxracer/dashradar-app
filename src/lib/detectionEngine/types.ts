@@ -103,7 +103,7 @@ export type IdentifiedDetections = {
  * whatever the video element measures a second later after a rotation.
  */
 export type ScanResult = {
-  detections: Detection[];
+  detections: IdentifiedDetection[];
   /** The coasted tracker output with stable ids, what the scene view places. */
   tracks: Track[];
   /** Intrinsic size of the captured frame, in pixels. */

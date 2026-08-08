@@ -1,10 +1,16 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { DetectionView } from "@/components/DetectionView";
-import type { Detection } from "@/types";
+import type { IdentifiedDetection } from "@/types";
 import { ZOOM_2X, ZOOM_OFF } from "@/workers/detection/consts";
 
-const detection = (overrides: Partial<Detection> = {}): Detection => ({
+let minted = 0;
+/** Unique id per call, the way the tracker guarantees them within a frame. */
+const detection = (
+  overrides: Partial<IdentifiedDetection> = {},
+): IdentifiedDetection => ({
+  id: `det-${(minted += 1)}`,
+  color: "rgb(0, 255, 0)",
   label: "police",
   score: 0.87,
   box: { xmin: 0.4, ymin: 0.5, xmax: 0.6, ymax: 0.8 },
@@ -87,12 +93,13 @@ describe("DetectionView", () => {
     expect(screen.getByTestId("scan-region")).toBeInTheDocument();
   });
 
-  it("draws every box in one color", () => {
+  it("draws each box and its label in the detection's own color", () => {
     render(
       <DetectionView
         detections={[
-          detection({}),
+          detection({ color: "rgb(255, 0, 0)" }),
           detection({
+            color: "rgb(0, 0, 255)",
             box: { xmin: 0.1, ymin: 0.1, xmax: 0.2, ymax: 0.2 },
           }),
         ]}
@@ -102,8 +109,10 @@ describe("DetectionView", () => {
       />,
     );
     const [first, second] = screen.getAllByTestId("detection-box");
-    expect(first.style.borderColor).not.toBe("");
-    expect(second.style.borderColor).toBe(first.style.borderColor);
+    expect(first.style.borderColor).toBe("rgb(255, 0, 0)");
+    expect(second.style.borderColor).toBe("rgb(0, 0, 255)");
+    // The label chip follows its box, so the pair reads as one object.
+    expect(first.querySelector("span")?.style.color).toBe("rgb(255, 0, 0)");
   });
 
   it("gives two boxes clamped to the same corner distinct keys", () => {
