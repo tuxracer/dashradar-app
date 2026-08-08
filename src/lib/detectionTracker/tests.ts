@@ -351,6 +351,65 @@ describe("stepTracker", () => {
     expect(stepped.state.tracks).toHaveLength(2);
     expect(stepped.tracks).toHaveLength(2);
   });
+
+  it("gives a contested track to the best-fitting detection, not the first-listed one", () => {
+    // One track, two same-class detections both above the gate, the weaker
+    // fit listed first. Claiming in detection order hands the track (and its
+    // id) to whichever detection the model happened to emit first; claiming
+    // the best pair first keeps the id with the stronger fit.
+    let state = initialTrackerState();
+    const first = stepTracker(
+      state,
+      [detection({ box: box(0.4, 0.4, 0.6, 0.6) })],
+      config,
+      0,
+    );
+    state = first.state;
+    const stepped = stepTracker(
+      state,
+      [
+        detection({ box: box(0.45, 0.45, 0.65, 0.65) }), // IoU ~0.39
+        detection({ box: box(0.41, 0.41, 0.61, 0.61) }), // IoU ~0.82
+      ],
+      config,
+      FLOOR_CADENCE_MS,
+    );
+    expect(stepped.identified[1].id).toBe(first.identified[0].id);
+    expect(stepped.identified[0].id).not.toBe(first.identified[0].id);
+  });
+
+  it("assigns contested tracks as a whole instead of letting an early detection force a swap", () => {
+    // Two adjacent tracks. D0 overlaps both, fitting T2 a little better than
+    // T1; D1 fits T2 strongly and T1 below the gate. Detection order lets D0
+    // take T2 first, which orphans D1 into a fresh id and coasts T1 unmatched:
+    // one real match dressed as a swap plus a phantom newcomer. Best pair
+    // first settles both correctly: D1 keeps T2, D0 keeps T1.
+    let state = initialTrackerState();
+    const first = stepTracker(
+      state,
+      [
+        detection({ box: box(0.1, 0.1, 0.3, 0.3) }), // T1
+        detection({ box: box(0.24, 0.1, 0.44, 0.3) }), // T2
+      ],
+      config,
+      0,
+    );
+    state = first.state;
+    const [t1Id, t2Id] = [first.identified[0].id, first.identified[1].id];
+    const stepped = stepTracker(
+      state,
+      [
+        detection({ box: box(0.18, 0.1, 0.38, 0.3) }), // T1 ~0.43, T2 ~0.54
+        detection({ box: box(0.25, 0.1, 0.45, 0.3) }), // T1 ~0.14, T2 ~0.90
+      ],
+      config,
+      FLOOR_CADENCE_MS,
+    );
+    expect(stepped.identified[0].id).toBe(t1Id);
+    expect(stepped.identified[1].id).toBe(t2Id);
+    // Both tracks matched: nothing coasting, nothing minted.
+    expect(stepped.state.tracks).toHaveLength(2);
+  });
 });
 
 describe("tracksSeenAt", () => {

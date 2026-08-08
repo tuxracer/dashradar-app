@@ -44,34 +44,45 @@ export const stepTracker = (
   tracks: Track[];
 } => {
   const { tracks } = state;
-  const claimed = new Array<boolean>(tracks.length).fill(false);
-  const matchedDetByTrack = new Map<number, Detection>();
-  /** Index of the track each detection matched, aligned with `detections`. */
-  const matchByDetection: number[] = [];
 
-  for (const detection of detections) {
-    let bestIndex = -1;
-    let bestIou = -1;
-    for (let i = 0; i < tracks.length; i += 1) {
+  // Every viable track/detection pair, scored up front, then claimed from the
+  // strongest pair down. Greedy-in-detection-order let an early detection take
+  // a track a later detection fit better, and that misassignment gets more
+  // likely as the scan gap grows and boxes drift apart between results.
+  const candidates: Array<{
+    trackIndex: number;
+    detectionIndex: number;
+    score: number;
+  }> = [];
+  for (let t = 0; t < tracks.length; t += 1) {
+    for (let d = 0; d < detections.length; d += 1) {
       // Same class only: identity means the same object still there, and an
       // object does not change class. A different-class box in the same place
       // is a new contact, not this one relabeled.
-      if (claimed[i] || tracks[i].label !== detection.label) {
+      if (tracks[t].label !== detections[d].label) {
         continue;
       }
-      const value = iou(tracks[i].box, detection.box);
-      if (value > bestIou) {
-        bestIou = value;
-        bestIndex = i;
+      const score = iou(tracks[t].box, detections[d].box);
+      if (score >= config.iouMatchThreshold) {
+        candidates.push({ trackIndex: t, detectionIndex: d, score });
       }
     }
-    if (bestIndex >= 0 && bestIou >= config.iouMatchThreshold) {
-      claimed[bestIndex] = true;
-      matchedDetByTrack.set(bestIndex, detection);
-      matchByDetection.push(bestIndex);
-    } else {
-      matchByDetection.push(-1);
+  }
+  candidates.sort((a, b) => b.score - a.score);
+
+  const trackClaimed = new Array<boolean>(tracks.length).fill(false);
+  const detectionClaimed = new Array<boolean>(detections.length).fill(false);
+  const matchedDetByTrack = new Map<number, Detection>();
+  /** Index of the track each detection matched, aligned with `detections`. */
+  const matchByDetection = new Array<number>(detections.length).fill(-1);
+  for (const { trackIndex, detectionIndex } of candidates) {
+    if (trackClaimed[trackIndex] || detectionClaimed[detectionIndex]) {
+      continue;
     }
+    trackClaimed[trackIndex] = true;
+    detectionClaimed[detectionIndex] = true;
+    matchByDetection[detectionIndex] = trackIndex;
+    matchedDetByTrack.set(trackIndex, detections[detectionIndex]);
   }
 
   const nextTracks: Track[] = [];
