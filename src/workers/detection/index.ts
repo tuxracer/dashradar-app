@@ -2,6 +2,7 @@
 // The /webgpu subpath is deliberate: the root import's JSEP kernels have no
 // TopK, which parks this graph's TopK on CPU and makes graph capture impossible.
 import { env, InferenceSession, Tensor } from "onnxruntime-web/webgpu";
+import { isWebKitUa } from "@/lib/browserEngine";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 import {
   BUILT_IN_MODELS,
@@ -383,7 +384,9 @@ const createModel = async (
   };
   let captureError: string | undefined;
   let io: SessionIo | undefined;
-  if (WEBGPU_GRAPH_CAPTURE) {
+  // WebKit runs a plain session: capture measures no faster on an iPhone, so
+  // there is no win to weigh against the iOS crashes (see the flag's doc).
+  if (WEBGPU_GRAPH_CAPTURE && !isWebKitUa(navigator.userAgent)) {
     try {
       io = await createCaptureModel(weights, releaseWeights);
     } catch (error) {

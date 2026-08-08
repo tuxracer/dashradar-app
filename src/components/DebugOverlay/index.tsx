@@ -19,7 +19,8 @@ type DebugOverlayProps = {
 
 /**
  * Whether the session runs with graph capture. "disabled" means no attempt was
- * made; "failed" means it fell back, with `graphCaptureError` saying why.
+ * made (the flag is off, or the engine is WebKit, which skips it); "failed"
+ * means it fell back, with `graphCaptureError` saying why.
  */
 const captureSupport = (probe: BackendProbe | undefined): string => {
   if (!probe) {

@@ -24,14 +24,17 @@ The crashes are intermittent: sometimes the app scans for a long time without on
 | -------------------------------------- | ---------------------------------------------------------------------------------------- |
 | Per-scan wasm heap growth              | Measured flat at 127.4 MiB across long sessions and in the dying session's last heartbeat |
 | App-side ImageBitmap leak              | The engine counts every owned bitmap; the count was 0 at every kill                       |
-| WebGPU graph capture                   | Crashes landed with capture on and off alike; a WebKit exclusion changed nothing and has since been retired (capture is attempted everywhere again, and every crash report carries a `graphCapture` tag to catch any future correlation) |
+| WebGPU graph capture                   | Ruled out for the July cluster only: those crashes landed with capture on and off alike. See the note below, which reopens it |
 | GPU process memory                     | ~130 MiB at the moment WebContent died at 2.0 GiB                                         |
 | The worker recycle path                | Every crash so far had zero recycles and a worker 11 to 17 seconds old                    |
 | One specific view                      | Kills recorded under both the radar dial and the 3D scene                                 |
 | Thermal or pacing degradation          | Round trips stay flat right up to the kill; a thermal death slows down first              |
 
+Graph capture is the one entry above that later came back. It was excluded on WebKit, cleared by the table, re-enabled everywhere, and then crash volume on iPhone went up, which is why it is excluded again. The correlation is unconfirmed and the earlier finding still stands, so treat this as a precaution rather than a diagnosis: capture measures no faster on an iPhone, so turning it off there costs nothing and removes a variable from every crash report that follows.
+
 ## Mitigations shipped
 
+- **Graph capture disabled on WebKit.** Reduces what an iPhone session does, at no measured round-trip cost. If crash volume drops back, capture is a real suspect; if it does not, this exclusion has isolated the question and can be judged on its own.
 - **Worker terminated on `pagehide`.** WebKit reuses one WebContent process across same-site reloads and reclaims a departed page's worker (its wasm memory, ONNX session, GPU handles) lazily at best, so each reload stacked a dead page's residue onto the process. Terminating before departure hands that memory back deterministically; a bfcache restore reactivates the engine. This targets the leading hypothesis below.
 - **Periodic worker recycle** (pre-existing): the worker is rebuilt every 15 minutes to bound native memory growth within one session.
 

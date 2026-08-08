@@ -26,9 +26,11 @@ export const DEV_MODEL_CACHE_NAME = "model-cache-dev";
  * has no TopK kernel, so this graph's TopK lands on CPU and fails capture's
  * all-nodes-partitioned check everywhere.
  *
- * Attempted on every engine, WebKit included, though it buys no round trip there
- * unlike the large Chromium Android win. Don't reintroduce a WebKit skip; the
- * sentinel's `graphCapture` tag is what would show a correlation if one appears.
+ * WebKit never attempts it (`isWebKitUa`, checked in `createModel`), so the
+ * overlay row reads "disabled" there. Measured iPhone round trips are the same
+ * either way, so the skip costs nothing but a user-agent branch, and iPhone
+ * crash volume rose when capture was last attempted there. Lifting it again
+ * needs a measured WebKit speedup, not just the absence of a correlation.
  */
 export const WEBGPU_GRAPH_CAPTURE = true;
 
