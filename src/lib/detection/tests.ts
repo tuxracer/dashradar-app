@@ -101,6 +101,29 @@ describe("enrichDetections", () => {
     expect(result).toHaveLength(0);
   });
 
+  it("folds car and truck into the one vehicle class, case-insensitively", () => {
+    const result = enrichDetections([
+      { label: "car", score: 0.9, box: box(0.1, 0.1, 0.3, 0.3) },
+      { label: "Truck", score: 0.9, box: box(0.5, 0.5, 0.7, 0.7) },
+    ]);
+    expect(result.map((detection) => detection.label)).toEqual([
+      "vehicle",
+      "vehicle",
+    ]);
+  });
+
+  it("leaves labels outside the fold untouched, including near misses", () => {
+    const result = enrichDetections([
+      { label: "police", score: 0.9, box: box(0.1, 0.1, 0.3, 0.3) },
+      // Exact match only: a custom checkpoint's compound name keeps its word.
+      { label: "fire truck", score: 0.9, box: box(0.5, 0.5, 0.7, 0.7) },
+    ]);
+    expect(result.map((detection) => detection.label)).toEqual([
+      "police",
+      "fire truck",
+    ]);
+  });
+
   it("drops a hood-shaped box when given the scan region, keeps it without", () => {
     // A landscape frame's centered square region, the world the model saw.
     const region = scanRegionBox({ width: 1280, height: 720 });

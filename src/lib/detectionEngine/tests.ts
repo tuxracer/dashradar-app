@@ -1349,7 +1349,7 @@ describe("the frame pump", () => {
     // detection never reaches the overlay, and the frame geometry is the
     // captured bitmap's own.
     expect(engine.getSnapshot().scan).toMatchObject({
-      detections: [{ label: "car" }],
+      detections: [{ label: "vehicle" }],
       frame: { width: 1280 },
       zoom: ZOOM_OFF,
     });
@@ -1390,6 +1390,25 @@ describe("the frame pump", () => {
     ]);
     expect(tracks[0].id).toBe(firstTrack.id);
     expect(tracks[1].id).not.toBe(firstTrack.id);
+  });
+
+  it("keeps one id through a car/truck label flicker on a still vehicle", async () => {
+    const { engine, worker } = await scanning();
+    worker.emit({ type: "detections", detections: [car], timing });
+    const [firstTrack] = engine.getSnapshot().scan?.tracks ?? [];
+    await vi.advanceTimersByTimeAsync(MIN_FRAME_INTERVAL_MS);
+    // The same box comes back labeled "truck": the model wavering, not a new
+    // vehicle. Both fold to the one normalized class, so the class-gated
+    // matcher keeps the track instead of minting a fresh id per flicker.
+    worker.emit({
+      type: "detections",
+      detections: [{ ...car, label: "truck" }],
+      timing,
+    });
+    const tracks = engine.getSnapshot().scan?.tracks ?? [];
+    expect(tracks).toHaveLength(1);
+    expect(tracks[0].id).toBe(firstTrack.id);
+    expect(tracks[0].label).toBe("vehicle");
   });
 
   it("ignores the driver's own hood everywhere a detection counts", async () => {
@@ -1437,7 +1456,7 @@ describe("the frame pump", () => {
     // One emission per completed scan, already confidence-filtered, and
     // without identity: that is the derived stream's job.
     expect(emissions).toHaveLength(1);
-    expect(emissions[0].detections).toMatchObject([{ label: "car" }]);
+    expect(emissions[0].detections).toMatchObject([{ label: "vehicle" }]);
     expect("id" in emissions[0].detections[0]).toBe(false);
     // A skip publishes nothing here either: a frame that did not change
     // cannot have changed what the last one found.

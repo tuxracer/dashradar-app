@@ -48,6 +48,12 @@ describe("matchPlacedKind", () => {
     expect(matchPlacedKind("dog")).toBeUndefined();
     expect(matchPlacedKind("")).toBeUndefined();
   });
+
+  it("places the normalized vehicle class with the car glyph", () => {
+    // "car" and "truck" surface as "vehicle" upstream, so this term is what
+    // keeps folded vehicles on the scene at all.
+    expect(matchPlacedKind("vehicle")).toBe("car");
+  });
 });
 
 describe("placeTrack", () => {

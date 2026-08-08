@@ -5,6 +5,7 @@ import { ZOOM_OFF } from "@/workers/detection/consts";
 import { centerCropRegion } from "@/workers/detection/inference";
 import {
   CONFIDENCE_THRESHOLD,
+  NORMALIZED_CLASSES,
   OWN_HOOD_MAX_BOTTOM_GAP,
   OWN_HOOD_MAX_HEIGHT,
   OWN_HOOD_MIN_WIDTH,
@@ -58,10 +59,20 @@ export const isOwnHood = (
 };
 
 /**
+ * The class a detection surfaces as: folded through NORMALIZED_CLASSES where
+ * the raw labels are one thing to us, otherwise the checkpoint's own word.
+ * Exact match on the lowercased label, so "fire truck" from a custom
+ * checkpoint keeps its name while "truck" folds.
+ */
+export const normalizeClassLabel = (label: string): string =>
+  NORMALIZED_CLASSES[label.toLowerCase()] ?? label;
+
+/**
  * Validate raw worker output and keep what clears the threshold. There is no
- * allowlist: every label the model emits is kept, whatever it is called. With a
- * `scanRegion`, boxes shaped like the camera car's own hood are dropped too,
- * whatever their class, so the driver's own car never drives the alert.
+ * allowlist: every label the model emits is kept, though it surfaces as its
+ * normalized class. With a `scanRegion`, boxes shaped like the camera car's
+ * own hood are dropped too, whatever their class, so the driver's own car
+ * never drives the alert.
  */
 export const enrichDetections = (
   raw: unknown,
@@ -79,7 +90,11 @@ export const enrichDetections = (
       return [];
     }
     return [
-      { label: candidate.label, score: candidate.score, box: candidate.box },
+      {
+        label: normalizeClassLabel(candidate.label),
+        score: candidate.score,
+        box: candidate.box,
+      },
     ];
   });
 };

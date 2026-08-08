@@ -10,6 +10,19 @@
 export const CONFIDENCE_THRESHOLD = 0.6;
 
 /**
+ * Raw labels folded into one surfaced class, keyed lowercase. The model
+ * flickers between "car" and "truck" on a single vehicle, and a label change
+ * is an identity change to the class-gated tracker, so every flicker minted a
+ * fresh id for a vehicle that never moved. Folding at enrichment means nothing
+ * downstream ever sees the raw pair: the id survives the flicker, and all
+ * class-based logic reads the normalized name.
+ */
+export const NORMALIZED_CLASSES: Readonly<Record<string, string>> = {
+  car: "vehicle",
+  truck: "vehicle",
+};
+
+/**
  * Own-hood geometry, all fractions of the scanned region (never the full
  * frame: on a landscape frame the model sees only the centered square, so a
  * hood spanning everything it can see is nowhere near full-frame width).
