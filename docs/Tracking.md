@@ -1,6 +1,6 @@
 # Tracking: object identity between scans
 
-How the app decides that a detection in this scan is the same object it saw in the previous one. The tracker lives in `src/lib/detectionTracker`, pure and unit-tested; the engine steps it once per scan and publishes the result as `scan.tracks`. This page covers what identity is used for, why the current matcher degrades at the app's scan cadence, and the order the improvements should land in.
+How the app decides that a detection in this scan is the same object it saw in the previous one. The tracker lives in `src/lib/detectionTracker`, pure and unit-tested; the engine steps it once per scan and publishes the result as `scan.tracks`. This page covers what identity is used for, how the matcher is shaped by the app's scan cadence, and the follow-ups held back until real drives demand them.
 
 ## What an id is worth
 
@@ -12,35 +12,28 @@ Alerting does not use identity. The meter, the alert ring, and the beeper read t
 
 A wrongly minted id therefore costs a glyph popping instead of gliding, a color change mid-drive, and a smoothing reset. Real costs, but presentation costs, which bounds how much machinery the problem deserves.
 
-## Why the current matcher degrades
+## What the scan cadence does to matching
 
-Matching is greedy IoU against the box where each track was last seen, gated at `IOU_MATCH_THRESHOLD`, same class only. That shape is right at video rate, where an object barely moves between frames. Thermal pacing instead spaces scans at least a second apart and up to five, and three things go wrong at that cadence:
+Thermal pacing spaces scans at least a second apart and up to five. Matching a detection to the box where its track was last seen, the natural approach at video rate, fails here in three ways, and each shaped one part of the matcher:
 
-1. **Displacement.** A vehicle with real relative speed moves far in image space in a second. Its new box overlaps its old one weakly or not at all, so the true match scores below the gate.
-2. **Zero carries no signal.** IoU of 0 says nothing about how near a miss was. Every non-overlapping candidate ties, so the matcher cannot even prefer the closer one.
-3. **Order-dependent greed.** The first detection claims its best track even when a later detection fits that track better. Ambiguity between same-class candidates grows with the gap, so the swaps this causes get more likely exactly when matching is hardest.
+1. **Displacement.** A vehicle with real relative speed moves far in image space in a second, so its new box can overlap its old one weakly or not at all.
+2. **Zero carries no signal.** An IoU of 0 says nothing about how near a miss was. Every non-overlapping candidate ties, so overlap alone cannot even prefer the closer one.
+3. **Contention.** Ambiguity between same-class candidates grows with the gap, so who-gets-matched-first ordering effects cause id swaps exactly when matching is hardest.
 
-## Matching as four slots
+## The matcher, as four slots
 
-Any matcher answers four questions, and each answer is a separable piece of the code:
+Any matcher answers four questions; each answer here is a separable piece of the code:
 
-| Slot   | Question                                | Today                   | Upgrade                                             |
-| ------ | --------------------------------------- | ----------------------- | --------------------------------------------------- |
-| Predict | Where should this track be by now?      | Its last seen box       | Constant-velocity extrapolation, per millisecond    |
-| Score  | How well does a detection fit a track?  | IoU                     | IoU of the predicted box, plus a center-distance term |
-| Gate   | When is a match good enough to accept?  | Fixed threshold         | Threshold that loosens with time since last seen    |
-| Assign | Who wins when candidates compete?       | Detection-order greedy  | Best pair first across all track/detection pairs    |
+| Slot    | Question                               | Answer                                                                                              |
+| ------- | -------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Predict | Where should this track be by now?     | Constant-velocity extrapolation of its box (`predictBox`), per millisecond of real elapsed time      |
+| Score   | How well does a detection fit a track? | The stronger of predicted-box IoU and a center-distance term scaled by box size (`pairScore`)        |
+| Gate    | When is a match good enough to accept? | The full threshold within one floor-cadence scan, relaxing linearly to a floor by the pacing cap     |
+| Assign  | Who wins when candidates compete?      | Every track/detection pair scored up front, then claimed from the strongest pair down                |
 
-The slots are why the upgrades compose instead of competing: each one replaces a different answer.
+Matching never crosses classes: a track's id claims the same object is still there, and an object does not change class. Two constraints hold across the slots. Velocity and the gate are functions of real elapsed milliseconds, never of result counts, because scans arrive anywhere between the pacing floor and cap and anything counted per result would mean a different physical speed at every cadence. And the whole matcher stays pure math over a handful of boxes once per scan, so it costs nothing thermally and tests directly.
 
-## The first change: all four geometric slots at once
-
-The four upgrades ship as one change because each is crippled alone. Prediction without a distance term still scores an uninformative zero when the extrapolation is slightly off at a long gap. A distance term without prediction measures distance from a place the object predictably is not anymore. The loosening gate has nothing principled to loosen around until there is a prediction whose uncertainty actually grows with elapsed time. And best-pair-first matters most once the score is informative enough to rank near ties.
-
-Two constraints on the implementation:
-
-- **Velocity is per millisecond, never per frame.** Scans arrive anywhere between the pacing floor and cap, so anything derived from "the last two frames" must be normalized by the real elapsed time between them, and the prediction scaled by the real time since.
-- **It stays pure math.** A handful of boxes once per scan, in the existing pure module, unit-tested directly. No thermal cost, no new state outside the track record.
+The slots are also why future work composes instead of competing: each upgrade below replaces one answer and leaves the rest standing.
 
 ## Later, only on evidence from real drives
 
