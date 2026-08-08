@@ -1,8 +1,7 @@
 /**
- * Empties both web storages. localStorage holds all of the app's own state, down
- * to the install id, so a reset device reports as a new one. sessionStorage is
- * cleared too although nothing writes to it, since a reset that leaves a
- * dependency's key behind is not a reset.
+ * Empties both web storages, the install id included, so a reset device reports
+ * as a new one. sessionStorage goes too although nothing writes to it, since a
+ * reset that leaves a dependency's key behind is not a reset.
  */
 const clearWebStorage = (): void => {
   try {
@@ -72,14 +71,10 @@ const unregisterServiceWorkers = async (): Promise<void> => {
 };
 
 /**
- * Wipes every client-side store this origin owns, back to a first-run state.
- *
- * The steps are isolated on purpose: one store rejecting must not strand the rest
- * half-cleared, which is a state neither the developer nor the app has ever seen.
- * Resolving means the pass ran, not that every store was writable.
- *
- * Reloading is the caller's job and must follow this, since the unregistered
- * worker only stops serving once the page it controls goes away.
+ * Wipes every client-side store this origin owns, back to a first-run state. The
+ * steps are isolated, so one store rejecting cannot strand the rest half-cleared;
+ * resolving means the pass ran, not that every store was writable. Reloading is
+ * the caller's job and must follow this.
  */
 export const resetAppData = async (): Promise<void> => {
   clearWebStorage();

@@ -9,12 +9,9 @@ import {
 export * from "./consts";
 
 /**
- * A traffic-light glyph: the signal head alone, floating at its mounted
- * height with no pole (deliberate; the head is the recognizable part), a
- * dark housing with the red, amber, and green lamps facing the ego, each
- * under the visor that gives a signal head its stepped profile. All three
- * lamps stay lit because nothing here knows the signal's state, and dimming
- * two of them would invent one.
+ * A traffic-light glyph: the signal head alone at its mounted height, no pole,
+ * three visored lamps facing the ego. All three stay lit because nothing here
+ * knows the signal's state, and dimming two would invent one.
  */
 export const TrafficLightGlyph = ({ elevationM }: { elevationM: number }) => (
   <>

@@ -17,28 +17,17 @@ export type PixelBox = {
 };
 
 /**
- * One frame's detections shaped for the HUD. `top` is the highest-scoring
- * detection: the dial's percentage and the class name beside it both read it.
- *
- * The contact card and its direction readout are not drawn from this model at
- * all; they come from the worker's own score-based pick (`topDetectionIndex`
- * in `src/workers/detection/inference.ts`). Both pick by score, but from
- * different data: the card from the raw detections of the frame just decoded,
- * this model from the coasted tracker set. So they name the same detection on
- * a live frame and can drift apart while a track coasts, which is the same
- * lag that lets the class name outlive the detection that produced it.
+ * One frame's detections shaped for the HUD; `top` drives the dial. The contact
+ * card picks separately, off the frame's raw detections rather than this coasted
+ * set, so the two agree on a live frame and drift apart while a track coasts.
  */
 export type HudModel = {
   top: Detection | undefined;
 };
 
 /**
- * Validate raw worker output and keep the detections that clear the threshold.
- *
- * There is no allowlist. That made sense against a generic 80-class COCO model,
- * where filtering to road-relevant classes was the point, but against a
- * checkpoint trained in-house, discarding a class we deliberately trained is a
- * bug. Every label the model emits is kept, whatever it is called.
+ * Validate raw worker output and keep what clears the threshold. There is no
+ * allowlist: every label the model emits is kept, whatever it is called.
  */
 export const enrichDetections = (
   raw: unknown,
@@ -72,11 +61,9 @@ export const containScale = (video: Size, viewport: Size): number =>
   Math.min(viewport.width / video.width, viewport.height / video.height);
 
 /**
- * Map a normalized box onto the viewport for a video rendered with
- * `object-fit: contain` (the whole frame is shown, letterboxed on the axis it
- * does not fill). Fitting rather than cropping is what lets the detection view
- * show every box the model produced: under cover, a box near the edge of the
- * frame lands in the cropped-away margin and simply is not there to check.
+ * Map a normalized box onto the viewport for a video rendered `object-fit:
+ * contain`. Fitting rather than cropping is what lets the detection view show
+ * every box: under cover, one near the frame edge lands in the cropped margin.
  */
 export const mapBoxToViewport = (
   box: NormalizedBox,
@@ -97,12 +84,10 @@ export const mapBoxToViewport = (
 };
 
 /**
- * The region of a frame the model is actually shown, as a full-frame
- * normalized box: the centered square crop the worker takes, narrowed by the
- * capture zoom. The detection view outlines it so a vehicle outside the crop
- * reads as never having been scanned rather than as a miss. Built on the
- * worker's own centerCropRegion, so the outline cannot drift from the crop it
- * describes.
+ * The region of a frame the model is actually shown, as a full-frame normalized
+ * box. The detection view outlines it so a vehicle outside the crop reads as
+ * never scanned rather than as a miss. Built on the worker's own
+ * centerCropRegion, so the outline cannot drift from the crop.
  */
 export const scanRegionBox = (
   frame: Size,

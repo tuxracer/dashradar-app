@@ -1,8 +1,6 @@
 /**
- * Why a video-file feed ended. A file's `video/*` type is the operating
- * system's word, not the browser's: ProRes .mov, H.265 .mp4, and .mkv all
- * pass the drop filter and none of them decode, so the file the user handed
- * over failing to play is the only way this feed can end on its own.
+ * Why a video-file feed ended. A file's `video/*` type is the OS's word, not the
+ * browser's, so plenty of files pass the drop filter and fail to decode.
  */
 export type VideoFileErrorCode = "DECODE_FAILED";
 
@@ -22,10 +20,8 @@ export const isVideoFileError = (error: unknown): error is VideoFileError => {
 
 /**
  * What a video-file feed reports while it is up, matching the camera feed's
- * vocabulary so one consumer handles either source: `active` once the clip is
- * playing (the moment frames can be captured from it), then `resize` whenever
- * the element's intrinsic dimensions change. Failures are not events; they
- * surface as a typed VideoFileError on the error channel, terminally.
+ * vocabulary so one consumer handles either source. Failures are not events;
+ * they surface terminally as a VideoFileError on the error channel.
  */
 export type VideoFileFeedEvent =
   | { type: "active"; video: HTMLVideoElement }

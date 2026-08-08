@@ -16,14 +16,11 @@ type IntroSceneProps = {
 };
 
 /**
- * Full-screen Canvas 2D wireframe night-drive scene behind the intro copy,
- * including the center legibility scrim, which must paint above the canvas
- * but below the lock-on bracket (DOM order inside this component).
- * Owns the rAF loop, pauses while the page is hidden, and renders one static
- * frame under reduced motion. When a 2D context is unavailable it renders
- * nothing so the static RadarBackdrop beneath stays visible. The lock-on
- * bracket is a DOM overlay positioned imperatively from the scene's
- * per-frame contact projection (no React state per frame).
+ * Full-screen Canvas 2D night-drive scene behind the intro copy, with the
+ * legibility scrim that must paint above the canvas and below the lock-on
+ * bracket. Owns the rAF loop, pauses while hidden, and renders one static frame
+ * under reduced motion; without a 2D context it renders nothing so the backdrop
+ * beneath stays visible. The bracket is positioned imperatively, off React.
  */
 export const IntroScene = ({
   createScene = createIntroScene,

@@ -58,17 +58,12 @@ export const orientationOffsets = (
 };
 
 /**
- * Pans the chase camera with the phone's physical orientation: turn or tilt
- * the device and the scene looks the same way, eased and clamped, always
- * drifting back to center as the neutral attitude adapts (RIG_BASELINE_ADAPT),
- * so a skewed dash mount or a long highway curve never parks the view off
- * axis. Renders only through invalidate() and only when the smoothed offset
- * moves more than RIG_DEADBAND_RAD, so a vibrating mount costs no frames; that
- * dead band is load-bearing for the thermal budget, not a tuning nicety.
- * Where deviceorientation never fires (desktop, or an iOS ask the driver
- * refused) the listener simply stays silent and the camera holds its base
- * framing; getting that ask answered belongs to the view above, which is the
- * one with a screen to put a control on.
+ * Pans the chase camera with the phone's orientation, eased and clamped, always
+ * drifting back to center as the neutral attitude adapts, so a skewed dash mount
+ * or a long curve never parks the view off axis. Renders only when the smoothed
+ * offset moves past RIG_DEADBAND_RAD, which is load-bearing for the thermal
+ * budget rather than a tuning nicety. Where deviceorientation never fires the
+ * listener stays silent and the camera holds its base framing.
  */
 export const CameraRig = ({ enabled }: { enabled: boolean }) => {
   const camera = useThree((state) => state.camera);

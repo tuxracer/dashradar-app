@@ -48,10 +48,8 @@ type CameraPermissionScreenProps = {
 
 /**
  * Full-screen camera ask, between the intro and the first getUserMedia call, so
- * the browser's own prompt never lands cold. Laid out like the error screens with
- * the intact-camera glyph, so accepting and declining stay in one visual
- * language. The copy is kept to a glance, since the intro one tap earlier already
- * introduced the app: only why the camera is needed and that it stays private.
+ * the browser's own prompt never lands cold. Kept to a glance, since the intro
+ * one tap earlier already introduced the app.
  */
 export const CameraPermissionScreen = ({
   onAllow,

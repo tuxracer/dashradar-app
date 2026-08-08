@@ -7,7 +7,6 @@ import {
 } from "@/lib/detection";
 import type { Detection } from "@/types";
 
-/** Props for DetectionView. */
 type DetectionViewProps = {
   /**
    * The scan's raw per-frame detections, in full-frame normalized
@@ -24,13 +23,12 @@ type DetectionViewProps = {
 };
 
 /**
- * Developer-only overlay drawing the model's boxes over the live feed, for
- * checking aim and false positives against what the detector sees rather than
- * the meter's summary of it. Boxes lag the video by up to a scan and are not
- * interpolated, because a box's real position is the only honest thing to show.
- * The faint outline is the region the model is shown at all; without it, a
- * vehicle the crop never covered looks like a miss. Geometry goes through
- * mapBoxToViewport, so the feed underneath has to be object-fit: contain.
+ * Developer-only overlay drawing the model's boxes over the live feed. Boxes lag
+ * by up to a scan and are not interpolated, since a box's real position is the
+ * only honest thing to show. The faint outline is the region the model is shown
+ * at all; without it a vehicle the crop never covered looks like a miss.
+ * Geometry goes through mapBoxToViewport, so the feed has to be object-fit:
+ * contain.
  */
 export const DetectionView = ({
   detections,

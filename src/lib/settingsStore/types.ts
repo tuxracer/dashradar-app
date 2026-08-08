@@ -48,13 +48,10 @@ export const isViewMode = (value: unknown): value is ViewMode => {
  */
 export type Settings = {
   /**
-   * Master switch for the developer options. Their stored values survive it, so
-   * turning it back on restores the tweaks rather than resetting them. Turning
-   * it on has no other effect, since every developer option starts at its off
-   * value: the switch reveals the rows and nothing more.
+   * Master switch for the developer options. Their stored values survive it, and
+   * every one starts at its off value, so the switch reveals rows and no more.
    */
   developerOptions: boolean;
-  /** Whether the on-screen debug overlay renders. */
   showDebug: boolean;
   /**
    * Whether the meter beeps at a detection, faster and higher the stronger the
@@ -83,13 +80,10 @@ export type Settings = {
   /** Crop factor the worker scans at; "2x" halves the square fed to the model. */
   zoomMode: ZoomMode;
   /**
-   * Which detection models the app runs, by registry id. A list rather than a
-   * single id so multi-model selection needs no migration later, though
-   * MAX_SELECTED_MODELS caps it at one today. Stored unresolved and resolved at
-   * the point of use, so an id from a build with a model this one lacks degrades
-   * to the shipping model instead of invalidating the whole blob. Ungated,
-   * because the picker both shows and applies the selection and a gate would let
-   * someone save a model the app then refused to load.
+   * Which detection models the app runs, by registry id. A list so multi-model
+   * selection needs no migration later. Stored unresolved, so an id this build
+   * does not know degrades to the shipping model rather than invalidating the
+   * blob. Ungated, or someone could save a model the app then refused to load.
    */
   modelIds: readonly string[];
   /** Minimum detection confidence, constrained to CONFIDENCE_LEVELS. */
@@ -194,7 +188,6 @@ export type SettingsStore = {
   getSnapshot: () => SettingsSnapshot;
   /** Register for snapshot changes; returns the unsubscribe. */
   subscribe: (onChange: () => void) => () => void;
-  /** Flip a stored boolean setting. */
   toggle: (key: BooleanSettingKey) => void;
   /** Sets the zoom mode (1x or 2x). */
   setZoomMode: (mode: ZoomMode) => void;
@@ -207,8 +200,7 @@ export type SettingsStore = {
   /**
    * Writes a model selection straight to localStorage and reports whether it
    * landed. Synchronous because the caller reloads on the next line: a false
-   * return means storage refused the write, so it must not. The in-memory value
-   * follows a write that landed, so a caller that skips the reload stays in step.
+   * return means storage refused, so it must not.
    */
   commitModelIds: (ids: readonly string[]) => boolean;
   /** Open or close the full-screen settings panel (ephemeral state). */
@@ -250,10 +242,9 @@ const FIELD_VALIDATORS: {
 };
 
 /**
- * Validates a value parsed from localStorage before it is trusted as settings.
- * Fields are optional-but-typed, so a blob from an older or newer build still
- * validates and loadSettings fills the gaps from DEFAULT_SETTINGS; a field
- * present with the wrong type rejects the whole blob back to defaults.
+ * Validates a value parsed from localStorage. Fields are optional-but-typed, so a
+ * blob from another build still validates and loadSettings fills the gaps; a
+ * field present with the wrong type rejects the whole blob back to defaults.
  */
 export const isPersistedSettings = (
   value: unknown,

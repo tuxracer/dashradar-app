@@ -3,29 +3,20 @@ import { SettingsButton } from "@/components/SettingsButton";
 import { ViewModeButton } from "@/components/ViewModeButton";
 import { WORDMARK } from "@/lib/branding";
 
-/** Props for StatusBar. */
 type StatusBarProps = {
   /**
-   * Optional element rendered horizontally centered on the bar's line,
-   * vertically aligned with the wordmark and gear. Used for the zoom and
-   * round-trip pills. The bar is a three-column grid with equal flexible ends,
-   * so this middle column sits centered on the viewport even though the
-   * wordmark and gear have unequal widths, and a wide slot squeezes the ends
-   * rather than overlapping them (the wordmark truncates). A plain middle flex
-   * child would sit off-center; absolute centering would let the pills collide
-   * with the wordmark on a narrow portrait screen.
+   * Optional element centered on the bar's line, used for the status pills. The
+   * three-column grid is what centers it on the viewport despite the wordmark and
+   * gear having unequal widths, and lets a wide slot squeeze the ends rather than
+   * overlap them.
    */
   center?: ReactNode;
 };
 
 /**
- * Top bar over the radar: the DASHRADAR.APP wordmark on the left, the view
- * toggle and settings gear on the right, and an optional centered slot
- * between them. Diagnostics
- * belong in the debug overlay, not here: the bar stays minimal and glanceable
- * for a driver.
- * pointer-events are disabled on the container so the video and HUD underneath
- * stay interactive; SettingsButton re-enables them for the gear itself.
+ * Top bar over the radar: wordmark left, view toggle and gear right, an optional
+ * centered slot between. Diagnostics belong in the debug overlay; the bar stays
+ * glanceable. pointer-events are off so the HUD underneath stays interactive.
  */
 export const StatusBar = ({ center }: StatusBarProps) => {
   return (

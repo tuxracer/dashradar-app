@@ -5,13 +5,10 @@ import { CYCLE_COLOR } from "./consts";
 export * from "./consts";
 
 /**
- * A bicycle or motorcycle glyph, sized in meters and built from fractions of
- * that size. Both are drawn as one track: two tall wheels well apart, a body
- * slung between them, and a seat and steering column above. The handlebar is
- * what carries the glyph, because these are seen end-on from behind, where the
- * frame is a few centimeters wide and a crossbar is the only thing with any
- * width to read. Motorized adds the mass of an engine and tank, which is all
- * that separates the two shapes.
+ * A bicycle or motorcycle glyph, sized in meters, drawn as one track. The
+ * handlebar carries it: these are seen end-on from behind, where the frame is a
+ * few centimeters wide and a crossbar is the only thing with width to read.
+ * Motorized adds an engine and tank, which is all that separates the two.
  */
 export const CycleGlyph = ({
   motorized,

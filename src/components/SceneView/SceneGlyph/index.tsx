@@ -8,12 +8,10 @@ import { TrafficLightGlyph } from "../TrafficLightGlyph";
 import { TruckGlyph } from "../TruckGlyph";
 
 /**
- * The glyph for one placed kind, drawn with its base at the group origin so
- * the animator only ever positions the group on the ground plane. Sizes are
- * rough real-world footprints in meters; they are visual vocabulary, not the
- * height priors the placement math uses. The return type is annotated on
- * purpose: it is what makes a newly placed kind a compile error here rather
- * than a glyph that silently renders nothing.
+ * The glyph for one placed kind, based at the group origin so the animator only
+ * ever positions the group. Sizes are visual vocabulary, not the height priors
+ * the placement math uses. The annotated return type is what makes a new kind a
+ * compile error here rather than a glyph that silently renders nothing.
  */
 export const SceneGlyph = ({
   kind,

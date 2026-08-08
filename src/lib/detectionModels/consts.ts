@@ -16,14 +16,10 @@ export const DEFAULT_MODEL: DetectionModel = {
 };
 
 /**
- * A general-purpose detector offered beside the shipping one: Roboflow's COCO
- * checkpoint on RF-DETR Small, which names all 80 COCO categories. It is here
- * to be picked without pasting a URL, and nothing fetches it until someone
- * does. Running it turns the app into a detector of everyday objects rather
- * than of patrol vehicles: the meter takes the highest score of anything the
- * model names, so a car ahead drives the dial exactly as a police vehicle
- * would, and CONFIDENCE_THRESHOLD is the shipping checkpoint's operating point
- * rather than this one's.
+ * A general-purpose COCO detector, here to be picked without pasting a URL;
+ * nothing fetches it until someone does. Running it turns the app into a detector
+ * of everyday objects, since the meter takes the highest score of anything the
+ * model names and the threshold is the shipping checkpoint's operating point.
  */
 const COCO_MODEL: DetectionModel = {
   id: "coco-small",
@@ -51,10 +47,8 @@ export const BUILT_IN_MODELS: readonly DetectionModel[] = [
 export const STORED_MODELS_KEY = "models";
 
 /**
- * How many models may be selected at once. One today: the worker loads a single
- * session and the load message names a single model. Raising this is the one
- * edit the picker needs to become multi-select, but it is not sufficient on its
- * own, since the worker protocol would have to carry more than one id.
+ * How many models may be selected at once. One today, since the worker loads a
+ * single session; raising it also needs the protocol to carry more than one id.
  */
 export const MAX_SELECTED_MODELS = 1;
 

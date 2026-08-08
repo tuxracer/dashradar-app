@@ -9,15 +9,11 @@ import type { ZOOM_2X, ZOOM_OFF } from "./consts";
 
 /**
  * WEBGPU_UNSUPPORTED comes from the GPU probe, before any weights are fetched,
- * on a device with no `navigator.gpu` in the worker scope, no adapter, or an
- * adapter without `shader-f16`. Terminal rather than a fallback, since the CPU
- * path was dropped for being too slow to be worth shipping.
+ * and is terminal: there is no CPU path to fall back to.
  *
  * GPU_DEVICE_LOST is the device behind a loaded session being lost, which WebKit
- * can do by killing its GPU process while the page keeps running. Without it the
- * app notices a frame later as a generic INFERENCE_FAILED; naming the cause is
- * what separates a GPU-process death from an OS kill, which reports nothing at
- * all beyond the crash sentinel.
+ * can do by killing its GPU process under a healthy page. Naming it is what
+ * separates that from an OS kill, which reports nothing at all.
  */
 export type DetectionErrorCode =
   | "WEBGPU_UNSUPPORTED"
@@ -100,12 +96,10 @@ export type WorkerRequest =
       /** Crop factor for the square fed to the model; 1 is the full square. */
       zoom?: number;
       /**
-       * Intrinsic size of the video frame `frame` was cut from, present only when
-       * the sender already applied the crop and scaled to the model's input. The
-       * worker then scales the bitmap straight on rather than cropping again, and
-       * maps boxes through these dimensions so detections stay in full-frame
-       * coordinates either way. Senders pre-crop only when no cutout is wanted,
-       * the one consumer that needs the frame's original pixels.
+       * Size of the video frame `frame` was cut from, present only when the sender
+       * already cropped and scaled. The worker then scales the bitmap straight on
+       * and maps boxes through these dimensions, so detections stay in full-frame
+       * coordinates either way.
        */
       source?: { width: number; height: number };
       /** Minimum confidence for this frame's decode, filtered inside the worker. */
@@ -222,11 +216,9 @@ export type BackendProbe = {
   /** Threads configured for the wasm runtime hosting the execution provider. */
   threads: number;
   /**
-   * What the loaded `.onnx` file says about itself, the one way to tell which
-   * weights a device is actually running: the URL only says which entry asked
-   * for them, while a `props.release_tag` disagreeing with the entry's pinned
-   * revision means a cache is serving something else. Absent when the bytes did
-   * not parse, and `props` is empty for exports predating v3.7.
+   * What the loaded file says about itself, the one way to tell which weights a
+   * device is running: a `release_tag` disagreeing with the entry's pinned
+   * revision means a cache is serving something else.
    */
   modelFile?: OnnxMetadata;
 };
@@ -271,10 +263,9 @@ export type WorkerResponse =
   | { type: "model-downloaded"; durationMs: number }
   | { type: "backend-probe"; probe: BackendProbe }
   /**
-   * `wasmHeapBytes`, here and on both scan replies, is the runtime's current
-   * heap size, the crash sentinel's prime suspect for an iOS memory kill. On
-   * `ready` it is the post-load baseline, separating what loading cost from what
-   * scanning grew. Absent when the capture could not see the heap.
+   * `wasmHeapBytes`, here and on both scan replies, is the runtime's heap size,
+   * the sentinel's prime suspect for an iOS memory kill. On `ready` it is the
+   * post-load baseline, separating loading's cost from scanning's growth.
    */
   | { type: "ready"; loaded?: LoadedSummary; wasmHeapBytes?: number }
   | {
@@ -284,11 +275,8 @@ export type WorkerResponse =
       crop?: DetectionCrop;
       wasmHeapBytes?: number;
       /**
-       * How far the gate measured this frame from the last one scanned. On
-       * results as well as skips, so the threshold can be read from both sides:
-       * skips alone only show values below the line, which says nothing about
-       * how close a gate that never fires is to firing. Absent on a worker's
-       * first scan, which had no earlier frame to measure against.
+       * How far the gate measured this frame from the last one scanned. On results
+       * as well as skips, so the threshold can be read from both sides.
        */
       sceneDelta?: number;
     }

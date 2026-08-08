@@ -1,8 +1,6 @@
 /**
- * Police body color: near-black, the dark half of the black-and-white livery
- * every patrol car in this app's training set wears. Kept clear of a true
- * black for the same reason as the tires, so the body does not sink into the
- * backdrop and leave the white panels floating.
+ * Police body color, the dark half of the black-and-white livery. Clear of a true
+ * black, or the body sinks into the backdrop and the white panels float.
  */
 export const POLICE_BODY_COLOR = "#34323f";
 
@@ -50,11 +48,8 @@ export const POLICE_LIGHTBAR_BLUE_DIM = "#1b2f6b";
 export const LIGHTBAR_GLOW_OPACITY = 0.5;
 
 /**
- * Opacity of the pool of light on the road under a flashing car. Normally
- * blended rather than additive: additive over the white ground of the light
- * scene palette adds nothing, and a patrol car that stops throwing light when
- * the phone switches to its day appearance would be the one glyph in the
- * scene that changes meaning with the OS.
+ * Opacity of the pool of light under a flashing car. Blended rather than
+ * additive, which adds nothing over the light palette's white ground.
  */
 export const LIGHTBAR_POOL_OPACITY = 0.34;
 

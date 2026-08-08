@@ -62,10 +62,9 @@ const readVarint = (cursor: Cursor, end: number): number => {
 };
 
 /**
- * Decode the span to `end` as UTF-8 without moving the cursor, which the walk
- * sets from the field's declared length anyway. An oversized span returns
- * undefined, costing that field and not the read. A subarray, never a slice:
- * this runs on the weights, where an extra copy is the thing being avoided.
+ * Decode the span to `end` as UTF-8 without moving the cursor, which the walk sets
+ * from the declared length anyway. A subarray, never a slice: this runs on the
+ * weights, where an extra copy is the thing being avoided.
  */
 const readString = (cursor: Cursor, end: number): string | undefined => {
   if (end - cursor.pos > MAX_STRING_BYTES) {
@@ -139,10 +138,9 @@ const readProp = (
 };
 
 /**
- * Read what an `.onnx` file says about itself. Only top-level ModelProto fields;
- * the graph is stepped over by length rather than parsed, so this costs a few
- * dozen varint reads whatever the file size. Returns undefined when the bytes do
- * not parse or carry no graph, the one field every real model has and the check
+ * Read what an `.onnx` file says about itself. Only top-level fields; the graph is
+ * stepped over by length, so this costs a few dozen varint reads whatever the
+ * file size. Undefined when the bytes do not parse or carry no graph, the check
  * that stops arbitrary bytes decoding into a plausible empty result.
  */
 export const readOnnxMetadata = (

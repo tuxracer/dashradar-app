@@ -19,13 +19,9 @@ export const isCameraError = (error: unknown): error is CameraError => {
 };
 
 /**
- * What the camera feed reports while it is up: `active` once the stream is
- * attached and playing (the moment consumers may start capturing frames),
- * then `resize` whenever the element's intrinsic dimensions change (a phone
- * rotates and the camera track swaps its width and height). Failures are
- * not events: they surface as typed CameraError on the observable's error
- * channel, terminally. Future camera features (stall states, feed swaps)
- * add members here without changing any consumer signature.
+ * What the camera feed reports while it is up: `active` once frames can be
+ * captured, then `resize` whenever the element's intrinsic dimensions change.
+ * Failures are not events; they surface terminally as a typed CameraError.
  */
 export type CameraFeedEvent =
   | { type: "active"; video: HTMLVideoElement }

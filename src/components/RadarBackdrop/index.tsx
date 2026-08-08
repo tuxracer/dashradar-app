@@ -1,16 +1,10 @@
 /**
- * Static radar-scope backdrop rendered as the bottom layer of the HUD, so
- * detections read like blips on a radar grid. Purely decorative and ignores
- * pointer events. Mounted whenever the driver-facing radar meter is showing;
- * the developer-only detection view replaces it with the live camera feed
- * instead of layering over it.
+ * Static radar-scope backdrop, the bottom layer of the HUD, so detections read
+ * like blips on a grid. Purely decorative.
  *
- * The `-z-10` is load-bearing: this backdrop is `absolute` (positioned) and
- * opaque, while the camera `<video>` is a normal in-flow element. Without a
- * negative z-index, CSS paint order draws this positioned element on top of the
- * in-flow video and the feed is never visible. The negative z-index keeps the
- * backdrop below the video (and below the HUD overlays) but above `<main>`'s own
- * background.
+ * The `-z-10` is load-bearing: this is positioned and opaque while the camera
+ * `<video>` is in flow, so without it paint order draws the backdrop over the
+ * video and the feed is never visible.
  */
 export const RadarBackdrop = () => {
   return (

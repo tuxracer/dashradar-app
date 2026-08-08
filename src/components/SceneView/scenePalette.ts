@@ -20,13 +20,10 @@ const snapshot = () =>
   lightScheme()?.matches === true ? LIGHT_SCENE_PALETTE : DARK_SCENE_PALETTE;
 
 /**
- * The scene's colors for the OS color scheme in force right now, tracked live
- * rather than read once at mount: a phone set to switch itself at sunset does
- * so mid-drive, and the scene is on screen for the whole drive. Only a scheme
- * the browser reports as light gets the light palette, so a browser that
- * cannot answer keeps the dark instrument this app is otherwise built as.
- * Palettes are shared constants, which is what makes the snapshot stable
- * enough for useSyncExternalStore.
+ * The scene's colors for the OS scheme in force, tracked live rather than read at
+ * mount: a phone set to switch at sunset does so mid-drive. Only a scheme the
+ * browser reports as light gets the light palette. The palettes are shared
+ * constants, which is what makes the snapshot stable for useSyncExternalStore.
  */
 export const useScenePalette = () =>
   useSyncExternalStore(subscribe, snapshot, () => DARK_SCENE_PALETTE);

@@ -6,16 +6,13 @@ export type VideoSource = {
   name: string;
 };
 
-/** What VideoSourceProvider hands its consumers. */
 export type VideoSourceContextValue = {
   /** The file the detector is scanning, or null while the camera is the feed. */
   source: VideoSource | null;
   /**
-   * Identity of the current selection, minted fresh on every swap. The two
-   * camera sessions either side of a clip are different feeds even though both
-   * are "the camera", and consumers holding state about the feed (its video
-   * element, its failure) compare against this to tell whether what they are
-   * holding still belongs to the feed on screen.
+   * Identity of the current selection, minted fresh on every swap. The two camera
+   * sessions either side of a clip are different feeds though both are "the
+   * camera", so consumers holding feed state compare against this.
    */
   feedId: number;
   /** Replaces the feed with `file`, minting an object URL for it. */

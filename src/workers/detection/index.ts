@@ -1,7 +1,6 @@
 /// <reference lib="webworker" />
-// The /webgpu subpath is deliberate: it runs the native C++ WebGPU EP rather
-// than the root import's JSEP kernels, which have no TopK and so park this
-// graph's TopK on CPU, making graph capture impossible.
+// The /webgpu subpath is deliberate: the root import's JSEP kernels have no
+// TopK, which parks this graph's TopK on CPU and makes graph capture impossible.
 import { env, InferenceSession, Tensor } from "onnxruntime-web/webgpu";
 import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 import {
@@ -37,15 +36,13 @@ import { installWasmMemoryCapture, wasmHeapBytes } from "./wasmMemory";
 
 declare const self: DedicatedWorkerGlobalScope;
 
-// Same-origin (served at /ort/ by the ortRuntime Vite plugin) rather than a CDN,
-// so cross-origin isolation does not block it and there is no live dependency.
+// Same-origin rather than a CDN, so cross-origin isolation does not block it.
 env.wasm.wasmPaths = `${import.meta.env.BASE_URL}ort/`;
 
 // Must run before the runtime instantiates; see ./wasmMemory.
 installWasmMemoryCapture();
 
-// Callable by hand from a tethered Web Inspector, so the heap can be polled
-// between scans without waiting for the next reply to carry it.
+// Callable by hand from a tethered Web Inspector, to poll between scans.
 Object.assign(self, { dashradarWasmHeapBytes: wasmHeapBytes });
 
 /** ORT wasm-runtime thread count for this device, capped for big.LITTLE. */
@@ -56,9 +53,8 @@ const wasmThreads = Math.min(
 env.wasm.numThreads = wasmThreads;
 
 /**
- * State for a graph-capture session. A capture session rejects CPU-located input
- * tensors at run(), so each frame is written into one persistent GPU buffer and
- * the session always sees the same `Tensor.fromGpuBuffer` wrapper.
+ * State for a graph-capture session, which rejects CPU-located input tensors at
+ * run(), so each frame is written into one persistent GPU buffer.
  */
 type CaptureIo = {
   device: GPUDevice;
@@ -67,9 +63,8 @@ type CaptureIo = {
 };
 
 /**
- * Everything resolved from the session graph, before the registry entry it was
- * built from is attached. The session-building helpers work in this shape so
- * only createModel has to know which model it is loading.
+ * Everything resolved from the session graph, before its registry entry is
+ * attached, so only createModel has to know which model is loading.
  */
 type SessionIo = {
   session: InferenceSession;
@@ -80,46 +75,34 @@ type SessionIo = {
   capture?: CaptureIo;
   /** Why the graph-capture attempt fell back to a plain session, if it did. */
   captureError?: string;
-  /**
-   * Shape of the `labels` output this session's first run produced. Both load
-   * paths run once before reporting ready, so the real head width is available
-   * without a run of its own.
-   */
+  /** Shape of the `labels` output the session's first run produced. */
   labelsDims: readonly number[];
 };
 
 /** Names discovered from the session graph, resolved at load time. */
 type ModelIo = Omit<SessionIo, "labelsDims"> & {
-  /**
-   * The registry entry this session was built from: its URL and class table,
-   * reconciled with the head width the session reported.
-   */
+  /** The registry entry, reconciled with the head width the session reported. */
   detectionModel: LoadedModel;
   /**
-   * What the weights file said about itself, for the backend probe. Undefined
-   * when the bytes did not parse as a model, which nothing here treats as a
-   * failure: a session that runs is a session that runs.
+   * What the weights said about themselves, for the backend probe. Undefined when
+   * the bytes did not parse, which is not a failure: a session that runs, runs.
    */
   fileMetadata?: OnnxMetadata;
 };
 
 let model: ModelIo | undefined;
 
-// Reused across frames to keep the hot path allocation-free; a canvas and a
-// ~3 MB tensor per frame otherwise produce steady GC jank on mobile. Safe to
-// share because only one frame is ever in flight. `willReadFrequently` keeps the
-// canvas CPU-backed so the per-frame getImageData readback stays cheap.
+// Reused across frames to keep the hot path allocation-free; a ~3 MB tensor per
+// frame is steady GC jank on mobile. Safe because only one frame is in flight.
+// `willReadFrequently` keeps the getImageData readback cheap.
 const inputCanvas = new OffscreenCanvas(INPUT_SIZE, INPUT_SIZE);
 const inputContext = inputCanvas.getContext("2d", { willReadFrequently: true });
 const inputBuffer = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE);
 
 /**
- * Tile signature of the frame the model last actually ran on, the scene-change
- * gate's baseline. The last *scanned* frame rather than the last frame seen:
- * against its immediate predecessor a scene that creeps could drift arbitrarily
- * far without any single step clearing the threshold, while this way the drift
- * stays on the books until something crosses it. Undefined until a worker's
- * first scan, so a fresh or recycled one always runs the model before it skips.
+ * The gate's baseline: the last *scanned* frame, not the last frame seen. Against
+ * its immediate predecessor a creeping scene could drift arbitrarily far without
+ * any single step clearing the threshold. Undefined until a worker's first scan.
  */
 let lastScanned: SceneSignature | undefined;
 
@@ -134,16 +117,11 @@ const wasmRuntime = {
 };
 
 /**
- * Whether this device can run the detector, decided by actually acquiring a
- * device rather than checking the API exists: `navigator.gpu` is sometimes
- * present where no adapter can be obtained, and the API check alone would
- * download tens of megabytes only to fail at session creation. The adapter must
- * also expose `shader-f16`, which onnxruntime-web requires for any fp16 tensor
- * in the graph.
- *
- * Failure at any stage is terminal, with no CPU path left to fall back to. Runs
- * in the worker scope, where onnxruntime-web needs WebGPU: some browsers expose
- * `navigator.gpu` on the main thread but not inside a worker.
+ * Whether this device can run the detector, decided by acquiring a device rather
+ * than checking the API exists: `navigator.gpu` is sometimes present where no
+ * adapter can be obtained, and the check alone would download tens of megabytes
+ * only to fail at session creation. `shader-f16` is required for the fp16 graph.
+ * Runs in the worker scope, where some browsers do not expose `navigator.gpu`.
  */
 const probeWebGpu = async (): Promise<boolean> => {
   if (!("gpu" in navigator) || !navigator.gpu) {
@@ -164,18 +142,13 @@ const probeWebGpu = async (): Promise<boolean> => {
 };
 
 /**
- * The one probe this worker runs, shared by the `probe` and `load` handlers.
- * Acquiring an adapter and device is not free, and `load` must see exactly the
- * verdict `probe` already reported rather than re-deciding.
+ * The one probe this worker runs. Acquiring a device is not free, and `load` must
+ * see the verdict `probe` reported rather than re-deciding.
  */
 let gpuProbeResult: Promise<boolean> | undefined;
 const gpuProbe = (): Promise<boolean> => (gpuProbeResult ??= probeWebGpu());
 
-/**
- * Report that this device cannot run the detector. Idempotent, because both
- * the `probe` and `load` handlers reach it on an unsupported device and the
- * context must not see the terminal error twice.
- */
+/** Idempotent: both handlers reach it, and the terminal error must fire once. */
 let unsupportedReported = false;
 const reportUnsupported = () => {
   if (unsupportedReported) {
@@ -198,9 +171,8 @@ const EXPECTED_DETS_NAME = "dets";
 const EXPECTED_LABELS_NAME = "labels";
 
 /**
- * Look for an already-cached copy of the weights, written by the Workbox
- * "model-cache" route in production and by cacheModelInDev otherwise. A hit
- * means the load is not a network download, so the UI skips the progress screen.
+ * Look for an already-cached copy of the weights. A hit means the load is not a
+ * network download, so the UI skips the progress screen.
  */
 const matchCachedModel = async (url: string): Promise<Response | undefined> => {
   if (!("caches" in self)) {
@@ -214,12 +186,10 @@ const matchCachedModel = async (url: string): Promise<Response | undefined> => {
 };
 
 /**
- * Stream the weights over the network, reporting byte progress. Chunks land
- * directly in one buffer preallocated from Content-Length rather than being
- * accumulated and copied at the end, which would briefly hold two copies right
- * before InferenceSession.create makes a third and risk an OOM on a low-RAM
- * phone. ensureCapacity grows the buffer when Content-Length is missing or
- * understates the body, so the copy-free path is an optimization only.
+ * Stream the weights, reporting byte progress. Chunks land in one buffer
+ * preallocated from Content-Length: accumulating and copying at the end would
+ * hold two copies right before InferenceSession.create makes a third, which is
+ * an OOM on a low-RAM phone. ensureCapacity covers a missing Content-Length.
  */
 const fetchModel = async (url: string): Promise<Uint8Array<ArrayBuffer>> => {
   const file = url.slice(url.lastIndexOf("/") + 1);
@@ -241,17 +211,14 @@ const fetchModel = async (url: string): Promise<Uint8Array<ArrayBuffer>> => {
     loaded += value.byteLength;
     post({ type: "model-progress", progress: { file, loaded, total } });
   }
-  // A subarray, not a slice: a slice would copy and recreate the exact
-  // double-buffer peak this preallocation exists to avoid.
+  // A subarray, not a slice: a slice recreates the peak this avoids.
   return loaded === buffer.byteLength ? buffer : buffer.subarray(0, loaded);
 };
 
 /**
- * Cache freshly downloaded weights on the dev server, which has no service
- * worker to do it, so later launches skip re-downloading tens of megabytes.
- * Everything but the built-ins and the model being loaded is evicted, so
- * flipping between two added models re-downloads one of them. No-op in
- * production, best-effort in dev: a failure only costs a re-download.
+ * Cache weights on the dev server, which has no service worker to do it.
+ * Everything but the built-ins and the loading model is evicted, so flipping
+ * between two added models re-downloads one. No-op in production.
  */
 const cacheModelInDev = async (
   url: string,
@@ -289,16 +256,13 @@ const resolveIoNames = (
 };
 
 /**
- * Create a WebGPU session with graph capture, which records the model's kernel
- * dispatches on the first run and replays them after, cutting the CPU cost of
- * dispatching RF-DETR's hundreds of small kernels. A capture session accepts
- * only GPU-located IO, hence the persistent input buffer and `gpu-buffer`
- * outputs read back with `getData(true)`.
+ * Create a session with graph capture, which records the kernel dispatches on the
+ * first run and replays them after. Capture accepts only GPU-located IO, hence
+ * the persistent input buffer and `getData(true)` readback.
  *
- * The first run performs the capture, doubles as shader warm-up, and surfaces
- * run-time capture incompatibility (which does not always fail at session
- * creation) while the caller can still fall back. `onSessionCreated` fires the
- * instant the caller's copy of the weights stops being needed.
+ * The first run performs the capture, doubles as warm-up, and surfaces run-time
+ * incompatibility while the caller can still fall back. `onSessionCreated` fires
+ * the instant the caller's copy of the weights stops being needed.
  */
 const createCaptureModel = async (
   weights: Uint8Array,
@@ -353,14 +317,11 @@ const createCaptureModel = async (
 };
 
 /**
- * Run a plain session once on the zeroed input before reporting it ready, giving
- * the fallback path the warm-up the capture path gets from its capture run. A
- * WebGPU session's first run compiles hundreds of WGSL shaders and allocates
+ * Warm a plain session before reporting it ready, which the capture path gets
+ * from its capture run. A first run compiles hundreds of shaders and allocates
  * every intermediate at once; unwarmed, that peak lands on the first scanned
- * frame alongside a live camera stream and the frame pump, which is where the
- * field crashes clustered. Failure propagates: a session that cannot run on
- * zeroed input cannot detect anything, and MODEL_LOAD_FAILED names that better
- * than a per-frame INFERENCE_FAILED would. Returns the run's `labels` shape.
+ * frame alongside a live camera stream. Failure propagates, since a session that
+ * cannot run on zeroed input cannot detect anything.
  */
 const warmUpSession = async (
   io: Omit<SessionIo, "labelsDims">,
@@ -379,16 +340,10 @@ const warmUpSession = async (
  * Download and instantiate the WebGPU session.
  *
  * The weights buffer is dropped the moment ORT has copied it, not when this
- * function returns, because the first run follows immediately and is the
- * session's highest memory peak. Holding a redundant copy across it is what
- * kills the page on a platform with no warning before the budget.
- *
- * The release only happens once CacheStorage is confirmed to hold the bytes,
- * since the capture fallback below re-reads that entry. A cache read confirms
- * itself; a fresh download is confirmed by re-matching afterwards, which usually
- * hits because the download seeds the cache on its way through. That covers the
- * first visit, which is where it matters most. On a miss the buffer is the only
- * copy and is kept across the first run.
+ * returns, because the first run follows immediately and is the session's highest
+ * memory peak. Releasing needs CacheStorage confirmed to hold the bytes, since
+ * the capture fallback re-reads that entry; on a miss the buffer is the only copy
+ * and is kept across the first run.
  */
 const createModel = async (
   detectionModel: DetectionModel,
@@ -416,9 +371,8 @@ const createModel = async (
     // releaseWeights must keep it.
     inCacheStorage = (await matchCachedModel(url)) !== undefined;
   }
-  // Before a session is built, because the capture path hands the buffer back
-  // the moment ORT has copied it. The graph is stepped over by length rather
-  // than parsed, so this costs a few dozen varint reads whatever the file size.
+  // Before a session is built, because the capture path hands the buffer back at
+  // once. The graph is stepped over by length, so this costs a few varint reads.
   const fileMetadata = readOnnxMetadata(weights);
   const releaseWeights = () => {
     if (inCacheStorage) {
@@ -453,9 +407,8 @@ const createModel = async (
     const plain = { session, ...resolveIoNames(session), captureError };
     io = { ...plain, labelsDims: await warmUpSession(plain) };
   }
-  // Reconciled once, after whichever path built the session, so a disagreeing
-  // head width cannot send the capture path into a fallback that builds a
-  // second session only to fail the same way.
+  // Once, after whichever path built the session, so a disagreeing head width
+  // cannot send the capture path into a fallback that fails the same way.
   const { labelsDims, ...rest } = io;
   return {
     ...rest,
@@ -469,12 +422,10 @@ const createModel = async (
 };
 
 /**
- * Report the session's WebGPU device being lost. WebKit runs WebGPU in its own
- * process, so that process dying takes the device out from under a healthy page,
- * which the app would otherwise notice a frame later as a generic
- * INFERENCE_FAILED, once per frame. Naming it is the point: a GPU-process death
- * reports something while an OS kill reports nothing, so telemetry can finally
- * tell them apart. A "destroyed" reason is a deliberate teardown, not a failure.
+ * Report the session's WebGPU device being lost, which WebKit can do by killing
+ * its GPU process under a healthy page. Naming it is the point: otherwise it
+ * arrives a frame later as a generic INFERENCE_FAILED, once per frame, and
+ * telemetry cannot tell it from an OS kill. "destroyed" is a deliberate teardown.
  */
 const watchDeviceLoss = async () => {
   try {
@@ -499,8 +450,7 @@ const watchDeviceLoss = async () => {
 };
 
 const loadModel = async (requested: DetectionModel | undefined) => {
-  // A different model reads the same road differently, so what the previous one
-  // had already looked at says nothing about what this one still needs to.
+  // A different model reads the same road differently.
   lastScanned = undefined;
   if (!(await gpuProbe())) {
     reportUnsupported();
@@ -608,13 +558,10 @@ const detect = async ({
     }
     const imageData = inputContext.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
 
-    // The scene-change gate, between the readback and the work worth avoiding. A
-    // car at a light spends minutes pointing the camera at a picture that does
-    // not move, and nothing can enter the frame without changing the pixels in
-    // it, so a pass over bytes already in hand buys skipping both the
-    // normalization and the inference. After the draw rather than before it, so
-    // the comparison runs on the same pixels, in the same geometry, the model
-    // would have read.
+    // The gate, between the readback and the work worth avoiding: nothing can
+    // enter the frame without changing the pixels in it, so a pass over bytes
+    // already in hand buys skipping the normalization and the inference. After
+    // the draw, so it runs on the same pixels the model would have read.
     const gateStart = performance.now();
     const signature = sceneSignature(imageData);
     const scene = lastScanned
@@ -622,9 +569,8 @@ const detect = async ({
       : undefined;
     const gateMs = performance.now() - gateStart;
     if (!forceScan && scene && !scene.changed) {
-      // The baseline stays put: advancing it per skip would restart the drift
-      // measurement each time, so a scene changing slower than the threshold per
-      // frame would never accumulate enough to trip the gate.
+      // The baseline stays put: advancing it per skip restarts the drift
+      // measurement, so a slow change never accumulates enough to trip.
       post({
         type: "scan-skipped",
         gateMs,
@@ -638,9 +584,8 @@ const detect = async ({
     const inputData = preprocess(imageData, inputBuffer);
     const preprocessMs = performance.now() - preprocessStart;
 
-    // getData(true) both downloads the data and releases the GPU-side output, so
-    // the capture path's inference time includes the readback sync point, the
-    // same thing the plain path's run() already includes.
+    // getData(true) downloads and releases the output, so this timing includes
+    // the readback sync point that run() already includes on the plain path.
     const inferenceStart = performance.now();
     let dets: Float32Array;
     let labels: Float32Array;
@@ -685,13 +630,10 @@ const detect = async ({
     }));
     const decodeMs = performance.now() - decodeStart;
 
-    // Cut the top detection out of the full-resolution frame for the contact
-    // card. Best-effort, and skipped when the card is off so a bitmap nobody
-    // sees is never made. Never cut from a pre-cropped frame: the boxes are
-    // normalized to the whole video frame while the bitmap holds only the zoom
-    // crop, so the rect would land somewhere else. Senders already withhold the
-    // pre-crop when a cutout is wanted; this keeps a drift from showing a wrong
-    // picture rather than no picture.
+    // The contact card's cutout. Best-effort, and skipped when the card is off so
+    // a bitmap nobody sees is never made. Never from a pre-cropped frame: the
+    // boxes are normalized to the whole video frame, so the rect would land
+    // somewhere else. Senders withhold the pre-crop when a cutout is wanted.
     const topIndex = topDetectionIndex(detections);
     if (includeCrop && !source && topIndex !== undefined) {
       const rect = cropRect(
@@ -732,9 +674,8 @@ const detect = async ({
       transfer,
     );
   } catch (error) {
-    // Landing here means the crop was never delivered, so it is still this
-    // function's to close; closing an already-detached bitmap is a no-op, so a
-    // post that failed after transferring stays safe.
+    // The crop was never delivered, so it is still this function's to close;
+    // closing an already-detached bitmap is a no-op.
     crop?.image.close();
     // A DetectionError carries the real cause: a head-width mismatch is a wrong
     // model, not a failed inference.
@@ -750,10 +691,9 @@ const detect = async ({
 self.onmessage = (event: MessageEvent<unknown>) => {
   const request = event.data;
   if (!isWorkerRequest(request)) {
-    // A malformed detect request still carries its transferred frame, and this
-    // rejection is its last owner. Nothing well-typed sends one today, but a
-    // newer page posting to an older precached worker would leak a
-    // full-resolution bitmap per scan.
+    // A malformed request still carries its transferred frame and this is its
+    // last owner. A newer page posting to an older precached worker would
+    // otherwise leak a bitmap per scan.
     if (
       typeof request === "object" &&
       request !== null &&

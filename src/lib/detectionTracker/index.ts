@@ -22,20 +22,15 @@ export const iou = (a: NormalizedBox, b: NormalizedBox): number => {
   return union > 0 ? intersection / union : 0;
 };
 
-/** Empty starting state for a tracker. */
 export const initialTrackerState = (): TrackerState => ({
   tracks: [],
   nextId: 0,
 });
 
 /**
- * One frame of the coasting tracker: greedily match this frame's detections to
- * existing tracks by IoU, show every detection immediately, and coast an
- * unmatched track for up to `maxCoastMs` so its box does not flicker off when
- * the model briefly loses the object. The budget is elapsed time rather than a
- * count of results, because results arrive at whatever cadence the pacing
- * chooses and a coasting track holds its full score: a count would keep a
- * vanished vehicle driving the alert far longer on a slow device.
+ * One frame of the coasting tracker: match this frame's detections to existing
+ * tracks by IoU, show every detection immediately, and coast an unmatched track
+ * for up to `maxCoastMs` so its box does not flicker off through a brief miss.
  */
 export const stepTracker = (
   state: TrackerState,
@@ -48,7 +43,6 @@ export const stepTracker = (
   const matchedDetByTrack = new Map<number, Detection>();
   const unmatched: Detection[] = [];
 
-  // Associate each detection with the best available track above the IoU bar.
   for (const detection of detections) {
     let bestIndex = -1;
     let bestIou = -1;
@@ -75,10 +69,9 @@ export const stepTracker = (
     const track = tracks[i];
     const detection = matchedDetByTrack.get(i);
     if (detection) {
-      // Ease toward the new score rather than adopting it, so per-frame model
-      // jitter does not whipsaw the readouts. Not across a label change, though:
-      // matching is purely by box overlap, so the eased score describes the old
-      // class and blending it would leak that confidence into the new one.
+      // Ease toward the new score, so model jitter does not whipsaw the readouts.
+      // Not across a label change: matching is purely by box overlap, so the eased
+      // score describes the old class.
       const score =
         detection.label === track.label
           ? track.score +

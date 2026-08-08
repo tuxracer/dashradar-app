@@ -1,8 +1,6 @@
 /**
- * How often the panel re-reads the debug snapshot, in milliseconds. The
- * readout is for eyeballing numbers on a device, not for smoothness, so it is
- * paced in wall time rather than per frame: at the pacing floor a scan lands
- * about once a second, and ~8 Hz is quick enough to catch one landing while
- * costing a fraction of the wake-ups a per-frame poll would.
+ * How often the panel re-reads the debug snapshot. Paced in wall time rather than
+ * per frame: the readout is for eyeballing numbers, and scans land about a second
+ * apart, so a per-frame poll would be wake-ups spent on nothing.
  */
 export const READOUT_INTERVAL_MS = 120;

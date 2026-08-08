@@ -17,12 +17,10 @@ export * from "./consts";
 type SubScreen = "model" | "developer";
 
 /**
- * Full-screen settings panel, built for driver-first use on a dash mount in
- * landscape: large full-width rows with big tap targets. Developer options is the
- * one row that leads somewhere, opening the screen that owns the master switch
- * and the model picker beyond it. Sub-screens render in place of this panel one
- * at a time, and the panel owns the stack, so backing out lands on the screen
- * that opened each one. Scanning pauses while it is open.
+ * Full-screen settings panel, built for a dash mount in landscape: large rows
+ * with big tap targets. Sub-screens render in place of this panel one at a time
+ * and the panel owns the stack, so backing out lands on the screen that opened
+ * each one. Scanning pauses while it is open.
  */
 export const SettingsScreen = () => {
   const {

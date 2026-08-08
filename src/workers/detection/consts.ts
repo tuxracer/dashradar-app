@@ -2,21 +2,14 @@
  * What every checkpoint shares about being run here; the checkpoints themselves
  * are in src/lib/detectionModels.
  *
- * Raw onnxruntime-web rather than the Transformers.js `pipeline()` path: the
- * pipeline's DETR post-processor assumes a softmax head with a background class
- * and takes the arg-max label per query, while this head is sigmoid scored per
- * class with an unused slot at index 0, so it reads the logits wrong and drops
- * every detection.
+ * Raw onnxruntime-web rather than the Transformers.js `pipeline()`, whose DETR
+ * post-processor assumes a softmax head with a background class and drops every
+ * detection off this sigmoid one.
  *
- * The weights are mixed-precision fp16 on WebGPU, which needs the `shader-f16`
- * feature `probeWebGpu` gates on. The two GridSample nodes stay fp32 because a
- * pure-fp16 GridSample produced garbage under the old JSEP path; inputs and
- * outputs are fp32 either way, so preprocess and decode are unaffected.
- *
- * There is deliberately no CPU fallback. The int8 build that used to serve it
- * measured round trips over 10 s where WebGPU takes about 500 ms, so a device
- * without usable WebGPU is turned away rather than handed a detector that looks
- * like it works and does not.
+ * The weights are mixed-precision fp16 on WebGPU, needing the `shader-f16`
+ * feature `probeWebGpu` gates on; inputs and outputs stay fp32. There is
+ * deliberately no CPU fallback, which measured round trips over 10 s against
+ * WebGPU's 500 ms and only looked like a working detector.
  */
 
 /**
@@ -29,17 +22,13 @@ export const DEV_MODEL_CACHE_NAME = "model-cache-dev";
 
 /**
  * Attempt a WebGPU session with `enableGraphCapture` before falling back to a
- * plain one. It requires the native C++ WebGPU EP, since the root import's JSEP
- * registry has no TopK kernel and parks this graph's TopK on CPU, failing
- * capture's all-nodes-partitioned check everywhere.
+ * plain one. Requires the native C++ WebGPU EP: the root import's JSEP registry
+ * has no TopK kernel, so this graph's TopK lands on CPU and fails capture's
+ * all-nodes-partitioned check everywhere.
  *
- * Attempted on every engine, WebKit included, though it buys no round trip
- * there (measured on an iPhone 16e) unlike the large Chromium Android win.
- * WebKit was excluded twice and both exclusions were retired: the crash
- * attribution was disproved when iOS kills landed with capture on and off
- * alike, and the measured no-win did not justify a user-agent branch guarding
- * against nothing observed. The crash sentinel's `graphCapture` tag is what
- * would show a correlation if one ever appears.
+ * Attempted on every engine, WebKit included, though it buys no round trip there
+ * unlike the large Chromium Android win. Don't reintroduce a WebKit skip; the
+ * sentinel's `graphCapture` tag is what would show a correlation if one appears.
  */
 export const WEBGPU_GRAPH_CAPTURE = true;
 
@@ -48,11 +37,9 @@ export const INPUT_SIZE = 512;
 
 /**
  * Crop factor the 2x zoom applies: half the field of view into the same input
- * grid, so a distant vehicle occupies twice the linear size. A fixed step rather
- * than a range because native camera zoom is missing on iOS Safari and reports
- * device-defined units on Chrome Android, so cropping ourselves is the only way
- * one setting means the same thing on both. CAMERA_CONSTRAINTS requests roughly
- * twice the input edge so this crop lands at 512 native with no upsampling.
+ * grid. A fixed step rather than a range, because native camera zoom is missing
+ * on iOS Safari and device-defined on Chrome Android. CAMERA_CONSTRAINTS requests
+ * twice the input edge, so this lands at 512 native with no upsampling.
  */
 export const ZOOM_2X = 2;
 
@@ -71,11 +58,9 @@ export const IMAGENET_STD: readonly [number, number, number] = [
 
 /**
  * Ceiling on onnxruntime-web's wasm threads. Inference runs on the GPU, but the
- * runtime hosting the execution provider is itself wasm and runs any node the
- * provider cannot take. Past a phone's few performance cores, threads land on
- * efficiency cores and can make the fast ones wait, so four is the safe default;
- * raise it only on on-device measurement. Needs cross-origin isolation to take
- * effect at all.
+ * runtime hosting the provider is itself wasm and runs any node it cannot take.
+ * Past a phone's few performance cores threads land on efficiency ones and make
+ * the fast cores wait. Needs cross-origin isolation to take effect at all.
  */
 export const WASM_THREAD_CAP = 4;
 

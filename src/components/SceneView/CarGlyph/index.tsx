@@ -30,11 +30,9 @@ const WHEEL_CORNERS: readonly (readonly [number, number])[] = [
 ];
 
 /**
- * A box of light rather than a box of car: translucent, never occluding what
- * is behind it, and carrying its authored opacity in userData like every
- * other glyph mesh so the scene's fade animator brings it in and out with the
- * body. Additive over the car's own paint, plainly blended over the road,
- * because additive over the light palette's white ground is invisible.
+ * A box of light rather than a box of car: translucent and never occluding.
+ * Additive over the car's own paint, plainly blended over the road, since
+ * additive over the light palette's white ground is invisible.
  */
 const GlowBox = ({
   color,
@@ -66,13 +64,9 @@ const GlowBox = ({
 );
 
 /**
- * The pool of light a flashing bar throws on the road: the shared falloff
- * texture, laid flat just above the grid and tinted by the lit lamp. Soft
- * edges are the whole point, so where no texture can be built there is no
- * pool rather than a rectangle. Normally blended rather than additive,
- * because additive over the light palette's white ground adds nothing and a
- * patrol car should not stop throwing light when the phone switches to its
- * day appearance.
+ * The pool of light a flashing bar throws on the road. Soft edges are the whole
+ * point, so where no texture can be built there is no pool rather than a
+ * rectangle. Blended rather than additive, which adds nothing over white.
  */
 const GlowPool = ({
   color,
@@ -123,18 +117,12 @@ const LAMPS = [
 ] as const;
 
 /**
- * The roof lightbar, flashing red and blue: two lamps that take turns being
- * lit, a halo over whichever is, and a pool of that color on the road under
- * the car. There is no actual light in this scene and there cannot be one,
- * since every glyph draws with an unlit material and the ground is a grid of
- * lines rather than a surface; what sells it is that all three pieces change
- * color together.
+ * The roof lightbar: two lamps taking turns, a halo over whichever is lit, and a
+ * pool of that color on the road. There is no actual light in this scene; what
+ * sells it is all three changing color together.
  *
- * Invalidating here is the exception to this view's self-parking frame loop
- * (see SceneGlyphs), and it is bounded twice over: only while a patrol car is
- * on screen, and only once per flip rather than once per display frame. Steady
- * under reduced motion, where both lamps stay lit and neither the halo nor the
- * pool is drawn, so the component renders once and asks for nothing more.
+ * The one exception to this view's self-parking frame loop, bounded twice: only
+ * while a patrol car is on screen, and once per flip rather than per frame.
  */
 const PoliceLightbar = ({
   width,
@@ -187,17 +175,11 @@ const PoliceLightbar = ({
 };
 
 /**
- * A car glyph, sized in meters and built from fractions of that size. The
- * shape that reads as a car rather than a crate: a hull with a narrower
- * greenhouse set back on it, a window band around the greenhouse, and four
- * wheels. The hull is narrower than the stated width so the wheels define it;
- * tucking them inside the body hides them completely at any real range.
+ * A car glyph, sized in meters. The hull is narrower than the stated width so
+ * the wheels define it; tucking them inside hides them at any real range.
  *
- * Police get the black-and-white livery and a red-and-blue roof lightbar,
- * which is what a driver recognizes a patrol car by long before they can read
- * anything written on it. The white panels go where the chase camera actually
- * looks: the doors, the roof, and the tail. The hood is white too, which only
- * shows when a glyph is off to the side, and costs one box to be right there.
+ * Police get the black-and-white livery and the lightbar, which is what a driver
+ * recognizes a patrol car by. The white panels go where the chase camera looks.
  */
 export const CarGlyph = ({
   police,

@@ -12,7 +12,6 @@ import type { SettingsContextValue } from "./types";
 export * from "./consts";
 export * from "./types";
 
-/** React context for managing app settings. */
 const SettingsContext = createContext<SettingsContextValue | undefined>(
   undefined,
 );
@@ -26,7 +25,6 @@ export const useSettings = (): SettingsContextValue => {
   return value;
 };
 
-/** Props for SettingsProvider component. */
 type SettingsProviderProps = {
   children: ReactNode;
 };

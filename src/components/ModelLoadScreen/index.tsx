@@ -14,13 +14,10 @@ const megabytes = new Intl.NumberFormat("en-US", {
 });
 
 /**
- * Full-screen model download indicator, shown only while the weights stream
- * over the network. It distinguishes two phases: DOWNLOADING while bytes are
- * still arriving, and PREPARING (full bar, pulsing) once the download is
- * complete but the ONNX session is still compiling. Without the second label
- * a fast connection finishes the download inside the anti-flash delay and the
- * screen's entire visible life is a bar pegged at 100% under "DOWNLOADING",
- * which reads as a broken progress bar rather than the compile pause it is.
+ * Full-screen download indicator, shown only while the weights stream over the
+ * network. The PREPARING phase covers the session compile after the bytes land:
+ * without it, a fast connection's entire visible screen is a bar pegged at 100%
+ * under DOWNLOADING, which reads as broken rather than as a compile pause.
  */
 export const ModelLoadScreen = ({ progress }: ModelLoadScreenProps) => {
   const [visible, setVisible] = useState(false);

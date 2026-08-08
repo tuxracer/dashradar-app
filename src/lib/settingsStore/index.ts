@@ -18,13 +18,10 @@ export * from "./consts";
 export * from "./types";
 
 /**
- * Turns off the developer options that used to default on: the debug overlay
- * and the two status pills. A blob written before SETTINGS_VERSION 1 stores
- * those as true whether or not anyone asked for them, because they were the
- * defaults, so turning Developer options on would light them up on a device
- * that never chose any of them. The other developer options are left alone:
- * they already defaulted to their off value, so a stored value there could
- * only have come from someone setting it.
+ * Turns off the developer options that used to default on. A pre-version-1 blob
+ * stores those as true whether or not anyone asked, so the master switch would
+ * light them up on a device that never chose them. The rest are left alone,
+ * since a stored value there could only have come from someone setting it.
  */
 const clearLegacyDefaultOnOptions = (settings: Settings): Settings => ({
   ...settings,
@@ -34,13 +31,10 @@ const clearLegacyDefaultOnOptions = (settings: Settings): Settings => ({
 });
 
 /**
- * Reads and validates settings from localStorage, falling back to defaults
- * when storage is empty, corrupt, or unavailable (private mode / quota). A
- * valid but partial blob (for example one stored before showDebug existed) is
- * merged over DEFAULT_SETTINGS, so missing fields take their default instead
- * of resetting everything. A blob older than SETTINGS_VERSION runs through
- * the migration above before anything reads it; the write-back on store
- * creation stamps the current version, so that happens exactly once.
+ * Reads and validates settings, falling back to defaults when storage is empty,
+ * corrupt, or unavailable. A valid but partial blob is merged over the defaults
+ * rather than resetting everything. An older blob runs through the migration
+ * above first; the write-back at store creation is what makes that happen once.
  */
 export const loadSettings = (): Settings => {
   try {
@@ -81,10 +75,8 @@ export const loadSettings = (): Settings => {
 };
 
 /**
- * Persists a settings blob, reporting whether the write landed. Storage can
- * be unavailable (private mode) or full, and the callers want different
- * things from that: ordinary updates keep the in-memory value and move on,
- * while a commit that is about to reload the page has to know it failed.
+ * Persists a settings blob, reporting whether the write landed. Ordinary updates
+ * keep the in-memory value and move on; a commit about to reload has to know.
  */
 const writeSettings = (next: PersistedSettings): boolean => {
   try {
@@ -96,11 +88,10 @@ const writeSettings = (next: PersistedSettings): boolean => {
 };
 
 /**
- * Builds the settings store for one page load. Loads once, writes the blob
- * straight back (stamping the current schema version, which is what makes a
- * migration run exactly once), and persists synchronously on every change.
- * The write-back is idempotent, so a discarded StrictMode duplicate store
- * rewrites the same bytes and costs nothing.
+ * The settings store for one page load. Loads once, writes straight back to stamp
+ * the schema version (which is what makes a migration run once), then persists
+ * on every change. The write-back is idempotent, so a StrictMode duplicate costs
+ * nothing.
  */
 export const createSettingsStore = (): SettingsStore => {
   let stored = loadSettings();

@@ -15,18 +15,11 @@ const createDetectionWorker = (): TrialWorkerLike =>
   });
 
 /**
- * Prove a candidate model entry actually runs on this device, by doing the
- * real thing: a fresh detection worker downloads the weights, builds a WebGPU
- * session, and runs it once. That is the whole compatibility contract, so a
- * wrong input size, an incompatible head, or an unsupported op fails here
- * with a reason instead of stranding the app after a reload. The download
- * goes through the page's service worker (or the worker's dev cache), so a
- * successful trial has already cached the weights: the trial IS the cache
- * fill.
- *
- * The worker is terminated however this settles. Never rejects; every failure
- * is a result with a reason. An abort terminates the worker mid-download and
- * settles not-ok.
+ * Prove a candidate model runs by doing the real thing: a fresh worker downloads
+ * the weights, builds a session, and runs it once. That is the whole
+ * compatibility contract, so an unsupported op fails here with a reason rather
+ * than stranding the app after a reload, and the trial doubles as the cache fill.
+ * The worker is terminated however this settles, and it never rejects.
  */
 export const trialLoadModel = (
   model: DetectionModel,

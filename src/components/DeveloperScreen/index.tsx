@@ -32,9 +32,7 @@ const handleReset = () => {
   void resetAppData().finally(() => window.location.reload());
 };
 
-/** Props for DeveloperScreen. */
 type DeveloperScreenProps = {
-  /** Returns to the settings panel. */
   onClose: () => void;
   /**
    * Opens the model picker. Owned by the settings panel rather than by this
@@ -46,14 +44,10 @@ type DeveloperScreenProps = {
 
 /**
  * Full-screen home for the developer options. Nothing here is meant for someone
- * driving, so the rows use this codebase's words rather than the plain ones the
- * driver-facing panel is held to.
- *
- * The master switch is the top row and hides everything else, so the screen says
- * what it is before it says what it can do. It is the same flag the settings
- * store gates on, so flipping it off does not merely hide the rows below, they
- * stop applying. Detection model is the exception, ungated because the picker
- * confirms and reloads and that choice must outlive the switch.
+ * driving, so the rows use this codebase's words rather than plain ones. The
+ * master switch is the top row and hides the rest; it is the same flag the
+ * settings store gates on, so flipping it off stops those rows applying rather
+ * than merely hiding them. Detection model is ungated, since the picker reloads.
  */
 export const DeveloperScreen = ({
   onClose,

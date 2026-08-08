@@ -33,14 +33,10 @@ const rejectionName = (error: unknown): string => {
 
 /**
  * Request a lock and drop it again from inside a tap handler. Nothing here holds
- * the screen open; the point is the permission it leaves behind.
- *
- * WebKit refuses a lock requested without transient activation, and grants a
- * later gesture-less one only because a gesture-backed request already landed on
- * this document. The engine asks once scanning starts, several awaits past the
- * tap that set the app going, so on iOS it is refused for the life of the page
- * without this. The flag is per document, so it has to be spent again on every
- * page load.
+ * the screen open; the point is the permission it leaves behind. WebKit refuses
+ * a lock without transient activation and grants a later gesture-less one only
+ * because a gesture-backed request already landed on this document, which the
+ * engine's own request, several awaits past any tap, never is.
  */
 export const primeScreenWakeLock = () => {
   void navigator.wakeLock?.request("screen").then(
@@ -61,28 +57,21 @@ export const primeScreenWakeLock = () => {
 type ReportedOutcome = "nothing" | "refused" | "settled";
 
 /**
- * Keeps the screen awake while the returned stream is subscribed. It never emits
- * and never completes, so it is a resource to scope under whatever should hold
- * the screen open rather than a protocol a caller has to hold correctly.
+ * Keeps the screen awake while subscribed. It never emits and never completes, so
+ * it is a resource to scope rather than a protocol a caller has to hold.
  *
- * The platform auto-releases when the tab is hidden, so becoming visible
- * requests a fresh lock. A refused one waits for the next tap and asks again,
- * since on WebKit a gesture-backed request is the one that can still succeed:
- * priming covers a session that reaches scanning through the intro, this covers
- * a returning one that reaches it through no taps at all.
- *
- * The reporting gate lives in this closure rather than a subscription, so a
- * platform is reported once per page load rather than once per scanning window.
+ * The platform auto-releases on a hidden tab, so becoming visible requests a
+ * fresh lock, and a refused one waits for the next tap. The reporting gate lives
+ * in this closure, so a platform is reported once per page load.
  */
 export const screenWakeLock = (): Observable<never> => {
   let reported: ReportedOutcome = "nothing";
 
   /**
-   * Report a refusal, once. It is the app's worst silent failure: the screen
-   * sleeps mid-drive and the detector stops seeing the road with no sign anything
-   * changed. Reported when it happens rather than pending a retry, since a driver
-   * who never touches the screen has no later answer and must not go uncounted.
-   * The rejection name is the whole payload.
+   * Report a refusal, once. The app's worst silent failure: the screen sleeps
+   * mid-drive and the detector stops seeing the road. Reported when it happens
+   * rather than pending a retry, since a driver who never touches the screen has
+   * no later answer.
    */
   const reportRefusal = (reason: string) => {
     if (reported !== "nothing") {
@@ -110,14 +99,11 @@ export const screenWakeLock = (): Observable<never> => {
   };
 
   /**
-   * One held lock, released when unsubscribed. The `released` flag covers the
-   * teardown window every pending request has: unsubscribing while the platform
-   * is still deciding must let the grant go rather than store it, or the screen
-   * stays awake after scanning stopped.
-   *
-   * Completing on a refusal is what hands the stream to the gesture retry below.
-   * A held lock never completes, so a healthy session subscribes no gesture
-   * listeners, and neither does a platform with no API for a tap to change.
+   * One held lock, released when unsubscribed. `released` covers the teardown
+   * window every pending request has: unsubscribing mid-decision must let the
+   * grant go, or the screen stays awake after scanning stopped. Completing on a
+   * refusal is what hands the stream to the gesture retry below; a held lock
+   * never completes, so a healthy session subscribes no gesture listeners.
    */
   const heldLock$ = new Observable<never>((subscriber) => {
     if (!navigator.wakeLock) {

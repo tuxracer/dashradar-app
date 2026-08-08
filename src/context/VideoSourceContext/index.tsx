@@ -25,17 +25,12 @@ export const useVideoSource = (): VideoSourceContextValue => {
 };
 
 /**
- * Owns which video file, if any, the detector scans instead of the camera.
- * Every session starts on the camera; a file dropped onto the window or picked
- * in settings replaces it until cleared. The choice cannot survive a reload:
- * object URLs die with the page and a File handle is not serializable.
+ * Owns which video file, if any, the detector scans instead of the camera. The
+ * choice cannot survive a reload: object URLs die with the page.
  *
  * Sits inside DetectionProvider because every swap detaches the engine's video
- * first. The element the pump is capturing from is about to be unmounted, and
- * detaching stops the pump on the spot, which also drops the coasting tracker's
- * history: what the old feed was holding onto has nothing to do with the world
- * the new one is showing. Whichever view mounts for the new feed attaches it
- * again when it starts playing.
+ * first: the element the pump captures from is about to unmount, and detaching
+ * also drops the tracker's history, which has nothing to do with the new feed.
  */
 export const VideoSourceProvider = ({ children }: { children: ReactNode }) => {
   const { detachVideo } = useDetection();

@@ -5,14 +5,10 @@ import { WORDMARK } from "@/lib/branding";
 
 /**
  * Shown when the GPU probe finds nothing that can run inference. Deliberately not
- * an `ErrorScreen`: nothing is recoverable on the device in hand, so a fault
- * report with a warning glyph would spend the moment telling someone their phone
- * is inadequate. The only useful job is moving them to a device that works.
- *
- * So it borrows the intro's composition: the night-drive scene runs behind the
- * copy, showing the detector doing what they came for, with the QR framed as an
- * acquired target. The fact is still stated plainly, just not as the headline.
- * The screen is terminal, so its rAF loop costs nothing the intro does not.
+ * an `ErrorScreen`: nothing is recoverable here, so the only useful job is moving
+ * someone to a device that works rather than telling them theirs is inadequate.
+ * It borrows the intro's composition for that, with the fact stated plainly in
+ * the body rather than as the headline.
  */
 export const UnsupportedScreen = () => {
   return (

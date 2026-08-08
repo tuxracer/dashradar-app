@@ -29,15 +29,13 @@ const LockedTarget = ({ children }: { children: React.ReactNode }) => (
 );
 
 /**
- * The full-screen handoff cluster: a SCAN TO OPEN annunciator, the QR framed as
- * an acquired target, and the native share button wherever Web Share exists.
- * Shared by both places the app hands itself to another device, so the two
- * cannot drift apart the way they had before this was extracted.
+ * The full-screen handoff cluster: a SCAN TO OPEN annunciator, the QR framed as an
+ * acquired target, and the share button wherever Web Share exists. Shared by both
+ * places the app hands itself to another device.
  *
- * The QR is never conditional on the share sheet. The code hands off to a second
- * screen someone is holding and needs nothing from the browser; the sheet hands
- * off to a second device of your own, the only one of the two that helps when
- * the device in hand is the phone. They are complements.
+ * The QR is never conditional on the share sheet: the code hands off to a second
+ * screen someone is holding, the sheet to a second device of your own, which is
+ * the only one that helps when the device in hand is the phone.
  */
 export const ShareTarget = () => (
   <>

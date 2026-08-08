@@ -8,10 +8,9 @@ import { isTrackingOptedOut } from "privacy-signals";
 const TRACES_SAMPLE_RATE = 1.0;
 
 /**
- * Read and clear the previous session's sentinel ahead of the tracking gate, so
- * a dirty record is consumed whether or not this session reports it. An iOS kill
- * runs no JS, so Sentry never sees the crash and the next launch is the only
- * chance to notice one.
+ * Read and clear the previous session's sentinel ahead of the tracking gate, so a
+ * dirty record is consumed whether or not this session reports it. An iOS kill
+ * runs no JS, so the next launch is the only chance to notice one.
  */
 const previousSessionEnd = readPreviousSessionEnd();
 
@@ -29,10 +28,9 @@ if (previousSessionEnd) {
 }
 
 /**
- * Initialize at import time, so instrumentation is in place before the rest of
- * the app loads. Gated on Do Not Track exactly as analytics is: only a
- * definitive "not opted out" initializes the SDK, since null means the signals
- * were unreadable and is not consent. Dev builds and an empty DSN stay silent.
+ * Initialize at import time, before the rest of the app loads. Gated on Do Not
+ * Track exactly as analytics is: only a definitive "not opted out" initializes
+ * the SDK, since null means the signals were unreadable and is not consent.
  */
 if (!import.meta.env.DEV && isTrackingOptedOut() === false) {
   Sentry.init({

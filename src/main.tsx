@@ -9,14 +9,10 @@ import { isTrackingOptedOut } from "privacy-signals";
 import { trackAppUpdate } from "@/lib/appUpdate";
 import { trackPwaInstall } from "@/lib/pwaInstall";
 import { requestPersistentStorage } from "@/lib/serviceWorker";
-// The unqualified entrypoints, never the per-subset ones. These carry a
-// `unicode-range` per subset, which is what lets the browser download only the
-// subset a glyph actually needs (Latin, here, and never Devanagari). The
-// `latin-*.css` / `latin-ext-*.css` files ship the same @font-face without any
-// unicode-range, so importing two of them declares competing rules for one
-// family+weight and the last one silently wins, leaving the HUD with a subset
-// that has no ASCII in it. Devanagari is kept out of the Workbox precache by
-// globIgnores in vite.config.ts instead, which is where that cost really was.
+// The unqualified entrypoints, never the per-subset ones: these carry a
+// `unicode-range` so the browser downloads only the subset a glyph needs, while
+// the `latin-*.css` files ship the same @font-face without one, so importing two
+// declares competing rules for one family+weight and the last silently wins.
 import "@fontsource/rajdhani/500.css";
 import "@fontsource/rajdhani/600.css";
 import "@fontsource/rajdhani/700.css";

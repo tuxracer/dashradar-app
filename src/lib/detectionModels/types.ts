@@ -28,13 +28,11 @@ export type DetectionModel = {
   id: string;
   /** Hugging Face account the repo is published under. */
   owner: string;
-  /** Hugging Face repo name. */
   slug: string;
   /**
-   * Revision tag the weights URL pins. Never "main": the model cache is
-   * CacheFirst keyed on URL, so a mutable ref would sit behind an immutable
-   * entry and a new model would never reach anyone. Absent for a plain-URL
-   * model, where the pasted address is itself the pin.
+   * Revision tag the weights URL pins. Never "main": the cache is CacheFirst
+   * keyed on URL, so a mutable ref would never reach anyone. Absent for a
+   * plain-URL model, where the pasted address is itself the pin.
    */
   revision?: string;
   /** Repo-relative path of the ONNX file (for example "onnx/model_fp16.onnx"). */
@@ -46,18 +44,15 @@ export type DetectionModel = {
    */
   weightsUrl?: string;
   /**
-   * What the file named at the trial load, so the card can say what an entry
-   * looks for without downloading it again. Display only: the decode always
-   * reads classes off the session it is decoding, so this copy can never reach a
-   * box. Absent on the shipping entry, whose revision moves under a stable id.
+   * What the file named at the trial load, so the card can say what an entry looks
+   * for without downloading it again. Display only, and absent on the shipping
+   * entry, whose revision moves under a stable id.
    */
   classes?: readonly DetectionClass[];
   /**
    * One plain sentence about what this checkpoint is for, so two models can be
-   * told apart before either is run. Written here because the machine-readable
-   * answer needs the file downloaded and runs to 80 words for a general-purpose
-   * model. Prose only: nothing decodes it and no box is ever labelled from it,
-   * and only the entries a build ships carry one.
+   * told apart before either is run: the machine-readable answer needs the file
+   * downloaded and runs to 80 words. Only the entries a build ships carry one.
    */
   summary?: string;
 };
@@ -76,12 +71,10 @@ export const isHttpsUrl = (value: string): boolean => {
 };
 
 /**
- * Whether a runtime-unknown value is a usable model entry; they arrive from
- * localStorage and from worker messages. The `.onnx` check is the one content
- * rule, since everything else is proven by the trial load but a path that is not
- * an ONNX file can be rejected before a byte moves. The two shapes are told
- * apart by `weightsUrl` and each must be complete, or the entry resolves to a
- * URL nobody meant.
+ * Whether a runtime-unknown value is a usable model entry. The `.onnx` check is
+ * the one content rule: everything else is proven by the trial load, but a path
+ * that is not an ONNX file can be rejected before a byte moves. The two shapes
+ * are told apart by `weightsUrl` and each must be complete.
  */
 export const isDetectionModel = (value: unknown): value is DetectionModel => {
   return (
@@ -105,10 +98,9 @@ export const isDetectionModel = (value: unknown): value is DetectionModel => {
 };
 
 /**
- * A registry entry paired with what the session built from it turned out to
- * hold, both measured rather than declared, so nothing here can disagree with
- * the weights. The decode takes its stride and its labels from this one value,
- * which is what keeps a width from meeting a table it was never measured against.
+ * A registry entry paired with what its session turned out to hold, measured
+ * rather than declared. The decode takes both stride and labels from this one
+ * value, so a width can never meet a table it was not measured against.
  */
 export type LoadedModel = DetectionModel & {
   headWidth: number;

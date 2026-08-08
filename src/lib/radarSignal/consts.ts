@@ -4,19 +4,16 @@ import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
 export const SEGMENT_COUNT = 14;
 
 /**
- * Peak-hold falloff, in signal-fraction per second. Results land a second or more
- * apart, so this has to be slow enough for the peak to bridge consecutive ones:
- * at 0.15 the meter falls about 30 points across a two-second gap, where a rate
- * four times faster whipsawed on score jitter. Attack stays instant, matching a
- * real radar detector: latch on fast, fall off slow. Tune on-device.
+ * Peak-hold falloff per second. Results land a second or more apart, so this has
+ * to be slow enough for the peak to bridge consecutive ones or the meter
+ * whipsaws on score jitter. Attack stays instant: latch on fast, fall off slow.
  */
 export const DECAY_PER_SEC = 0.15;
 
 /**
- * Scores at or below this map to zero signal, so the ladder spends its full range
- * on the band that can actually arrive. Imported rather than copied because both
- * failure modes are silent: below the threshold wastes the bottom of the ladder,
- * above it reads real detections as no signal at all.
+ * Scores at or below this map to zero, so the ladder spends its range on the band
+ * that can arrive. Imported rather than copied: below the threshold wastes the
+ * bottom of the ladder, above it reads real detections as no signal.
  */
 export const SIGNAL_FLOOR = CONFIDENCE_THRESHOLD;
 

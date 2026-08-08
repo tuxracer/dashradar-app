@@ -43,17 +43,12 @@ const subscribeSteady = () => () => {};
 const steady = () => undefined;
 
 /**
- * The lit half of every police lightbar on screen right now. One timer drives
- * all of them, so patrol cars flash together rather than each paying for its
- * own clock; at the range these glyphs are read at, that they alternate is
- * the whole message and which car leads it is not.
+ * The lit half of every police lightbar on screen. One timer drives all of them,
+ * so patrol cars flash together rather than each paying for its own clock; that
+ * they alternate is the whole message at these ranges.
  *
- * A strobe is a step function, so this is a cadence in milliseconds rather
- * than a rAF loop: there is nothing to say between the two states, and the
- * scene renders once per flip instead of once per display frame. Reduced
- * motion pins it steady, which both halves then read as lit; a flashing
- * red-and-blue light is exactly what someone who asked for less motion is
- * asking to be spared.
+ * A strobe is a step function, so this is a millisecond cadence rather than a rAF
+ * loop, and the scene renders once per flip. Reduced motion pins it steady.
  */
 export const usePoliceStrobe = (): StrobePhase => {
   const reduced = prefersReducedMotion();

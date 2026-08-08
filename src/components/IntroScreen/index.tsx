@@ -40,14 +40,10 @@ type IntroScreenProps = {
 };
 
 /**
- * Full-screen first-open intro, rendered instead of the radar screen until
- * dismissed so the camera prompt fires right after the START tap rather than
- * cold on page load. A phone downloads the model underneath while someone reads;
- * a desktop waits. The copy powers on in the same staggered cascade as the
- * permission ask and error screens.
- *
- * On a desktop the START button becomes the `ShareTarget` handoff, since the app
- * is built for a phone on a dash, with a small link below to continue anyway.
+ * Full-screen first-open intro, rendered instead of the radar screen so the
+ * camera prompt fires after the START tap rather than cold on page load. A phone
+ * downloads the model underneath while someone reads; a desktop waits, and gets
+ * the `ShareTarget` handoff in place of START with a link to continue anyway.
  */
 export const IntroScreen = ({ onStart }: IntroScreenProps) => {
   const desktop = isDesktopDevice();

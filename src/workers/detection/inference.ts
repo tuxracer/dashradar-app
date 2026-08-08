@@ -51,10 +51,9 @@ export const mapCropBoxToFrame = (
 };
 
 /**
- * Convert an RGBA frame into the model's NCHW float32 input: per-channel ImageNet
- * normalization laid out as all R, then all G, then all B. Pass `out` to write
- * into a preallocated buffer, which is how the worker keeps ~3 MB of garbage per
- * frame off the hot path.
+ * Convert an RGBA frame into the model's NCHW float32 input: ImageNet
+ * normalization laid out as all R, then all G, then all B. `out` writes into a
+ * preallocated buffer, keeping ~3 MB of garbage per frame off the hot path.
  */
 export const preprocess = (
   imageData: ImageData,
@@ -80,14 +79,10 @@ const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
 
 /**
  * Pair a registry entry with what its session turned out to hold: the head width
- * off the `labels` tensor's dims, and the classes off the `names` map in the
- * weights. Both measured rather than declared, which is what makes it safe: a
- * hand-written table can be paired with the wrong checkpoint and report POLICE at
- * every pedestrian, while labels from the same file as the logits they index
- * cannot disagree with them.
- *
- * What is left to fail on is a `labels` output not shaped like a classification
- * head, which throws at load rather than on the first decoded frame.
+ * off the `labels` dims, the classes off the `names` map in the weights. Both
+ * measured rather than declared, so they cannot disagree the way a hand-written
+ * table paired with the wrong checkpoint would. A `labels` output not shaped like
+ * a classification head throws at load, not on the first decoded frame.
  */
 export const resolveLoadedModel = (
   labelsDims: readonly number[],
@@ -110,19 +105,14 @@ export const resolveLoadedModel = (
 };
 
 /**
- * Decode the model's raw outputs into normalized detections. `dets` is cxcywh
- * boxes, `labels` is raw class logits with an unused slot at index 0. Each query
- * takes its highest-scoring named class and is emitted when that class's
- * sigmoid clears `threshold`. One box gets one class: the head is multi-label in
- * principle, but a HUD box carrying two names is no use to a driver. RF-DETR is
- * set-based, so no NMS.
+ * Decode the raw outputs into normalized detections. Each query takes its
+ * highest-scoring named class and is emitted when that class's sigmoid clears
+ * `threshold`. One box gets one class, since a HUD box with two names is no use
+ * to a driver, and RF-DETR is set-based so there is no NMS.
  *
- * The model arrives already reconciled with its session, so the table is not
- * re-checked per frame. What is checked is that the two tensors agree: a
- * `labels` length that is not the query count times the stride would read the
- * head at the wrong offset from the second query on. The query count comes from
- * tensor lengths rather than dims, which keeps this pure and works the same on
- * the graph-capture path.
+ * The two tensors are checked against each other: a `labels` length that is not
+ * the query count times the stride would read the head at the wrong offset. The
+ * count comes from tensor lengths rather than dims, which keeps this pure.
  */
 export const decodeDetections = (
   dets: Float32Array,

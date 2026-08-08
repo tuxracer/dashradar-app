@@ -47,13 +47,9 @@ type ErrorScreenProps = {
 };
 
 /**
- * Full-screen error panel keyed by error code: scope-ringed glyph, headline,
- * body copy, optional reassurance rows, and a reload button. Laid out like the
- * intro (scope beside the copy in landscape, stacked in portrait) so failures
- * stay in the app's visual language instead of reading as a wall of text.
- * Content powers on in the same one-shot staggered cascade as the camera
- * permission ask (scope first, then copy, then the button), so the whole
- * panel family enters the same way.
+ * Full-screen error panel keyed by error code. Laid out like the intro so
+ * failures stay in the app's visual language instead of reading as a wall of
+ * text, and enters in the same staggered cascade as the rest of the family.
  */
 export const ErrorScreen = ({ code, action }: ErrorScreenProps) => {
   const { title, body, points } = ERROR_COPY[code];

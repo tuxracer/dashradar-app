@@ -104,11 +104,9 @@ const RadarScreen = () => {
   const [videoSize, setVideoSize] = useState<Size>();
   const viewportSize = useViewportSize();
 
-  // Both belong to one feed rather than the session, so they are stamped with
-  // the feed that produced them. The camera failure is why: clearing a clip that
-  // stood in for a camera which would not open mounts a fresh CameraView, and
-  // carrying the old refusal over would show the error screen without ever
-  // asking the camera again.
+  // Stamped with the feed that produced them, not the session: clearing a clip
+  // that stood in for a camera which would not open mounts a fresh CameraView,
+  // and an old refusal carried over would never ask the camera again.
   const [feedFailure, setFeedFailure] = useState<{
     feedId: number;
     error: CameraError;
@@ -130,25 +128,19 @@ const RadarScreen = () => {
     [feedId],
   );
 
-  // Whether the first-open intro is what this render shows; see the matching
-  // return below.
   const introVisible = showIntro && !source;
 
-  // A desktop holds the download until here, because its intro is a handoff to a
-  // phone rather than a way in: the weights are worth fetching once someone has
-  // decided to run the detector on this machine, not while they are being offered
-  // the QR code. A phone never defers, so this is a no-op there.
+  // A desktop holds the download until here, since its intro is a handoff to a
+  // phone rather than a way in. A phone never defers, so this is a no-op there.
   useEffect(() => {
     if (!introVisible) {
       allowModelLoad();
     }
   }, [allowModelLoad, introVisible]);
 
-  // iOS forgets camera permission between launches of an installed web app, so
-  // every launch re-prompts, and an update found at launch reloads right after
-  // Allow and prompts a second time. Waiting for the update check reorders that
-  // launch to reload first; with no update pending it resolves during the model
-  // load and delays nothing.
+  // iOS re-prompts for the camera every launch of an installed web app, and an
+  // update found at launch reloads right after Allow and prompts again. Waiting
+  // for the check reorders that launch to reload first.
   const [updateSettled, setUpdateSettled] = useState(false);
   useEffect(() => {
     let disposed = false;
@@ -206,12 +198,9 @@ const RadarScreen = () => {
       />
     );
   }
-  // After the intro and ahead of every camera screen: everyone is still told what
-  // the app is for, but nobody is asked for camera access their phone cannot use.
-  // The GPU probe answers within milliseconds of mount, so in practice this is
-  // what the START tap lands on rather than a late interruption. Its own screen
-  // rather than an ErrorScreen code, since there is nothing to retry, only
-  // somewhere better to go.
+  // After the intro and ahead of every camera screen: everyone is told what the
+  // app is for, but nobody is asked for access their phone cannot use. Its own
+  // screen rather than an ErrorScreen code, since there is nothing to retry.
   if (error === "WEBGPU_UNSUPPORTED") {
     return <UnsupportedScreen />;
   }
@@ -260,10 +249,8 @@ const RadarScreen = () => {
 
   // The camera is acquired only once the model is loaded and warmed. Session
   // creation plus warm-up is the heaviest moment the GPU process sees, and a live
-  // stream holds buffers of its own throughout; overlapping the two put both
-  // peaks on the same instant, which is where every field crash landed. The cost
-  // is that the browser's prompt now follows the download screen instead of
-  // landing over it.
+  // stream holds buffers throughout, so overlapping them puts both peaks on one
+  // instant.
   const modelLoading = status === "loading-model";
 
   // The developer detection view overrides both user-facing views; the
@@ -278,9 +265,8 @@ const RadarScreen = () => {
     >
       {!detectionView && !sceneMode && <RadarBackdrop />}
       {source ? (
-        // Not held back the way the camera is: that gate is about the permission
-        // prompt and the buffers a live stream holds through the model's compile,
-        // and a local file has neither. Gating it would also strand the sessions
+        // Not held back the way the camera is: a local file has neither the
+        // permission prompt nor the buffers. Gating it would strand the sessions
         // this feed exists for, the ones with no camera to fall back to.
         <VideoFileView
           key={source.url}

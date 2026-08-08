@@ -14,10 +14,9 @@ const LUMA_GREEN = 0.587;
 const LUMA_BLUE = 0.114;
 
 /**
- * Reduce a frame to one mean luma per tile. Takes the ImageData the worker
- * already pulls off its input canvas, which is the whole reason the gate is
- * cheap: no capture, canvas, or readback of its own, just a pass over bytes that
- * were being read anyway, early enough that a skip avoids everything after it.
+ * Reduce a frame to one mean luma per tile. Takes the ImageData the worker already
+ * pulls off its input canvas, which is why the gate is cheap: a pass over bytes
+ * that were being read anyway, early enough that a skip avoids everything after.
  */
 export const sceneSignature = (imageData: ImageData): SceneSignature => {
   const { data, width, height } = imageData;
@@ -47,12 +46,10 @@ export const sceneSignature = (imageData: ImageData): SceneSignature => {
 };
 
 /**
- * Whether the scene moved enough since the last scanned frame to be worth
- * another inference. The verdict is the largest single tile's change, never the
- * average: averaging answers how much of the picture changed, when what matters
- * is whether anything did. The frame-wide shift is subtracted first, so an
- * auto-exposure correction moving every tile alike does not read as movement;
- * anything that did arrive departs from that shift rather than following it.
+ * Whether the scene moved enough to be worth another inference. The verdict is
+ * the largest single tile's change, never the average, which answers how much of
+ * the picture changed rather than whether anything did. The frame-wide shift is
+ * subtracted first, so an auto-exposure correction does not read as movement.
  */
 export const compareScenes = (
   previous: SceneSignature,

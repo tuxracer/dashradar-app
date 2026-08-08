@@ -19,10 +19,9 @@ export const MIN_FRAME_INTERVAL_MS = 1_000;
 export const PACING_REST_RATIO = 1;
 
 /**
- * Round trip at which the rest ratio starts climbing toward
- * PACING_REST_RATIO_MAX, so a slowing device's duty cycle falls instead of
- * sitting at a flat 50%. Half the floor is where the floor stops governing, so
- * every device fast enough to be paced by it is unaffected by the ramp.
+ * Where the rest ratio starts climbing, so a slowing device's duty cycle falls
+ * instead of sitting flat. Half the floor is where the floor stops governing, so
+ * every device fast enough for it is unaffected by the ramp.
  */
 export const PACING_REST_RAMP_MS = MIN_FRAME_INTERVAL_MS / 2;
 
@@ -37,12 +36,9 @@ export const PACING_REST_RATIO_MAX = 3;
 export const MAX_FRAME_INTERVAL_MS = 5_000;
 
 /**
- * Longest the scene-change gate may go without the model running before the
- * pump demands a scan anyway. A threshold set above what a distant vehicle
- * produces and a camera that has frozen both look exactly like a still scene
- * from inside the app, so the gate is not trusted to be its own backstop. Ten
- * seconds keeps nearly all of the win: a minute at a light costs six inferences
- * instead of sixty.
+ * Longest the gate may go without the model running. A miscalibrated threshold
+ * and a frozen camera both look exactly like a still scene from inside the app,
+ * so the gate is not trusted to be its own backstop.
  */
 export const SCENE_GATE_MAX_SKIP_MS = 10_000;
 
@@ -68,21 +64,16 @@ export const INITIAL_DEBUG: DebugSnapshot = {
 };
 
 /**
- * How long to wait for the service worker to control the page before starting
- * the worker's model download anyway. On a first visit the model fetch would
- * otherwise race ahead of Workbox taking control and bypass its runtime cache;
- * this bounds that wait so startup never stalls if control never arrives.
+ * How long to wait for a service worker before downloading anyway. On a first
+ * visit the fetch would otherwise race Workbox and bypass its runtime cache.
  */
 export const SW_CONTROL_TIMEOUT_MS = 3_000;
 
 /**
- * How long a detection worker may run before it is recycled at the next result
- * boundary. ORT arenas, GPU buffer pools, and the WASM heap all grow natively
- * where JS can neither see nor free them, and iOS kills the page at a hard
- * memory cap, so recycling turns unbounded growth into bounded growth over the
- * hours-long sessions this app is built for. Measured cost is roughly one
- * scan: the weights come back from CacheStorage and the browser reuses its
- * compiled shaders.
+ * How long a worker may run before it is recycled at the next result boundary.
+ * ORT arenas, GPU buffer pools, and the WASM heap all grow where JS can neither
+ * see nor free them, and iOS kills the page at a hard cap, so this bounds the
+ * growth over an hours-long session. Costs roughly one scan.
  */
 export const WORKER_RECYCLE_AFTER_MS = 900_000;
 
@@ -95,12 +86,10 @@ export const WORKER_RECYCLE_AFTER_MS = 900_000;
 export const WORKER_REPLY_TIMEOUT_MS = 30_000;
 
 /**
- * Longest a loading worker may go without posting any message before it is
- * recycled. An inactivity bound, not a load budget: a healthy load posts at
- * every stage down to each downloaded chunk, so a slow network keeps resetting
- * the clock while a load wedged in CacheStorage or session creation says
- * nothing. The reply watchdog cannot cover this, since no frame is posted until
- * the worker reports ready.
+ * Longest a loading worker may go silent before it is recycled. An inactivity
+ * bound, not a load budget: a healthy load posts at every stage down to each
+ * chunk, so a slow network keeps resetting the clock while a wedged one says
+ * nothing. The reply watchdog cannot cover this; no frame is posted yet.
  */
 export const WORKER_LOAD_TIMEOUT_MS = 60_000;
 

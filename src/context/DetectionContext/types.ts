@@ -18,11 +18,9 @@ export type { Contact } from "@/lib/processDetectionResult";
 export type { Track } from "@/lib/detectionTracker";
 
 /**
- * Value exposed via useDetection(): the engine's published snapshot plus the
- * pieces only the React layer knows (the pinned model and the video
- * attachment API). `contact` is additionally gated on the detection-image
- * setting here, so turning it off drops a card already on screen the same
- * instant it stops the worker cutting new ones.
+ * What useDetection() exposes: the engine's snapshot plus what only the React
+ * layer knows. `contact` is additionally gated on the detection-image setting
+ * here, so turning it off drops a card already on screen.
  */
 export type DetectionContextValue = DetectionSnapshot & {
   /**

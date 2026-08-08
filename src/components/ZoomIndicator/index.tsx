@@ -4,7 +4,6 @@ import type { ZoomMode } from "@/context/SettingsContext";
  * same way RadarDetectorScreen is fed) so the pill renders without the
  * worker in tests. */
 type ZoomIndicatorProps = {
-  /** Zoom mode from useSettings(). */
   mode: ZoomMode;
 };
 

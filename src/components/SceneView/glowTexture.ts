@@ -36,11 +36,10 @@ const build = (): CanvasTexture | undefined => {
 };
 
 /**
- * A soft round falloff, white so a material tints it to whatever color the
- * lamp is showing. Shared by every glow in the scene and built on first use
- * rather than at import, which keeps a canvas out of the jsdom test path;
- * where a 2D context cannot be had, callers get undefined and skip the glow
- * rather than drawing a hard-edged rectangle of light.
+ * A soft round falloff, white so a material tints it to the lamp's color. Built
+ * on first use rather than at import, which keeps a canvas out of the jsdom test
+ * path; without a 2D context callers get undefined and skip the glow rather than
+ * drawing a hard-edged rectangle of light.
  */
 export const glowFalloff = (): CanvasTexture | undefined => {
   if (!built) {

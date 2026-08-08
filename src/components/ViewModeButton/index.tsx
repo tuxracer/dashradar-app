@@ -3,13 +3,9 @@ import { Radar, Rotate3d } from "lucide-react";
 import { useSettings } from "@/context/SettingsContext";
 
 /**
- * View toggle in the top bar, next to the settings gear: flips the main view
- * between the radar dial and the 3D scene, showing the view a tap would
- * switch to. Same large tap target as the gear, for the same dash-mount
- * reach. Hidden while the detection-view developer option is on, because that
- * option overrides both main views and a toggle with no visible effect reads
- * as broken. The root sets pointer-events-auto because its container
- * (StatusBar) disables pointer events.
+ * View toggle in the top bar, showing the view a tap would switch to. Same large
+ * tap target as the gear. Hidden while the detection view is on, which overrides
+ * both main views and would leave the toggle looking broken.
  */
 export const ViewModeButton = () => {
   const { viewMode, setViewMode, detectionView } = useSettings();

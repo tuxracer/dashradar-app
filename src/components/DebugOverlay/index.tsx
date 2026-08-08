@@ -18,11 +18,8 @@ type DebugOverlayProps = {
 };
 
 /**
- * Whether the WebGPU session runs with graph capture (recorded kernel
- * dispatches replayed per frame). "disabled" means no attempt was made (the
- * `WEBGPU_GRAPH_CAPTURE` flag is off); "failed" means the attempt was made
- * and the worker fell back to a plain session, with the probe's
- * `graphCaptureError` block below the rows saying why.
+ * Whether the session runs with graph capture. "disabled" means no attempt was
+ * made; "failed" means it fell back, with `graphCaptureError` saying why.
  */
 const captureSupport = (probe: BackendProbe | undefined): string => {
   if (!probe) {
@@ -35,12 +32,9 @@ const captureSupport = (probe: BackendProbe | undefined): string => {
 };
 
 /**
- * Which weights the session actually came up on, from the provenance the export
- * stamps into the `.onnx` file itself. The registry entry only says which file
- * was asked for, so this is what catches a cache serving a different build than
- * the pinned revision. "unstamped" is a file that parsed but carries no
- * provenance (any build exported before v3.7); "unreadable" is one whose bytes
- * did not parse as a model at all, which a working session makes unlikely.
+ * Which weights the session came up on, from the provenance stamped into the
+ * file: the registry entry only says which file was asked for, so this is what
+ * catches a cache serving a different build.
  */
 const modelFile = (probe: BackendProbe | undefined): string => {
   if (!probe) {
@@ -57,10 +51,8 @@ const modelFile = (probe: BackendProbe | undefined): string => {
 const ms = (value: number): string => `${value.toFixed(1)} ms`;
 
 /**
- * The scene-change gate's running tally: how many scans the model ran, how many
- * the gate answered without it, and what share that is. The raw pair rather
- * than the share alone, because the share says nothing about how much scanning
- * it is a share of, and a high rate over four scans means nothing.
+ * The gate's running tally. The raw pair rather than the share alone, because a
+ * high rate over four scans means nothing.
  */
 const gateScans = ({ scansTotal, skipsTotal }: DebugSnapshot): string => {
   const total = scansTotal + skipsTotal;
@@ -77,11 +69,8 @@ const Row = ({ label, value }: { label: string; value: string }) => (
 );
 
 /**
- * Development diagnostics panel pinned to the top-left, below the wordmark line.
- * Rendered only when the showDebug setting is on. pointer-events are disabled so
- * it never intercepts taps meant for the HUD. Data comes in as props (the
- * backend probe, model progress, the per-frame debug snapshot, and the current
- * sizes) so the panel stays testable without the detection worker.
+ * Development diagnostics panel, pinned top-left below the wordmark. Data comes
+ * in as props, so the panel stays testable without the detection worker.
  */
 export const DebugOverlay = ({
   backendProbe,
@@ -100,11 +89,8 @@ export const DebugOverlay = ({
     if (!showDebug) {
       return;
     }
-    // Polled in wall time rather than per frame: the readout has nothing to
-    // say between ticks, so a frame loop would only be waking at the display's
-    // rate to ask whether the interval had elapsed. The first tick replaces
-    // whatever was on screen when the panel was last shown, one interval after
-    // it opens.
+    // Polled in wall time rather than per frame: the readout has nothing to say
+    // between ticks.
     const readout = window.setInterval(() => {
       setDebug(getDebug());
     }, READOUT_INTERVAL_MS);

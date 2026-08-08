@@ -54,14 +54,9 @@ const UNLOCK_EVENTS = ["pointerdown", "touchend", "keydown"] as const;
 
 /**
  * The radar-detector beeper: discrete beeps at a fixed pitch whose cadence rises
- * with the signal, each a short self-terminating envelope so there is never a
- * sustained tone. The context and its oscillator are built lazily on the first
- * audible update, so a muted session never touches Web Audio, and a one-shot
- * gesture listener resumes a context the autoplay policy suspended.
- *
- * The context is suspended again after IDLE_SUSPEND_MS of silence. Without it,
- * one alert early in a drive leaves the audio thread running for every quiet
- * hour after.
+ * with the signal. Built lazily on the first audible update, so a muted session
+ * never touches Web Audio, and suspended again after IDLE_SUSPEND_MS of silence,
+ * or one alert early in a drive costs every quiet hour after it.
  */
 export const createRadarBeeper = (): RadarBeeper => {
   let nodes: BeeperNodes | undefined;

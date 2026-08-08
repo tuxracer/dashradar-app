@@ -4,20 +4,11 @@ import { LAST_RUN_COMMIT_KEY, UNKNOWN_COMMIT_SHA } from "./consts";
 export * from "./consts";
 
 /**
- * Report an `app_updated` event with the commit SHA this device came from and
- * the one it is now running, then remember the running build either way. Call
- * once at startup.
- *
- * The update is counted where it lands rather than where the service worker
- * finds it: an installing worker knows a new build exists but not which commit
- * it carries, while the build that boots afterwards knows its own SHA exactly.
- * That also makes the number "sessions that actually ran the new build", which
- * is what a rollout question is really asking, instead of "updates downloaded".
- * The cost is one launch of lag, and an update that installs but is never
- * launched again never counts.
- *
- * A first run, or the launch after a data reset, records the build silently:
- * there is no previous build to have come from.
+ * Report an `app_updated` event with the SHA this device came from and the one it
+ * now runs, then remember the running build either way. Counted where it lands
+ * rather than where the service worker finds it, since an installing worker does
+ * not know which commit it carries, which also makes the number "sessions that
+ * ran the new build". A first run records the build silently.
  */
 export const trackAppUpdate = (): void => {
   const to = __COMMIT_SHA__;

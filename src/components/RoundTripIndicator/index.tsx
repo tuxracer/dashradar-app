@@ -4,22 +4,16 @@ import { READOUT_INTERVAL_MS } from "./consts";
 
 export * from "./consts";
 
-/** Props for RoundTripIndicator. */
 type RoundTripIndicatorProps = {
   /** Latest per-frame diagnostics; polled on the readout tick. */
   getDebug: () => DebugSnapshot;
 };
 
 /**
- * Amber pill showing the last scan's whole detect round trip, not the model time
- * alone. The on-glass counterpart of the debug overlay's round-trip row, for
- * watching pacing on a phone without the panel covering the meter; the caller
- * owns its visibility.
- *
- * Polled from the debug snapshot rather than React state, which is where the
- * snapshot deliberately lives so a per-result update does not re-render every
- * consumer. An interval rather than an animation frame, because the readout is
- * paced in wall time and has nothing to say between ticks.
+ * Amber pill showing the last scan's whole round trip, for watching pacing on a
+ * phone without the debug panel covering the meter. Polled from the debug
+ * snapshot rather than React state, which is where the snapshot lives so a
+ * per-result update does not re-render every consumer.
  */
 export const RoundTripIndicator = ({ getDebug }: RoundTripIndicatorProps) => {
   const [roundTripMs, setRoundTripMs] = useState(() => getDebug().roundTripMs);

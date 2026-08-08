@@ -18,14 +18,10 @@ type OrientationAccess = {
 };
 
 /**
- * The orientation sensors' availability for as long as `active` holds: asks
- * for them at the first gesture the driver makes, and reports whether they are
- * still waiting on one.
- *
- * Any reading settles it, whatever the reading holds, because an event
- * arriving at all is proof the sensors are open. On the engines that never
- * gated them that happens within a frame or two of mounting, so nothing is
- * ever offered to a driver who has nothing to grant.
+ * The orientation sensors' availability while `active` holds: asks at the first
+ * gesture and reports whether one is still awaited. Any reading settles it, since
+ * an event arriving at all is proof the sensors are open, which on the engines
+ * that never gated them happens a frame or two after mounting.
  */
 export const useOrientationAccess = (active: boolean): OrientationAccess => {
   const [needsGesture, setNeedsGesture] = useState(orientationAccessGated);

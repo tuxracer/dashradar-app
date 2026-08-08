@@ -16,7 +16,6 @@ const hasCaptureStream = (
 ): video is CaptureStreamVideo =>
   isFunction((video as Partial<CaptureStreamVideo>).captureStream);
 
-/** Props for CameraPreview. */
 type CameraPreviewProps = {
   /**
    * The hidden element the detector captures from. Its stream is played in a
@@ -29,16 +28,13 @@ type CameraPreviewProps = {
 };
 
 /**
- * Developer-only live view of what the detector is scanning, for checking aim on
- * a dash mount without leaving the meter. Shows the capture region rather than
- * the whole feed, mirroring the worker's centerCropRegion: an object-cover video
- * in a square container is the largest centered square, and scaling it by the
- * crop factor narrows that to the region the zoom samples.
+ * Developer-only live view of the region the detector scans, for checking aim on
+ * a dash mount without leaving the meter. An object-cover video in a square
+ * container is the largest centered square, and scaling by the crop factor
+ * narrows that to what the zoom samples.
  *
- * On the camera path it plays the source's own stream. With a file feed the
- * source plays a file rather than a stream, so it mirrors through captureStream,
- * which is Chromium only; on WebKit the guard below leaves it empty, and the
- * file player shows the whole clip anyway.
+ * A file feed plays a file rather than a stream, so it mirrors through
+ * captureStream, which is Chromium only; on WebKit the preview stays empty.
  */
 export const CameraPreview = ({ source, zoom }: CameraPreviewProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);

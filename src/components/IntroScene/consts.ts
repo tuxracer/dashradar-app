@@ -109,7 +109,6 @@ export type SceneTuning = {
   shoulderX: number;
   /** Nearest depth at which grid lines and oncoming blips are drawn. */
   nearZ: number;
-  /** Contact depth at spawn. */
   contactSpawnZ: number;
   /** Contact depth as it passes out of frame. */
   contactPassZ: number;

@@ -38,48 +38,26 @@ export { orientationOffsets, orientationQuaternion } from "./cameraRig";
 export { usePoliceStrobe } from "./policeStrobe";
 export { useScenePalette } from "./scenePalette";
 
-/** Props for SceneView. */
 type SceneViewProps = {
-  /**
-   * The published tracker output (scan.tracks): stable ids, and the tracks the
-   * last scan missed still held on their coasting budget. This view drops
-   * those against scanAt below.
-   */
+  /** The published tracker output; this view drops the coasted ones. */
   tracks: Track[];
-  /**
-   * Timestamp of the scan that produced `tracks` (scan.at). A track whose
-   * lastSeenAt matches it is one the model found on that scan; the rest are
-   * the tracker coasting through a miss. Undefined before the first scan.
-   */
+  /** Timestamp of the scan that produced `tracks`; a match means a live find. */
   scanAt?: number;
-  /**
-   * Native size of the frame the tracks' boxes are normalized to. Placements
-   * recompute when the published scan changes (a fresh tracks array per
-   * result); scene-gate skips republish nothing here on purpose, because a
-   * scene that did not change cannot have moved its objects.
-   */
+  /** Native size of the frame the tracks' boxes are normalized to. */
   frame?: Size;
   /** Camera horizontal field of view in degrees (the sceneFov setting). */
   fovDeg: number;
-  /** Current raw signal strength in [0, 1] (see hudSignal); drives the beeper. */
+  /** Raw signal strength in [0, 1]; drives the beeper. */
   confidence: number;
-  /** Whether the beeping audio indicator is on (the radarAudio setting). */
   audioEnabled: boolean;
   /** Whether detection has not started yet (model loading, session warm-up). */
   initializing?: boolean;
   /**
-   * Whether to show the scene diagnostics panel (the Debug overlay developer
-   * option): the WebGL probe verdict and GPU name, the framebuffer size, a
-   * live rendered-frame count, and recent context or error events. Exists so
-   * a phone can report why its canvas is blank on the glass itself, with no
-   * remote-debugging setup.
+   * Whether to show the scene diagnostics panel, so a phone can report why its
+   * canvas is blank on the glass itself, with no remote-debugging setup.
    */
   debug?: boolean;
-  /**
-   * Called once when the scene cannot render at all: WebGL is unavailable, or
-   * the context was lost and neither a restore nor a canvas remount brought
-   * it back. The caller is expected to fall back to the radar view.
-   */
+  /** Called once when the scene cannot render at all; fall back to the radar. */
   onRenderFailure: () => void;
 };
 
@@ -91,22 +69,16 @@ type WebglProbe = {
 };
 
 /**
- * Whether a WebGL2 context can be created at all, probed with the same
- * attributes the Canvas requests. Runs before the r3f Canvas ever mounts: the
- * Canvas throws where WebGL or ResizeObserver are missing (jsdom has
- * neither), so this probe is the seam that keeps the component renderable in
- * tests and lets real devices fail into the radar view instead of a crash.
- * The probe context is released immediately. The detail string feeds the
- * scene debug panel, so a phone can name its GPU or its refusal on the glass
- * without a remote-debugging setup.
+ * Whether a WebGL2 context can be created, with the attributes the Canvas
+ * requests. The Canvas throws where WebGL or ResizeObserver are missing, so this
+ * is the seam that keeps the component renderable in tests.
  */
 const probeWebgl = (): WebglProbe => {
   try {
     const canvas = document.createElement("canvas");
     let creationError = "";
     canvas.addEventListener("webglcontextcreationerror", (event) => {
-      // Typed as a plain Event; the WebGLContextEvent statusMessage needs a
-      // structural check.
+      // Typed as a plain Event; statusMessage needs a structural check.
       creationError =
         "statusMessage" in event && typeof event.statusMessage === "string"
           ? event.statusMessage
@@ -156,8 +128,7 @@ const lerpPosition = (
 ];
 
 /**
- * Multiply every glyph material's authored opacity by a fade factor. The
- * authored value rides along in material.userData.baseOpacity so fading is
+ * Fade a glyph. The authored opacity rides in userData.baseOpacity, so this is
  * idempotent rather than compounding.
  */
 const applyFade = (group: Group, fade: number) => {
@@ -171,14 +142,9 @@ const applyFade = (group: Group, fade: number) => {
 };
 
 /**
- * Catches render-time errors from the canvas subtree and routes them into the
- * scene's failure ladder. Without it a throw inside the r3f Canvas (a WebGL
- * context the device refuses to create, a driver rejecting a shader) unmounts
- * the entire app, because no boundary exists above this one; a detector must
- * degrade to the radar dial, never to a black screen. React's root
- * onCaughtError still reports the error to Sentry; the console line is for a
- * device being watched over remote debugging. A class because error
- * boundaries have no hook form.
+ * Routes render-time errors from the canvas subtree into the failure ladder.
+ * Without it a throw inside the Canvas unmounts the whole app, and a detector
+ * must degrade to the dial rather than a black screen.
  */
 class SceneErrorBoundary extends Component<
   { onError: (error: unknown) => void; children: ReactNode },
@@ -201,12 +167,9 @@ class SceneErrorBoundary extends Component<
 }
 
 /**
- * Counts frames the canvas actually renders, written straight to a DOM node
- * in the scene debug panel. Rendered only while the panel is up; a demand
- * frameloop means the subscription itself schedules nothing. The count is
- * the panel's sharpest signal: zero frames on a black canvas means three
- * never drew, while a climbing count means the GPU is drawing and the black
- * is in presentation, two entirely different bugs.
+ * Counts rendered frames straight into the debug panel's DOM node. The panel's
+ * sharpest signal: zero frames on a black canvas means three never drew, while a
+ * climbing count means the black is in presentation.
  */
 const DebugFrameProbe = ({
   target,
@@ -214,8 +177,7 @@ const DebugFrameProbe = ({
   target: RefObject<HTMLSpanElement | null>;
 }) => {
   const frames = useRef(0);
-  // Ref writes from a rAF-driven callback, off React's render path; the
-  // immutability lint cannot see that useFrame is not render.
+  // Off React's render path; the immutability lint cannot see that.
   /* eslint-disable react-hooks/immutability */
   useFrame(() => {
     frames.current += 1;
@@ -230,7 +192,7 @@ const DebugFrameProbe = ({
 
 /** Per-glyph motion state the frame loop advances. */
 type GlyphMotion = {
-  /** Latest placement, kept for the glyph's kind and elevation. */
+  /** Latest placement, for the glyph's kind and elevation. */
   placement: ScenePlacement;
   from: [number, number, number];
   to: [number, number, number];
@@ -238,7 +200,6 @@ type GlyphMotion = {
   tweenStart: number;
   /** Fade lifecycle: entering, settled, or leaving after its track died. */
   phase: "in" | "live" | "out";
-  /** performance.now() when the current phase started. */
   phaseStart: number;
 };
 
@@ -252,14 +213,10 @@ const motionPositionAt = (
 };
 
 /**
- * The glyphs and their animator, inside the Canvas because it needs
- * invalidate(): the canvas runs frameloop="demand" and this is the only thing
- * that asks for a frame. Each set of placements diffs against the live motion
- * map (new ids fade in, moved ids retarget mid-tween, absent ids fade out) and
- * invalidates once; the loop re-invalidates only while a tween is unfinished, so
- * a static scene costs nothing until the next scan. That self-parking
- * invalidation is this view's thermal contract, never frameloop="always" or an
- * unconditional invalidate. Under reduced motion changes snap in one frame.
+ * The glyphs and their animator, inside the Canvas because it needs invalidate().
+ * The loop re-invalidates only while a tween is unfinished, so a static scene
+ * costs nothing until the next scan. That self-parking invalidation is this
+ * view's thermal contract, never frameloop="always".
  */
 const SceneGlyphs = ({
   placements,
@@ -319,10 +276,8 @@ const SceneGlyphs = ({
     invalidate();
   }, [placements, reducedMotion, invalidate]);
 
-  // The frame loop advances motion state the diff effect created. Mutating
-  // ref-held animation state from a rAF-driven callback is the same
-  // imperative pattern as the radar screen's meter loop; the immutability
-  // lint cannot see that useFrame runs off React's render path.
+  // Mutating ref-held animation state off React's render path, the same pattern
+  // as the radar screen's meter loop; the immutability lint cannot see that.
   /* eslint-disable react-hooks/immutability */
   useFrame(() => {
     const now = performance.now();
@@ -378,8 +333,7 @@ const SceneGlyphs = ({
               groupsRef.current.set(placement.id, group);
               const motion = motionsRef.current.get(placement.id);
               if (motion) {
-                // Position a freshly mounted glyph before its first frame so
-                // it never flashes at the origin.
+                // So a freshly mounted glyph never flashes at the origin.
                 group.position.set(
                   ...motionPositionAt(motion, performance.now()),
                 );
@@ -398,32 +352,16 @@ const SceneGlyphs = ({
 };
 
 /**
- * The 3D scene: detected objects placed on a ground plane in ego-relative
- * meters, as low-poly glyphs under a chase camera. The abstract register is
- * deliberate, because the placement math is coarse: range comes from a per-class
- * height prior through a pinhole model and is good to tens of percent, while
- * bearing is accurate, so the glyphs claim exactly as much as the data supports.
+ * The 3D scene: detected objects on a ground plane in ego-relative meters, as
+ * low-poly glyphs under a chase camera. The abstract register is deliberate,
+ * since range comes off a height prior and is good only to tens of percent.
  *
- * Glyph motion is last-scan truth: objects appear when a scan finds them and
- * fade the moment one comes back without them, so positions move at the scan
- * cadence and the dial, which rides the tracker's coasting and its own decay,
- * disagrees with this view by design. A dial reading high for a moment after a
- * vehicle is gone costs nothing; a glyph left standing on the ground plane is a
- * false statement about where something is.
+ * Glyph motion is last-scan truth, so this disagrees with the coasting dial by
+ * design: a glyph left standing is a false statement about where something is.
  *
- * The one view that follows the phone's color scheme, tracked live so a phone
- * that switches at dusk switches the scene with it. Everything else stays a dark
- * instrument, so chrome drawn over this view picks its ink through the
- * scene-light variant rather than a scheme query of its own.
- *
- * Thermal behavior mirrors the radar screen's parked loop: demand frameloop, a
- * dpr ceiling, a low-power context, invalidation only while a tween is
- * unfinished, and a beeper that parks on silence, so an idle session renders
- * nothing.
- *
- * Render failure has three rungs for a thermally stressed phone: wait for the
- * browser to restore a lost context, remount the canvas once, then report
- * onRenderFailure, which the app answers by falling back to the radar dial.
+ * The one view that follows the phone's color scheme, so chrome drawn over it
+ * picks its ink through the scene-light variant. Render failure has three rungs:
+ * await a context restore, remount once, then report onRenderFailure.
  */
 export const SceneView = ({
   tracks,
@@ -445,8 +383,7 @@ export const SceneView = ({
   const [createdInfo, setCreatedInfo] = useState<string>();
   const framesSpanRef = useRef<HTMLSpanElement>(null);
 
-  // Rare by construction (context losses and errors), so the state churn a
-  // long session could accumulate is bounded by the slice.
+  // Rare by construction, and the slice bounds what a long session accumulates.
   const appendDebugEvent = (line: string) => {
     setDebugEvents((previous) => [...previous.slice(-3), line.slice(0, 140)]);
   };
@@ -456,23 +393,19 @@ export const SceneView = ({
   const lossTimerRef = useRef<number | undefined>(undefined);
   const onRenderFailureRef = useRef(onRenderFailure);
 
-  // The beeper lives exactly as long as this view: leaving scene mode (or
-  // unmounting for any reason) tears the audio graph down.
+  // Lives exactly as long as this view.
   useRadarBeeper(confidence, audioEnabled);
 
-  // Read once at mount: flipping the OS setting mid-session re-evaluates on
-  // the next mount, same as the intro scene.
+  // Read once at mount, same as the intro scene.
   const reducedMotion = useMemo(() => prefersReducedMotion(), []);
 
   // Only while the camera rig is live, since a driver who asked for reduced
   // motion has a view that would not pan with the phone anyway.
   const orientation = useOrientationAccess(!reducedMotion);
 
-  // Only what the last scan actually saw. The tracker holds an unmatched
-  // track for its coasting budget so the meter and the contact card ride out
-  // a single missed detection, and this view deliberately does not take that
-  // set: a glyph standing on the ground plane says something is there now,
-  // which is a claim the scan that just came back no longer supports.
+  // Only what the last scan actually saw. A glyph standing on the ground plane
+  // says something is there now, which is a claim a coasted track no longer
+  // supports, however useful coasting is to the meter.
   const liveTracks = useMemo(
     () => (scanAt === undefined ? [] : tracksSeenAt(tracks, scanAt)),
     [tracks, scanAt],
@@ -637,10 +570,9 @@ export const SceneView = ({
       )}
       <div className="pointer-events-none absolute inset-x-0 bottom-[max(1.25rem,env(safe-area-inset-bottom))] flex flex-col items-center gap-3">
         {orientation.needsGesture && (
-          // iOS hands over the orientation sensors only to a tap, and a
-          // dash-mounted phone may never get one, so the offer has to be a
-          // control of its own. It leaves for good on the answer, granted or
-          // denied, and never appears at all on the phones that just work.
+          // iOS hands over the orientation sensors only to a tap, which a
+          // dash-mounted phone may never get, so the offer needs a control of its
+          // own. It leaves for good on any answer.
           <button
             type="button"
             onClick={orientation.request}

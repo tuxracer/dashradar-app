@@ -6,10 +6,8 @@
 export const MORE_INFO_LABEL = "MORE INFO";
 
 /**
- * Shown in place of the class list for a model that has neither run here nor
- * says what it is: an added file the trial load found no names in. A built-in
- * always has its own sentence, so this is the last resort rather than what
- * greets someone browsing the list.
+ * Shown in place of the class list for a model that has neither run here nor says
+ * what it is. A built-in always has its own sentence, so this is a last resort.
  */
 export const UNKNOWN_CLASSES_MESSAGE =
   "Not known until this model has run once.";

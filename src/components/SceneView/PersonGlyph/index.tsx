@@ -8,11 +8,9 @@ export * from "./consts";
 const SIDES = [-1, 1];
 
 /**
- * A person glyph, shaped to read as a body rather than a bollard: two legs
- * with daylight between them, a torso tapering from shoulders to waist, arms
- * hanging just clear of it, and a head on a pinched neck. Roughly 1.75 m tall,
- * which is what makes it scale believably against the vehicles beside it.
- * Parts overlap at their joints on purpose, since a butt joint between two
+ * A person glyph, shaped to read as a body rather than a bollard: legs with
+ * daylight between them, a tapering torso, arms clear of it, a head on a pinched
+ * neck. Parts overlap at their joints on purpose, since a butt joint between two
  * translucent meshes reads as a seam.
  */
 export const PersonGlyph = () => (

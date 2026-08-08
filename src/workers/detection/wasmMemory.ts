@@ -1,13 +1,11 @@
 /**
- * Measures the wasm heap onnxruntime-web runs on, for the crash sentinel. An iOS
- * memory kill runs no JS and WebKit exposes no memory API, so the heap's size at
- * death is only knowable if it was written down while the session was alive.
+ * Measures the wasm heap onnxruntime-web runs on, for the crash sentinel: an iOS
+ * memory kill runs no JS, so the size at death is only knowable if written down.
  *
- * ORT offers no accessor, but its Emscripten runtime creates the heap in this
- * scope with `new WebAssembly.Memory(...)`. Replacing the constructor with a
- * recording subclass before the runtime initializes captures the instance, and
- * `buffer.byteLength` then reads its committed size on demand. The subclass only
- * remembers; the instances behave identically.
+ * ORT offers no accessor, but its Emscripten runtime creates the heap here with
+ * `new WebAssembly.Memory(...)`, so a recording subclass installed before the
+ * runtime initializes captures the instance. It only remembers; the instances
+ * behave identically.
  */
 
 const captured: WebAssembly.Memory[] = [];

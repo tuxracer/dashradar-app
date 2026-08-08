@@ -23,16 +23,10 @@ const toCameraError = (error: unknown): CameraError => {
 };
 
 /**
- * Resolve when the video presents a camera frame newer than the last one, via
- * `requestVideoFrameCallback`. Waiting on this before capturing guarantees
- * inference never runs twice on the same camera frame (possible when the
- * detection rate outpaces the camera, e.g. very low light dropping the camera's
- * frame rate). On browsers without rVFC it resolves immediately, degrading to
- * capture-whatever-is-displayed. Note rVFC does not fire while the page is
- * hidden or the video is stalled, so a caller awaiting this can stay pending
- * indefinitely; callers must tolerate never resuming (the detection pump's
- * capture observable is torn down by unsubscription when scanning stops,
- * abandoning the wait).
+ * Resolve when the video presents a frame newer than the last, so inference never
+ * runs twice on one camera frame. Resolves immediately without rVFC. It does not
+ * fire while the page is hidden or the video is stalled, so a caller can stay
+ * pending forever and must tolerate never resuming.
  */
 export const waitForNextVideoFrame = (video: HTMLVideoElement): Promise<void> =>
   new Promise((resolve) => {
@@ -58,14 +52,10 @@ export const getCameraStream = async (): Promise<MediaStream> => {
 };
 
 /**
- * The camera acquisition lifecycle as a stream: subscribing opens the rear
- * camera, attaches it to the element, starts playback, emits `active`, and
- * then a `resize` event per intrinsic-dimension change. Unsubscribing is
- * the whole teardown: tracks stop and the listener detaches, and a
- * getUserMedia grant or play() that resolves after unsubscription is
- * disposed instead of committed (every await re-checks cancellation). The
- * stream never completes on its own; it ends by unsubscription or by a
- * terminal typed CameraError on the error channel.
+ * The camera lifecycle as a stream: subscribing opens the rear camera, attaches
+ * and plays it, emits `active`, then a `resize` per dimension change.
+ * Unsubscribing is the whole teardown, and a grant resolving after it is disposed
+ * rather than committed. Ends by unsubscription or a terminal CameraError.
  */
 export const cameraFeed = (
   video: HTMLVideoElement,

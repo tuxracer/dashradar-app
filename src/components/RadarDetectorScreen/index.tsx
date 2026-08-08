@@ -17,27 +17,16 @@ import {
 
 export * from "./consts";
 
-/** Props for RadarDetectorScreen. */
 type RadarDetectorScreenProps = {
-  /** Current raw signal strength in [0, 1] (see hudSignal). */
+  /** Raw signal strength in [0, 1]. */
   confidence: number;
-  /** Whether the beeping audio indicator is on (the radarAudio setting). */
   audioEnabled: boolean;
-  /** Latest cutout to render as the contact card, if any. */
   contact?: Contact;
-  /** Detection has not started yet; no sweep, and the word reads INITIALIZING. */
+  /** Detection has not started yet; the word reads INITIALIZING. */
   initializing?: boolean;
-  /**
-   * Raw model score to show in place of the percentage, which comes off a
-   * remapped signal band and never matches it. Shown live with no peak-hold, so
-   * it drops to zero the moment the detection clears.
-   */
+  /** Raw model score, shown in place of the percentage with no peak-hold. */
   rawConfidence?: number;
-  /**
-   * Class the meter is alerting on, named by the status word in place of ALERT.
-   * Clears for the whole decay tail, which is why the loop holds the last one
-   * rather than reading this directly.
-   */
+  /** Class to name in place of ALERT. Clears through the decay tail. */
   detectedLabel?: string;
 };
 
@@ -48,25 +37,9 @@ const segmentAngleDeg = (index: number): number =>
 const ALERT_RING_COLOR = `rgb(${SIGNAL_HIGH_COLOR.join(", ")})`;
 
 /**
- * Fullscreen radar-detector instrument: radial ticks on a tachometer arc around
- * a percentage readout, over a faint grid with a sweep turning inside the dial.
- * A rAF loop applies peak-hold and decay to the incoming confidence and writes
- * segments, colors, readout, status word, and glow straight to the DOM, off
- * React's render path. It parks itself once the meter is quiescent and any prop
- * change wakes it, so the idle scanning state that dominates a session schedules
- * no frames at all; while awake it skips writes whose values have not changed.
- *
- * The status word names the detected class, holding the last one through the
- * dial's decay tail rather than reading the prop, which clears the instant the
- * raw signal does. The beeper and the contact card's direction row take the raw
- * signal instead, so both cut off with the detection while the dial decays
- * behind them.
- *
- * The sweep turns at a steady pace of its own rather than tracking the scan
- * rate, which it never usefully could: scans land about a second apart, so a
- * wedge stepped per scan reads as a stutter. It is withheld until scanning is
- * live, which is what makes its arrival mean something, and stays dark under
- * reduced motion with the status word carrying liveness alone.
+ * Fullscreen radar-detector instrument. A rAF loop peak-holds the confidence and
+ * writes straight to the DOM, off React's render path; it parks once the meter
+ * is quiescent, which is the dominant state of a session.
  */
 export const RadarDetectorScreen = ({
   confidence,
@@ -89,16 +62,13 @@ export const RadarDetectorScreen = ({
   const glowRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef<HTMLDivElement>(null);
   const cropCanvasRef = useRef<HTMLCanvasElement>(null);
-  // Restarts the rAF loop when it has parked itself on an idle meter. A no-op
-  // while it is already running, so the mirror effects call it unconditionally.
+  // Restarts the parked rAF loop; a no-op while it is already running.
   const wakeRef = useRef<() => void>(() => {});
 
-  // Lives exactly as long as this screen, and takes the raw signal rather than
-  // the peak-held level, so the beeps cut off with the detection.
+  // Takes the raw signal, so the beeps cut off with the detection.
   useRadarBeeper(confidence, audioEnabled);
 
-  // Refs may not be written during render, so each prop is mirrored in through
-  // an effect that also wakes the loop, flushing the change even when idle.
+  // Refs may not be written during render; each mirror also wakes the loop.
   useEffect(() => {
     confidenceRef.current = confidence;
     wakeRef.current();
@@ -147,13 +117,11 @@ export const RadarDetectorScreen = ({
     let disposed = false;
     let running = false;
     let frame = 0;
-    // Values behind the last flush. While all hold, every write would rewrite an
-    // identical value, so a steady alert does not churn the DOM at refresh rate.
+    // Values behind the last flush, so a steady alert does not churn the DOM.
     let writtenLevel: number | undefined;
     let writtenContactShown: boolean | undefined;
     let writtenStatus: string | undefined;
-    // A sentinel distinct from any real prop value, so the first tick always
-    // flushes the readout mode.
+    // Distinct from any real value, so the first tick always flushes.
     let writtenRawConfidence: number | undefined | null = null;
 
     const tick = (now: number) => {
@@ -162,8 +130,6 @@ export const RadarDetectorScreen = ({
       const dtSec = Math.min(0.05, (now - last) / 1000);
       lastTimeRef.current = now;
 
-      // The display state machine is the pure stepMeter; this loop only writes
-      // what it says and parks.
       const { state, display } = stepMeter(
         meterRef.current,
         {
@@ -176,15 +142,11 @@ export const RadarDetectorScreen = ({
       meterRef.current = state;
       const { level, hasSignal, contactShown } = display;
 
-      // Flips the status word at a zero meter, so it gates the flush too.
       const isInitializing = initializingRef.current === true;
-
-      // Gates the flush too, since it can change while the peak-held level does
-      // not: a new same-strength detection, or the option toggling while idle.
+      // Gates the flush too: it can change while the peak-held level does not.
       const raw = rawConfidenceRef.current;
 
-      // ALERT is the fallback for a signal with no class to name, which the real
-      // app does not produce but which keeps the word honest if it ever does.
+      // ALERT is the fallback for a signal with no class to name.
       const statusText = hasSignal
         ? display.heldLabel !== undefined
           ? `${display.heldLabel} DETECTED`
@@ -248,10 +210,7 @@ export const RadarDetectorScreen = ({
         }
       }
 
-      // Park once the meter is quiescent, which is the dominant state of a
-      // scanning session: every write above is a fixed point, so further frames
-      // would only spend battery. The mirror effects wake the loop on any prop
-      // change, so it always runs one more tick to flush it.
+      // Park once quiescent: every write above is a fixed point from here.
       if (confidenceRef.current === 0 && level === 0) {
         running = false;
         lastTimeRef.current = undefined;

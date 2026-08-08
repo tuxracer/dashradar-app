@@ -8,11 +8,8 @@ export * from "./types";
 const MS_PER_MINUTE = 60_000;
 
 /**
- * Milliseconds snapped down to the nearest {@link SCAN_MINUTE_BUCKETS} mark, so
- * a reported number always means "scanned at least this long": 4 minutes reads
- * as 2, 4 hours as 240. Snapping down rather than to the nearest keeps the
- * reading one-directional, which matters for a number used to ask whether
- * sessions survive a drive.
+ * Milliseconds snapped down to the nearest bucket, so a reported number always
+ * means "scanned at least this long".
  */
 export const toBucketedMinutes = (ms: number): number => {
   const minutes = ms / MS_PER_MINUTE;
@@ -23,15 +20,9 @@ export const toBucketedMinutes = (ms: number): number => {
 };
 
 /**
- * Measures how long the frame pump actually spends scanning over a page's life,
- * and hands out the part of it that has not been reported to analytics yet.
- *
- * Scanning time is not page time: the pump stops while the settings panel is
- * open, while the page is hidden, and between a stall and its recovery, and
- * none of that is drive time the detector was watching the road. The clock is
- * therefore driven by the pump's own running window rather than by wall clock.
- *
- * `now` is a parameter only so tests can control the passage of time.
+ * How long the pump actually spends scanning over a page's life, minus what has
+ * already been reported. Driven by the pump's running window rather than wall
+ * clock, since a hidden page or an open settings panel is not drive time.
  */
 export const createScanClock = (now = () => performance.now()): ScanClock => {
   /** Scanning time from stretches that have already ended. */
@@ -60,13 +51,10 @@ export const createScanClock = (now = () => performance.now()): ScanClock => {
     },
 
     /**
-     * Scanning time not yet reported, claiming it as reported in the same
-     * breath, or 0 when there is less than `minimumMs` of it. Claiming and
-     * reading together is what keeps the sum of the reports equal to the total
-     * scanned: an interrupted drive reports each of its stretches once, and
-     * nothing is counted twice or lost between them. Below the minimum nothing
-     * is claimed, so a run of very short stretches accumulates until it is
-     * worth an event rather than being discarded one sliver at a time.
+     * Unreported scanning time, claimed as reported in the same breath, which is
+     * what keeps the sum of the reports equal to the total scanned. Below
+     * `minimumMs` nothing is claimed, so short stretches accumulate rather than
+     * being discarded one sliver at a time.
      */
     takeUnreportedMs: (minimumMs = 0) => {
       const total = elapsedMs();

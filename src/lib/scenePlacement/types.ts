@@ -37,7 +37,6 @@ export type ScenePlacement = {
   kind: PlacedKind;
   /** The detection label as the model produced it. */
   label: string;
-  /** The track's smoothed confidence score. */
   score: number;
   /** Meters right of the camera axis (negative is left). */
   xM: number;

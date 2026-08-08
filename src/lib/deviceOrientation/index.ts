@@ -36,18 +36,11 @@ export const orientationAccessGated = (): boolean =>
   orientationAccessAsk() !== undefined;
 
 /**
- * Asks for the orientation sensors at the next tap or key press and keeps waiting
- * until `stop`; wires up nothing where they are not gated.
- *
- * WebKit refuses the ask outside a gesture and fires no event until it is
- * answered, which is why the scene camera follows the phone on Android and sits
- * still on iOS. Nothing on the way into the app is a usable hook, since the
- * camera prompt is the browser's own and a returning driver reaches the view
- * through no taps at all, so the ask rides whatever they touch first.
- *
- * `onAnswer` fires on any answer, granted or denied, since nothing more can be
- * asked this page load either way. A rejected ask is not an answer: that is the
- * engine refusing a call that never reached the driver, so waiting continues.
+ * Asks for the orientation sensors at the next tap and keeps waiting until
+ * `stop`; wires up nothing where they are not gated. WebKit refuses the ask
+ * outside a gesture, and nothing on the way into the app is a usable hook, so it
+ * rides whatever the driver touches first. `onAnswer` fires on any answer; a
+ * rejected ask is not one, so waiting continues.
  */
 export const askForOrientationAccess = (
   onAnswer: () => void,

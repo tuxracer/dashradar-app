@@ -12,9 +12,7 @@ import {
 
 export * from "./consts";
 
-/** Props for ModelCard. */
 type ModelCardProps = {
-  /** The registry entry this card describes. */
   model: DetectionModel;
   /** Whether the picker's draft already points at this entry. */
   selected: boolean;
@@ -22,7 +20,6 @@ type ModelCardProps = {
   onUse: () => void;
   /** Unregister this model, confirm and all; only offered for added ones. */
   onRemove: () => void;
-  /** Return to the picker list. */
   onBack: () => void;
 };
 
@@ -71,15 +68,10 @@ const ClassList = ({ classes }: { classes: readonly DetectionClass[] }) => (
 );
 
 /**
- * What one model is, for someone deciding whether to run it: what it looks for,
- * which version, and a way out to the page it came from. A plain-URL model has
- * no such page, so its card shows the weights address instead.
- *
- * The classes come from whichever session actually loaded the file, never from
- * anything typed in here, so the card cannot claim a model detects something it
- * does not. A model neither session has seen has no row at all, and the entry's
- * own sentence covers that case: nothing here can download tens of megabytes to
- * answer what a model is for.
+ * What one model is, for someone deciding whether to run it. A plain-URL model has
+ * no page to link, so its card shows the weights address instead. The classes come
+ * from whichever session loaded the file, never from anything typed in here, so
+ * the card cannot claim a model detects something it does not.
  */
 export const ModelCard = ({
   model,

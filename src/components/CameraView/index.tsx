@@ -15,11 +15,9 @@ type CameraViewProps = {
   /** Terminal acquisition failure; the feed reports nothing after it. */
   onError: (error: CameraError) => void;
   /**
-   * Shows the whole feed, fit inside the viewport, instead of keeping the
-   * element a transparent pixel. Only the detection view developer option
-   * sets it: the app otherwise never puts the camera on screen. It fits
-   * rather than fills so no part of the frame the model was handed is cropped
-   * off the screen, which is the point of looking at it.
+   * Show the whole feed instead of keeping the element a hidden pixel. Fits
+   * rather than fills, so no part of the frame the model was handed is cropped
+   * off the screen.
    */
   visible?: boolean;
 };
@@ -37,11 +35,9 @@ export const CameraView = ({
 }: CameraViewProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // The feed is subscribed once per mount, and the handlers are read through
-  // refs so a parent passing a fresh callback identity on a render cannot
-  // restart it: resubscribing stops the camera and reacquires it, a
-  // user-visible stutter (and on some platforms a fresh permission hit) that
-  // no mere re-render should cause.
+  // Subscribed once per mount, with handlers read through refs so a fresh
+  // callback identity cannot restart it: resubscribing stops and reacquires the
+  // camera, a visible stutter no mere re-render should cause.
   const onEventRef = useRef(onEvent);
   const onErrorRef = useRef(onError);
   useEffect(() => {
@@ -69,15 +65,10 @@ export const CameraView = ({
     };
   }, []);
 
-  // Hidden, the element is shrunk to a single pixel rather than only made
-  // transparent. A transparent full-screen video is still composited every
-  // frame the camera delivers, scaling a 1024x1024 stream to the whole
-  // viewport for nobody to see, which is GPU work and heat the app spends its
-  // entire idle-scanning life paying for. Capture is unaffected: frames are
-  // read from the element's intrinsic videoWidth/videoHeight, which CSS size
-  // does not touch. It stays rendered (not display:none or visibility:hidden)
-  // because a video that is not rendered stops delivering frames on some
-  // platforms, and opacity-0 stays on so a stray pixel cannot show the feed.
+  // Shrunk to a single pixel rather than only made transparent: a transparent
+  // full-screen video is still composited every frame for nobody to see. Capture
+  // reads intrinsic dimensions, which CSS size does not touch. It stays rendered,
+  // since a video that is not stops delivering frames on some platforms.
   return (
     <video
       ref={videoRef}

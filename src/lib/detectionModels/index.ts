@@ -20,9 +20,8 @@ export const modelRepoUrl = (
     : undefined;
 
 /**
- * Where a model's weights are fetched from: a plain-URL entry's own address, or
- * the revision-pinned Hugging Face URL built from the rest. The pin is what makes
- * a release reach anyone, since the cache is CacheFirst keyed on URL. Takes the
+ * Where a model's weights are fetched from. The revision pin is what makes a
+ * release reach anyone, since the cache is CacheFirst keyed on URL. Takes the
  * id-less shape because an added model's id is this URL.
  */
 export const modelWeightsUrl = (model: Omit<DetectionModel, "id">): string =>
@@ -37,13 +36,10 @@ export const modelLabel = (model: DetectionModel): string =>
   model.revision === undefined ? model.slug : `${model.slug} ${model.revision}`;
 
 /**
- * The classes a checkpoint names, from the `names` map its export stamps in: the
- * only machine-readable record of what a logit slot means. Indices outside the
- * reported head are dropped, as is the unused background slot 0.
- *
- * A file that names nothing still has to detect, so every slot gets a generic
- * label and only the words on the contact card are poorer. Failing the load
- * would turn a cosmetic gap into a dead detector.
+ * The classes a checkpoint names, from the `names` map its export stamps in.
+ * Indices outside the reported head are dropped, as is the background slot 0. A
+ * file that names nothing still has to detect, so every slot gets a generic
+ * label rather than turning a cosmetic gap into a dead detector.
  */
 export const classesFromMetadata = (
   metadata: OnnxMetadata | undefined,
@@ -67,13 +63,11 @@ export const classesFromMetadata = (
 };
 
 /**
- * The `names` entry as index/label pairs, or nothing at all. It is the
- * ecosystem's convention for something ONNX has no standard field for, and it
- * comes in two dialects: Python's `str()` of the dict gives `{0: 'person'}`,
- * bare keys and single quotes, while `json.dumps` gives `{"1": "police"}`. A
- * reader that takes one dialect silently reads half the models it meets, so this
- * parses the shape instead. Narrowly: a flat map of integer to label is all a
- * class table can be, so anything else means the file named nothing usable.
+ * The `names` entry as index/label pairs. It comes in two dialects, Python's
+ * `str()` of a dict (`{0: 'person'}`) and `json.dumps` (`{"1": "police"}`), and a
+ * reader that takes one silently reads half the models it meets, so this parses
+ * the shape instead. Anything but a flat integer-to-label map means the file
+ * named nothing usable.
  */
 const parseNames = (
   metadata: OnnxMetadata | undefined,
@@ -207,8 +201,7 @@ export const isBuiltInModel = (model: DetectionModel): boolean =>
 /**
  * How a model may be named in anything leaving the device: a built-in by its
  * slug, anything added generically, since an added model's identity is a pasted
- * URL that can name a private host. One function rather than the rule restated
- * per reporting site, because a site that drifts leaks an address.
+ * URL. One function, because a reporting site that drifts leaks an address.
  */
 export const reportableModelName = (model: DetectionModel): string =>
   isBuiltInModel(model) ? model.slug : "custom";
@@ -224,11 +217,9 @@ export const knownModels = (): readonly DetectionModel[] => [
 ];
 
 /**
- * The registry entries a stored selection names, in registry order, dropping ids
- * this build does not know. Never empty: a selection resolving to nothing falls
- * back to the first model, so a stale id degrades to the shipping checkpoint
- * rather than asking the worker for weights that do not exist. The registry
- * defaults to knownModels(), evaluated per call so storage changes are seen.
+ * The entries a stored selection names, dropping ids this build does not know.
+ * Never empty: a stale id degrades to the shipping checkpoint rather than asking
+ * the worker for weights that do not exist.
  */
 export const resolveModels = (
   ids: readonly string[],
@@ -353,12 +344,11 @@ const isCommitSha = (revision: string): boolean =>
   /^[0-9a-f]{40}$/.test(revision);
 
 /**
- * Turn a pasted URL into a registrable entry. A Hugging Face URL is parsed,
- * pinned, and resolved to exactly one .onnx file; any other https link straight
- * to an .onnx file is taken as it is. Pinning goes through the API because the
- * weights cache is CacheFirst keyed on URL and a tag or branch can move without
- * the URL changing, so only a commit sha is trusted as already immutable and
- * skips the request. Throws AddModelError; `fetcher` is a seam for tests.
+ * Turn a pasted URL into a registrable entry: a Hugging Face URL is pinned and
+ * resolved to one .onnx file, any other https link to an .onnx file is taken as
+ * it is. Pinning goes through the API because a tag or branch can move without
+ * the URL changing, and the cache is CacheFirst keyed on URL; only a commit sha
+ * is trusted as immutable and skips the request. `fetcher` is a test seam.
  */
 export const resolveModelFromUrl = async (
   input: string,

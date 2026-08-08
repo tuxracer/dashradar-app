@@ -10,11 +10,8 @@ import {
 export * from "./consts";
 
 /**
- * The scannable QR card: {@link SHARE_URL} as a pre-rendered inline SVG (see
- * consts, no runtime dependency, works fully offline) with the bare host label
- * beneath, near-black modules on a white card so it scans reliably against
- * dark backdrops. Shared by the settings ShareCard row and the desktop intro
- * screen.
+ * The scannable QR card: {@link SHARE_URL} as a pre-rendered inline SVG, dark
+ * modules on a white card so it scans reliably against a dark backdrop.
  */
 export const ShareQr = () => (
   <div className="flex shrink-0 flex-col items-center gap-2 rounded-2xl bg-white p-3">
@@ -31,12 +28,7 @@ export const ShareQr = () => (
   </div>
 );
 
-/**
- * Whether the native share sheet is available (iOS/Android and desktop Safari).
- * Callers that offer sharing need this to pick a fallback, so it is exported
- * rather than checked inline: the unsupported-device screen shows the QR code
- * instead where it reads false, so that screen is never a dead end.
- */
+/** Whether the native share sheet is available, for callers offering a share. */
 export const canShareApp = (): boolean => typeof navigator.share === "function";
 
 /**
@@ -53,10 +45,8 @@ export const shareApp = () => {
 };
 
 /**
- * Share row for handing the app to someone else. Two paths: a static QR code
- * (they point a camera at the phone and {@link SHARE_URL} opens) and, where the
- * Web Share API exists, a large SHARE button that opens the native share sheet
- * with the same URL.
+ * Share row for handing the app to someone else: the QR code, plus a SHARE button
+ * wherever the Web Share API exists.
  */
 export const ShareCard = () => {
   const supportsShare = canShareApp();

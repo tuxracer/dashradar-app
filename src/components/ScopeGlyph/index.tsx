@@ -1,11 +1,8 @@
 import type { LucideIcon } from "lucide-react";
 
 /**
- * A lucide glyph centered in static radar-scope rings, echoing the intro's
- * animated scope so full-screen panels (errors, the camera permission ask)
- * read as part of the instrument. The outer ring pulses gently; purely
- * decorative. Scales in once on mount so every panel using it shares the same
- * powered-on entrance.
+ * A lucide glyph in static radar-scope rings, echoing the intro's animated scope
+ * so full-screen panels read as part of the instrument. Purely decorative.
  */
 export const ScopeGlyph = ({ icon: Icon }: { icon: LucideIcon }) => (
   <div className="relative flex aspect-square w-36 shrink-0 animate-scope-in items-center justify-center motion-reduce:animate-none landscape:w-44">

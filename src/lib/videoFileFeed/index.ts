@@ -4,19 +4,12 @@ import { VideoFileError, VideoFileFeedEvent } from "./types";
 export * from "./types";
 
 /**
- * A local video file as the detection feed. Subscribing points `video` at `url`
- * and starts it, emits `active` once frames are coming, then a `resize` per
- * dimension change; unsubscribing is the whole teardown, so a second clip
- * dropped on a playing one cannot leave the first decoding behind it.
- *
+ * A local video file as the detection feed. Unsubscribing is the whole teardown,
+ * so a second clip dropped on a playing one cannot leave the first decoding.
  * `active` comes from the `playing` event rather than the play() promise, so
- * whichever call actually started the clip reports it, including one made on the
- * native controls after an autoplay refusal. Pausing is left alone: frames stop,
- * which pauses detection, and playing resumes.
- *
- * An undecodable file errors the stream so the caller can put the camera back.
- * Leaving it would park the pump on a frame callback that never fires while the
- * meter reads SCANNING, the failure this app refuses everywhere else.
+ * whichever call actually started the clip reports it. An undecodable file errors
+ * the stream so the caller can put the camera back, rather than parking the pump
+ * while the meter still reads SCANNING.
  */
 export const videoFileFeed = (
   video: HTMLVideoElement,

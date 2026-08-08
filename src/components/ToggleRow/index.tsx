@@ -13,7 +13,6 @@ const Toggle = ({ on }: { on: boolean }) => (
   </span>
 );
 
-/** Props for ToggleRow. */
 type ToggleRowProps = {
   /** The setting's name, as it reads on the glass. */
   label: string;
@@ -22,7 +21,6 @@ type ToggleRowProps = {
    * says everything there is to say.
    */
   description?: string;
-  /** Current state of the setting. */
   on: boolean;
   /** Flips the setting. The whole row fires it, not just the switch. */
   onToggle: () => void;

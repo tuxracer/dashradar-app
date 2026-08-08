@@ -4,12 +4,10 @@ export * from "./consts";
 export * from "./types";
 
 /**
- * Resolves when the page is controlled by a service worker, or after
- * `timeoutMs`, whichever comes first. On a genuine first visit the app's
- * dedicated worker can start fetching the model before Workbox's service
- * worker takes control (the clientsClaim race), which bypasses the runtime
- * caches. Awaiting control first lets those fetches be cached on the first
- * visit. The timeout keeps startup from stalling if control never arrives.
+ * Resolves when a service worker controls the page, or after `timeoutMs`. On a
+ * first visit the detection worker can start fetching the model before Workbox
+ * takes control, bypassing the runtime caches; the timeout keeps startup from
+ * stalling if control never arrives.
  */
 export const waitForServiceWorkerControl = (
   timeoutMs: number,
@@ -59,17 +57,13 @@ const raceTimeout = <T>(
   });
 
 /**
- * Resolves once this launch's app-update question is settled, so acquiring
- * the camera cannot collide with an update reload. iOS forgets camera
- * permission between launches of an installed web app, and the silent
- * auto-update reload lands seconds after the driver answers the permission
- * prompt, which prompts them a second time. Awaiting this before the first
- * `getUserMedia` reorders an update launch to reload first, one prompt total.
+ * Resolves once this launch's update question is settled, so acquiring the camera
+ * cannot collide with an update reload. iOS re-prompts for the camera every
+ * launch of an installed web app, and the silent reload lands seconds after that
+ * prompt is answered, prompting again.
  *
- * Every resolved value means "go ahead". The one path that keeps holding, an
- * update installing normally, exits via the page reload instead of resolving.
- * Every failure path resolves, so the worst outcome is the old double prompt,
- * never a stalled startup.
+ * Every resolved value means "go ahead", including every failure path, so the
+ * worst outcome is the old double prompt rather than a stalled startup.
  */
 export const waitForUpdateSettled = async ({
   checkTimeoutMs,

@@ -97,11 +97,9 @@ export type IntroSceneHandle = {
 };
 
 /**
- * Builds the Canvas 2D wireframe night-drive scene: an amber grid highway in
- * one-point perspective, headlight and taillight pairs streaking through it,
- * and the looping detection beat with a red/blue light-bar contact. Returns
- * null when a 2D context is unavailable so the caller can fall back to the
- * static backdrop.
+ * The Canvas 2D night-drive scene: an amber grid highway in one-point
+ * perspective, headlights streaking through it, and a looping detection beat.
+ * Null without a 2D context, so the caller can fall back to the static backdrop.
  */
 export const createIntroScene = (
   canvas: HTMLCanvasElement,

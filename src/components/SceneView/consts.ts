@@ -6,11 +6,9 @@ import {
 } from "three";
 
 /**
- * Shared unit geometries, scaled per mesh. Four of them cover every glyph,
- * so the whole scene uploads a handful of vertex buffers once at module load
- * regardless of how many objects are on the ground plane. Deliberately
- * low-poly: the placement math is good to tens of percent in range, and a
- * detailed car model would claim a precision the data does not have.
+ * Shared unit geometries, scaled per mesh, so the scene uploads a handful of
+ * vertex buffers once however many objects are on the ground plane. Low-poly on
+ * purpose: a detailed model would claim a precision the placement math lacks.
  */
 export const UNIT_BOX = new BoxGeometry(1, 1, 1);
 
@@ -18,10 +16,9 @@ export const UNIT_BOX = new BoxGeometry(1, 1, 1);
 export const UNIT_CYLINDER = new CylinderGeometry(0.5, 0.5, 1, 10);
 
 /**
- * Shared unit cylinder narrowed toward its base, scaled per mesh (see
- * UNIT_BOX). The one shape a straight cylinder cannot give the person glyph:
- * shoulders wider than the waist, which is most of what separates a human
- * torso from a post at the range these glyphs are read at.
+ * A cylinder narrowed toward its base, for the one shape a straight one cannot
+ * give the person glyph: shoulders wider than the waist, which is most of what
+ * separates a torso from a post at these ranges.
  */
 export const UNIT_TAPERED_CYLINDER = new CylinderGeometry(0.5, 0.34, 1, 10);
 
@@ -38,10 +35,8 @@ export const UNIT_PLANE = new PlaneGeometry(1, 1);
 export const GLOW_TEXTURE_PX = 64;
 
 /**
- * Chase-camera position in scene meters: slightly above and behind the ego
- * marker, like the view following the player's car in a driving game. Ahead
- * of the ego is negative z (the three.js convention a default camera looks
- * down), so the camera sits at positive z looking toward CAMERA_TARGET.
+ * Chase-camera position in scene meters, above and behind the ego marker. Ahead
+ * is negative z, so the camera sits at positive z looking toward CAMERA_TARGET.
  */
 export const CHASE_CAMERA_POSITION: readonly [number, number, number] = [
   0, 9, 14,
@@ -60,10 +55,9 @@ export const CAMERA_NEAR_M = 0.5;
 export const CAMERA_FAR_M = 400;
 
 /**
- * Fog band in meters: full color at the near edge, fully surface-colored at
- * the far edge. Distance falloff is the one depth cue basic materials cannot
- * give on their own, and fading into the backdrop keeps the far clip and the
- * grid edge from reading as hard lines.
+ * Fog band in meters: full color at the near edge, surface-colored at the far.
+ * The one depth cue basic materials cannot give, and it keeps the far clip and
+ * the grid edge from reading as hard lines.
  */
 export const FOG_NEAR_M = 60;
 
@@ -94,12 +88,9 @@ export const FADE_IN_MS = 250;
 export const FADE_OUT_MS = 300;
 
 /**
- * How long a police lightbar holds one color before swapping to the other, in
- * ms. The one animation in this view that does not finish on its own, so it
- * is priced deliberately: each flip costs one rendered frame, and 200 ms puts
- * that at five frames a second, only while a patrol car is on screen. Fast
- * enough to read as a strobe rather than a blinker, slow enough that the
- * scene still costs a twelfth of what a 60 fps loop would.
+ * How long a lightbar holds one color before swapping. The one animation here
+ * that does not finish on its own, so it is priced deliberately: one rendered
+ * frame per flip, five a second, only while a patrol car is on screen.
  */
 export const STROBE_PERIOD_MS = 200;
 
@@ -118,27 +109,21 @@ export const DPR_MAX = 1.5;
 export const CONTEXT_RESTORE_TIMEOUT_MS = 4_000;
 
 /**
- * Scene colors under a dark OS color scheme, which is the authored look: the
- * app's own surface color as the ground, and a dim amber grid matching the
- * radar backdrop's. Backdrop and fog are one value on purpose, since fog that
- * does not fade to exactly what is behind the canvas draws a band across the
- * horizon instead of a distance cue.
+ * Scene colors under a dark scheme, the authored look. Backdrop and fog are one
+ * value on purpose: fog that does not fade to exactly what is behind the canvas
+ * draws a band across the horizon instead of a distance cue.
  */
 export const DARK_SCENE_PALETTE = {
   /** Color behind the canvas, and the color the fog fades to. */
   surface: "#0b0a10",
   /** Ground grid line color. */
   grid: "#8a6a33",
-  /** Ground grid line opacity. */
   gridOpacity: 0.14,
 };
 
 /**
- * Scene colors under a light OS color scheme: a white ground, with the grid
- * darkened and carried a little heavier so it sits about as far off white as
- * the dark grid sits off the dark ground. The scene is the only view that
- * follows the OS scheme at all; every other screen is a dark instrument
- * whatever the phone says.
+ * Scene colors under a light scheme, the grid darkened and carried heavier so it
+ * sits about as far off white as the dark grid sits off the dark ground.
  */
 export const LIGHT_SCENE_PALETTE: typeof DARK_SCENE_PALETTE = {
   surface: "#ffffff",
@@ -147,10 +132,8 @@ export const LIGHT_SCENE_PALETTE: typeof DARK_SCENE_PALETTE = {
 };
 
 /**
- * Tire color, shared by every vehicle glyph so a truck's wheels read as the
- * same object as a car's. Dark enough to separate them from any body color,
- * but deliberately well clear of the backdrop: a true black would sink into it
- * and leave the bodies looking like they float.
+ * Tire color, shared by every vehicle glyph. Well clear of the backdrop: a true
+ * black would sink into it and leave the bodies looking like they float.
  */
 export const TIRE_COLOR = "#3b3946";
 

@@ -15,11 +15,9 @@ export const pickVideoFile = (transfer: DataTransfer | null): File | null =>
     : null;
 
 /**
- * Video files dropped onto `target` as a stream: subscribing claims drags over
- * it and unsubscribing releases them. Both events are cancelled, because the
- * default action is the browser navigating away from the app to the dropped
- * file, which ends the session. A drag carrying no video emits nothing, so the
- * current feed stays where it is.
+ * Video files dropped onto `target` as a stream: subscribing claims drags over it
+ * and unsubscribing releases them. Both events are cancelled, since the default
+ * action navigates the browser to the dropped file and ends the session.
  */
 export const videoFileDrops = (target: EventTarget): Observable<File> =>
   merge(

@@ -8,14 +8,10 @@ import type { TrackerConfig } from "./types";
 export const IOU_MATCH_THRESHOLD = 0.3;
 
 /**
- * Longest a track may coast unmatched before being dropped, so a box does not
- * flicker off when the model briefly loses it. A time budget rather than a
- * count of missed results on purpose: results arrive anywhere from every
- * second (the pacing floor) to every five (the cap on a hot device), so a
- * miss count would stretch how long a vanished vehicle keeps driving the
- * alert by exactly the pacing multiple, and it would stretch it furthest on
- * the throttled device that scans least. The value preserves the old
- * two-missed-results behavior at the floor cadence.
+ * Longest a track may coast unmatched, so a box does not flicker off when the
+ * model briefly loses it. A time budget rather than a miss count: results arrive
+ * anywhere from every second to every five, so a count would keep a vanished
+ * vehicle driving the alert longest on the device that scans least.
  */
 export const MAX_COAST_MS = 2_500;
 

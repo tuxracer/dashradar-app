@@ -15,7 +15,6 @@ export type TrackerState = {
   nextId: number;
 };
 
-/** Tuning for the coasting tracker. */
 export type TrackerConfig = {
   /** Minimum IoU for a detection to match an existing track. */
   iouMatchThreshold: number;

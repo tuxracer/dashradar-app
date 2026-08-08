@@ -2,9 +2,8 @@ import { isArray, isBoolean, isNumber, isPlainObject, isString } from "remeda";
 
 /**
  * Which view was on screen when a session ended. The three cost very different
- * things to run (the scene holds a WebGL context beside the detector's WebGPU
- * one, the detection view draws the whole feed), and a crash under only one of
- * them is a different bug, which nothing after the fact can tell apart.
+ * things to run, so a crash under only one of them is a different bug, and
+ * nothing after the fact can tell them apart.
  */
 export type ActiveView = "radar" | "scene" | "detection";
 
@@ -62,11 +61,10 @@ export const isSessionEvent = (value: unknown): value is SessionEvent =>
   (value.detail === undefined || isString(value.detail));
 
 /**
- * Snapshot of an in-progress session, written on a heartbeat cadence so the next
- * launch can tell whether this one ended cleanly. The timestamps are epoch ms,
- * since performance.now() cannot be compared across launches. `release` is the
- * build that wrote the record, reported alongside the reporting build's own so a
- * crash lands on the deploy that produced it.
+ * Snapshot of an in-progress session, beaten into storage so the next launch can
+ * tell whether this one ended cleanly. Timestamps are epoch ms, since
+ * performance.now() cannot be compared across launches. `release` is the build
+ * that wrote the record, so a crash lands on the deploy that produced it.
  */
 export type SentinelRecord = {
   startedAt: number;
@@ -104,8 +102,7 @@ export type SentinelRecord = {
   /**
    * The worker's wasm heap at its last reply, the prime suspect for an iOS memory
    * kill. Such a kill runs no JS, so the size at death survives only by having
-   * been written down; read against uptime and the scan count it says whether the
-   * heap was still at its post-load baseline or had grown toward the cap.
+   * been written down first.
    */
   wasmHeapBytes?: number;
   /**

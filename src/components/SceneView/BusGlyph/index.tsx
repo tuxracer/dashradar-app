@@ -9,10 +9,9 @@ export * from "./consts";
 const AXLES = [-0.34, 0.3];
 
 /**
- * A bus glyph, sized in meters and built from fractions of that size. A bus
- * really is a slab at this level of abstraction, so the detail that earns its
- * place is the window band: it runs the full length and wraps the ends, which
- * is what separates a bus from a box truck of the same size at a glance.
+ * A bus glyph, sized in meters. A bus really is a slab at this abstraction, so
+ * the one detail that earns its place is the window band running the full length
+ * and wrapping the ends, which is what separates it from a box truck.
  */
 export const BusGlyph = ({
   width,

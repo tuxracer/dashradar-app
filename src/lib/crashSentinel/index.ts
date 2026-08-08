@@ -25,10 +25,8 @@ export const heartbeatDelayMs = (uptimeMs: number): number =>
     : HEARTBEAT_INTERVAL_MS;
 
 /**
- * The reporting label for how long a session ran, from UPTIME_BUCKETS. Buckets
- * are open at the bottom and closed at the top, so a session that ran exactly
- * as long as a boundary falls in the bucket above it, and the labels read as
- * the ranges they are with no value belonging to two of them.
+ * The reporting label for how long a session ran. Buckets are open at the bottom
+ * and closed at the top, so no value belongs to two of them.
  */
 export const uptimeBucket = (uptimeMs: number): string =>
   UPTIME_BUCKETS.find(({ under }) => uptimeMs < under)?.label ??
@@ -58,11 +56,8 @@ export const clearSentinel = (): void => {
 };
 
 /**
- * Reads and classifies the previous session's sentinel record, if any.
- * Always removes the stored key (whether the record parses, is invalid, or
- * doesn't exist) so a consumed or invalid record is never reported twice.
- * Returns undefined when nothing valid was stored. `now` defaults to
- * `Date.now()` and is a parameter only so tests can control the gap.
+ * Reads and classifies the previous session's record, if any. Always removes the
+ * stored key, parsed or not, so nothing is ever reported twice.
  */
 export const readPreviousSessionEnd = (
   now = Date.now(),

@@ -18,26 +18,19 @@ type VideoFileViewProps = {
    */
   onError: () => void;
   /**
-   * Fills the viewport instead of playing in the corner, so the detection
-   * view's boxes map onto the clip the same way they map onto the camera.
-   * object-cover crops the clip's edges, which is the price of one mapping
-   * that fits both feeds. The native controls stay either way.
+   * Fill the viewport instead of playing in the corner, so the detection view's
+   * boxes map onto the clip the way they map onto the camera. object-cover crops
+   * the edges, the price of one mapping fitting both feeds.
    */
   fullScreen?: boolean;
 };
 
 /**
- * Stand-in for CameraView: plays a video file as the detection feed. All the
- * playback lifecycle lives in the feed stream (src/lib/videoFileFeed); this
- * component owns the element, forwards the stream's events into React, and
- * sizes the player.
- *
- * The same element doubles as a visible player with native controls so the
- * clip can be paused and scrubbed, sized for mouse use rather than the
- * dash-mount touch-target rules, since a drag-and-drop or file picker put it
- * there. Capture reads the element's full intrinsic resolution regardless of
- * how small it is drawn. It stays invisible until the clip is actually
- * playing, so a swap never flashes a black rectangle over the meter.
+ * Stand-in for CameraView, playing a video file as the detection feed. The
+ * playback lifecycle lives in the feed stream; this owns the element and sizes
+ * the player. The same element doubles as a visible player with native controls,
+ * sized for mouse use since a drop or file picker put it there. Capture reads
+ * full intrinsic resolution however small it is drawn.
  */
 export const VideoFileView = ({
   src,

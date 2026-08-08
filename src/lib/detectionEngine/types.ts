@@ -53,7 +53,6 @@ export type DebugSnapshot = {
   captureFailures: number;
   /** Idle delay scheduled after the last result before the next capture. */
   pacingDelayMs: number;
-  /** Which pacing rule produced pacingDelayMs. */
   pacingRule: PacingRule;
   /** Crop factor the frame was scanned at (ZOOM_OFF or ZOOM_2X). */
   zoom: number;
@@ -77,9 +76,8 @@ export type DebugSnapshot = {
 
 /**
  * One completed scan. The detections are the frame's own, before the coasting
- * tracker, so a box on screen means the model saw it on that frame rather than
- * that a track is being held through a miss. The geometry travels with them
- * because the boxes must map against the frame that produced them, not against
+ * tracker, so a box on screen means the model saw it. The geometry travels with
+ * them because the boxes must map against the frame that produced them, not
  * whatever the video element measures a second later after a rotation.
  */
 export type ScanResult = {
@@ -132,7 +130,6 @@ export type EngineInputs = {
   video: HTMLVideoElement | undefined;
   /** Whether the page is visible (document.visibilityState). */
   visible: boolean;
-  /** Whether the full-screen settings panel is open. */
   settingsOpen: boolean;
   /**
    * Which view is on screen. Held only to stamp onto the crash heartbeat, since

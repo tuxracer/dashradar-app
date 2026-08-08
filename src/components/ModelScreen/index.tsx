@@ -61,7 +61,6 @@ type AddPhase =
   | { phase: "failed"; url: string; message: string }
   | { phase: "added"; summary: string };
 
-/** Props for ModelScreen. */
 type ModelScreenProps = {
   /** Returns to the settings panel, discarding the draft. */
   onClose: () => void;
@@ -75,14 +74,9 @@ type ModelScreenProps = {
 
 /**
  * Full-screen picker for the model the detector runs. A row opens that model's
- * card rather than selecting it, so choosing one happens after reading what it
- * is, and the card is also where a model is removed.
- *
+ * card rather than selecting it, so choosing one happens after reading what it is.
  * Nothing is staged: taking a model from its card confirms, writes, and reloads
- * on the spot, and a pasted URL registers as soon as the trial load proves it
- * runs. There is no save step because every action here already answers a
- * question the screen just asked. The reload is how a choice reaches the
- * detector, which is why no row says a restart is needed.
+ * on the spot, and the reload is how a choice reaches the detector.
  */
 export const ModelScreen = ({
   onClose,
@@ -108,9 +102,8 @@ export const ModelScreen = ({
   // this only keeps the element on screen for the length of the animation.
   const [leavingId, setLeavingId] = useState<string | undefined>(undefined);
   // Aborts a trial in flight on unmount, so BACK does not leave a worker
-  // downloading tens of megabytes for a screen nobody is on. Created before the
-  // URL is even resolved, so an unmount during the lookup is caught too: every
-  // continuation after an await checks it before touching state.
+  // downloading for a screen nobody is on. Created before the URL is resolved, so
+  // every continuation after an await checks it before touching state.
   const abortRef = useRef<AbortController | undefined>(undefined);
   useEffect(() => () => abortRef.current?.abort(), []);
   // The row-exit collapse timer, cleared on unmount so a removal followed
@@ -321,11 +314,9 @@ export const ModelScreen = ({
   };
 
   /**
-   * Apply a model straight from its card: confirm, write, reload. No draft and no
-   * save step, since nothing a second screen could add to a decision already made
-   * by tapping the model and answering the confirm. The reload is how a choice
-   * reaches the detector: a running worker holds a session built from the model
-   * it loaded, and swapping that under a live drive is not something this does.
+   * Apply a model straight from its card: confirm, write, reload. The reload is
+   * how a choice reaches the detector, since a running worker holds a session
+   * built from the model it loaded.
    */
   const chooseModel = (id: string) => {
     // Past the cap the oldest pick drops, so a single-select list behaves like
@@ -335,10 +326,8 @@ export const ModelScreen = ({
     if (!window.confirm(`Use ${names}?`)) {
       return;
     }
-    // Sent before the commit rather than after it, because the reload on the
-    // next line can cut an in-flight request: this is the widest window the
-    // event will get, and a commit that storage refuses is rare enough to be
-    // worth counting as a switch that was asked for.
+    // Before the commit, because the reload on the next line can cut an in-flight
+    // request: this is the widest window the event will get.
     track("model_switch", {
       from: selected.map(reportableModelName).join(", "),
       to: resolveModels(ids, models).map(reportableModelName).join(", "),

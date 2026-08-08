@@ -13,10 +13,9 @@ export * from "./consts";
 const AXLES = [-0.34, 0.2, 0.32];
 
 /**
- * A truck glyph, sized in meters and built from fractions of that size. A cab
- * ahead of a taller cargo box, both riding a chassis rail on six wheels. The
- * step down from box to cab is the whole read: without it this is the same
- * blank slab as a bus, and the two are told apart by nothing but size.
+ * A truck glyph, sized in meters: a cab ahead of a taller cargo box on six
+ * wheels. The step down from box to cab is the whole read; without it this is the
+ * same blank slab as a bus.
  */
 export const TruckGlyph = ({
   width,

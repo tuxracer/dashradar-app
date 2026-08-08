@@ -2,11 +2,9 @@ import { TIRE_COLOR, UNIT_CYLINDER } from "../consts";
 import { GlyphMaterial } from "../GlyphMaterial";
 
 /**
- * One road wheel, centered on its own axle. A cylinder laid on its side:
- * three scales a mesh along its own axes before rotating it, so the diameter
- * is the x and z scale while the tread width is y. Every vehicle glyph builds
- * its wheels from this, which is what keeps them reading as the same part
- * across kinds that share nothing else.
+ * One road wheel, centered on its axle. three scales a mesh along its own axes
+ * before rotating, so the diameter is the x and z scale and the tread width is y.
+ * Shared by every vehicle glyph, which keeps them reading as the same part.
  */
 export const Wheel = ({
   center,

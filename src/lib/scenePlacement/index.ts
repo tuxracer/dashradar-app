@@ -37,14 +37,11 @@ export const focalLengthPx = (fovDeg: number, frameWidthPx: number): number =>
 
 /**
  * Places one track on the ground plane in ego-relative meters. The
- * similar-triangles ratio `fPx * heightM / hPx` is axial depth (`zM`, meters
- * ahead along the camera axis), not slant range: a pinhole camera scales an
- * object's image by its depth alone, wherever it sits in the frame. Lateral
- * offset then follows as `xM = zM * cxPx / fPx`, and `rangeM` exists for
- * readouts only. Never compute a slant range first and decompose it by
- * bearing; that double-counts the cosine and pulls off-axis objects too
- * close. Returns undefined when the label matches no prior, the box has no
- * height, or any box or frame value is not finite.
+ * similar-triangles ratio is axial depth, not slant range: a pinhole camera
+ * scales an object's image by its depth alone, wherever it sits in the frame, and
+ * lateral offset follows from that. Never compute a slant range first and
+ * decompose it by bearing, which double-counts the cosine and pulls off-axis
+ * objects too close. `rangeM` is for readouts only.
  */
 export const placeTrack = (
   track: Track,

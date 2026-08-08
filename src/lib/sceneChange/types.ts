@@ -1,8 +1,7 @@
 /**
- * A frame reduced to one mean luma per tile, in row-major order, length
- * SCENE_GRID squared. Small enough to keep a copy of the last scanned frame
- * around indefinitely, which is what lets the comparison run against the frame
- * the model last actually looked at rather than against the previous frame.
+ * A frame reduced to one mean luma per tile, row-major. Small enough to hold the
+ * last scanned frame indefinitely, which is what lets the comparison run against
+ * the frame the model last looked at rather than the previous one.
  */
 export type SceneSignature = Float32Array;
 

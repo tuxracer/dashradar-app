@@ -5,11 +5,9 @@ import { PWA_INSTALL_TRACKED_KEY } from "./consts";
 export * from "./consts";
 
 /**
- * True when the page is running as an installed PWA rather than a browser tab.
- * `display-mode: standalone` (the app's manifest display mode) covers
- * Chromium/Android installs; `navigator.standalone` is the legacy iOS Safari
- * boolean Apple never replaced with the standard media query. Returns false
- * when `matchMedia` is unavailable, treating the page as a plain browser tab.
+ * Whether the page is running as an installed PWA. `display-mode: standalone`
+ * covers Chromium; `navigator.standalone` is the legacy iOS boolean Apple never
+ * replaced with the standard query.
  */
 export const isStandalone = (): boolean => {
   const displayStandalone =
@@ -38,16 +36,12 @@ const reportInstallOnce = (): void => {
 };
 
 /**
- * Report a one-time anonymous `pwa_installed` analytics event. Two paths feed
- * it, deduped by the same flag: Chromium fires `appinstalled` at the true
- * install moment, while iOS (where Safari implements no `appinstalled` and
- * every install is a manual Add to Home Screen) is caught on the first
- * standalone launch, the earliest signal available there. Call once at startup.
+ * Report a one-time `pwa_installed` event. Two paths feed it, deduped by one
+ * flag: Chromium's `appinstalled`, and on iOS, which has no such event, the
+ * first standalone launch.
  *
- * Caveats for reading the metric: it counts only installs the user actually
- * launched at least once (an icon added but never opened is invisible), and EU
- * iOS 17.4+ can open installed PWAs in a browser tab, where standalone
- * detection does not apply.
+ * Reading the metric: it counts only installs someone actually launched, and EU
+ * iOS can open an installed PWA in a tab, where standalone detection misses.
  */
 export const trackPwaInstall = (): void => {
   if (isStandalone()) {
