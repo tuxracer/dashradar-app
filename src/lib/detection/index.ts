@@ -3,7 +3,12 @@ import { isRawDetection } from "@/types";
 import type { ZoomLevel } from "@/workers/detection/types";
 import { ZOOM_OFF } from "@/workers/detection/consts";
 import { centerCropRegion } from "@/workers/detection/inference";
-import { CONFIDENCE_THRESHOLD } from "./consts";
+import {
+  CONFIDENCE_THRESHOLD,
+  OWN_HOOD_MAX_BOTTOM_GAP,
+  OWN_HOOD_MAX_HEIGHT,
+  OWN_HOOD_MIN_WIDTH,
+} from "./consts";
 
 export * from "./consts";
 
@@ -26,18 +31,51 @@ export type HudModel = {
 };
 
 /**
+ * Whether a box is the camera car's own hood rather than a road contact: nearly
+ * the scanned region's full width, short, and pinned to the region's bottom
+ * edge. A dash mount puts the hood in every frame and the model rightly calls
+ * it a car, so its unmistakable shape is what tells it apart. Everything is
+ * measured against `scanRegion` because that is the whole world the model saw;
+ * a box cannot span more of the frame than the region lets it.
+ */
+export const isOwnHood = (
+  box: NormalizedBox,
+  scanRegion: NormalizedBox,
+): boolean => {
+  const regionWidth = scanRegion.xmax - scanRegion.xmin;
+  const regionHeight = scanRegion.ymax - scanRegion.ymin;
+  if (regionWidth <= 0 || regionHeight <= 0) {
+    return false;
+  }
+  const relWidth = (box.xmax - box.xmin) / regionWidth;
+  const relHeight = (box.ymax - box.ymin) / regionHeight;
+  const bottomGap = (scanRegion.ymax - box.ymax) / regionHeight;
+  return (
+    relWidth >= OWN_HOOD_MIN_WIDTH &&
+    relHeight <= OWN_HOOD_MAX_HEIGHT &&
+    bottomGap <= OWN_HOOD_MAX_BOTTOM_GAP
+  );
+};
+
+/**
  * Validate raw worker output and keep what clears the threshold. There is no
- * allowlist: every label the model emits is kept, whatever it is called.
+ * allowlist: every label the model emits is kept, whatever it is called. With a
+ * `scanRegion`, boxes shaped like the camera car's own hood are dropped too,
+ * whatever their class, so the driver's own car never drives the alert.
  */
 export const enrichDetections = (
   raw: unknown,
   threshold: number = CONFIDENCE_THRESHOLD,
+  scanRegion?: NormalizedBox,
 ): Detection[] => {
   if (!Array.isArray(raw)) {
     return [];
   }
   return raw.filter(isRawDetection).flatMap((candidate) => {
     if (candidate.score < threshold) {
+      return [];
+    }
+    if (scanRegion && isOwnHood(candidate.box, scanRegion)) {
       return [];
     }
     return [

@@ -33,7 +33,7 @@ import {
   writeHeartbeat,
 } from "@/lib/crashSentinel";
 import type { SessionEvent, SessionEventKind } from "@/lib/crashSentinel";
-import { CONFIDENCE_THRESHOLD } from "@/lib/detection";
+import { CONFIDENCE_THRESHOLD, scanRegionBox } from "@/lib/detection";
 import type { Size } from "@/lib/detection";
 import { reportableModelName } from "@/lib/detectionModels";
 import type { DetectionModel } from "@/lib/detectionModels";
@@ -699,15 +699,21 @@ export const createDetectionEngine = ({
         }
         const at = performance.now();
         lastScanAt = at;
+        const frame = postedFrame;
         const result = processDetectionResult({
           detections: message.detections,
           crop: message.crop,
           confidenceThreshold: settings$.value.confidenceThreshold,
+          scanRegion: frame
+            ? scanRegionBox(
+                { width: frame.width, height: frame.height },
+                frame.zoom,
+              )
+            : undefined,
           identifyDetections: (detections) => identifyScan(detections, at),
           includeContact: settings$.value.includeContact,
           at,
         });
-        const frame = postedFrame;
         const patch: Partial<DetectionSnapshot> = {
           hud: result.hud,
         };

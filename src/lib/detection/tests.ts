@@ -4,6 +4,7 @@ import {
   buildHudModel,
   CONFIDENCE_THRESHOLD,
   containScale,
+  isOwnHood,
   mapBoxToViewport,
   scanRegionBox,
   enrichDetections,
@@ -98,6 +99,42 @@ describe("enrichDetections", () => {
       undefined,
     );
     expect(result).toHaveLength(0);
+  });
+
+  it("drops a hood-shaped box when given the scan region, keeps it without", () => {
+    // A landscape frame's centered square region, the world the model saw.
+    const region = scanRegionBox({ width: 1280, height: 720 });
+    const hood = [{ label: "car", score: 0.9, box: box(0.23, 0.75, 0.77, 1) }];
+    expect(enrichDetections(hood, undefined, region)).toHaveLength(0);
+    // Without the region the geometry means nothing, so nothing is dropped.
+    expect(enrichDetections(hood, undefined)).toHaveLength(1);
+  });
+});
+
+describe("isOwnHood", () => {
+  // The centered square of a 1280x720 frame: x spans 0.21875..0.78125 of the
+  // full frame, y spans all of it. Hood boxes are judged against this region,
+  // never the frame, because a box cannot outgrow what the model saw.
+  const region = scanRegionBox({ width: 1280, height: 720 });
+
+  it("recognizes the hood: region-wide, short, and run off the bottom edge", () => {
+    expect(isOwnHood(box(0.23, 0.75, 0.77, 1), region)).toBe(true);
+  });
+
+  it("keeps a wide vehicle ahead, which is tall as well as wide", () => {
+    // Bumper-to-bumper traffic: a car filling the region's width also fills
+    // most of its height, and it is the one contact that must never be eaten.
+    expect(isOwnHood(box(0.23, 0.3, 0.77, 1), region)).toBe(false);
+  });
+
+  it("keeps a wide, short box standing clear of the bottom edge", () => {
+    // A crossing trailer at range: hood-like proportions, but road is visible
+    // beneath it, and the driver's own hood never floats.
+    expect(isOwnHood(box(0.23, 0.5, 0.77, 0.75), region)).toBe(false);
+  });
+
+  it("keeps an ordinary car near the bottom of the frame", () => {
+    expect(isOwnHood(box(0.4, 0.75, 0.6, 1), region)).toBe(false);
   });
 });
 

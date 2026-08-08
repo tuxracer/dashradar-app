@@ -58,6 +58,7 @@ export const processDetectionResult = ({
   detections: raw,
   crop,
   confidenceThreshold,
+  scanRegion,
   identifyDetections,
   includeContact,
   at,
@@ -65,6 +66,9 @@ export const processDetectionResult = ({
   detections: RawDetection[];
   crop: DetectionCrop | undefined;
   confidenceThreshold: number;
+  /** The region the frame was scanned at, for the own-hood filter; without it
+   * hood-shaped boxes pass through. */
+  scanRegion?: NormalizedBox;
   identifyDetections: (detections: Detection[]) => {
     detections: IdentifiedDetection[];
     tracks: Track[];
@@ -72,15 +76,18 @@ export const processDetectionResult = ({
   includeContact: boolean;
   at: number;
 }): ProcessedDetectionResult => {
-  const filtered = enrichDetections(raw, confidenceThreshold);
+  const filtered = enrichDetections(raw, confidenceThreshold, scanRegion);
   const { detections, tracks: tracked } = identifyDetections(filtered);
   const hud = buildHudModel(tracked);
   let contact: Contact | undefined;
   let discardedCrop: ImageBitmap | undefined;
   if (crop) {
+    // The same filters as the main set, so a crop of the driver's own hood is
+    // discarded rather than shown as evidence the HUD would not count.
     const [cropDetection] = enrichDetections(
       [raw[crop.detectionIndex]],
       confidenceThreshold,
+      scanRegion,
     );
     if (cropDetection && includeContact) {
       contact = {

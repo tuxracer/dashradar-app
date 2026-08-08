@@ -79,6 +79,28 @@ describe("processDetectionResult", () => {
     expect(result.discardedCrop).toBeUndefined();
   });
 
+  it("discards a crop of the driver's own hood", () => {
+    const image = bitmap();
+    const result = processDetectionResult({
+      detections: [
+        {
+          label: "car",
+          score: 0.9,
+          box: { xmin: 0.05, ymin: 0.7, xmax: 0.95, ymax: 1 },
+        },
+      ],
+      crop: { image, detectionIndex: 0 },
+      confidenceThreshold: 0.5,
+      scanRegion: { xmin: 0, ymin: 0, xmax: 1, ymax: 1 },
+      identifyDetections: identity,
+      includeContact: true,
+      at: 0,
+    });
+    expect(result.detections).toHaveLength(0);
+    expect(result.contact).toBeUndefined();
+    expect(result.discardedCrop).toBe(image);
+  });
+
   it("discards a crop whose detection fails the confidence filter", () => {
     const image = bitmap();
     const result = processDetectionResult({

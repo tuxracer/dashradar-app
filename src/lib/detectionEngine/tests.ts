@@ -1392,6 +1392,30 @@ describe("the frame pump", () => {
     expect(tracks[1].id).not.toBe(firstTrack.id);
   });
 
+  it("ignores the driver's own hood everywhere a detection counts", async () => {
+    const { engine, worker } = await scanning();
+    worker.emit({
+      type: "detections",
+      detections: [
+        // Hood-shaped against the 1280x720 video's centered square region:
+        // region-wide, short, run off the bottom edge, outscoring the real car.
+        {
+          label: "car",
+          score: 0.95,
+          box: { xmin: 0.23, ymin: 0.75, xmax: 0.77, ymax: 1 },
+        },
+        car,
+      ],
+      timing,
+    });
+    // Only the real car reaches the scan and the meter; the hood never
+    // becomes a track, so nothing downstream can place or announce it.
+    expect(engine.getSnapshot().scan?.detections).toMatchObject([
+      { box: { xmin: 0.4 } },
+    ]);
+    expect(engine.getSnapshot().hud?.top?.box.xmin).toBe(0.4);
+  });
+
   it("emits each scan's filtered detections on rawDetections$ and nothing on a skip", async () => {
     const { engine, worker } = await scanning();
     const emissions: RawDetections[] = [];
