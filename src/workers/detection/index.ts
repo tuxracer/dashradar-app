@@ -297,8 +297,10 @@ const createCaptureModel = async (
     // Read before getData(), which downloads the data and releases the
     // GPU-side output.
     const labelsDims = outputs[io.labelsName].dims;
-    await outputs[io.detsName].getData(true);
-    await outputs[io.labelsName].getData(true);
+    await Promise.all([
+      outputs[io.detsName].getData(true),
+      outputs[io.labelsName].getData(true),
+    ]);
     return {
       session,
       ...io,
@@ -595,8 +597,12 @@ const detect = async ({
       const outputs = await model.session.run({
         [model.inputName]: inputTensor,
       });
-      dets = (await outputs[model.detsName].getData(true)) as Float32Array;
-      labels = (await outputs[model.labelsName].getData(true)) as Float32Array;
+      const [detsData, labelsData] = await Promise.all([
+        outputs[model.detsName].getData(true),
+        outputs[model.labelsName].getData(true),
+      ]);
+      dets = detsData as Float32Array;
+      labels = labelsData as Float32Array;
     } else {
       const input = new Tensor("float32", inputData, [
         1,
