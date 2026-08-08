@@ -58,13 +58,20 @@ nothing imports. The live implementation is `lib/tf.ts`. Do not edit
 ## Development
 
 ```bash
-npm install
+npm install --force  # plain `npm install` fails, see below
 npm run dev      # http://localhost:3000
 npm run build    # production build
 npm start        # production server on port 3001
 npm run lint     # next lint
 npx tsc --noEmit # typecheck (no dedicated npm script)
 ```
+
+**Installing requires `--force`.** `@tensorflow-models/coco-ssd@2.2.2` declares a
+peer dependency on `@tensorflow/tfjs-converter@^3.3.0`, but this project runs
+tfjs 4.x. Plain `npm install` aborts with `ERESOLVE`. Use `npm install --force`
+(`--legacy-peer-deps` also works) to accept the mismatch. Detection works fine
+in practice despite the unsatisfied peer range, so do not "fix" this by
+downgrading tfjs.
 
 There is no test suite and no test runner configured. Verification is manual, in
 a real browser with a real camera. No environment variables are required; nothing
