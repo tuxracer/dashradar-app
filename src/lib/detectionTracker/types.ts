@@ -29,7 +29,7 @@ export type TrackerState = {
 
 export type TrackerConfig = {
   /** Minimum pair score (see `pairScore`) for a detection to match a track. */
-  iouMatchThreshold: number;
+  matchThreshold: number;
   /**
    * Score a detection earns sitting exactly on a track's predicted center
    * with no overlap evidence, in (0, 1]. Kept below 1 so real overlap always

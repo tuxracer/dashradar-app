@@ -6,7 +6,7 @@ import type { TrackerConfig } from "./types";
  * between frames. Low enough to tolerate the box drift of a moving object and
  * camera. Tune on-device.
  */
-export const IOU_MATCH_THRESHOLD = 0.3;
+export const MATCH_THRESHOLD = 0.3;
 
 /**
  * Score of a dead-center, zero-overlap detection against a track's predicted
@@ -59,7 +59,7 @@ export const SCORE_SMOOTHING_ALPHA = 0.5;
 
 /** Default tuning applied by createDetectionTracker. */
 export const DEFAULT_TRACKER_CONFIG: TrackerConfig = {
-  iouMatchThreshold: IOU_MATCH_THRESHOLD,
+  matchThreshold: MATCH_THRESHOLD,
   proximityScoreCeiling: PROXIMITY_SCORE_CEILING,
   proximityRadiusDiagonals: PROXIMITY_RADIUS_DIAGONALS,
   matchGateFloor: MATCH_GATE_FLOOR,

@@ -29,7 +29,7 @@ const detection = (overrides: Partial<Detection> = {}): Detection => ({
 const testConfig = (): TrackerConfig => {
   let minted = 0;
   return {
-    iouMatchThreshold: 0.3,
+    matchThreshold: 0.3,
     proximityScoreCeiling: 0.6,
     proximityRadiusDiagonals: 2,
     matchGateFloor: 0.15,

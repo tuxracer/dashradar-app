@@ -1,4 +1,4 @@
-import { IOU_MATCH_THRESHOLD } from "@/lib/detectionTracker";
+import { MATCH_THRESHOLD } from "@/lib/detectionTracker";
 
 /**
  * Detections below this score are discarded: the operating point the shipping
@@ -26,13 +26,15 @@ export const NORMALIZED_CLASSES: Readonly<Record<string, string>> = {
 
 /**
  * Minimum IoU at which two same-class boxes in one frame count as one object.
- * Exactly the tracker's cross-frame match floor, and the equality is
- * load-bearing: a duplicate that survives dedupe but overlaps above the match
+ * Exactly the tracker's tight-gate match floor, and the equality is
+ * load-bearing: a duplicate that survives dedupe but overlaps above that
  * floor spawns a parallel track the next frames alternate between, flipping
- * the object's id and color. Whatever the tracker would call "the same object
- * moved" across frames must read as one object within a frame.
+ * the object's id and color. The tracker's looser acceptance routes (the
+ * nearness term, the gate relaxed by a long coast) are deliberately not
+ * mirrored here: within a single frame there is no displacement to excuse a
+ * near miss, and collapsing adjacent boxes would erase a real second vehicle.
  */
-export const DUPLICATE_IOU_THRESHOLD = IOU_MATCH_THRESHOLD;
+export const DUPLICATE_IOU_THRESHOLD = MATCH_THRESHOLD;
 
 /**
  * Own-hood geometry, all fractions of the scanned region (never the full

@@ -115,21 +115,17 @@ const pairScore = (
  * exactly the matches a long gap still permits.
  */
 const matchGateAt = (unseenMs: number, config: TrackerConfig): number => {
-  const {
-    iouMatchThreshold,
-    matchGateFloor,
-    matchGateTightMs,
-    matchGateLooseMs,
-  } = config;
+  const { matchThreshold, matchGateFloor, matchGateTightMs, matchGateLooseMs } =
+    config;
   if (unseenMs <= matchGateTightMs) {
-    return iouMatchThreshold;
+    return matchThreshold;
   }
   if (unseenMs >= matchGateLooseMs) {
     return matchGateFloor;
   }
   const progress =
     (unseenMs - matchGateTightMs) / (matchGateLooseMs - matchGateTightMs);
-  return iouMatchThreshold + (matchGateFloor - iouMatchThreshold) * progress;
+  return matchThreshold + (matchGateFloor - matchThreshold) * progress;
 };
 
 /**
