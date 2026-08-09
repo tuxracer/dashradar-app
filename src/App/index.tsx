@@ -296,6 +296,8 @@ const RadarScreen = () => {
       {detectionView ? (
         <DetectionView
           detections={scan?.detections ?? []}
+          tracks={scan?.tracks ?? []}
+          at={scan?.at ?? 0}
           frame={scan?.frame ?? videoSize ?? viewportSize}
           viewport={viewportSize}
           zoom={scan?.zoom ?? ZOOM_OFF}
