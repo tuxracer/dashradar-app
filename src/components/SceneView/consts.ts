@@ -35,15 +35,17 @@ export const UNIT_PLANE = new PlaneGeometry(1, 1);
 export const GLOW_TEXTURE_PX = 64;
 
 /**
- * Chase-camera position in scene meters, above and behind the ego marker. Ahead
- * is negative z, so the camera sits at positive z looking toward CAMERA_TARGET.
+ * Chase-camera position in scene meters, above and behind the ego car. Ahead is
+ * negative z, so the camera sits at positive z looking toward CAMERA_TARGET.
+ * Close and low on purpose: the driver reads every range against the ego car,
+ * so the first car length ahead of it has to be the largest thing on screen.
  */
 export const CHASE_CAMERA_POSITION: readonly [number, number, number] = [
-  0, 9, 14,
+  0, 7, 11,
 ];
 
 /** Point the chase camera looks at, in scene meters ahead of the ego. */
-export const CAMERA_TARGET: readonly [number, number, number] = [0, 0, -28];
+export const CAMERA_TARGET: readonly [number, number, number] = [0, 0, -8];
 
 /** Vertical field of view of the chase camera, in degrees. */
 export const CHASE_CAMERA_FOV = 50;
@@ -130,6 +132,13 @@ export const LIGHT_SCENE_PALETTE: typeof DARK_SCENE_PALETTE = {
   grid: "#6f5222",
   gridOpacity: 0.22,
 };
+
+/**
+ * Body color of the ego car, the driver's own vehicle drawn at the origin. Muted
+ * so it never competes with a detection: identity colors are saturated and the
+ * patrol car wears its livery, so a flat mid gray reads as scenery.
+ */
+export const EGO_COLOR = "#6a6876";
 
 /**
  * Tire color, shared by every vehicle glyph. Well clear of the backdrop: a true

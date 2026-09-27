@@ -20,6 +20,7 @@ import {
   CHASE_CAMERA_POSITION,
   CONTEXT_RESTORE_TIMEOUT_MS,
   DPR_MAX,
+  EGO_COLOR,
   FADE_IN_MS,
   FADE_OUT_MS,
   FOG_FAR_M,
@@ -30,6 +31,7 @@ import {
   TWEEN_MS,
 } from "./consts";
 import { CameraRig } from "./cameraRig";
+import { CarGlyph } from "./CarGlyph";
 import { SceneGlyph } from "./SceneGlyph";
 import { useScenePalette } from "./scenePalette";
 
@@ -107,6 +109,16 @@ const probeWebgl = (): WebglProbe => {
 /** Three's own runtime brand for meshes, as a guard instead of a cast. */
 const isMesh = (object: Object3D): object is Mesh =>
   (object as Mesh).isMesh === true;
+
+/**
+ * The driver's own car, centered on the origin the placements are measured
+ * from. Without it the scene has no "here": the driver puts themselves at the
+ * camera, and everything reads as a camera's length further off than it is. The
+ * phone sits about mid-body on a dash, so centering is close enough.
+ */
+const EgoCar = () => (
+  <CarGlyph color={EGO_COLOR} width={1.8} height={1.45} length={4.6} />
+);
 
 /** Scene position for a placement: right stays x, ahead becomes negative z. */
 const toScenePosition = (
@@ -552,6 +564,7 @@ export const SceneView = ({
             material-transparent
             material-opacity={palette.gridOpacity}
           />
+          <EgoCar />
           <SceneGlyphs placements={placements} reducedMotion={reducedMotion} />
           <CameraRig enabled={!reducedMotion} />
           {debug && <DebugFrameProbe target={framesSpanRef} />}
