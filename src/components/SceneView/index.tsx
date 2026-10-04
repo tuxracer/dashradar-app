@@ -34,7 +34,12 @@ import { SceneGlyph } from "./SceneGlyph";
 import { useScenePalette } from "./scenePalette";
 
 export * from "./consts";
-export { orientationOffsets, orientationQuaternion } from "./cameraRig";
+export {
+  aimCamera,
+  createOrientationRig,
+  orientationOffsets,
+  orientationQuaternion,
+} from "./cameraRig";
 export { usePoliceStrobe } from "./policeStrobe";
 export { useScenePalette } from "./scenePalette";
 

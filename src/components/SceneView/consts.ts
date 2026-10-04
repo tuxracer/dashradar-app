@@ -154,18 +154,18 @@ export const RIG_YAW_CLAMP_RAD = 0.35;
 export const RIG_PITCH_CLAMP_RAD = 0.17;
 
 /**
- * Per-event low-pass factor for the rig's camera offset. Orientation sensors
- * report at roughly display rate; this smooths hand shake and road vibration
- * into an eased glide.
+ * Time constant of the rig's camera easing, in ms: how long an offset takes to
+ * close most of the gap to its target. Smooths hand shake and road vibration
+ * into a glide.
  */
-export const RIG_SMOOTHING = 0.15;
+export const RIG_SMOOTHING_MS = 120;
 
 /**
- * Per-event factor by which the rig's neutral orientation adapts toward the
- * current one. The camera always eases back to center over a few seconds, so
- * a tilted dash mount, a slow turn, or compass drift never holds an offset.
+ * Time constant of the rig's neutral attitude, in ms. The camera always eases
+ * back to center over a few seconds, so a tilted dash mount, a slow turn, or
+ * compass drift never holds an offset.
  */
-export const RIG_BASELINE_ADAPT = 0.004;
+export const RIG_SETTLE_MS = 4_000;
 
 /**
  * Smallest applied-offset change worth a render, radians. Below this the rig

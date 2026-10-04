@@ -1,7 +1,9 @@
 import { act, render, renderHook, screen } from "@testing-library/react";
-import { Quaternion, Vector3 } from "three";
+import { PerspectiveCamera, Quaternion, Vector3 } from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  aimCamera,
+  createOrientationRig,
   DARK_SCENE_PALETTE,
   LIGHT_SCENE_PALETTE,
   orientationOffsets,
@@ -145,6 +147,91 @@ describe("orientationOffsets", () => {
     const { yawRad, pitchRad } = orientationOffsets(IDENTITY, rolled);
     expect(yawRad).toBeCloseTo(0);
     expect(pitchRad).toBeCloseTo(0);
+  });
+});
+
+describe("aimCamera", () => {
+  const CHASE_POSITION = new Vector3(0, 2.2, 1);
+  const TARGET = new Vector3(0, 0, -9);
+
+  /** Vertical lean of the camera's lateral axis; zero is a level horizon. */
+  const horizonLean = (yawRad: number, pitchRad: number): number => {
+    const camera = new PerspectiveCamera();
+    camera.position.copy(CHASE_POSITION);
+    aimCamera(camera, TARGET, yawRad, pitchRad);
+    return new Vector3(1, 0, 0).applyQuaternion(camera.quaternion).y;
+  };
+
+  it("keeps the horizon level however far the view is panned", () => {
+    expect(horizonLean(0.35, 0)).toBeCloseTo(0, 6);
+    expect(horizonLean(-0.35, 0.17)).toBeCloseTo(0, 6);
+    expect(horizonLean(0.2, -0.17)).toBeCloseTo(0, 6);
+  });
+
+  it("still pans the view by the offsets given", () => {
+    const camera = new PerspectiveCamera();
+    camera.position.copy(CHASE_POSITION);
+    aimCamera(camera, TARGET, 0.35, 0);
+    const forward = new Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    expect(forward.x).toBeLessThan(0);
+  });
+});
+
+/**
+ * Readings arrive on a real phone only while it moves, so the rig has to
+ * finish settling on its own clock after they stop; these drive the clock by
+ * hand with no further readings and watch for the exact return to center.
+ */
+describe("createOrientationRig", () => {
+  const FRAME_MS = 16;
+  const IDENTITY = new Quaternion();
+  const TURNED = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), 0.5);
+
+  /** Steps the rig from `fromMs` until it parks, returning when it did. */
+  const runUntilParked = (
+    rig: ReturnType<typeof createOrientationRig>,
+    fromMs: number,
+    limitMs: number,
+  ): number => {
+    for (let nowMs = fromMs; nowMs <= limitMs; nowMs += FRAME_MS) {
+      if (!rig.step(nowMs)) {
+        return nowMs;
+      }
+    }
+    throw new Error("rig never parked");
+  };
+
+  it("is parked before any reading arrives", () => {
+    const apply = vi.fn();
+    expect(createOrientationRig(apply).step(0)).toBe(false);
+    expect(apply).not.toHaveBeenCalled();
+  });
+
+  it("pans toward a turn, then returns exactly to center without more readings", () => {
+    const apply = vi.fn();
+    const rig = createOrientationRig(apply);
+    rig.read(IDENTITY);
+    rig.step(0);
+    rig.read(TURNED);
+    const parkedAt = runUntilParked(rig, FRAME_MS, 120_000);
+    const yaws = apply.mock.calls.map(([yawRad]) => yawRad);
+    expect(Math.max(...yaws)).toBeGreaterThan(0.1);
+    expect(apply).toHaveBeenLastCalledWith(0, 0);
+    expect(parkedAt).toBeLessThan(60_000);
+  });
+
+  it("does not count time spent parked as one giant ease", () => {
+    const apply = vi.fn();
+    const rig = createOrientationRig(apply);
+    rig.read(IDENTITY);
+    rig.step(0);
+    // Hours later, a turn begins. An ease over the whole gap would move the
+    // neutral straight onto the turn and the camera would never pan at all.
+    rig.read(TURNED);
+    const wakeMs = 3_600_000;
+    runUntilParked(rig, wakeMs, wakeMs + 120_000);
+    const yaws = apply.mock.calls.map(([yawRad]) => yawRad);
+    expect(Math.max(...yaws, 0)).toBeGreaterThan(0.1);
   });
 });
 
