@@ -161,11 +161,11 @@ export const RIG_PITCH_CLAMP_RAD = 0.17;
 export const RIG_SMOOTHING_MS = 120;
 
 /**
- * Time constant of the rig's neutral attitude, in ms. The camera always eases
- * back to center over a few seconds, so a tilted dash mount, a slow turn, or
- * compass drift never holds an offset.
+ * Time constant of the rig's neutral attitude, in ms. The camera is back within
+ * a degree of center about two seconds after the phone stops moving, so a
+ * tilted dash mount, a slow turn, or compass drift never holds an offset.
  */
-export const RIG_SETTLE_MS = 4_000;
+export const RIG_SETTLE_MS = 600;
 
 /**
  * Smallest applied-offset change worth a render, radians. Below this the rig

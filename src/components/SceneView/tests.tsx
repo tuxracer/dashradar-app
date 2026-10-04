@@ -217,7 +217,7 @@ describe("createOrientationRig", () => {
     const yaws = apply.mock.calls.map(([yawRad]) => yawRad);
     expect(Math.max(...yaws)).toBeGreaterThan(0.1);
     expect(apply).toHaveBeenLastCalledWith(0, 0);
-    expect(parkedAt).toBeLessThan(60_000);
+    expect(parkedAt).toBeLessThan(5_000);
   });
 
   it("does not count time spent parked as one giant ease", () => {
